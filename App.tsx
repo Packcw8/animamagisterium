@@ -1,19 +1,25 @@
 import { Session } from "@supabase/supabase-js";
+import { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
+import { BottomNav } from "./src/components/BottomNav";
 import { colors } from "./src/components/theme";
 import { supabase, testSupabaseConnection } from "./src/lib/supabase";
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { CharacterCreationScreen } from "./src/screens/CharacterCreationScreen";
 import { CharacterSheetScreen } from "./src/screens/CharacterSheetScreen";
+import { HomeScreen } from "./src/screens/HomeScreen";
+import { SimpleSectionScreen } from "./src/screens/SimpleSectionScreen";
 import { CharacterWithDetails, createProfileIfMissing, getAvatarAssets, getCharacter } from "./src/services/characterService";
 import { Tables } from "./src/lib/supabase";
+import { ScreenKey } from "./src/types";
 
 export default function App() {
   const [connectionStatus, setConnectionStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [character, setCharacter] = useState<CharacterWithDetails | null>(null);
   const [avatarAssets, setAvatarAssets] = useState<Tables["avatar_assets"][]>([]);
+  const [activeScreen, setActiveScreen] = useState<ScreenKey>("home");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,12 +90,47 @@ export default function App() {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : character ? (
-          <CharacterSheetScreen character={character} onRefresh={() => void loadMvpState(session)} />
+          <AuthenticatedLayout activeScreen={activeScreen} onChangeScreen={setActiveScreen}>
+            {activeScreen === "home" ? (
+              <HomeScreen character={character} />
+            ) : activeScreen === "character" ? (
+              <CharacterSheetScreen character={character} onRefresh={() => void loadMvpState(session)} />
+            ) : activeScreen === "quests" ? (
+              <SimpleSectionScreen title="Quests" description="Daily quests will return here after the character foundation is settled." />
+            ) : activeScreen === "progress" ? (
+              <SimpleSectionScreen title="Progress" description="Training history, level growth, and milestones will be gathered here." />
+            ) : (
+              <SimpleSectionScreen title="Settings" description="Manage account and app preferences." showSignOut />
+            )}
+          </AuthenticatedLayout>
         ) : (
-          <CharacterCreationScreen assets={avatarAssets} onCreated={setCharacter} />
+          <AuthenticatedLayout activeScreen={activeScreen} onChangeScreen={setActiveScreen}>
+            {activeScreen === "settings" ? (
+              <SimpleSectionScreen title="Settings" description="Manage account and app preferences." showSignOut />
+            ) : (
+              <CharacterCreationScreen assets={avatarAssets} onCreated={setCharacter} />
+            )}
+          </AuthenticatedLayout>
         )}
       </View>
     </SafeAreaView>
+  );
+}
+
+function AuthenticatedLayout({
+  activeScreen,
+  onChangeScreen,
+  children,
+}: {
+  activeScreen: ScreenKey;
+  onChangeScreen: (screen: ScreenKey) => void;
+  children: ReactNode;
+}) {
+  return (
+    <View style={styles.authenticated}>
+      <View style={styles.authenticatedContent}>{children}</View>
+      <BottomNav active={activeScreen} onChange={onChangeScreen} />
+    </View>
   );
 }
 
@@ -101,6 +142,13 @@ const styles = StyleSheet.create({
   shell: {
     flex: 1,
     backgroundColor: "#040606",
+  },
+  authenticated: {
+    flex: 1,
+  },
+  authenticatedContent: {
+    flex: 1,
+    paddingBottom: 0,
   },
   loading: {
     flex: 1,

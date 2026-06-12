@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
@@ -49,6 +50,7 @@ export function AuthScreen({ connectionStatus }: AuthScreenProps) {
   return (
     <Screen>
       <View style={styles.header}>
+        <BrandLogo size={92} />
         <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
         <Text style={styles.subtitle}>Enter the first gate</Text>
         <View style={[styles.connection, connectionStatus?.ok ? styles.connected : styles.disconnected]}>
@@ -106,6 +108,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.title,
     fontSize: 24,
     letterSpacing: 0,
+    marginTop: 12,
   },
   subtitle: {
     color: colors.muted,

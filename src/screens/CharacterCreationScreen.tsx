@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
@@ -234,8 +235,11 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
-        <Text style={styles.stepLabel}>Step {step + 1} of {steps.length}: {steps[step]}</Text>
+        <BrandLogo size={54} />
+        <View style={styles.headerText}>
+          <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
+          <Text style={styles.stepLabel}>Step {step + 1} of {steps.length}: {steps[step]}</Text>
+        </View>
       </View>
 
       <Frame style={styles.panel}>
@@ -346,12 +350,17 @@ function Summary({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   header: {
+    flexDirection: "row",
+    gap: 12,
     paddingHorizontal: 18,
     paddingTop: 22,
     paddingBottom: 16,
     alignItems: "center",
     borderBottomWidth: 1,
     borderColor: colors.borderSoft,
+  },
+  headerText: {
+    flex: 1,
   },
   brand: {
     color: colors.gold,

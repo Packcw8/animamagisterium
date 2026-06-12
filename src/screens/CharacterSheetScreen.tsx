@@ -1,4 +1,5 @@
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
@@ -17,8 +18,11 @@ export function CharacterSheetScreen({ character, onRefresh }: CharacterSheetScr
   return (
     <Screen>
       <View style={styles.header}>
-        <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
-        <Text style={styles.subtitle}>Character Sheet</Text>
+        <BrandLogo size={54} />
+        <View>
+          <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
+          <Text style={styles.subtitle}>Character Sheet</Text>
+        </View>
       </View>
 
       <Frame style={styles.heroCard}>
@@ -105,6 +109,8 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 const styles = StyleSheet.create({
   header: {
+    flexDirection: "row",
+    gap: 12,
     paddingTop: 22,
     paddingHorizontal: 18,
     paddingBottom: 16,

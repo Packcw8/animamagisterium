@@ -10,10 +10,10 @@ type Item = {
 
 const items: Item[] = [
   { key: "home", label: "Home", icon: "HM" },
+  { key: "character", label: "Character", icon: "CH" },
   { key: "quests", label: "Quests", icon: "QS" },
-  { key: "battle", label: "Battle", icon: "BT" },
-  { key: "map", label: "Map", icon: "MP" },
-  { key: "profile", label: "Profile", icon: "PF" },
+  { key: "progress", label: "Progress", icon: "PR" },
+  { key: "settings", label: "Settings", icon: "ST" },
 ];
 
 type BottomNavProps = {
@@ -39,11 +39,12 @@ export function BottomNav({ active, onChange }: BottomNavProps) {
 
 const styles = StyleSheet.create({
   nav: {
-    height: 70,
+    height: 76,
     flexDirection: "row",
     borderTopWidth: 1,
     borderColor: colors.borderSoft,
-    backgroundColor: "#070706",
+    backgroundColor: "#070909",
+    paddingBottom: 4,
   },
   item: {
     flex: 1,
@@ -58,7 +59,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.goldSoft,
-    fontSize: 11,
+    fontSize: 10,
   },
   active: {
     color: colors.gold,
