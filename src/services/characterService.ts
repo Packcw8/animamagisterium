@@ -1,47 +1,99 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { User } from "@supabase/supabase-js";
 import { supabase, Tables } from "../lib/supabase";
 
-const PROFILE_ID_KEY = "animamagisterium.profile_id";
-const CHARACTER_ID_KEY = "animamagisterium.character_id";
+export type AvatarAssetType = Tables["avatar_assets"]["type"];
 
-export type CharacterDashboardData = Tables["characters"] & {
-  attributes: Tables["attributes"];
+export type CharacterWithDetails = Tables["characters"] & {
+  attributes: Tables["attributes"] | null;
+  appearance: Tables["character_appearance"] | null;
+  appearanceAssets: Partial<Record<AvatarAssetType, Tables["avatar_assets"]>>;
 };
 
-function createUuid() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
+export type CharacterCreationInput = {
+  name: string;
+  origin: string;
+  path: string;
+  appearance: {
+    baseAssetId?: string;
+    faceAssetId?: string;
+    hairAssetId?: string;
+    armorAssetId?: string;
+    weaponAssetId?: string;
+    cloakAssetId?: string;
+    skinTone?: string;
+  };
+};
+
+const appearanceSelect = `
+  *,
+  base:base_asset_id(*),
+  face:face_asset_id(*),
+  hair:hair_asset_id(*),
+  armor:armor_asset_id(*),
+  weapon:weapon_asset_id(*),
+  cloak:cloak_asset_id(*)
+`;
+
+function getAppearanceAssets(appearance: Record<string, unknown> | null) {
+  if (!appearance) {
+    return {};
   }
 
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
-    const rand = Math.floor(Math.random() * 16);
-    const value = char === "x" ? rand : (rand & 0x3) | 0x8;
-    return value.toString(16);
-  });
+  return {
+    base: appearance.base as Tables["avatar_assets"] | undefined,
+    face: appearance.face as Tables["avatar_assets"] | undefined,
+    hair: appearance.hair as Tables["avatar_assets"] | undefined,
+    armor: appearance.armor as Tables["avatar_assets"] | undefined,
+    weapon: appearance.weapon as Tables["avatar_assets"] | undefined,
+    cloak: appearance.cloak as Tables["avatar_assets"] | undefined,
+  };
 }
 
-async function getOrCreateProfile(username = "Adventurer") {
-  const storedProfileId = await AsyncStorage.getItem(PROFILE_ID_KEY);
+function normalizeCharacter(data: Record<string, unknown>): CharacterWithDetails {
+  const attributes = Array.isArray(data.attributes) ? data.attributes[0] : data.attributes;
+  const appearance = Array.isArray(data.character_appearance) ? data.character_appearance[0] : data.character_appearance;
 
-  if (storedProfileId) {
-    const { data, error } = await supabase.from("profiles").select("*").eq("id", storedProfileId).maybeSingle();
+  return {
+    ...(data as Tables["characters"]),
+    attributes: (attributes as Tables["attributes"] | undefined) ?? null,
+    appearance: (appearance as Tables["character_appearance"] | undefined) ?? null,
+    appearanceAssets: getAppearanceAssets((appearance as Record<string, unknown> | undefined) ?? null),
+  };
+}
 
-    if (data) {
-      return data as Tables["profiles"];
-    }
+export async function getCurrentUserProfile() {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
 
-    if (error && error.code !== "PGRST116") {
-      throw error;
-    }
+  if (userError) {
+    throw userError;
   }
 
-  const profileId = createUuid();
+  if (!user) {
+    return null;
+  }
+
+  const { data, error } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Tables["profiles"] | null;
+}
+
+export async function createProfileIfMissing(user: User, username?: string) {
   const { data, error } = await supabase
     .from("profiles")
-    .insert({
-      id: profileId,
-      username,
-    })
+    .upsert(
+      {
+        id: user.id,
+        username: username || user.email?.split("@")[0] || "Adventurer",
+      },
+      { onConflict: "id" },
+    )
     .select()
     .single();
 
@@ -49,55 +101,88 @@ async function getOrCreateProfile(username = "Adventurer") {
     throw error;
   }
 
-  await AsyncStorage.setItem(PROFILE_ID_KEY, profileId);
   return data as Tables["profiles"];
 }
 
-export async function loadCharacter() {
-  const storedCharacterId = await AsyncStorage.getItem(CHARACTER_ID_KEY);
-  const storedProfileId = await AsyncStorage.getItem(PROFILE_ID_KEY);
-
-  let query = supabase.from("characters").select("*, attributes(*)").limit(1);
-
-  if (storedCharacterId) {
-    query = query.eq("id", storedCharacterId);
-  } else if (storedProfileId) {
-    query = query.eq("user_id", storedProfileId);
-  } else {
-    return null;
-  }
-
-  const { data, error } = await query.maybeSingle();
+export async function getAvatarAssets() {
+  const { data, error } = await supabase
+    .from("avatar_assets")
+    .select("*")
+    .eq("is_active", true)
+    .order("type", { ascending: true })
+    .order("sort_order", { ascending: true });
 
   if (error) {
     throw error;
   }
 
-  if (!data) {
+  return (data ?? []) as Tables["avatar_assets"][];
+}
+
+export async function getCharacter() {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  if (!user) {
     return null;
   }
 
-  await AsyncStorage.setItem(CHARACTER_ID_KEY, data.id);
-  await AsyncStorage.setItem(PROFILE_ID_KEY, data.user_id);
+  const { data, error } = await supabase
+    .from("characters")
+    .select(`*, attributes(*), character_appearance(${appearanceSelect})`)
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
-  const attributes = Array.isArray(data.attributes) ? data.attributes[0] : data.attributes;
+  if (error) {
+    throw error;
+  }
 
-  return {
-    ...data,
-    attributes,
-  } as CharacterDashboardData;
+  return data ? normalizeCharacter(data as Record<string, unknown>) : null;
 }
 
-export async function createCharacter(name: string) {
-  const profile = await getOrCreateProfile(name);
-  const characterId = createUuid();
+export async function createCharacter(input: CharacterCreationInput) {
+  const cleanName = input.name.trim();
+
+  if (!cleanName) {
+    throw new Error("Character name is required.");
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  if (!user) {
+    throw new Error("You must be signed in to create a character.");
+  }
+
+  await createProfileIfMissing(user);
+
+  const existingCharacter = await getCharacter();
+
+  if (existingCharacter) {
+    throw new Error("A character already exists for this account.");
+  }
 
   const { data: character, error: characterError } = await supabase
     .from("characters")
     .insert({
-      id: characterId,
-      user_id: profile.id,
-      name,
+      user_id: user.id,
+      name: cleanName,
+      origin: input.origin,
+      path: input.path,
     })
     .select()
     .single();
@@ -106,66 +191,61 @@ export async function createCharacter(name: string) {
     throw characterError;
   }
 
-  const { data: attributes, error: attributesError } = await supabase
-    .from("attributes")
-    .insert({
-      id: createUuid(),
-      character_id: character.id,
-      strength: 8,
-      endurance: 7,
-      knowledge: 6,
-      craft: 5,
-      wealth: 4,
-      influence: 3,
-    })
-    .select()
-    .single();
+  const { error: attributesError } = await supabase.from("attributes").insert({
+    character_id: character.id,
+    strength: input.path === "Warrior" ? 5 : 2,
+    endurance: input.origin === "Laborer" ? 5 : 2,
+    knowledge: input.path === "Sage" || input.origin === "Scholar" ? 5 : 2,
+    craft: input.path === "Artificer" || input.origin === "Builder" ? 5 : 2,
+    wealth: input.path === "Merchant" ? 5 : 2,
+    influence: input.path === "Guardian" || input.origin === "Guardian" ? 5 : 2,
+  });
 
   if (attributesError) {
     throw attributesError;
   }
 
-  await AsyncStorage.setItem(CHARACTER_ID_KEY, character.id);
-  await AsyncStorage.setItem(PROFILE_ID_KEY, profile.id);
+  await saveCharacterAppearance(character.id, input.appearance);
 
-  return {
-    ...character,
-    attributes,
-  } as CharacterDashboardData;
+  const savedCharacter = await getCharacter();
+
+  if (!savedCharacter) {
+    throw new Error("Character was created but could not be loaded.");
+  }
+
+  return savedCharacter;
 }
 
-export async function updateCharacterXp(characterId: string, xp: number) {
-  const nextLevel = Math.max(1, Math.floor(xp / 1000) + 1);
-  const { data, error } = await supabase
-    .from("characters")
-    .update({
-      xp,
-      level: nextLevel,
-    })
-    .eq("id", characterId)
-    .select("*, attributes(*)")
-    .single();
+export async function updateCharacter(characterId: string, values: Partial<Pick<Tables["characters"], "name" | "origin" | "path" | "xp" | "gold" | "level">>) {
+  const { data, error } = await supabase.from("characters").update(values).eq("id", characterId).select().single();
 
   if (error) {
     throw error;
   }
 
-  const attributes = Array.isArray(data.attributes) ? data.attributes[0] : data.attributes;
-
-  return {
-    ...data,
-    attributes,
-  } as CharacterDashboardData;
+  return data as Tables["characters"];
 }
 
-export async function updateCharacterAttributes(
+export async function saveCharacterAppearance(
   characterId: string,
-  attributes: Partial<Omit<Tables["attributes"], "id" | "character_id">>,
+  appearance: CharacterCreationInput["appearance"],
 ) {
   const { data, error } = await supabase
-    .from("attributes")
-    .update(attributes)
-    .eq("character_id", characterId)
+    .from("character_appearance")
+    .upsert(
+      {
+        character_id: characterId,
+        base_asset_id: appearance.baseAssetId ?? null,
+        face_asset_id: appearance.faceAssetId ?? null,
+        hair_asset_id: appearance.hairAssetId ?? null,
+        armor_asset_id: appearance.armorAssetId ?? null,
+        weapon_asset_id: appearance.weaponAssetId ?? null,
+        cloak_asset_id: appearance.cloakAssetId ?? null,
+        skin_tone: appearance.skinTone ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "character_id" },
+    )
     .select()
     .single();
 
@@ -173,5 +253,19 @@ export async function updateCharacterAttributes(
     throw error;
   }
 
-  return data as Tables["attributes"];
+  return data as Tables["character_appearance"];
+}
+
+export async function getCharacterAppearance(characterId: string) {
+  const { data, error } = await supabase
+    .from("character_appearance")
+    .select(appearanceSelect)
+    .eq("character_id", characterId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as (Tables["character_appearance"] & Record<string, Tables["avatar_assets"] | null>) | null;
 }

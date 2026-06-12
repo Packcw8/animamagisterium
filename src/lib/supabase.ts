@@ -40,6 +40,8 @@ export type Tables = {
     id: string;
     user_id: string;
     name: string;
+    origin: string | null;
+    path: string | null;
     level: number;
     xp: number;
     gold: number;
@@ -54,6 +56,27 @@ export type Tables = {
     craft: number;
     wealth: number;
     influence: number;
+  };
+  avatar_assets: {
+    id: string;
+    type: "base" | "face" | "hair" | "armor" | "weapon" | "cloak" | "background";
+    name: string;
+    storage_path: string | null;
+    preview_url: string | null;
+    sort_order: number;
+    is_active: boolean;
+  };
+  character_appearance: {
+    id: string;
+    character_id: string;
+    base_asset_id: string | null;
+    face_asset_id: string | null;
+    hair_asset_id: string | null;
+    armor_asset_id: string | null;
+    weapon_asset_id: string | null;
+    cloak_asset_id: string | null;
+    skin_tone: string | null;
+    updated_at: string;
   };
 };
 
