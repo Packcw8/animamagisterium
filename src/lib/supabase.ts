@@ -3,29 +3,18 @@ import "react-native-url-polyfill/auto";
 import { createClient } from "@supabase/supabase-js";
 import { runtimeEnv } from "./runtimeEnv.generated";
 
-type ViteImportMeta = ImportMeta & {
-  env?: {
-    VITE_SUPABASE_URL?: string;
-    VITE_SUPABASE_PUBLISHABLE_KEY?: string;
-  };
-};
-
-const viteEnv = (import.meta as ViteImportMeta).env;
-
 function firstConfiguredValue(...values: Array<string | undefined>) {
   return values.find((value) => Boolean(value)) ?? "";
 }
 
 const supabaseUrl = firstConfiguredValue(
   runtimeEnv.supabaseUrl,
-  viteEnv?.VITE_SUPABASE_URL,
   process.env.EXPO_PUBLIC_SUPABASE_URL,
   process.env.VITE_SUPABASE_URL,
 );
 
 const supabasePublishableKey = firstConfiguredValue(
   runtimeEnv.supabasePublishableKey,
-  viteEnv?.VITE_SUPABASE_PUBLISHABLE_KEY,
   process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
 );
