@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
@@ -18,40 +18,23 @@ type PickedPhoto = {
 };
 
 const genders = ["Male", "Female"];
-const ancestries = ["Human", "Elf", "Dwarf", "Woodkin", "Drakesoul", "Stoneborn", "Fae-Touched", "Aetherborn"];
-const homelands = ["Valewood", "Frostmark", "Duskwold", "Sunspire", "Ironvale", "Moonfen"];
-const origins = ["Wayfarer", "Scholar", "Laborer", "Outcast", "Builder", "Guardian", "Noble Exile", "Village Healer"];
-const paths = ["Warrior", "Ranger", "Druid", "Sage", "Artificer", "Merchant", "Guardian", "Shadow Scout"];
-const traits = ["Calm Resolve", "Bright-Eyed", "Scarred Veteran", "Stern Watcher", "Mirthful Rogue", "Haunted Scholar", "Gentle Healer", "Iron-Willed"];
-const steps = ["Upload Photo", "Identity", "Generate Avatar", "Save"];
+const races = ["Human", "Elf", "Dwarf", "Beastkin", "Orc", "Halfling"];
+const origins = ["Farmhand", "Scholar", "Hunter", "Orphan", "Merchant's Child", "Exiled Noble", "Street Survivor", "Wanderer"];
+const steps = ["Upload Image", "Generate Avatar", "Begin Adventure"];
 
-export function CharacterCreationScreen({ assets, onCreated }: CharacterCreationScreenProps) {
+export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenProps) {
   const [step, setStep] = useState(0);
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
-  const [original_photo_url, setOriginalPhotoUrl] = useState("");
-  const [generatedPortraitUrl, setGeneratedPortraitUrl] = useState("");
+  const [originalPhotoUrl, setOriginalPhotoUrl] = useState("");
+  const [portraitUrl, setPortraitUrl] = useState("");
   const [name, setName] = useState("");
   const [gender, setGender] = useState(genders[0]);
-  const [ancestry, setAncestry] = useState(ancestries[0]);
-  const [homeland, setHomeland] = useState(homelands[0]);
+  const [race, setRace] = useState(races[0]);
   const [origin, setOrigin] = useState(origins[0]);
-  const [path, setPath] = useState(paths[0]);
-  const [trait, setTrait] = useState(traits[0]);
   const [isUploading, setIsUploading] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const fallbackAssets = useMemo(() => {
-    return {
-      base: assets.find((asset) => asset.type === "base")?.id,
-      face: assets.find((asset) => asset.type === "face")?.id,
-      hair: assets.find((asset) => asset.type === "hair")?.id,
-      armor: assets.find((asset) => asset.type === "armor")?.id,
-      weapon: assets.find((asset) => asset.type === "weapon")?.id,
-      cloak: assets.find((asset) => asset.type === "cloak")?.id,
-    };
-  }, [assets]);
 
   function pickPhoto() {
     setError(null);
@@ -77,7 +60,7 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
         previewUrl: URL.createObjectURL(file),
       });
       setOriginalPhotoUrl("");
-      setGeneratedPortraitUrl("");
+      setPortraitUrl("");
     };
     input.click();
   }
@@ -87,8 +70,8 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
       throw new Error("Upload a selfie or profile image first.");
     }
 
-    if (original_photo_url) {
-      return original_photo_url;
+    if (originalPhotoUrl) {
+      return originalPhotoUrl;
     }
 
     setIsUploading(true);
@@ -144,11 +127,8 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
       const payload = {
         original_photo_url: uploadedOriginalPhotoUrl,
         gender,
-        ancestry,
-        homeland,
+        race,
         origin,
-        path,
-        trait,
       };
 
       console.log("[character-creation] generate-avatar request payload", payload);
@@ -179,8 +159,8 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
         portrait_url,
       });
 
-      setGeneratedPortraitUrl(portrait_url);
-      setStep(3);
+      setPortraitUrl(portrait_url);
+      setStep(2);
     } catch (generateError) {
       setError(generateError instanceof Error ? generateError.message : "Unable to generate avatar.");
     } finally {
@@ -194,8 +174,8 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
       return;
     }
 
-    if (!original_photo_url || !generatedPortraitUrl) {
-      setError("Generate your fantasy portrait before saving.");
+    if (!originalPhotoUrl || !portraitUrl) {
+      setError("Generate your fantasy portrait before beginning your adventure.");
       return;
     }
 
@@ -206,21 +186,12 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
       const payload: CharacterCreationInput = {
         name,
         gender,
-        ancestry,
-        homeland,
+        race,
         origin,
-        path,
-        trait,
-        original_photo_url,
-        portrait_url: generatedPortraitUrl,
+        original_photo_url: originalPhotoUrl,
+        portrait_url: portraitUrl,
         appearance: {
-          baseAssetId: fallbackAssets.base,
-          faceAssetId: fallbackAssets.face,
-          hairAssetId: fallbackAssets.hair,
-          armorAssetId: fallbackAssets.armor,
-          weaponAssetId: fallbackAssets.weapon,
-          cloakAssetId: fallbackAssets.cloak,
-          skinTone: ancestry,
+          skinTone: race,
         },
       };
 
@@ -230,6 +201,21 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
     } finally {
       setIsSaving(false);
     }
+  }
+
+  function goNext() {
+    if (step === 0 && !photo) {
+      setError("Upload an image before continuing.");
+      return;
+    }
+
+    if (step === 1 && !portraitUrl) {
+      setError("Generate your avatar before continuing.");
+      return;
+    }
+
+    setError(null);
+    setStep(Math.min(steps.length - 1, step + 1));
   }
 
   return (
@@ -245,49 +231,37 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
       <Frame style={styles.panel}>
         {step === 0 ? (
           <View style={styles.section}>
-            <Text style={styles.title}>Upload Photo</Text>
-            <Text style={styles.copy}>Upload or take a selfie/profile image. This original image is stored in Supabase Storage before avatar generation.</Text>
-            {photo ? <Image source={{ uri: photo.previewUrl }} style={styles.preview} /> : <View style={styles.emptyPreview}><Text style={styles.emptyText}>No photo selected</Text></View>}
+            <Text style={styles.title}>Upload Image</Text>
+            <Text style={styles.copy}>Begin with a clear front-facing selfie or profile image. This image becomes the foundation for your fantasy portrait.</Text>
+            {photo ? <Image source={{ uri: photo.previewUrl }} style={styles.preview} /> : <View style={styles.emptyPreview}><Text style={styles.emptyText}>No image selected</Text></View>}
             <Pressable style={styles.primaryButton} onPress={pickPhoto} disabled={isUploading}>
-              <Text style={styles.primaryText}>{photo ? "Choose Different Photo" : "Upload Photo"}</Text>
+              <Text style={styles.primaryText}>{photo ? "Choose Different Image" : "Upload Image"}</Text>
             </Pressable>
           </View>
         ) : step === 1 ? (
           <View style={styles.section}>
-            <Text style={styles.title}>Character Identity</Text>
-            <TextInput value={name} onChangeText={setName} placeholder="Character name" placeholderTextColor={colors.muted} style={styles.input} />
-            <ChoiceGrid title="Gender" options={genders} selected={gender} onSelect={setGender} />
-            <ChoiceGrid title="Ancestry" options={ancestries} selected={ancestry} onSelect={setAncestry} />
-            <ChoiceGrid title="Homeland" options={homelands} selected={homeland} onSelect={setHomeland} />
-            <ChoiceGrid title="Origin" options={origins} selected={origin} onSelect={setOrigin} />
-            <ChoiceGrid title="Path" options={paths} selected={path} onSelect={setPath} />
-            <ChoiceGrid title="Trait" options={traits} selected={trait} onSelect={setTrait} />
-          </View>
-        ) : step === 2 ? (
-          <View style={styles.section}>
-            <Text style={styles.title}>Generate Avatar</Text>
+            <Text style={styles.title}>Generate Fantasy Avatar</Text>
             {photo ? <Image source={{ uri: photo.previewUrl }} style={styles.preview} /> : null}
-            <Summary label="Ancestry" value={ancestry} />
-            <Summary label="Path" value={path} />
-            <Summary label="Trait" value={trait} />
-            {isGenerating || isUploading ? <Text style={styles.loadingText}>Generating avatar — this may take 20–60 seconds.</Text> : null}
-            <Pressable style={styles.primaryButton} onPress={() => void generateAvatar()} disabled={isGenerating || isUploading}>
-              {isGenerating || isUploading ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>Generate Fantasy Portrait</Text>}
+            <Text style={styles.copy}>Gender, race, and origin shape story flavor and future dialogue only. They do not grant stat bonuses, XP bonuses, passive abilities, or starting skills.</Text>
+            <ChoiceGrid title="Gender" options={genders} selected={gender} onSelect={setGender} />
+            <ChoiceGrid title="Race" options={races} selected={race} onSelect={setRace} />
+            <ChoiceGrid title="Origin" options={origins} selected={origin} onSelect={setOrigin} />
+            <Text style={styles.copy}>Your generated portrait will preserve your recognizable facial features while adapting you into Animamagisterium's dark fantasy style.</Text>
+            {isGenerating || isUploading ? <Text style={styles.loadingText}>Generating avatar - this may take 20-60 seconds.</Text> : null}
+            <Pressable style={[styles.primaryButton, (isGenerating || isUploading) && styles.disabledButton]} onPress={() => void generateAvatar()} disabled={isGenerating || isUploading}>
+              {isGenerating || isUploading ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>Generate Avatar</Text>}
             </Pressable>
           </View>
         ) : (
           <View style={styles.section}>
-            <Text style={styles.title}>Save Character</Text>
-            {generatedPortraitUrl ? <Image source={{ uri: generatedPortraitUrl }} style={styles.portrait} /> : null}
-            <Summary label="Name" value={name || "Unnamed"} />
+            <Text style={styles.title}>Begin Adventure</Text>
+            {portraitUrl ? <Image source={{ uri: portraitUrl }} style={styles.portrait} /> : null}
+            <TextInput value={name} onChangeText={setName} placeholder="Character name" placeholderTextColor={colors.muted} style={styles.input} />
             <Summary label="Gender" value={gender} />
-            <Summary label="Ancestry" value={ancestry} />
-            <Summary label="Homeland" value={homeland} />
+            <Summary label="Race" value={race} />
             <Summary label="Origin" value={origin} />
-            <Summary label="Path" value={path} />
-            <Summary label="Trait" value={trait} />
-            <Pressable style={[styles.primaryButton, (!generatedPortraitUrl || isSaving) && styles.disabledButton]} onPress={() => void handleSave()} disabled={isSaving || !generatedPortraitUrl}>
-              {isSaving ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>Save Character</Text>}
+            <Pressable style={[styles.primaryButton, (!portraitUrl || isSaving) && styles.disabledButton]} onPress={() => void handleSave()} disabled={isSaving || !portraitUrl}>
+              {isSaving ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>Begin Adventure</Text>}
             </Pressable>
           </View>
         )}
@@ -298,23 +272,8 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
           <Pressable style={styles.navButton} onPress={() => setStep(Math.max(0, step - 1))} disabled={step === 0 || isSaving || isGenerating}>
             <Text style={styles.navText}>Back</Text>
           </Pressable>
-          {step < steps.length - 1 ? (
-            <Pressable
-              style={styles.nextButton}
-              onPress={() => {
-                if (step === 0 && !photo) {
-                  setError("Upload a photo before continuing.");
-                  return;
-                }
-                if (step === 2 && !generatedPortraitUrl) {
-                  setError("Generate your avatar before continuing.");
-                  return;
-                }
-                setError(null);
-                setStep(Math.min(steps.length - 1, step + 1));
-              }}
-              disabled={isSaving || isGenerating}
-            >
+          {step === 0 ? (
+            <Pressable style={styles.nextButton} onPress={goNext} disabled={isSaving || isGenerating}>
               <Text style={styles.nextText}>Next</Text>
             </Pressable>
           ) : null}

@@ -37,7 +37,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
         )}
         <View style={styles.heroInfo}>
           <Text style={styles.name}>{character.name}</Text>
-          <Text style={styles.identity}>{character.ancestry ?? "Adventurer"} / {character.path ?? "Unchosen Path"}</Text>
+          <Text style={styles.identity}>{character.ancestry ?? "Adventurer"} / {character.origin ?? "Unknown Origin"}</Text>
           <View style={styles.statLine}>
             <Text style={styles.statPill}>Level {character.level}</Text>
             <Text style={styles.statPill}>{character.gold} Gold</Text>
@@ -59,18 +59,16 @@ export function HomeScreen({ character }: HomeScreenProps) {
         {activeTab === "Overview" ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Overview</Text>
-            <Info label="Homeland" value={character.homeland ?? "Not set"} />
+            <Info label="Race" value={character.ancestry ?? "Not set"} />
             <Info label="Origin" value={character.origin ?? "Not set"} />
-            <Info label="Trait" value={character.trait ?? "Not set"} />
+            <Text style={styles.muted}>Progression comes from your actions after entering the world, not from onboarding choices.</Text>
           </View>
         ) : activeTab === "Identity" ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Identity</Text>
             <Info label="Gender" value={character.gender ?? "Not set"} />
-            <Info label="Ancestry" value={character.ancestry ?? "Not set"} />
-            <Info label="Homeland" value={character.homeland ?? "Not set"} />
+            <Info label="Race" value={character.ancestry ?? "Not set"} />
             <Info label="Origin" value={character.origin ?? "Not set"} />
-            <Info label="Path" value={character.path ?? "Not set"} />
           </View>
         ) : activeTab === "Attributes" ? (
           <View style={styles.attributeGrid}>

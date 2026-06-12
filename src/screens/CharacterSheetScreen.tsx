@@ -39,9 +39,8 @@ export function CharacterSheetScreen({ character, onRefresh }: CharacterSheetScr
         <View style={styles.identity}>
           <Text style={styles.name}>{character.name}</Text>
           <Text style={styles.line}>{character.gender ?? "Unknown"} {character.ancestry ?? "Adventurer"}</Text>
-          <Text style={styles.line}>{character.homeland ?? "Unknown Homeland"}</Text>
-          <Text style={styles.line}>{character.origin ?? "Unknown Origin"} / {character.path ?? "Unknown Path"}</Text>
-          <Text style={styles.trait}>{character.trait ?? "No trait selected"}</Text>
+          <Text style={styles.line}>{character.origin ?? "Unknown Origin"}</Text>
+          <Text style={styles.trait}>Skills and combat styles unlock through play.</Text>
           <View style={styles.statStrip}>
             <Text style={styles.gold}>{character.gold} gold</Text>
             <Text style={styles.level}>Level {character.level}</Text>
@@ -54,11 +53,8 @@ export function CharacterSheetScreen({ character, onRefresh }: CharacterSheetScr
       <Frame style={styles.section}>
         <Text style={styles.sectionTitle}>Identity</Text>
         <InfoRow label="Gender" value={character.gender ?? "Not set"} />
-        <InfoRow label="Ancestry" value={character.ancestry ?? "Not set"} />
-        <InfoRow label="Homeland" value={character.homeland ?? "Not set"} />
+        <InfoRow label="Race" value={character.ancestry ?? "Not set"} />
         <InfoRow label="Origin" value={character.origin ?? "Not set"} />
-        <InfoRow label="Path" value={character.path ?? "Not set"} />
-        <InfoRow label="Trait" value={character.trait ?? "Not set"} />
       </Frame>
 
       <Frame style={styles.section}>
@@ -71,19 +67,6 @@ export function CharacterSheetScreen({ character, onRefresh }: CharacterSheetScr
             </View>
           ))}
         </View>
-      </Frame>
-
-      <Frame style={styles.section}>
-        <Text style={styles.sectionTitle}>Selected Appearance</Text>
-        {(["base", "face", "hair", "armor", "weapon", "cloak"] as const).map((type) => (
-          <View key={type} style={styles.appearanceRow}>
-            <Text style={styles.appearanceType}>{type}</Text>
-            <Text style={styles.appearanceValue}>{character.appearanceAssets[type]?.name ?? "Not selected"}</Text>
-          </View>
-        ))}
-        <Pressable style={styles.editButton} onPress={onRefresh}>
-          <Text style={styles.editText}>Edit Appearance Later</Text>
-        </Pressable>
       </Frame>
 
       <View style={styles.actions}>

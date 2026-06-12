@@ -28,19 +28,17 @@ function loadLocalEnv() {
 
 loadLocalEnv();
 
-const ancestryGuidance = {
+const raceGuidance = {
   Human: "realistic human adventurer, grounded and believable",
   Elf: "elegant forest-blooded ancestry, subtle pointed ears, graceful features",
   Dwarf: "sturdy mountain-blooded ancestry, strong build, practical ornamental gear",
-  Woodkin: "nature-attuned, bark/leather textures, forest influence, no cartoon features",
-  Drakesoul: "dragon-blooded presence, subtle scale accents, powerful aura, no oversized horns",
-  Stoneborn: "earth and mountain influence, grounded features, stone-like ornamental motifs",
-  "Fae-Touched": "ethereal magical ancestry, elegant otherworldly presence, subtle glow",
-  Aetherborn: "infused with blue arcane energy, mystical markings, refined magical presence",
+  Beastkin: "subtle animal-inspired fantasy traits, expressive eyes, grounded realistic features, no cartoon muzzle",
+  Orc: "strong tusked fantasy ancestry, powerful presence, realistic skin texture, not monstrous or exaggerated",
+  Halfling: "warm expressive face, compact heroic presence, practical adventurer styling",
 };
 
 function validateInput(input) {
-  const requiredFields = ["original_photo_url", "gender", "ancestry", "homeland", "origin", "path", "trait"];
+  const requiredFields = ["original_photo_url", "gender", "race", "origin"];
   const missingFields = requiredFields.filter((field) => !input[field]);
 
   if (missingFields.length > 0) {
@@ -60,6 +58,8 @@ Preserve:
 - recognizable likeness
 
 Apply:
+- front-facing head-and-shoulders character portrait composition
+- primary player avatar framing suitable for a game profile image
 - dark fantasy realism
 - bronze and gold ornamental detailing
 - deep blue magical crystal energy
@@ -69,24 +69,27 @@ Apply:
 
 Character choices:
 - Gender: ${input.gender}
-- Ancestry: ${input.ancestry}
-- Homeland: ${input.homeland}
+- Race: ${input.race}
 - Origin: ${input.origin}
-- Path: ${input.path}
-- Trait: ${input.trait}
 
-Ancestry guidance:
-${ancestryGuidance[input.ancestry] || ancestryGuidance.Human}
+Race guidance:
+${raceGuidance[input.race] || raceGuidance.Human}
+
+Origin flavor:
+${input.origin} should influence clothing texture, mood, and background details only. It must not imply special powers, combat abilities, stat bonuses, or starting skills.
 
 Avoid:
 - copyrighted D&D settings, names, monsters, or lore
 - cartoon style
 - anime style
+- full-body image
+- side profile
 - distorted face
 - exaggerated horns
 - oversexualized clothing
 - unreadable background
-- changing the person beyond recognition`;
+- changing the person beyond recognition
+- preset combat-role weapons, uniforms, or starting-role identity`;
 }
 
 module.exports = async function handler(request, response) {

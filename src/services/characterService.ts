@@ -12,11 +12,8 @@ export type CharacterWithDetails = Tables["characters"] & {
 export type CharacterCreationInput = {
   name: string;
   gender: string;
-  ancestry: string;
-  homeland: string;
+  race: string;
   origin: string;
-  path: string;
-  trait: string;
   original_photo_url: string;
   portrait_url: string;
   appearance: {
@@ -188,11 +185,11 @@ export async function createCharacter(input: CharacterCreationInput) {
       user_id: user.id,
       name: cleanName,
       gender: input.gender,
-      ancestry: input.ancestry,
-      homeland: input.homeland,
+      ancestry: input.race,
+      homeland: null,
       origin: input.origin,
-      path: input.path,
-      trait: input.trait,
+      path: null,
+      trait: null,
       original_photo_url: input.original_photo_url,
       portrait_url: input.portrait_url,
     })
