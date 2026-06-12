@@ -9,7 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "prebuild": "node scripts/write-runtime-env.cjs",
-    "build": "expo export -p web",
+    "build": "expo export -p web && node scripts/patch-web-icons.cjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

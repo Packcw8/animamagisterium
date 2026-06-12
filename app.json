@@ -4,22 +4,31 @@
     "slug": "animamagisterium",
     "version": "0.1.0",
     "orientation": "portrait",
-    "icon": "./assets/logo.jpeg",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#050706"
+    },
     "assetBundlePatterns": [
       "assets/*"
     ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": "./assets/icon.png"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo.jpeg",
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#050706"
       }
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png",
+      "name": "Anima Magisterium",
+      "shortName": "Anima"
     }
   }
 }
