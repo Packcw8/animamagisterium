@@ -11,8 +11,14 @@ export type CharacterWithDetails = Tables["characters"] & {
 
 export type CharacterCreationInput = {
   name: string;
+  gender: string;
+  ancestry: string;
+  homeland: string;
   origin: string;
   path: string;
+  trait: string;
+  originalPhotoUrl: string;
+  portraitUrl: string;
   appearance: {
     baseAssetId?: string;
     faceAssetId?: string;
@@ -181,8 +187,14 @@ export async function createCharacter(input: CharacterCreationInput) {
     .insert({
       user_id: user.id,
       name: cleanName,
+      gender: input.gender,
+      ancestry: input.ancestry,
+      homeland: input.homeland,
       origin: input.origin,
       path: input.path,
+      trait: input.trait,
+      original_photo_url: input.originalPhotoUrl,
+      portrait_url: input.portraitUrl,
     })
     .select()
     .single();
@@ -193,12 +205,14 @@ export async function createCharacter(input: CharacterCreationInput) {
 
   const { error: attributesError } = await supabase.from("attributes").insert({
     character_id: character.id,
-    strength: input.path === "Warrior" ? 5 : 2,
-    endurance: input.origin === "Laborer" ? 5 : 2,
-    knowledge: input.path === "Sage" || input.origin === "Scholar" ? 5 : 2,
-    craft: input.path === "Artificer" || input.origin === "Builder" ? 5 : 2,
-    wealth: input.path === "Merchant" ? 5 : 2,
-    influence: input.path === "Guardian" || input.origin === "Guardian" ? 5 : 2,
+    strength: 0,
+    endurance: 0,
+    knowledge: 0,
+    craft: 0,
+    wealth: 0,
+    influence: 0,
+    exploration: 0,
+    spirit: 0,
   });
 
   if (attributesError) {
@@ -216,7 +230,26 @@ export async function createCharacter(input: CharacterCreationInput) {
   return savedCharacter;
 }
 
-export async function updateCharacter(characterId: string, values: Partial<Pick<Tables["characters"], "name" | "origin" | "path" | "xp" | "gold" | "level">>) {
+export async function updateCharacter(
+  characterId: string,
+  values: Partial<
+    Pick<
+      Tables["characters"],
+      | "name"
+      | "gender"
+      | "ancestry"
+      | "homeland"
+      | "origin"
+      | "path"
+      | "trait"
+      | "portrait_url"
+      | "original_photo_url"
+      | "xp"
+      | "gold"
+      | "level"
+    >
+  >,
+) {
   const { data, error } = await supabase.from("characters").update(values).eq("id", characterId).select().single();
 
   if (error) {

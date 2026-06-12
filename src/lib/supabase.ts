@@ -40,8 +40,14 @@ export type Tables = {
     id: string;
     user_id: string;
     name: string;
+    gender: string | null;
+    ancestry: string | null;
+    homeland: string | null;
     origin: string | null;
     path: string | null;
+    trait: string | null;
+    portrait_url: string | null;
+    original_photo_url: string | null;
     level: number;
     xp: number;
     gold: number;
@@ -56,6 +62,8 @@ export type Tables = {
     craft: number;
     wealth: number;
     influence: number;
+    exploration: number;
+    spirit: number;
   };
   avatar_assets: {
     id: string;

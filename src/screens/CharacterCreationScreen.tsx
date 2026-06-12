@@ -1,49 +1,199 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Frame } from "../components/Frame";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
-import { Tables } from "../lib/supabase";
-import { AvatarAssetType, CharacterCreationInput, CharacterWithDetails, createCharacter } from "../services/characterService";
+import { supabase, Tables } from "../lib/supabase";
+import { CharacterCreationInput, CharacterWithDetails, createCharacter } from "../services/characterService";
 
 type CharacterCreationScreenProps = {
   assets: Tables["avatar_assets"][];
   onCreated: (character: CharacterWithDetails) => void;
 };
 
-const origins = ["Wayfarer", "Scholar", "Laborer", "Outcast", "Builder", "Guardian"];
-const paths = ["Warrior", "Ranger", "Sage", "Artificer", "Merchant", "Guardian"];
-const skinTones = ["Moonlit", "Olive", "Umber", "Bronze", "Rose", "Ash"];
-const steps = ["Origin", "Path", "Appearance", "Gear", "Name", "Save"];
+type PickedPhoto = {
+  file: File;
+  previewUrl: string;
+};
+
+const genders = ["Male", "Female"];
+const ancestries = ["Human", "Elf", "Dwarf", "Woodkin", "Drakesoul", "Stoneborn", "Fae-Touched", "Aetherborn"];
+const homelands = ["Valewood", "Frostmark", "Duskwold", "Sunspire", "Ironvale", "Moonfen"];
+const origins = ["Wayfarer", "Scholar", "Laborer", "Outcast", "Builder", "Guardian", "Noble Exile", "Village Healer"];
+const paths = ["Warrior", "Ranger", "Druid", "Sage", "Artificer", "Merchant", "Guardian", "Shadow Scout"];
+const traits = ["Calm Resolve", "Bright-Eyed", "Scarred Veteran", "Stern Watcher", "Mirthful Rogue", "Haunted Scholar", "Gentle Healer", "Iron-Willed"];
+const steps = ["Upload Photo", "Identity", "Generate Avatar", "Save"];
 
 export function CharacterCreationScreen({ assets, onCreated }: CharacterCreationScreenProps) {
   const [step, setStep] = useState(0);
+  const [photo, setPhoto] = useState<PickedPhoto | null>(null);
+  const [originalPhotoUrl, setOriginalPhotoUrl] = useState("");
+  const [portraitUrl, setPortraitUrl] = useState("");
   const [name, setName] = useState("");
+  const [gender, setGender] = useState(genders[0]);
+  const [ancestry, setAncestry] = useState(ancestries[0]);
+  const [homeland, setHomeland] = useState(homelands[0]);
   const [origin, setOrigin] = useState(origins[0]);
   const [path, setPath] = useState(paths[0]);
-  const [skinTone, setSkinTone] = useState(skinTones[0]);
-  const [selectedAssets, setSelectedAssets] = useState<Partial<Record<AvatarAssetType, string>>>({});
+  const [trait, setTrait] = useState(traits[0]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const groupedAssets = useMemo(() => {
-    return assets.reduce<Partial<Record<AvatarAssetType, Tables["avatar_assets"][]>>>((groups, asset) => {
-      groups[asset.type] = [...(groups[asset.type] ?? []), asset];
-      return groups;
-    }, {});
+  const fallbackAssets = useMemo(() => {
+    return {
+      base: assets.find((asset) => asset.type === "base")?.id,
+      face: assets.find((asset) => asset.type === "face")?.id,
+      hair: assets.find((asset) => asset.type === "hair")?.id,
+      armor: assets.find((asset) => asset.type === "armor")?.id,
+      weapon: assets.find((asset) => asset.type === "weapon")?.id,
+      cloak: assets.find((asset) => asset.type === "cloak")?.id,
+    };
   }, [assets]);
 
-  function selectAsset(type: AvatarAssetType, assetId: string) {
-    setSelectedAssets((current) => ({
-      ...current,
-      [type]: assetId,
-    }));
+  function pickPhoto() {
+    setError(null);
+
+    if (typeof document === "undefined") {
+      setError("Photo upload is currently available in the web app.");
+      return;
+    }
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.capture = "user";
+    input.onchange = () => {
+      const file = input.files?.[0];
+
+      if (!file) {
+        return;
+      }
+
+      setPhoto({
+        file,
+        previewUrl: URL.createObjectURL(file),
+      });
+      setOriginalPhotoUrl("");
+      setPortraitUrl("");
+    };
+    input.click();
+  }
+
+  async function uploadOriginalPhoto() {
+    if (!photo) {
+      throw new Error("Upload a selfie or profile image first.");
+    }
+
+    if (originalPhotoUrl) {
+      return originalPhotoUrl;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        throw new Error("You must be signed in before uploading a photo.");
+      }
+
+      const extension = photo.file.name.split(".").pop() || "png";
+      const storagePath = `${user.id}/selfie-${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from("user-selfies").upload(storagePath, photo.file, {
+        contentType: photo.file.type || "image/png",
+        upsert: true,
+      });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data } = supabase.storage.from("user-selfies").getPublicUrl(storagePath);
+      setOriginalPhotoUrl(data.publicUrl);
+      return data.publicUrl;
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  async function generateAvatar() {
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      const imageUrl = await uploadOriginalPhoto();
+      const response = await fetch("/api/generate-avatar", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          imageUrl,
+          gender,
+          ancestry,
+          homeland,
+          origin,
+          path,
+          trait,
+        }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Unable to generate avatar.");
+      }
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError) {
+        throw userError;
+      }
+
+      if (!user) {
+        throw new Error("You must be signed in before saving a portrait.");
+      }
+
+      const portraitPath = `${user.id}/portrait-${Date.now()}.png`;
+      const binary = Uint8Array.from(atob(result.imageBase64), (char) => char.charCodeAt(0));
+      const { error: uploadError } = await supabase.storage.from("character-portraits").upload(portraitPath, binary, {
+        contentType: result.mimeType || "image/png",
+        upsert: true,
+      });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data } = supabase.storage.from("character-portraits").getPublicUrl(portraitPath);
+      setPortraitUrl(data.publicUrl);
+      setStep(3);
+    } catch (generateError) {
+      setError(generateError instanceof Error ? generateError.message : "Unable to generate avatar.");
+    } finally {
+      setIsGenerating(false);
+    }
   }
 
   async function handleSave() {
     if (!name.trim()) {
       setError("Character name is required.");
-      setStep(4);
+      return;
+    }
+
+    if (!originalPhotoUrl || !portraitUrl) {
+      setError("Generate your fantasy portrait before saving.");
       return;
     }
 
@@ -53,16 +203,22 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
     try {
       const payload: CharacterCreationInput = {
         name,
+        gender,
+        ancestry,
+        homeland,
         origin,
         path,
+        trait,
+        originalPhotoUrl,
+        portraitUrl,
         appearance: {
-          baseAssetId: selectedAssets.base,
-          faceAssetId: selectedAssets.face,
-          hairAssetId: selectedAssets.hair,
-          armorAssetId: selectedAssets.armor,
-          weaponAssetId: selectedAssets.weapon,
-          cloakAssetId: selectedAssets.cloak,
-          skinTone,
+          baseAssetId: fallbackAssets.base,
+          faceAssetId: fallbackAssets.face,
+          hairAssetId: fallbackAssets.hair,
+          armorAssetId: fallbackAssets.armor,
+          weaponAssetId: fallbackAssets.weapon,
+          cloakAssetId: fallbackAssets.cloak,
+          skinTone: ancestry,
         },
       };
 
@@ -83,46 +239,49 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
 
       <Frame style={styles.panel}>
         {step === 0 ? (
-          <ChoiceGrid title="Choose Origin" options={origins} selected={origin} onSelect={setOrigin} />
+          <View style={styles.section}>
+            <Text style={styles.title}>Upload Photo</Text>
+            <Text style={styles.copy}>Upload or take a selfie/profile image. This original image is stored in Supabase Storage before avatar generation.</Text>
+            {photo ? <Image source={{ uri: photo.previewUrl }} style={styles.preview} /> : <View style={styles.emptyPreview}><Text style={styles.emptyText}>No photo selected</Text></View>}
+            <Pressable style={styles.primaryButton} onPress={pickPhoto} disabled={isUploading}>
+              <Text style={styles.primaryText}>{photo ? "Choose Different Photo" : "Upload Photo"}</Text>
+            </Pressable>
+          </View>
         ) : step === 1 ? (
-          <ChoiceGrid title="Choose Path" options={paths} selected={path} onSelect={setPath} />
+          <View style={styles.section}>
+            <Text style={styles.title}>Character Identity</Text>
+            <TextInput value={name} onChangeText={setName} placeholder="Character name" placeholderTextColor={colors.muted} style={styles.input} />
+            <ChoiceGrid title="Gender" options={genders} selected={gender} onSelect={setGender} />
+            <ChoiceGrid title="Ancestry" options={ancestries} selected={ancestry} onSelect={setAncestry} />
+            <ChoiceGrid title="Homeland" options={homelands} selected={homeland} onSelect={setHomeland} />
+            <ChoiceGrid title="Origin" options={origins} selected={origin} onSelect={setOrigin} />
+            <ChoiceGrid title="Path" options={paths} selected={path} onSelect={setPath} />
+            <ChoiceGrid title="Trait" options={traits} selected={trait} onSelect={setTrait} />
+          </View>
         ) : step === 2 ? (
           <View style={styles.section}>
-            <Text style={styles.title}>Choose Appearance</Text>
-            <AssetSection type="base" assets={groupedAssets.base ?? []} selectedId={selectedAssets.base} onSelect={selectAsset} />
-            <AssetSection type="face" assets={groupedAssets.face ?? []} selectedId={selectedAssets.face} onSelect={selectAsset} />
-            <AssetSection type="hair" assets={groupedAssets.hair ?? []} selectedId={selectedAssets.hair} onSelect={selectAsset} />
-            <Text style={styles.subhead}>Skin Tone</Text>
-            <View style={styles.grid}>
-              {skinTones.map((tone) => (
-                <Pressable key={tone} style={[styles.choice, skinTone === tone && styles.selected]} onPress={() => setSkinTone(tone)}>
-                  <Text style={styles.choiceTitle}>{tone}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        ) : step === 3 ? (
-          <View style={styles.section}>
-            <Text style={styles.title}>Choose Gear</Text>
-            <AssetSection type="armor" assets={groupedAssets.armor ?? []} selectedId={selectedAssets.armor} onSelect={selectAsset} />
-            <AssetSection type="weapon" assets={groupedAssets.weapon ?? []} selectedId={selectedAssets.weapon} onSelect={selectAsset} />
-            <AssetSection type="cloak" assets={groupedAssets.cloak ?? []} selectedId={selectedAssets.cloak} onSelect={selectAsset} />
-          </View>
-        ) : step === 4 ? (
-          <View style={styles.section}>
-            <Text style={styles.title}>Name Character</Text>
-            <Text style={styles.copy}>The name will be written into your Supabase character record.</Text>
-            <TextInput value={name} onChangeText={setName} placeholder="Character name" placeholderTextColor={colors.muted} style={styles.input} />
+            <Text style={styles.title}>Generate Avatar</Text>
+            {photo ? <Image source={{ uri: photo.previewUrl }} style={styles.preview} /> : null}
+            <Summary label="Ancestry" value={ancestry} />
+            <Summary label="Path" value={path} />
+            <Summary label="Trait" value={trait} />
+            <Pressable style={styles.primaryButton} onPress={() => void generateAvatar()} disabled={isGenerating || isUploading}>
+              {isGenerating || isUploading ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>Generate Fantasy Portrait</Text>}
+            </Pressable>
           </View>
         ) : (
           <View style={styles.section}>
             <Text style={styles.title}>Save Character</Text>
+            {portraitUrl ? <Image source={{ uri: portraitUrl }} style={styles.portrait} /> : null}
+            <Summary label="Name" value={name || "Unnamed"} />
+            <Summary label="Gender" value={gender} />
+            <Summary label="Ancestry" value={ancestry} />
+            <Summary label="Homeland" value={homeland} />
             <Summary label="Origin" value={origin} />
             <Summary label="Path" value={path} />
-            <Summary label="Name" value={name || "Unnamed"} />
-            <Summary label="Skin Tone" value={skinTone} />
-            <Pressable style={styles.saveButton} onPress={() => void handleSave()} disabled={isSaving}>
-              {isSaving ? <ActivityIndicator color="#120e08" /> : <Text style={styles.saveText}>Create Character</Text>}
+            <Summary label="Trait" value={trait} />
+            <Pressable style={styles.primaryButton} onPress={() => void handleSave()} disabled={isSaving}>
+              {isSaving ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>Save Character</Text>}
             </Pressable>
           </View>
         )}
@@ -130,11 +289,26 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <View style={styles.navRow}>
-          <Pressable style={styles.navButton} onPress={() => setStep(Math.max(0, step - 1))} disabled={step === 0 || isSaving}>
+          <Pressable style={styles.navButton} onPress={() => setStep(Math.max(0, step - 1))} disabled={step === 0 || isSaving || isGenerating}>
             <Text style={styles.navText}>Back</Text>
           </Pressable>
           {step < steps.length - 1 ? (
-            <Pressable style={styles.nextButton} onPress={() => setStep(Math.min(steps.length - 1, step + 1))}>
+            <Pressable
+              style={styles.nextButton}
+              onPress={() => {
+                if (step === 0 && !photo) {
+                  setError("Upload a photo before continuing.");
+                  return;
+                }
+                if (step === 2 && !portraitUrl) {
+                  setError("Generate your avatar before continuing.");
+                  return;
+                }
+                setError(null);
+                setStep(Math.min(steps.length - 1, step + 1));
+              }}
+              disabled={isSaving || isGenerating}
+            >
               <Text style={styles.nextText}>Next</Text>
             </Pressable>
           ) : null}
@@ -146,39 +320,12 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
 
 function ChoiceGrid({ title, options, selected, onSelect }: { title: string; options: string[]; selected: string; onSelect: (value: string) => void }) {
   return (
-    <View style={styles.section}>
-      <Text style={styles.title}>{title}</Text>
+    <View style={styles.choiceSection}>
+      <Text style={styles.subhead}>{title}</Text>
       <View style={styles.grid}>
         {options.map((option) => (
           <Pressable key={option} style={[styles.choice, selected === option && styles.selected]} onPress={() => onSelect(option)}>
             <Text style={styles.choiceTitle}>{option}</Text>
-            <Text style={styles.choiceMeta}>Origin Sigil</Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function AssetSection({
-  type,
-  assets,
-  selectedId,
-  onSelect,
-}: {
-  type: AvatarAssetType;
-  assets: Tables["avatar_assets"][];
-  selectedId?: string;
-  onSelect: (type: AvatarAssetType, assetId: string) => void;
-}) {
-  return (
-    <View style={styles.assetSection}>
-      <Text style={styles.subhead}>{type}</Text>
-      <View style={styles.grid}>
-        {assets.map((asset) => (
-          <Pressable key={asset.id} style={[styles.assetCard, selectedId === asset.id && styles.selected]} onPress={() => onSelect(type, asset.id)}>
-            <Text style={styles.assetType}>{asset.type}</Text>
-            <Text style={styles.choiceTitle}>{asset.name}</Text>
           </Pressable>
         ))}
       </View>
@@ -222,6 +369,9 @@ const styles = StyleSheet.create({
   section: {
     gap: 12,
   },
+  choiceSection: {
+    gap: 9,
+  },
   title: {
     color: colors.text,
     fontSize: 25,
@@ -231,58 +381,33 @@ const styles = StyleSheet.create({
     color: colors.muted,
     lineHeight: 20,
   },
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-  choice: {
-    width: "48%",
-    minHeight: 86,
+  preview: {
+    width: "100%",
+    height: 280,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    borderRadius: 8,
-    padding: 12,
-    justifyContent: "center",
-    backgroundColor: "rgba(10, 10, 9, 0.86)",
+    backgroundColor: "rgba(0,0,0,0.28)",
   },
-  assetCard: {
-    width: "48%",
-    minHeight: 96,
+  portrait: {
+    width: "100%",
+    height: 340,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: "rgba(4, 7, 10, 0.86)",
-  },
-  selected: {
     borderColor: colors.blue,
-    backgroundColor: "rgba(25, 69, 94, 0.65)",
+    backgroundColor: "rgba(0,0,0,0.28)",
   },
-  choiceTitle: {
-    color: colors.text,
-    fontWeight: "800",
-    fontSize: 15,
+  emptyPreview: {
+    height: 240,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.28)",
   },
-  choiceMeta: {
-    color: colors.gold,
-    marginTop: 6,
-    fontSize: 12,
-  },
-  assetType: {
-    color: colors.gold,
-    textTransform: "uppercase",
-    fontSize: 11,
-    marginBottom: 8,
-  },
-  assetSection: {
-    gap: 9,
-  },
-  subhead: {
-    color: colors.gold,
-    fontFamily: fonts.title,
-    fontSize: 17,
-    textTransform: "uppercase",
+  emptyText: {
+    color: colors.muted,
   },
   input: {
     minHeight: 52,
@@ -293,12 +418,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     backgroundColor: "rgba(0,0,0,0.28)",
   },
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  choice: {
+    width: "48%",
+    minHeight: 62,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 12,
+    justifyContent: "center",
+    backgroundColor: "rgba(10, 10, 9, 0.86)",
+  },
+  selected: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(25, 69, 94, 0.65)",
+  },
+  choiceTitle: {
+    color: colors.text,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  subhead: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 17,
+    textTransform: "uppercase",
+  },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     borderBottomWidth: 1,
     borderColor: "rgba(255,255,255,0.06)",
     paddingVertical: 10,
+    gap: 14,
   },
   summaryLabel: {
     color: colors.muted,
@@ -306,8 +462,10 @@ const styles = StyleSheet.create({
   summaryValue: {
     color: colors.text,
     fontWeight: "800",
+    flex: 1,
+    textAlign: "right",
   },
-  saveButton: {
+  primaryButton: {
     minHeight: 52,
     alignItems: "center",
     justifyContent: "center",
@@ -315,7 +473,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gold,
     marginTop: 8,
   },
-  saveText: {
+  primaryText: {
     color: "#120e08",
     fontWeight: "900",
   },

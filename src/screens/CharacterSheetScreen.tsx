@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Frame } from "../components/Frame";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
@@ -11,7 +11,7 @@ type CharacterSheetScreenProps = {
   onRefresh: () => void;
 };
 
-const attributeKeys = ["strength", "endurance", "knowledge", "craft", "wealth", "influence"] as const;
+const attributeKeys = ["strength", "endurance", "knowledge", "craft", "wealth", "influence", "exploration", "spirit"] as const;
 
 export function CharacterSheetScreen({ character, onRefresh }: CharacterSheetScreenProps) {
   return (
@@ -23,12 +23,21 @@ export function CharacterSheetScreen({ character, onRefresh }: CharacterSheetScr
 
       <Frame style={styles.heroCard}>
         <View style={styles.avatarPreview}>
-          <Text style={styles.avatarInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>
-          <Text style={styles.avatarMeta}>{character.appearance?.skin_tone ?? "No skin tone"}</Text>
+          {character.portrait_url ? (
+            <Image source={{ uri: character.portrait_url }} style={styles.portrait} />
+          ) : (
+            <>
+              <Text style={styles.avatarInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>
+              <Text style={styles.avatarMeta}>No portrait</Text>
+            </>
+          )}
         </View>
         <View style={styles.identity}>
           <Text style={styles.name}>{character.name}</Text>
+          <Text style={styles.line}>{character.gender ?? "Unknown"} {character.ancestry ?? "Adventurer"}</Text>
+          <Text style={styles.line}>{character.homeland ?? "Unknown Homeland"}</Text>
           <Text style={styles.line}>{character.origin ?? "Unknown Origin"} / {character.path ?? "Unknown Path"}</Text>
+          <Text style={styles.trait}>{character.trait ?? "No trait selected"}</Text>
           <View style={styles.statStrip}>
             <Text style={styles.gold}>{character.gold} gold</Text>
             <Text style={styles.level}>Level {character.level}</Text>
@@ -39,12 +48,22 @@ export function CharacterSheetScreen({ character, onRefresh }: CharacterSheetScr
       </Frame>
 
       <Frame style={styles.section}>
+        <Text style={styles.sectionTitle}>Identity</Text>
+        <InfoRow label="Gender" value={character.gender ?? "Not set"} />
+        <InfoRow label="Ancestry" value={character.ancestry ?? "Not set"} />
+        <InfoRow label="Homeland" value={character.homeland ?? "Not set"} />
+        <InfoRow label="Origin" value={character.origin ?? "Not set"} />
+        <InfoRow label="Path" value={character.path ?? "Not set"} />
+        <InfoRow label="Trait" value={character.trait ?? "Not set"} />
+      </Frame>
+
+      <Frame style={styles.section}>
         <Text style={styles.sectionTitle}>Attributes</Text>
         <View style={styles.attributeGrid}>
           {attributeKeys.map((key) => (
             <View key={key} style={styles.attribute}>
               <Text style={styles.attributeName}>{key}</Text>
-              <Text style={styles.attributeValue}>{character.attributes?.[key] ?? 1}</Text>
+              <Text style={styles.attributeValue}>{character.attributes?.[key] ?? 0}</Text>
             </View>
           ))}
         </View>
@@ -75,6 +94,15 @@ export function CharacterSheetScreen({ character, onRefresh }: CharacterSheetScr
   );
 }
 
+function InfoRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.appearanceRow}>
+      <Text style={styles.appearanceType}>{label}</Text>
+      <Text style={styles.appearanceValue}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   header: {
     paddingTop: 22,
@@ -102,14 +130,19 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   avatarPreview: {
-    width: 112,
-    minHeight: 150,
+    width: 132,
+    minHeight: 176,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.blue,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(9, 24, 34, 0.9)",
+    overflow: "hidden",
+  },
+  portrait: {
+    width: "100%",
+    height: "100%",
   },
   avatarInitial: {
     color: colors.gold,
@@ -132,6 +165,10 @@ const styles = StyleSheet.create({
   },
   line: {
     color: colors.gold,
+  },
+  trait: {
+    color: colors.blue,
+    fontWeight: "800",
   },
   statStrip: {
     flexDirection: "row",
