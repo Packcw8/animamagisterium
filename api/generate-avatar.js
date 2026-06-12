@@ -1,5 +1,32 @@
 const OpenAI = require("openai").default;
 const { toFile } = require("openai");
+const { createClient } = require("@supabase/supabase-js");
+const fs = require("fs");
+const path = require("path");
+
+function loadLocalEnv() {
+  const envPath = path.join(process.cwd(), ".env.local");
+
+  if (!fs.existsSync(envPath)) {
+    return;
+  }
+
+  for (const line of fs.readFileSync(envPath, "utf8").split(/\r?\n/)) {
+    const trimmed = line.trim();
+
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) {
+      continue;
+    }
+
+    const [key, ...valueParts] = trimmed.split("=");
+
+    if (!process.env[key]) {
+      process.env[key] = valueParts.join("=").replace(/^['"]|['"]$/g, "");
+    }
+  }
+}
+
+loadLocalEnv();
 
 const ancestryGuidance = {
   Human: "realistic human adventurer, grounded and believable",
@@ -63,9 +90,40 @@ module.exports = async function handler(request, response) {
 
   try {
     const input = request.body || {};
+    const authHeader = request.headers.authorization || "";
+    const supabaseUrl = process.env.VITE_SUPABASE_URL;
+    const supabasePublishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
     if (!input.imageUrl) {
       return response.status(400).json({ error: "imageUrl is required." });
+    }
+
+    if (!authHeader.startsWith("Bearer ")) {
+      return response.status(401).json({ error: "Missing Supabase bearer token." });
+    }
+
+    if (!supabaseUrl || !supabasePublishableKey) {
+      return response.status(500).json({ error: "Supabase environment variables are not configured on the server." });
+    }
+
+    const supabase = createClient(supabaseUrl, supabasePublishableKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+      auth: {
+        persistSession: false,
+      },
+    });
+    const token = authHeader.replace("Bearer ", "");
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser(token);
+
+    if (userError || !user) {
+      return response.status(401).json({ error: userError?.message || "Invalid Supabase session." });
     }
 
     const imageResponse = await fetch(input.imageUrl);
@@ -78,9 +136,10 @@ module.exports = async function handler(request, response) {
     const mimeType = imageResponse.headers.get("content-type") || "image/png";
     const imageFile = await toFile(imageBuffer, "selfie.png", { type: mimeType });
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
 
     const result = await client.images.edit({
-      model: "gpt-image-1",
+      model,
       image: imageFile,
       prompt: buildPrompt(input),
       size: "1024x1024",
@@ -92,9 +151,23 @@ module.exports = async function handler(request, response) {
       return response.status(502).json({ error: "OpenAI did not return an image." });
     }
 
+    const binary = Buffer.from(imageBase64, "base64");
+    const portraitPath = `${user.id}/portrait-${Date.now()}.png`;
+    const { error: uploadError } = await supabase.storage.from("character-portraits").upload(portraitPath, binary, {
+      contentType: "image/png",
+      upsert: true,
+    });
+
+    if (uploadError) {
+      return response.status(500).json({ error: uploadError.message });
+    }
+
+    const { data } = supabase.storage.from("character-portraits").getPublicUrl(portraitPath);
+
     return response.status(200).json({
-      imageBase64,
+      portraitUrl: data.publicUrl,
       mimeType: "image/png",
+      model,
     });
   } catch (error) {
     return response.status(500).json({

@@ -131,10 +131,17 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
 
     try {
       const imageUrl = await uploadOriginalPhoto();
+      const { data: session } = await supabase.auth.getSession();
+
+      if (!session.session) {
+        throw new Error("You must be signed in before generating a portrait.");
+      }
+
       const response = await fetch("/api/generate-avatar", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${session.session.access_token}`,
         },
         body: JSON.stringify({
           imageUrl,
@@ -152,32 +159,11 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
         throw new Error(result.error || "Unable to generate avatar.");
       }
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        throw userError;
+      if (!result.portraitUrl) {
+        throw new Error("Avatar generated, but no portrait URL was returned.");
       }
 
-      if (!user) {
-        throw new Error("You must be signed in before saving a portrait.");
-      }
-
-      const portraitPath = `${user.id}/portrait-${Date.now()}.png`;
-      const binary = Uint8Array.from(atob(result.imageBase64), (char) => char.charCodeAt(0));
-      const { error: uploadError } = await supabase.storage.from("character-portraits").upload(portraitPath, binary, {
-        contentType: result.mimeType || "image/png",
-        upsert: true,
-      });
-
-      if (uploadError) {
-        throw uploadError;
-      }
-
-      const { data } = supabase.storage.from("character-portraits").getPublicUrl(portraitPath);
-      setPortraitUrl(data.publicUrl);
+      setPortraitUrl(result.portraitUrl);
       setStep(3);
     } catch (generateError) {
       setError(generateError instanceof Error ? generateError.message : "Unable to generate avatar.");
@@ -363,7 +349,7 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   panel: {
-    margin: 14,
+    margin: 12,
     padding: 14,
   },
   section: {
@@ -383,7 +369,7 @@ const styles = StyleSheet.create({
   },
   preview: {
     width: "100%",
-    height: 280,
+    height: 300,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
@@ -391,7 +377,7 @@ const styles = StyleSheet.create({
   },
   portrait: {
     width: "100%",
-    height: 340,
+    height: 360,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.blue,
@@ -419,13 +405,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.28)",
   },
   grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+    flexDirection: "column",
     gap: 10,
   },
   choice: {
-    width: "48%",
-    minHeight: 62,
+    width: "100%",
+    minHeight: 58,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     borderRadius: 8,
@@ -466,7 +451,7 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   primaryButton: {
-    minHeight: 52,
+    minHeight: 56,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 6,
@@ -483,13 +468,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   navRow: {
-    flexDirection: "row",
+    flexDirection: "column",
     gap: 12,
     marginTop: 18,
   },
   navButton: {
-    flex: 1,
-    minHeight: 48,
+    width: "100%",
+    minHeight: 54,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 6,
@@ -501,8 +486,8 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   nextButton: {
-    flex: 1,
-    minHeight: 48,
+    width: "100%",
+    minHeight: 56,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 6,

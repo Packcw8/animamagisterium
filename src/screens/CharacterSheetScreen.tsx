@@ -124,14 +124,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   heroCard: {
-    margin: 14,
+    margin: 12,
     padding: 14,
-    flexDirection: "row",
+    flexDirection: "column",
     gap: 14,
   },
   avatarPreview: {
-    width: 132,
-    minHeight: 176,
+    width: "100%",
+    height: 390,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.blue,
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   section: {
-    marginHorizontal: 14,
+    marginHorizontal: 12,
     marginBottom: 14,
     padding: 14,
   },
@@ -197,12 +197,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   attributeGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
+    flexDirection: "column",
     gap: 10,
   },
   attribute: {
-    width: "48%",
+    width: "100%",
     padding: 12,
     borderWidth: 1,
     borderColor: colors.borderSoft,
@@ -220,8 +219,9 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   appearanceRow: {
-    flexDirection: "row",
+    flexDirection: "column",
     justifyContent: "space-between",
+    gap: 4,
     paddingVertical: 8,
     borderBottomWidth: 1,
     borderColor: "rgba(255,255,255,0.06)",
@@ -234,7 +234,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: "700",
     flex: 1,
-    textAlign: "right",
+    textAlign: "left",
   },
   editButton: {
     marginTop: 14,
@@ -250,12 +250,12 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   actions: {
-    marginHorizontal: 14,
+    marginHorizontal: 12,
     marginBottom: 18,
     gap: 10,
   },
   secondaryButton: {
-    minHeight: 48,
+    minHeight: 56,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 6,
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   signOutButton: {
-    minHeight: 46,
+    minHeight: 54,
     alignItems: "center",
     justifyContent: "center",
   },

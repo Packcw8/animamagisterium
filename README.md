@@ -10,6 +10,7 @@ Create a `.env.local` file in the project root:
 VITE_SUPABASE_URL=your-supabase-url
 VITE_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
 OPENAI_API_KEY=your-openai-api-key
+OPENAI_IMAGE_MODEL=gpt-image-1
 ```
 
 `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are safe for frontend use. `OPENAI_API_KEY` is server-only and must never be exposed to browser code.
@@ -42,6 +43,7 @@ Vercel must define:
 VITE_SUPABASE_URL
 VITE_SUPABASE_PUBLISHABLE_KEY
 OPENAI_API_KEY
+OPENAI_IMAGE_MODEL
 ```
 
 The OpenAI key is only used by the serverless route at `api/generate-avatar.js`.
