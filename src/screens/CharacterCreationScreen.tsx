@@ -119,6 +119,9 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
 
       const { data } = supabase.storage.from("user-selfies").getPublicUrl(storagePath);
       setOriginalPhotoUrl(data.publicUrl);
+      console.log("[character-creation] uploaded original_photo_url", {
+        original_photo_url: data.publicUrl,
+      });
       return data.publicUrl;
     } finally {
       setIsUploading(false);
@@ -137,33 +140,45 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
         throw new Error("You must be signed in before generating a portrait.");
       }
 
+      const payload = {
+        original_photo_url: imageUrl,
+        gender,
+        ancestry,
+        homeland,
+        origin,
+        path,
+        trait,
+      };
+
+      console.log("[character-creation] generate-avatar request payload", payload);
+
       const response = await fetch("/api/generate-avatar", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.session.access_token}`,
         },
-        body: JSON.stringify({
-          imageUrl,
-          gender,
-          ancestry,
-          homeland,
-          origin,
-          path,
-          trait,
-        }),
+        body: JSON.stringify(payload),
       });
       const result = await response.json();
+
+      console.log("[character-creation] generate-avatar response JSON", result);
 
       if (!response.ok) {
         throw new Error(result.error || "Unable to generate avatar.");
       }
 
-      if (!result.portraitUrl) {
+      const { portrait_url } = result;
+
+      if (!portrait_url) {
         throw new Error("Avatar generated, but no portrait URL was returned.");
       }
 
-      setPortraitUrl(result.portraitUrl);
+      console.log("[character-creation] final portrait_url state", {
+        portrait_url,
+      });
+
+      setPortraitUrl(portrait_url);
       setStep(3);
     } catch (generateError) {
       setError(generateError instanceof Error ? generateError.message : "Unable to generate avatar.");
@@ -251,6 +266,7 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
             <Summary label="Ancestry" value={ancestry} />
             <Summary label="Path" value={path} />
             <Summary label="Trait" value={trait} />
+            {isGenerating || isUploading ? <Text style={styles.loadingText}>Generating avatar — this may take 20–60 seconds.</Text> : null}
             <Pressable style={styles.primaryButton} onPress={() => void generateAvatar()} disabled={isGenerating || isUploading}>
               {isGenerating || isUploading ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>Generate Fantasy Portrait</Text>}
             </Pressable>
@@ -266,7 +282,7 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
             <Summary label="Origin" value={origin} />
             <Summary label="Path" value={path} />
             <Summary label="Trait" value={trait} />
-            <Pressable style={styles.primaryButton} onPress={() => void handleSave()} disabled={isSaving}>
+            <Pressable style={[styles.primaryButton, (!portraitUrl || isSaving) && styles.disabledButton]} onPress={() => void handleSave()} disabled={isSaving || !portraitUrl}>
               {isSaving ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>Save Character</Text>}
             </Pressable>
           </View>
@@ -466,6 +482,14 @@ const styles = StyleSheet.create({
     color: "#ffb4aa",
     marginTop: 14,
     lineHeight: 20,
+  },
+  loadingText: {
+    color: colors.blue,
+    fontWeight: "800",
+    lineHeight: 20,
+  },
+  disabledButton: {
+    opacity: 0.48,
   },
   navRow: {
     flexDirection: "column",

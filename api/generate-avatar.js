@@ -39,6 +39,17 @@ const ancestryGuidance = {
   Aetherborn: "infused with blue arcane energy, mystical markings, refined magical presence",
 };
 
+function validateInput(input) {
+  const requiredFields = ["original_photo_url", "gender", "ancestry", "homeland", "origin", "path", "trait"];
+  const missingFields = requiredFields.filter((field) => !input[field]);
+
+  if (missingFields.length > 0) {
+    return `Missing required field(s): ${missingFields.join(", ")}`;
+  }
+
+  return null;
+}
+
 function buildPrompt(input) {
   return `Transform the uploaded person into an Animamagisterium fantasy RPG character.
 
@@ -93,9 +104,10 @@ module.exports = async function handler(request, response) {
     const authHeader = request.headers.authorization || "";
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
     const supabasePublishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+    const validationError = validateInput(input);
 
-    if (!input.imageUrl) {
-      return response.status(400).json({ error: "imageUrl is required." });
+    if (validationError) {
+      return response.status(400).json({ error: validationError });
     }
 
     if (!authHeader.startsWith("Bearer ")) {
@@ -126,7 +138,14 @@ module.exports = async function handler(request, response) {
       return response.status(401).json({ error: userError?.message || "Invalid Supabase session." });
     }
 
-    const imageResponse = await fetch(input.imageUrl);
+    const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+
+    console.log("[generate-avatar] received original_photo_url", {
+      original_photo_url: input.original_photo_url,
+    });
+    console.log("[generate-avatar] using OpenAI image model", { model });
+
+    const imageResponse = await fetch(input.original_photo_url);
 
     if (!imageResponse.ok) {
       return response.status(400).json({ error: "Unable to read uploaded selfie image." });
@@ -136,7 +155,6 @@ module.exports = async function handler(request, response) {
     const mimeType = imageResponse.headers.get("content-type") || "image/png";
     const imageFile = await toFile(imageBuffer, "selfie.png", { type: mimeType });
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
 
     const result = await client.images.edit({
       model,
@@ -146,13 +164,39 @@ module.exports = async function handler(request, response) {
     });
 
     const imageBase64 = result.data?.[0]?.b64_json;
+    const generatedImageUrl = result.data?.[0]?.url;
 
-    if (!imageBase64) {
+    console.log("[generate-avatar] OpenAI returned image data", {
+      has_b64_json: Boolean(imageBase64),
+      has_url: Boolean(generatedImageUrl),
+    });
+
+    let binary;
+
+    if (imageBase64) {
+      binary = Buffer.from(imageBase64, "base64");
+    } else if (generatedImageUrl) {
+      const generatedResponse = await fetch(generatedImageUrl);
+
+      if (!generatedResponse.ok) {
+        return response.status(500).json({ error: "OpenAI returned an image URL, but it could not be downloaded." });
+      }
+
+      binary = Buffer.from(await generatedResponse.arrayBuffer());
+    } else {
       return response.status(502).json({ error: "OpenAI did not return an image." });
     }
 
-    const binary = Buffer.from(imageBase64, "base64");
+    console.log("[generate-avatar] generated file size", {
+      bytes: binary.byteLength,
+    });
+
     const portraitPath = `${user.id}/portrait-${Date.now()}.png`;
+
+    console.log("[generate-avatar] Supabase upload path", {
+      portrait_path: portraitPath,
+    });
+
     const { error: uploadError } = await supabase.storage.from("character-portraits").upload(portraitPath, binary, {
       contentType: "image/png",
       upsert: true,
@@ -163,13 +207,24 @@ module.exports = async function handler(request, response) {
     }
 
     const { data } = supabase.storage.from("character-portraits").getPublicUrl(portraitPath);
+    const portrait_url = data.publicUrl;
+
+    if (!portrait_url) {
+      return response.status(500).json({ error: "Supabase did not return a public portrait URL." });
+    }
+
+    console.log("[generate-avatar] final portrait_url", {
+      portrait_url,
+    });
 
     return response.status(200).json({
-      portraitUrl: data.publicUrl,
-      mimeType: "image/png",
-      model,
+      portrait_url,
     });
   } catch (error) {
+    console.error("[generate-avatar] failed", {
+      message: error instanceof Error ? error.message : "Unable to generate avatar.",
+    });
+
     return response.status(500).json({
       error: error instanceof Error ? error.message : "Unable to generate avatar.",
     });
