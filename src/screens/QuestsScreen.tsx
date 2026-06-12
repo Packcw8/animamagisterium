@@ -9,7 +9,7 @@ import { quests } from "../data/mockData";
 export function QuestsScreen() {
   return (
     <Screen>
-      <Header title="Quests" />
+      <Header title="Quests / Training" />
       <View style={styles.tabs}>
         <View style={styles.activeTab}>
           <Text style={styles.activeTabText}>Daily</Text>
@@ -41,7 +41,15 @@ export function QuestsScreen() {
           </Frame>
         ))}
       </View>
-      <Text style={styles.refresh}>New quests in: 08:45:12</Text>
+      <Frame style={styles.training}>
+        <Text style={styles.sectionTitle}>Training Activities</Text>
+        <Text style={styles.trainingText}>Skill-building activities will connect real-world habits to progression after entering the world.</Text>
+      </Frame>
+      <Frame style={styles.training}>
+        <Text style={styles.sectionTitle}>Story & Seasonal Quests</Text>
+        <Text style={styles.trainingText}>Seasonal story progress, quest rewards, and active chapter objectives will gather here.</Text>
+      </Frame>
+      <Text style={styles.refresh}>New daily quests in: 08:45:12</Text>
     </Screen>
   );
 }
@@ -145,5 +153,20 @@ const styles = StyleSheet.create({
     color: colors.muted,
     textAlign: "center",
     marginTop: 2,
+  },
+  training: {
+    marginHorizontal: 14,
+    marginBottom: 10,
+    padding: 14,
+    gap: 8,
+  },
+  sectionTitle: {
+    color: colors.gold,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  trainingText: {
+    color: colors.muted,
+    lineHeight: 20,
   },
 });

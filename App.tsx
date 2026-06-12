@@ -7,8 +7,9 @@ import { colors } from "./src/components/theme";
 import { supabase, testSupabaseConnection } from "./src/lib/supabase";
 import { AuthScreen } from "./src/screens/AuthScreen";
 import { CharacterCreationScreen } from "./src/screens/CharacterCreationScreen";
-import { CharacterSheetScreen } from "./src/screens/CharacterSheetScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
+import { MapScreen } from "./src/screens/MapScreen";
+import { QuestsScreen } from "./src/screens/QuestsScreen";
 import { SimpleSectionScreen } from "./src/screens/SimpleSectionScreen";
 import { CharacterWithDetails, createProfileIfMissing, getAvatarAssets, getCharacter } from "./src/services/characterService";
 import { Tables } from "./src/lib/supabase";
@@ -93,20 +94,20 @@ export default function App() {
           <AuthenticatedLayout activeScreen={activeScreen} onChangeScreen={setActiveScreen}>
             {activeScreen === "home" ? (
               <HomeScreen character={character} />
-            ) : activeScreen === "character" ? (
-              <CharacterSheetScreen character={character} onRefresh={() => void loadMvpState(session)} />
+            ) : activeScreen === "map" ? (
+              <MapScreen />
             ) : activeScreen === "quests" ? (
-              <SimpleSectionScreen title="Quests" description="Daily quests will return here after the character foundation is settled." />
-            ) : activeScreen === "progress" ? (
-              <SimpleSectionScreen title="Progress" description="Training history, level growth, and milestones will be gathered here." />
+              <QuestsScreen />
+            ) : activeScreen === "social" ? (
+              <SimpleSectionScreen title="Social" description="Guilds, friends, parties, leaderboards, chat, community events, PvP, and cooperative content will gather here." />
             ) : (
-              <SimpleSectionScreen title="Settings" description="Manage account and app preferences." showSignOut />
+              <SimpleSectionScreen title="Settings" description="Manage account settings, notifications, privacy, app preferences, support, and logout." showSignOut />
             )}
           </AuthenticatedLayout>
         ) : (
           <AuthenticatedLayout activeScreen={activeScreen} onChangeScreen={setActiveScreen}>
             {activeScreen === "settings" ? (
-              <SimpleSectionScreen title="Settings" description="Manage account and app preferences." showSignOut />
+              <SimpleSectionScreen title="Settings" description="Manage account settings, notifications, privacy, app preferences, support, and logout." showSignOut />
             ) : (
               <CharacterCreationScreen assets={avatarAssets} onCreated={setCharacter} />
             )}

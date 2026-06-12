@@ -10,9 +10,9 @@ type Item = {
 
 const items: Item[] = [
   { key: "home", label: "Home", icon: "HM" },
-  { key: "character", label: "Character", icon: "CH" },
-  { key: "quests", label: "Quests", icon: "QS" },
-  { key: "progress", label: "Progress", icon: "PR" },
+  { key: "map", label: "Map", icon: "MP" },
+  { key: "quests", label: "Quests / Training", icon: "QT" },
+  { key: "social", label: "Social", icon: "SO" },
   { key: "settings", label: "Settings", icon: "ST" },
 ];
 
@@ -59,7 +59,9 @@ const styles = StyleSheet.create({
   },
   label: {
     color: colors.goldSoft,
-    fontSize: 10,
+    fontSize: 9,
+    lineHeight: 11,
+    textAlign: "center",
   },
   active: {
     color: colors.gold,

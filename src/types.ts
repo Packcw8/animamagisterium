@@ -1,4 +1,4 @@
-export type ScreenKey = "home" | "character" | "quests" | "progress" | "settings";
+export type ScreenKey = "home" | "map" | "quests" | "social" | "settings";
 
 export type Player = {
   id: string;
