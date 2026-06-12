@@ -1,13 +1,38 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import "react-native-url-polyfill/auto";
 import { createClient } from "@supabase/supabase-js";
+import { runtimeEnv } from "./runtimeEnv.generated";
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
+type ViteImportMeta = ImportMeta & {
+  env?: {
+    VITE_SUPABASE_URL?: string;
+    VITE_SUPABASE_PUBLISHABLE_KEY?: string;
+  };
+};
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+const viteEnv = (import.meta as ViteImportMeta).env;
 
-export const supabase = createClient(supabaseUrl || "https://example.supabase.co", supabaseAnonKey || "anon-key", {
+function firstConfiguredValue(...values: Array<string | undefined>) {
+  return values.find((value) => Boolean(value)) ?? "";
+}
+
+const supabaseUrl = firstConfiguredValue(
+  runtimeEnv.supabaseUrl,
+  viteEnv?.VITE_SUPABASE_URL,
+  process.env.EXPO_PUBLIC_SUPABASE_URL,
+  process.env.VITE_SUPABASE_URL,
+);
+
+const supabasePublishableKey = firstConfiguredValue(
+  runtimeEnv.supabasePublishableKey,
+  viteEnv?.VITE_SUPABASE_PUBLISHABLE_KEY,
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+);
+
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
+
+export const supabase = createClient(supabaseUrl || "https://example.supabase.co", supabasePublishableKey || "publishable-key", {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,
@@ -19,30 +44,49 @@ export const supabase = createClient(supabaseUrl || "https://example.supabase.co
 export type Tables = {
   profiles: {
     id: string;
-    display_name: string;
-    title: string;
+    username: string | null;
+    created_at: string;
+  };
+  characters: {
+    id: string;
+    user_id: string;
+    name: string;
     level: number;
     xp: number;
-    xp_max: number;
+    gold: number;
+    created_at: string;
   };
-  player_stats: {
-    profile_id: string;
-    health: number;
-    health_max: number;
-    mana: number;
-    mana_max: number;
-    stamina: number;
-    stamina_max: number;
-  };
-  quests: {
+  attributes: {
     id: string;
-    profile_id: string;
-    title: string;
-    description: string;
-    xp_reward: number;
-    coin_reward: number;
-    progress: number;
-    target: number;
-    cadence: "daily" | "weekly" | "achievement";
+    character_id: string;
+    strength: number;
+    endurance: number;
+    knowledge: number;
+    craft: number;
+    wealth: number;
+    influence: number;
   };
 };
+
+export async function testSupabaseConnection() {
+  if (!isSupabaseConfigured) {
+    return {
+      ok: false,
+      message: "Supabase environment variables are missing.",
+    };
+  }
+
+  const { error } = await supabase.from("profiles").select("id", { count: "exact", head: true });
+
+  if (error) {
+    return {
+      ok: false,
+      message: error.message,
+    };
+  }
+
+  return {
+    ok: true,
+    message: "Connected to Supabase.",
+  };
+}
