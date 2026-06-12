@@ -17,8 +17,8 @@ export type CharacterCreationInput = {
   origin: string;
   path: string;
   trait: string;
-  originalPhotoUrl: string;
-  portraitUrl: string;
+  original_photo_url: string;
+  portrait_url: string;
   appearance: {
     baseAssetId?: string;
     faceAssetId?: string;
@@ -193,8 +193,8 @@ export async function createCharacter(input: CharacterCreationInput) {
       origin: input.origin,
       path: input.path,
       trait: input.trait,
-      original_photo_url: input.originalPhotoUrl,
-      portrait_url: input.portraitUrl,
+      original_photo_url: input.original_photo_url,
+      portrait_url: input.portrait_url,
     })
     .select()
     .single();

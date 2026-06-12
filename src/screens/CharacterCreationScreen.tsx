@@ -27,8 +27,8 @@ const steps = ["Upload Photo", "Identity", "Generate Avatar", "Save"];
 export function CharacterCreationScreen({ assets, onCreated }: CharacterCreationScreenProps) {
   const [step, setStep] = useState(0);
   const [photo, setPhoto] = useState<PickedPhoto | null>(null);
-  const [originalPhotoUrl, setOriginalPhotoUrl] = useState("");
-  const [portraitUrl, setPortraitUrl] = useState("");
+  const [original_photo_url, setOriginalPhotoUrl] = useState("");
+  const [generatedPortraitUrl, setGeneratedPortraitUrl] = useState("");
   const [name, setName] = useState("");
   const [gender, setGender] = useState(genders[0]);
   const [ancestry, setAncestry] = useState(ancestries[0]);
@@ -76,7 +76,7 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
         previewUrl: URL.createObjectURL(file),
       });
       setOriginalPhotoUrl("");
-      setPortraitUrl("");
+      setGeneratedPortraitUrl("");
     };
     input.click();
   }
@@ -86,8 +86,8 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
       throw new Error("Upload a selfie or profile image first.");
     }
 
-    if (originalPhotoUrl) {
-      return originalPhotoUrl;
+    if (original_photo_url) {
+      return original_photo_url;
     }
 
     setIsUploading(true);
@@ -133,7 +133,7 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
     setError(null);
 
     try {
-      const imageUrl = await uploadOriginalPhoto();
+      const uploadedOriginalPhotoUrl = await uploadOriginalPhoto();
       const { data: session } = await supabase.auth.getSession();
 
       if (!session.session) {
@@ -141,7 +141,7 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
       }
 
       const payload = {
-        original_photo_url: imageUrl,
+        original_photo_url: uploadedOriginalPhotoUrl,
         gender,
         ancestry,
         homeland,
@@ -178,7 +178,7 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
         portrait_url,
       });
 
-      setPortraitUrl(portrait_url);
+      setGeneratedPortraitUrl(portrait_url);
       setStep(3);
     } catch (generateError) {
       setError(generateError instanceof Error ? generateError.message : "Unable to generate avatar.");
@@ -193,7 +193,7 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
       return;
     }
 
-    if (!originalPhotoUrl || !portraitUrl) {
+    if (!original_photo_url || !generatedPortraitUrl) {
       setError("Generate your fantasy portrait before saving.");
       return;
     }
@@ -210,8 +210,8 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
         origin,
         path,
         trait,
-        originalPhotoUrl,
-        portraitUrl,
+        original_photo_url,
+        portrait_url: generatedPortraitUrl,
         appearance: {
           baseAssetId: fallbackAssets.base,
           faceAssetId: fallbackAssets.face,
@@ -274,7 +274,7 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
         ) : (
           <View style={styles.section}>
             <Text style={styles.title}>Save Character</Text>
-            {portraitUrl ? <Image source={{ uri: portraitUrl }} style={styles.portrait} /> : null}
+            {generatedPortraitUrl ? <Image source={{ uri: generatedPortraitUrl }} style={styles.portrait} /> : null}
             <Summary label="Name" value={name || "Unnamed"} />
             <Summary label="Gender" value={gender} />
             <Summary label="Ancestry" value={ancestry} />
@@ -282,7 +282,7 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
             <Summary label="Origin" value={origin} />
             <Summary label="Path" value={path} />
             <Summary label="Trait" value={trait} />
-            <Pressable style={[styles.primaryButton, (!portraitUrl || isSaving) && styles.disabledButton]} onPress={() => void handleSave()} disabled={isSaving || !portraitUrl}>
+            <Pressable style={[styles.primaryButton, (!generatedPortraitUrl || isSaving) && styles.disabledButton]} onPress={() => void handleSave()} disabled={isSaving || !generatedPortraitUrl}>
               {isSaving ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>Save Character</Text>}
             </Pressable>
           </View>
@@ -302,7 +302,7 @@ export function CharacterCreationScreen({ assets, onCreated }: CharacterCreation
                   setError("Upload a photo before continuing.");
                   return;
                 }
-                if (step === 2 && !portraitUrl) {
+                if (step === 2 && !generatedPortraitUrl) {
                   setError("Generate your avatar before continuing.");
                   return;
                 }
