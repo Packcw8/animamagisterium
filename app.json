@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Anima Magisterium",
+    "slug": "animamagisterium",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": [
+      "assets/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#050706"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
