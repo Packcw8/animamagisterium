@@ -90,6 +90,7 @@ export type Tables = {
   map_routes: {
     id: string;
     name: string;
+    sort_order: number;
     terrain: string;
     danger_level: string;
     distance_required_meters: number;

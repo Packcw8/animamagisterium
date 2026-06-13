@@ -14,7 +14,6 @@ import {
   deleteMapMarker,
   deleteStoryInstance,
   fallbackRoute,
-  getActiveRoute,
   getCurrentRole,
   getMapMarkers,
   getMapRoutes,
@@ -66,6 +65,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const [editorMode, setEditorMode] = useState<(typeof editorModes)[number]>("Marker");
   const [pathDraft, setPathDraft] = useState<Array<{ x: number; y: number }>>([]);
   const [routeName, setRouteName] = useState("");
+  const [routeOrder, setRouteOrder] = useState("1");
   const [routeTerrain, setRouteTerrain] = useState("");
   const [routeDanger, setRouteDanger] = useState("");
   const [routeDistance, setRouteDistance] = useState("");
@@ -77,6 +77,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [scale, setScale] = useState(0.86);
   const [followPlayer, setFollowPlayer] = useState(true);
+  const [completedRouteId, setCompletedRouteId] = useState<string | null>(null);
   const viewportRef = useRef<{
     scrollLeft?: number;
     scrollTop?: number;
@@ -89,6 +90,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const lastStoryBucket = useRef(0);
   const triggeredStoryIds = useRef<Set<string>>(new Set());
   const distanceWalkedRef = useRef(0);
+  const routeRef = useRef(fallbackRoute);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const isAdmin = role === "admin";
   const scaledMapSize = useMemo(() => ({ width: mapSize.width * scale, height: mapSize.height * scale }), [scale]);
@@ -97,6 +99,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const playerPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
   const routeSegments = useMemo(() => getRouteSegments(pathDraft), [pathDraft]);
   const visibleMarkers = isAdmin ? markers : markers.filter((marker) => marker.is_active && marker.is_unlocked);
+  const orderedRoutes = useMemo(() => [...routes].sort(compareRoutes), [routes]);
 
   useEffect(() => {
     void loadMap();
@@ -117,6 +120,10 @@ export function MapScreen({ character }: MapScreenProps) {
   useEffect(() => {
     distanceWalkedRef.current = distanceWalked;
   }, [distanceWalked]);
+
+  useEffect(() => {
+    routeRef.current = route;
+  }, [route]);
 
   useEffect(() => {
     const bucket = Math.floor(progressPercent / 15);
@@ -161,10 +168,28 @@ export function MapScreen({ character }: MapScreenProps) {
     }
   }, [progressPercent, storyInstances]);
 
+  useEffect(() => {
+    if (progressPercent < 100 || completedRouteId === route.id) {
+      return;
+    }
+
+    setCompletedRouteId(route.id);
+    const nextRoute = getNextRoute(orderedRoutes, route);
+
+    if (!nextRoute) {
+      setFeed((current) => [`${route.name} completed. No next walking path is active yet.`, ...current].slice(0, 10));
+      return;
+    }
+
+    setFeed((current) => [`${route.name} completed. Beginning ${nextRoute.name}.`, ...current].slice(0, 10));
+    void selectRoute(nextRoute);
+  }, [completedRouteId, orderedRoutes, progressPercent, route]);
+
   async function loadMap() {
     const [loadedRoutes, loadedMarkers, loadedRole] = await Promise.all([getMapRoutes(), getMapMarkers(), getCurrentRole()]);
-    const firstRoute = loadedRoutes.find((item) => item.is_active) ?? loadedRoutes[0] ?? fallbackRoute;
-    setRoutes(loadedRoutes);
+    const nextRoutes = [...loadedRoutes].sort(compareRoutes);
+    const firstRoute = nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
+    setRoutes(nextRoutes);
     setPathDraft([]);
     setMarkers(loadedMarkers);
     setRole(loadedRole);
@@ -174,6 +199,7 @@ export function MapScreen({ character }: MapScreenProps) {
   async function selectRoute(nextRoute: MapRoute) {
     setRoute(nextRoute);
     setRouteName(nextRoute.name);
+    setRouteOrder(String(nextRoute.sort_order));
     setRouteTerrain(nextRoute.terrain);
     setRouteDanger(nextRoute.danger_level);
     setRouteDistance(String(Math.round(nextRoute.distance_required_meters)));
@@ -181,6 +207,7 @@ export function MapScreen({ character }: MapScreenProps) {
     triggeredStoryIds.current = new Set();
     lastEncounterBucket.current = 0;
     lastStoryBucket.current = 0;
+    distanceWalkedRef.current = 0;
     setDistanceWalked(0);
     setLastPosition(null);
 
@@ -216,23 +243,25 @@ export function MapScreen({ character }: MapScreenProps) {
 
         setLastPosition((previous) => {
           if (!previous) {
-            void saveRouteProgress(route.id, {
+            const activeRoute = routeRef.current;
+            void saveRouteProgress(activeRoute.id, {
               distance_walked_meters: distanceWalkedRef.current,
-              progress_percent: (distanceWalkedRef.current / route.distance_required_meters) * 100,
+              progress_percent: (distanceWalkedRef.current / activeRoute.distance_required_meters) * 100,
               last_lat: next.latitude,
               last_lng: next.longitude,
             });
             return next;
           }
 
+          const activeRoute = routeRef.current;
           const meters = turfDistance([previous.longitude, previous.latitude], [next.longitude, next.latitude], { units: "kilometers" }) * 1000;
           const cleanMeters = meters > 2 && meters < 250 ? meters : 0;
-          const nextDistance = Math.min(route.distance_required_meters, distanceWalkedRef.current + cleanMeters);
-          const nextProgress = Math.min(100, (nextDistance / route.distance_required_meters) * 100);
+          const nextDistance = Math.min(activeRoute.distance_required_meters, distanceWalkedRef.current + cleanMeters);
+          const nextProgress = Math.min(100, (nextDistance / activeRoute.distance_required_meters) * 100);
 
           distanceWalkedRef.current = nextDistance;
           setDistanceWalked(nextDistance);
-          void saveRouteProgress(route.id, {
+          void saveRouteProgress(activeRoute.id, {
             distance_walked_meters: nextDistance,
             progress_percent: nextProgress,
             last_lat: next.latitude,
@@ -454,13 +483,14 @@ export function MapScreen({ character }: MapScreenProps) {
     try {
       const updated = await updateMapRoute(route.id, {
         name: routeName.trim() || route.name,
+        sort_order: Number(routeOrder) || route.sort_order,
         terrain: routeTerrain.trim() || route.terrain,
         danger_level: routeDanger.trim() || route.danger_level,
         distance_required_meters: Number(routeDistance) || route.distance_required_meters,
         path_points: pathDraft,
       });
       setRoute(updated);
-      setRoutes((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setRoutes((current) => current.map((item) => (item.id === updated.id ? updated : item)).sort(compareRoutes));
       setAdminMessage("Walking path saved.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to save walking path. Confirm the Supabase migration has run."));
@@ -476,6 +506,7 @@ export function MapScreen({ character }: MapScreenProps) {
     try {
       const created = await createMapRoute({
         name: routeName.trim() || "New Walking Path",
+        sort_order: Number(routeOrder) || getNextRouteOrder(routes),
         terrain: routeTerrain.trim() || "Unknown road",
         danger_level: routeDanger.trim() || "Low",
         distance_required_meters: Number(routeDistance) || 1000,
@@ -483,7 +514,7 @@ export function MapScreen({ character }: MapScreenProps) {
         path_points: pathDraft,
         is_active: true,
       });
-      setRoutes((current) => [...current, created]);
+      setRoutes((current) => [...current, created].sort(compareRoutes));
       await selectRoute(created);
       setAdminMessage("New walking path created.");
     } catch (error) {
@@ -641,9 +672,9 @@ export function MapScreen({ character }: MapScreenProps) {
           </Pressable>
         </View>
         <View style={styles.routePicker}>
-          {routes.map((item) => (
+          {orderedRoutes.map((item) => (
             <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item)}>
-              <Text style={styles.routeChipText}>{item.name}</Text>
+              <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
             </Pressable>
           ))}
         </View>
@@ -669,6 +700,18 @@ export function MapScreen({ character }: MapScreenProps) {
         <Frame style={styles.panel}>
           <Text style={styles.sectionTitle}>Admin Map Editor</Text>
           <Text style={styles.copy}>Choose a mode, then click the map. All map content uses percentage coordinates, never pixels or GPS coordinates.</Text>
+          <View style={styles.routeList}>
+            <Text style={styles.selectedTitle}>Walking Path Order</Text>
+            {orderedRoutes.map((item) => (
+              <Pressable key={item.id} style={[styles.routeRow, route.id === item.id && styles.routeRowActive]} onPress={() => void selectRoute(item)}>
+                <Text style={styles.routeNumber}>{item.sort_order}</Text>
+                <View style={styles.routeRowText}>
+                  <Text style={styles.markerName}>{item.name}</Text>
+                  <Text style={styles.copy}>{item.is_active ? "Active" : "Hidden"} · {metersToMiles(item.distance_required_meters)} mi · {item.terrain}</Text>
+                </View>
+              </Pressable>
+            ))}
+          </View>
           <View style={styles.modeRow}>
             {editorModes.map((mode) => (
               <Pressable key={mode} style={[styles.modeButton, editorMode === mode && styles.typeSelected]} onPress={() => setEditorMode(mode)}>
@@ -700,6 +743,7 @@ export function MapScreen({ character }: MapScreenProps) {
           ) : (
             <View style={styles.pathEditor}>
               <TextInput value={routeName} onChangeText={setRouteName} placeholder="Route name" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={routeOrder} onChangeText={setRouteOrder} placeholder="Route order" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeTerrain} onChangeText={setRouteTerrain} placeholder="Terrain" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeDanger} onChangeText={setRouteDanger} placeholder="Danger level" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
@@ -856,6 +900,23 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 function formatStoryFeed(story: MapStoryInstance) {
   return story.body ? `${story.title}: ${story.body}` : story.title;
+}
+
+function compareRoutes(a: MapRoute, b: MapRoute) {
+  if (a.sort_order !== b.sort_order) {
+    return a.sort_order - b.sort_order;
+  }
+
+  return a.created_at.localeCompare(b.created_at);
+}
+
+function getNextRoute(routes: MapRoute[], currentRoute: MapRoute) {
+  const currentIndex = routes.findIndex((item) => item.id === currentRoute.id);
+  return routes.slice(currentIndex + 1).find((item) => item.is_active) ?? null;
+}
+
+function getNextRouteOrder(routes: MapRoute[]) {
+  return routes.reduce((highest, item) => Math.max(highest, item.sort_order), 0) + 1;
 }
 
 function Info({ label, value }: { label: string; value: string }) {
@@ -1151,6 +1212,41 @@ const styles = StyleSheet.create({
   copy: {
     color: colors.muted,
     lineHeight: 20,
+  },
+  routeList: {
+    gap: 8,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  routeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  routeRowActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.55)",
+  },
+  routeNumber: {
+    minWidth: 30,
+    minHeight: 30,
+    borderRadius: 15,
+    overflow: "hidden",
+    textAlign: "center",
+    textAlignVertical: "center",
+    color: "#120e08",
+    backgroundColor: colors.gold,
+    fontWeight: "900",
+  },
+  routeRowText: {
+    flex: 1,
+    gap: 2,
   },
   modeRow: {
     flexDirection: "row",

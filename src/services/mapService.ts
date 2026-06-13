@@ -9,6 +9,7 @@ export type Role = Tables["profiles"]["role"];
 export const fallbackRoute: MapRoute = {
   id: "11111111-1111-4111-8111-111111111111",
   name: "Grayfen Road to Hollow Watch",
+  sort_order: 1,
   terrain: "Mire road, broken stone, low fog",
   danger_level: "Moderate",
   distance_required_meters: 5000,
@@ -57,6 +58,7 @@ export async function getActiveRoute() {
     .from("map_routes")
     .select("*")
     .eq("is_active", true)
+    .order("sort_order", { ascending: true })
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
@@ -70,7 +72,11 @@ export async function getActiveRoute() {
 }
 
 export async function getMapRoutes() {
-  const { data, error } = await supabase.from("map_routes").select("*").order("created_at", { ascending: true });
+  const { data, error } = await supabase
+    .from("map_routes")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
 
   if (error) {
     console.warn("[map] falling back to local route list", error.message);
@@ -172,7 +178,7 @@ export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | 
   return data as MapMarker;
 }
 
-export async function createMapRoute(input: Pick<MapRoute, "name" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active">) {
+export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active">) {
   const { data, error } = await supabase
     .from("map_routes")
     .insert({
@@ -189,7 +195,7 @@ export async function createMapRoute(input: Pick<MapRoute, "name" | "terrain" | 
   return data as MapRoute;
 }
 
-export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active">>) {
+export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active">>) {
   const { data, error } = await supabase
     .from("map_routes")
     .update({
