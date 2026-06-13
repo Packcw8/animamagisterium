@@ -6,7 +6,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
-import { AttributeKey, completeTrainingSession, getTrainingState, TrainingCardState } from "../services/trainingService";
+import { AttributeKey, completeTrainingSession, getTrainingLevelProgress, getTrainingState, TrainingCardState } from "../services/trainingService";
 
 type QuestsScreenProps = {
   character: CharacterWithDetails;
@@ -22,10 +22,16 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const [isCompleting, setIsCompleting] = useState<AttributeKey | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     void loadTraining();
   }, [character.id, character.xp, character.level]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   async function loadTraining() {
     setIsLoading(true);
@@ -64,6 +70,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   }
 
   const selectedCard = cards.find((card) => card.key === selectedAttribute) ?? cards[0] ?? null;
+  const selectedLevelProgress = selectedCard ? getTrainingLevelProgress(selectedCard.currentXp) : null;
 
   return (
     <Screen>
@@ -104,7 +111,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
               >
                 <Text style={styles.attributeName}>{card.name}</Text>
                 <Text style={styles.attributeMeta}>Level {card.currentLevel}</Text>
-                <Text style={styles.attributeMeta}>{card.currentXp} XP</Text>
+                <Text style={styles.attributeMeta}>{card.currentXp} sessions</Text>
               </Pressable>
             ))}
           </View>
@@ -114,17 +121,19 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
               <Text style={styles.trainingTitle}>{selectedCard.name} Training</Text>
               <Text style={styles.effect}>{selectedCard.effect}</Text>
               <Info label="Current Goal" value={selectedCard.goalLabel} />
-              <Info label="Cooldown" value={getCooldownText(selectedCard.cooldownUntil)} />
+              <Info label="Cooldown" value={getCooldownText(selectedCard.cooldownUntil, now)} />
               <Info label="Activities" value={selectedCard.activities} />
               <View style={styles.xpBlock}>
-                <Text style={styles.xpText}>Attribute XP</Text>
-                <ProgressBar value={selectedCard.currentXp % 100} max={100} color={colors.blue} height={8} />
-                <Text style={styles.copy}>{selectedCard.currentXp % 100} / 100 XP to next level</Text>
+                <Text style={styles.xpText}>Level Progress</Text>
+                <ProgressBar value={selectedLevelProgress?.progress ?? 0} max={selectedLevelProgress?.required ?? 1} color={colors.blue} height={8} />
+                <Text style={styles.copy}>
+                  {selectedLevelProgress?.progress ?? 0} / {selectedLevelProgress?.required ?? 1} sessions to level {(selectedLevelProgress?.level ?? 0) + 1}
+                </Text>
               </View>
               <Pressable
-                style={[styles.primaryButton, (!canTrain(selectedCard, dailyCompleted, dailyLimit) || isCompleting !== null) && styles.disabledButton]}
+                style={[styles.primaryButton, (!canTrain(selectedCard, dailyCompleted, dailyLimit, now) || isCompleting !== null) && styles.disabledButton]}
                 onPress={() => void completeTraining(selectedCard.key)}
-                disabled={!canTrain(selectedCard, dailyCompleted, dailyLimit) || isCompleting !== null}
+                disabled={!canTrain(selectedCard, dailyCompleted, dailyLimit, now) || isCompleting !== null}
               >
                 <Text style={styles.primaryText}>{isCompleting === selectedCard.key ? "Recording Training..." : "Complete Training Session"}</Text>
               </Pressable>
@@ -135,7 +144,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                 ) : (
                   selectedCard.history.map((session) => (
                     <Text key={session.id} style={styles.historyItem}>
-                      {new Date(session.completed_at).toLocaleDateString()} - {session.activity_label} - +{session.attribute_xp} XP
+                      {new Date(session.completed_at).toLocaleDateString()} - {session.activity_label} - session {session.attribute_xp}
                     </Text>
                   ))
                 )}
@@ -174,7 +183,7 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function canTrain(card: TrainingCardState, dailyCompleted: number, dailyLimit: number) {
+function canTrain(card: TrainingCardState, dailyCompleted: number, dailyLimit: number, now: number) {
   if (dailyCompleted >= dailyLimit) {
     return false;
   }
@@ -183,22 +192,24 @@ function canTrain(card: TrainingCardState, dailyCompleted: number, dailyLimit: n
     return true;
   }
 
-  return new Date(card.cooldownUntil).getTime() <= Date.now();
+  return new Date(card.cooldownUntil).getTime() <= now;
 }
 
-function getCooldownText(cooldownUntil: string | null) {
+function getCooldownText(cooldownUntil: string | null, now: number) {
   if (!cooldownUntil) {
     return "Ready";
   }
 
-  const remainingMs = new Date(cooldownUntil).getTime() - Date.now();
+  const remainingMs = new Date(cooldownUntil).getTime() - now;
 
   if (remainingMs <= 0) {
     return "Ready";
   }
 
-  const minutes = Math.ceil(remainingMs / 60000);
-  return `${minutes} min remaining`;
+  const totalSeconds = Math.ceil(remainingMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, "0")} remaining`;
 }
 
 const styles = StyleSheet.create({

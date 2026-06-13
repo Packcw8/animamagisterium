@@ -20,7 +20,6 @@ export type TrainingCardState = {
   history: TrainingSession[];
 };
 
-const attributeXpPerSession = 25;
 const characterXpPerSession = 25;
 const dailyTrainingLimit = 2;
 const cooldownMinutes = 60;
@@ -236,8 +235,8 @@ export async function completeTrainingSession(character: CharacterWithDetails, a
   const config = trainingConfig[attributeKey];
   const currentGoal = Number(currentProgress.next_goal_value || config.startingGoal);
   const nextGoal = config.nextGoal(currentGoal);
-  const nextAttributeXp = currentProgress.current_xp + attributeXpPerSession;
-  const nextAttributeLevel = Math.floor(nextAttributeXp / 100);
+  const nextAttributeXp = currentProgress.current_xp + 1;
+  const nextAttributeLevel = getLevelFromTrainingCompletions(nextAttributeXp);
   const nextCooldown = new Date(now.getTime() + cooldownMinutes * 60 * 1000).toISOString();
 
   const { error: sessionError } = await supabase.from("training_sessions").insert({
@@ -247,7 +246,7 @@ export async function completeTrainingSession(character: CharacterWithDetails, a
     activity_label: config.formatGoal(currentGoal),
     goal_value: currentGoal,
     goal_unit: config.unit,
-    attribute_xp: attributeXpPerSession,
+    attribute_xp: 1,
     character_xp: characterXpPerSession,
     training_date: today,
     completed_at: now.toISOString(),
@@ -305,7 +304,39 @@ export async function completeTrainingSession(character: CharacterWithDetails, a
 
   return {
     character: updatedCharacter,
-    message: `${config.name} training complete. +${attributeXpPerSession} ${config.name} XP and +${characterXpPerSession} character XP.`,
+    message: `${config.name} training complete. ${config.name} is now level ${nextAttributeLevel}. +${characterXpPerSession} character XP.`,
+  };
+}
+
+function getLevelFromTrainingCompletions(completions: number) {
+  let level = 0;
+  let remaining = completions;
+  let required = 1;
+
+  while (remaining >= required) {
+    level += 1;
+    remaining -= required;
+    required += 1;
+  }
+
+  return level;
+}
+
+export function getTrainingLevelProgress(completions: number) {
+  let level = 0;
+  let remaining = completions;
+  let required = 1;
+
+  while (remaining >= required) {
+    level += 1;
+    remaining -= required;
+    required += 1;
+  }
+
+  return {
+    level,
+    progress: remaining,
+    required,
   };
 }
 
