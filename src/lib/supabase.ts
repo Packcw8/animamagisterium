@@ -107,6 +107,58 @@ export type Tables = {
     ability_key: string | null;
     updated_at: string;
   };
+  item_definitions: {
+    id: string;
+    name: string;
+    type: "weapon" | "armor" | "wearable" | "potion" | "revive potion" | "special" | "material" | "misc";
+    rarity: string;
+    description: string | null;
+    image_path: string | null;
+    gold_value: number;
+    stackable: boolean;
+    sellable: boolean;
+    usable_in_battle: boolean;
+    usable_outside_battle: boolean;
+    crafting_value: number | null;
+    equipment_slot: "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic" | null;
+    damage_amount: number;
+    ability_name: string | null;
+    ability_cost_type: "health" | "stamina" | "magika" | "none";
+    ability_cost_amount: number;
+    elemental_damage_type: "none" | "fire" | "ice" | "poison" | "lightning" | "shadow" | "holy";
+    elemental_damage_amount: number;
+    on_hit_effect: "restore health per hit" | "restore stamina per hit" | "restore magika per hit" | "burn enemy" | "poison enemy" | "weaken enemy" | null;
+    armor_value: number;
+    buff_target: "max health" | "max stamina" | "max magika" | "strength" | "agility" | "intelligence" | "charisma" | "defense" | "damage" | "gold gain" | "xp gain" | null;
+    buff_amount: number;
+    potion_target: "health" | "stamina" | "magika" | null;
+    restore_amount: number;
+    restore_percent: number | null;
+    boost_target: "health" | "stamina" | "magika" | "strength" | "agility" | "intelligence" | "charisma" | "damage" | "defense" | "gold gain" | "xp gain" | null;
+    boost_amount: number;
+    passive_mode: "owned" | "equipped" | null;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  player_inventory: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    item_id: string;
+    quantity: number;
+    acquired_at: string;
+    updated_at: string;
+  };
+  equipped_items: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    slot: "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic";
+    item_id: string | null;
+    updated_at: string;
+  };
   avatar_assets: {
     id: string;
     type: "base" | "face" | "hair" | "armor" | "weapon" | "cloak" | "background";

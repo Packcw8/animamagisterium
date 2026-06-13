@@ -8,6 +8,7 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
 import { AbilityDefinition, CharacterResources, getAbilityDamage, getCharacterResources, getCombatLoadout } from "../services/abilityService";
+import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, InventoryItem, ItemDefinition } from "../services/inventoryService";
 import {
   completeMapEvent,
   createDialogueChoice,
@@ -102,6 +103,9 @@ export function MapScreen({ character }: MapScreenProps) {
   const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | null>(null);
   const [combatResources, setCombatResources] = useState<CharacterResources>(() => getCharacterResources(character));
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
+  const [battleInventoryOpen, setBattleInventoryOpen] = useState(false);
   const [role, setRole] = useState<Role>("player");
   const [distanceWalked, setDistanceWalked] = useState(0);
   const [savedPlayerPosition, setSavedPlayerPosition] = useState<{ x: number; y: number } | null>(null);
@@ -207,6 +211,7 @@ export function MapScreen({ character }: MapScreenProps) {
   useEffect(() => {
     void loadMap();
     void loadCombatLoadout();
+    void loadInventory();
 
     return () => {
       if (watchId.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
@@ -217,15 +222,31 @@ export function MapScreen({ character }: MapScreenProps) {
 
   useEffect(() => {
     void loadCombatLoadout();
+    void loadInventory();
   }, [character.id, character.attributes]);
 
   async function loadCombatLoadout() {
     try {
       const loadout = await getCombatLoadout(character);
-      setCombatResources(loadout.resources);
       setEquippedAbilities(loadout.equipped);
     } catch (error) {
       setBattleLog((current) => [getErrorMessage(error, "Unable to load combat abilities."), ...current].slice(0, 8));
+    }
+  }
+
+  async function loadInventory() {
+    try {
+      const state = await getInventoryState(character.id);
+      setInventoryItems(state.items);
+      setEquippedItems(state.equipped);
+      const bonuses = getInventoryResourceBonuses(state.equipped);
+      setCombatResources(getCharacterResources(character, {
+        maxHp: bonuses.maxHp,
+        maxStamina: bonuses.maxStamina,
+        maxMagicka: bonuses.maxMagicka,
+      }));
+    } catch (error) {
+      setBattleLog((current) => [getErrorMessage(error, "Unable to load inventory."), ...current].slice(0, 8));
     }
   }
 
@@ -849,7 +870,7 @@ export function MapScreen({ character }: MapScreenProps) {
     const currentResource = ability.resource === "stamina" ? battleStamina : battleMagicka;
 
     if (currentResource < ability.cost) {
-      setBattleLog((current) => [`Not enough ${ability.resource} for ${ability.name}.`, ...current].slice(0, 8));
+      setBattleLog((current) => [`Not enough ${ability.resource === "magicka" ? "Magika" : "Stamina"} for ${ability.name}.`, ...current].slice(0, 8));
       return;
     }
 
@@ -884,6 +905,111 @@ export function MapScreen({ character }: MapScreenProps) {
     }
 
     setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+  }
+
+  async function handleWeaponAction(weapon: ItemDefinition) {
+    if (!activeBattle || battleFinished) {
+      return;
+    }
+
+    const costType = weapon.ability_cost_type;
+    const cost = weapon.ability_cost_amount;
+
+    if (costType === "health" && battlePlayerHp <= cost) {
+      setBattleLog((current) => [`Not enough Health for ${weapon.ability_name || weapon.name}.`, ...current].slice(0, 8));
+      return;
+    }
+    if (costType === "stamina" && battleStamina < cost) {
+      setBattleLog((current) => [`Not enough Stamina for ${weapon.ability_name || weapon.name}.`, ...current].slice(0, 8));
+      return;
+    }
+    if (costType === "magika" && battleMagicka < cost) {
+      setBattleLog((current) => [`Not enough Magika for ${weapon.ability_name || weapon.name}.`, ...current].slice(0, 8));
+      return;
+    }
+
+    if (costType === "health") {
+      setBattlePlayerHp((current) => Math.max(1, current - cost));
+    } else if (costType === "stamina") {
+      setBattleStamina((current) => Math.max(0, current - cost));
+    } else if (costType === "magika") {
+      setBattleMagicka((current) => Math.max(0, current - cost));
+    }
+
+    const bonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
+    const totalDamage = weapon.damage_amount + weapon.elemental_damage_amount + bonuses.damage;
+    const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
+    const actionName = weapon.ability_name || weapon.name;
+    const nextLog = [`${actionName} deals ${totalDamage} damage${weapon.elemental_damage_type !== "none" ? ` with ${weapon.elemental_damage_type}` : ""}.`];
+
+    if (weapon.on_hit_effect === "restore health per hit") {
+      setBattlePlayerHp((current) => Math.min(combatResources.maxHp, current + Math.max(1, weapon.buff_amount || 2)));
+      nextLog.push("On-hit effect restores Health.");
+    } else if (weapon.on_hit_effect === "restore stamina per hit") {
+      setBattleStamina((current) => Math.min(combatResources.maxStamina, current + Math.max(1, weapon.buff_amount || 2)));
+      nextLog.push("On-hit effect restores Stamina.");
+    } else if (weapon.on_hit_effect === "restore magika per hit") {
+      setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + Math.max(1, weapon.buff_amount || 2)));
+      nextLog.push("On-hit effect restores Magika.");
+    } else if (weapon.on_hit_effect) {
+      nextLog.push(`On-hit effect: ${weapon.on_hit_effect}.`);
+    }
+
+    if (nextEnemyHp <= 0) {
+      setBattleEnemyHp(0);
+      setBattleFinished("victory");
+      setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+      return;
+    }
+
+    const incoming = Math.max(1, (Number(activeBattle.enemy_attack_damage) || 5) - bonuses.defense);
+    const nextPlayerHp = Math.max(0, battlePlayerHp - incoming);
+    nextLog.push(`${activeBattle.enemy_name || "Enemy"} hits for ${incoming}.`);
+    setBattleEnemyHp(nextEnemyHp);
+    setBattlePlayerHp(nextPlayerHp);
+
+    if (nextPlayerHp <= 0) {
+      setBattleFinished("defeat");
+      nextLog.push(activeBattle.defeat_text || "Defeat.");
+      await resetCurrentRouteAfterDefeat();
+    }
+
+    setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+  }
+
+  async function useBattleItem(entry: InventoryItem) {
+    const item = entry.item;
+    const defeated = battlePlayerHp <= 0 || battleFinished === "defeat";
+
+    if (defeated && item.type !== "revive potion") {
+      setBattleLog((current) => ["Only revive potions can be used after defeat.", ...current].slice(0, 8));
+      return;
+    }
+
+    if (item.type !== "potion" && item.type !== "revive potion") {
+      setBattleLog((current) => [`${item.name} has no battle use yet.`, ...current].slice(0, 8));
+      return;
+    }
+
+    const target = item.potion_target ?? "health";
+    const restoreFromPercent = item.restore_percent ? Math.ceil((target === "health" ? combatResources.maxHp : target === "stamina" ? combatResources.maxStamina : combatResources.maxMagicka) * (item.restore_percent / 100)) : 0;
+    const amount = Math.max(item.restore_amount, restoreFromPercent);
+
+    if (target === "health") {
+      setBattlePlayerHp((current) => Math.min(combatResources.maxHp, current + amount));
+      if (defeated) {
+        setBattleFinished(null);
+      }
+    } else if (target === "stamina") {
+      setBattleStamina((current) => Math.min(combatResources.maxStamina, current + amount));
+    } else {
+      setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + amount));
+    }
+
+    await consumeInventoryItem(entry, 1);
+    await loadInventory();
+    setBattleInventoryOpen(false);
+    setBattleLog((current) => [`Used ${item.name}. Restored ${amount} ${target}.`, ...current].slice(0, 8));
   }
 
   async function resetCurrentRouteAfterDefeat() {
@@ -1185,9 +1311,15 @@ export function MapScreen({ character }: MapScreenProps) {
         resources={combatResources}
         enemyHp={battleEnemyHp}
         equippedAbilities={equippedAbilities}
+        weapon={equippedItems.weapon ?? null}
+        battleItems={getBattleUsableItems(inventoryItems, battlePlayerHp <= 0 || battleFinished === "defeat")}
+        inventoryOpen={battleInventoryOpen}
         battleLog={battleLog}
         result={battleFinished}
         onAction={(ability) => void handleBattleAction(ability)}
+        onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
+        onUseItem={(item) => void useBattleItem(item)}
+        onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
         onRetry={() => startBattle(activeBattle)}
         onComplete={() => void finishEvent(activeBattle)}
       />
@@ -1920,6 +2052,19 @@ function choiceActionLabel(action: StoryDialogueChoice["action"]) {
   return "Return to map";
 }
 
+function formatResourceName(resource: string) {
+  if (resource === "magicka" || resource === "magika") {
+    return "Magika";
+  }
+  if (resource === "health") {
+    return "Health";
+  }
+  if (resource === "stamina") {
+    return "Stamina";
+  }
+  return resource;
+}
+
 function getChoiceTargetSummary(choice: StoryDialogueChoice, nodes: StoryDialogueNode[], events: MapEvent[]) {
   if (choice.action === "go_to_node") {
     const nextNode = nodes.find((node) => node.id === choice.next_node_id);
@@ -2027,9 +2172,15 @@ function BattleEventScreen({
   resources,
   enemyHp,
   equippedAbilities,
+  weapon,
+  battleItems,
+  inventoryOpen,
   battleLog,
   result,
   onAction,
+  onWeaponAction,
+  onUseItem,
+  onToggleInventory,
   onRetry,
   onComplete,
 }: {
@@ -2041,9 +2192,15 @@ function BattleEventScreen({
   resources: CharacterResources;
   enemyHp: number;
   equippedAbilities: Array<AbilityDefinition | null>;
+  weapon: ItemDefinition | null;
+  battleItems: InventoryItem[];
+  inventoryOpen: boolean;
   battleLog: string[];
   result: "victory" | "defeat" | null;
   onAction: (ability: AbilityDefinition) => void;
+  onWeaponAction: (weapon: ItemDefinition) => void;
+  onUseItem: (item: InventoryItem) => void;
+  onToggleInventory: () => void;
   onRetry: () => void;
   onComplete: () => void;
 }) {
@@ -2068,9 +2225,15 @@ function BattleEventScreen({
           <ProgressBar value={playerHp} max={resources.maxHp} color={colors.red} height={7} />
           <Text style={styles.copy}>Stamina {stamina} / {resources.maxStamina}</Text>
           <ProgressBar value={stamina} max={resources.maxStamina} color={colors.gold} height={7} />
-          <Text style={styles.copy}>Magicka {magicka} / {resources.maxMagicka}</Text>
+          <Text style={styles.copy}>Magika {magicka} / {resources.maxMagicka}</Text>
           <ProgressBar value={magicka} max={resources.maxMagicka} color={colors.blue} height={7} />
         </View>
+        {weapon ? (
+          <Pressable style={[styles.primaryButton, Boolean(result) && styles.disabledAction]} onPress={() => onWeaponAction(weapon)} disabled={Boolean(result)}>
+            <Text style={styles.primaryText}>{weapon.ability_name || weapon.name}</Text>
+            <Text style={styles.actionCost}>{weapon.ability_cost_type !== "none" ? `${weapon.ability_cost_amount} ${formatResourceName(weapon.ability_cost_type)}` : "no cost"} / {weapon.damage_amount + weapon.elemental_damage_amount} damage</Text>
+          </Pressable>
+        ) : null}
         <View style={styles.modeRow}>
           {equippedAbilities.map((ability, index) => {
             const hasResource = ability ? (ability.resource === "stamina" ? stamina : magicka) >= ability.cost : false;
@@ -2082,10 +2245,24 @@ function BattleEventScreen({
               disabled={!ability || !hasResource || Boolean(result)}
             >
               <Text style={styles.secondaryText}>{ability?.name ?? `Empty Slot ${index + 1}`}</Text>
-              {ability ? <Text style={styles.actionCost}>{ability.cost} {ability.resource}</Text> : null}
+              {ability ? <Text style={styles.actionCost}>{ability.cost} {ability.resource === "magicka" ? "Magika" : "Stamina"}</Text> : null}
             </Pressable>
           )})}
         </View>
+        <Pressable style={styles.secondaryButton} onPress={onToggleInventory}>
+          <Text style={styles.secondaryText}>Inventory</Text>
+        </Pressable>
+        {inventoryOpen ? (
+          <View style={styles.battleInventory}>
+            {battleItems.length === 0 ? <Text style={styles.copy}>No usable battle items.</Text> : null}
+            {battleItems.map((entry) => (
+              <Pressable key={entry.id} style={styles.feedItem} onPress={() => onUseItem(entry)}>
+                <Text style={styles.markerName}>{entry.item.name} x{entry.quantity}</Text>
+              <Text style={styles.copy}>{entry.item.type} - restores {entry.item.restore_amount || entry.item.restore_percent || 0} {formatResourceName(entry.item.potion_target ?? "health")}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         {result === "victory" ? (
           <Pressable style={styles.primaryButton} onPress={onComplete}>
             <Text style={styles.primaryText}>Complete Battle</Text>
@@ -2503,6 +2680,14 @@ const styles = StyleSheet.create({
   },
   resourceBars: {
     gap: 6,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  battleInventory: {
+    gap: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     borderRadius: 8,

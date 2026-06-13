@@ -119,7 +119,7 @@ export const abilityDefinitions: AbilityDefinition[] = [
   },
 ];
 
-export function getCharacterResources(character: CharacterWithDetails): CharacterResources {
+export function getCharacterResources(character: CharacterWithDetails, bonuses?: Partial<CharacterResources>): CharacterResources {
   const attributes = character.attributes;
   const strength = attributes?.strength ?? 0;
   const endurance = attributes?.endurance ?? 0;
@@ -128,9 +128,9 @@ export function getCharacterResources(character: CharacterWithDetails): Characte
   const spirit = attributes?.spirit ?? 0;
 
   return {
-    maxHp: 30 + endurance * 8 + strength * 2,
-    maxStamina: 12 + strength * 3 + endurance * 4,
-    maxMagicka: 10 + intelligence * 4 + wisdom * 3 + spirit * 4,
+    maxHp: 30 + endurance * 8 + strength * 2 + (bonuses?.maxHp ?? 0),
+    maxStamina: 12 + strength * 3 + endurance * 4 + (bonuses?.maxStamina ?? 0),
+    maxMagicka: 10 + intelligence * 4 + wisdom * 3 + spirit * 4 + (bonuses?.maxMagicka ?? 0),
   };
 }
 
