@@ -204,11 +204,10 @@ export async function createCharacter(input: CharacterCreationInput) {
     character_id: character.id,
     strength: 0,
     endurance: 0,
-    knowledge: 0,
-    craft: 0,
-    wealth: 0,
-    influence: 0,
-    exploration: 0,
+    agility: 0,
+    intelligence: 0,
+    wisdom: 0,
+    charisma: 0,
     spirit: 0,
   });
 

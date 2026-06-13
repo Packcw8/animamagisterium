@@ -18,10 +18,11 @@ export const player: Player = {
   attributes: [
     { name: "Strength", value: 18, color: "#d84a3c" },
     { name: "Endurance", value: 16, color: "#73c83f" },
-    { name: "Knowledge", value: 14, color: "#43a8d8" },
-    { name: "Craft", value: 12, color: "#8c55d7" },
-    { name: "Wealth", value: 10, color: "#d5a441" },
-    { name: "Influence", value: 8, color: "#46b7c8" },
+    { name: "Agility", value: 14, color: "#43a8d8" },
+    { name: "Intelligence", value: 12, color: "#8c55d7" },
+    { name: "Wisdom", value: 10, color: "#d5a441" },
+    { name: "Charisma", value: 8, color: "#46b7c8" },
+    { name: "Spirit", value: 7, color: "#7fe7ff" },
   ],
 };
 

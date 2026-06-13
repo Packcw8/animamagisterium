@@ -59,11 +59,10 @@ export type Tables = {
     character_id: string;
     strength: number;
     endurance: number;
-    knowledge: number;
-    craft: number;
-    wealth: number;
-    influence: number;
-    exploration: number;
+    agility: number;
+    intelligence: number;
+    wisdom: number;
+    charisma: number;
     spirit: number;
   };
   avatar_assets: {

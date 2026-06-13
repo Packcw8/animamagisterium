@@ -12,7 +12,7 @@ type CharacterSheetScreenProps = {
   onRefresh: () => void;
 };
 
-const attributeKeys = ["strength", "endurance", "knowledge", "craft", "wealth", "influence", "exploration", "spirit"] as const;
+const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 
 export function CharacterSheetScreen({ character, onRefresh }: CharacterSheetScreenProps) {
   return (

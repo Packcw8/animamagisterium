@@ -40,8 +40,6 @@ import {
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const mapSize = { width: 1800, height: 1400 };
 const markerTypes = ["Town", "Village", "Quest", "Dungeon", "Battle", "Boss", "Merchant", "Training Area", "Landmark", "Occult Clue", "Guild", "Custom"];
-const feedSeeds = ["Wolf tracks discovered", "Merchant caravan spotted", "Broken Moon symbol found", "Cultist activity nearby"];
-const encounterTypes = ["Wolves", "Bandits", "Merchants", "Quest discoveries", "Bosses", "Occult events"];
 const editorModes = ["Marker", "Walking Path"] as const;
 const storyTriggerTypes = ["progress", "random"] as const;
 const eventTypes = ["story", "battle"] as const;
@@ -75,7 +73,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const [lastPosition, setLastPosition] = useState<Coordinate | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [gpsMessage, setGpsMessage] = useState("GPS is off. Start tracking to count real-world walking distance.");
-  const [feed, setFeed] = useState(feedSeeds);
+  const [routeProgressRows, setRouteProgressRows] = useState<Array<{ route_id: string; progress_percent: number }>>([]);
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
   const [draftType, setDraftType] = useState(markerTypes[0]);
@@ -123,9 +121,6 @@ export function MapScreen({ character }: MapScreenProps) {
     scrollTo?: (options: { left: number; top: number; behavior?: "smooth" | "auto" }) => void;
   } | null>(null);
   const watchId = useRef<number | null>(null);
-  const lastEncounterBucket = useRef(0);
-  const lastStoryBucket = useRef(0);
-  const triggeredStoryIds = useRef<Set<string>>(new Set());
   const distanceWalkedRef = useRef(0);
   const routeRef = useRef(fallbackRoute);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
@@ -139,6 +134,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const routeSegments = useMemo(() => getRouteSegmentsForRoutes(orderedRoutes, route.id), [orderedRoutes, route.id]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [pathDraft]);
   const visibleMarkers = isAdmin ? markers : markers.filter((marker) => marker.is_active && marker.is_unlocked);
+  const unlockedRouteIds = useMemo(() => getUnlockedRouteIds(orderedRoutes, routeProgressRows), [orderedRoutes, routeProgressRows]);
 
   useEffect(() => {
     void loadMap();
@@ -165,49 +161,6 @@ export function MapScreen({ character }: MapScreenProps) {
   }, [route]);
 
   useEffect(() => {
-    const bucket = Math.floor(progressPercent / 15);
-
-    if (bucket > lastEncounterBucket.current) {
-      lastEncounterBucket.current = bucket;
-      const encounter = encounterTypes[Math.floor(Math.random() * encounterTypes.length)];
-      setFeed((current) => [`${encounter} encountered near ${route.name}`, ...current].slice(0, 8));
-    }
-  }, [progressPercent, route.name]);
-
-  useEffect(() => {
-    const activeStories = storyInstances.filter((story) => story.is_active);
-    const nextFeedItems: string[] = [];
-
-    activeStories.forEach((story) => {
-      if (story.trigger_type !== "progress" || story.trigger_percent === null || triggeredStoryIds.current.has(story.id)) {
-        return;
-      }
-
-      if (progressPercent >= Number(story.trigger_percent)) {
-        triggeredStoryIds.current.add(story.id);
-        nextFeedItems.push(formatStoryFeed(story));
-      }
-    });
-
-    const bucket = Math.floor(progressPercent / 10);
-    if (bucket > lastStoryBucket.current) {
-      lastStoryBucket.current = bucket;
-      activeStories
-        .filter((story) => story.trigger_type === "random" && !triggeredStoryIds.current.has(story.id))
-        .forEach((story) => {
-          if (Math.random() * 100 <= Number(story.chance_percent)) {
-            triggeredStoryIds.current.add(story.id);
-            nextFeedItems.push(formatStoryFeed(story));
-          }
-        });
-    }
-
-    if (nextFeedItems.length > 0) {
-      setFeed((current) => [...nextFeedItems, ...current].slice(0, 10));
-    }
-  }, [progressPercent, storyInstances]);
-
-  useEffect(() => {
     if (progressPercent < 100 || completedRouteId === route.id) {
       return;
     }
@@ -216,12 +169,12 @@ export function MapScreen({ character }: MapScreenProps) {
     const nextRoute = getNextRoute(orderedRoutes, route);
 
     if (!nextRoute) {
-      setFeed((current) => [`${route.name} completed. No next walking path is active yet.`, ...current].slice(0, 10));
+      setGpsMessage(`${route.name} completed. No next walking path is active yet.`);
       return;
     }
 
-    setFeed((current) => [`${route.name} completed. Beginning ${nextRoute.name}.`, ...current].slice(0, 10));
-    void selectRoute(nextRoute);
+    setGpsMessage(`${route.name} completed. Beginning ${nextRoute.name}.`);
+    void selectRoute(nextRoute, true);
   }, [completedRouteId, orderedRoutes, progressPercent, route]);
 
   useEffect(() => {
@@ -254,14 +207,20 @@ export function MapScreen({ character }: MapScreenProps) {
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const progressRows = await getRouteProgressForRoutes(nextRoutes.map((item) => item.id));
     const firstRoute = getFirstUnfinishedRoute(nextRoutes, progressRows) ?? nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
+    setRouteProgressRows(progressRows);
     setRoutes(nextRoutes);
     setPathDraft([]);
     setMarkers(loadedMarkers);
     setRole(loadedRole);
-    await selectRoute(firstRoute);
+    await selectRoute(firstRoute, true);
   }
 
-  async function selectRoute(nextRoute: MapRoute) {
+  async function selectRoute(nextRoute: MapRoute, force = false) {
+    if (!force && !isAdmin && !unlockedRouteIds.has(nextRoute.id)) {
+      setGpsMessage("That trail is locked. Complete earlier trails first.");
+      return;
+    }
+
     setRoute(nextRoute);
     setRouteName(nextRoute.name);
     setRouteOrder(String(nextRoute.sort_order));
@@ -269,9 +228,6 @@ export function MapScreen({ character }: MapScreenProps) {
     setRouteDanger(nextRoute.danger_level);
     setRouteDistance(String(Math.round(nextRoute.distance_required_meters)));
     setPathDraft([]);
-    triggeredStoryIds.current = new Set();
-    lastEncounterBucket.current = 0;
-    lastStoryBucket.current = 0;
     distanceWalkedRef.current = 0;
     setSavedPlayerPosition(null);
     setDistanceWalked(0);
@@ -316,9 +272,11 @@ export function MapScreen({ character }: MapScreenProps) {
         setLastPosition((previous) => {
           if (!previous) {
             const activeRoute = routeRef.current;
+            const currentProgress = (distanceWalkedRef.current / activeRoute.distance_required_meters) * 100;
+            setRouteProgressRows((current) => upsertRouteProgressRow(current, activeRoute.id, currentProgress));
             void saveRouteProgress(activeRoute.id, {
               distance_walked_meters: distanceWalkedRef.current,
-              progress_percent: (distanceWalkedRef.current / activeRoute.distance_required_meters) * 100,
+              progress_percent: currentProgress,
               current_x_percent: playerPosition.x,
               current_y_percent: playerPosition.y,
               last_lat: next.latitude,
@@ -337,6 +295,7 @@ export function MapScreen({ character }: MapScreenProps) {
           distanceWalkedRef.current = nextDistance;
           setSavedPlayerPosition(nextMapPosition);
           setDistanceWalked(nextDistance);
+          setRouteProgressRows((current) => upsertRouteProgressRow(current, activeRoute.id, nextProgress));
           void saveRouteProgress(activeRoute.id, {
             distance_walked_meters: nextDistance,
             progress_percent: nextProgress,
@@ -593,7 +552,7 @@ export function MapScreen({ character }: MapScreenProps) {
         is_active: true,
       });
       setRoutes((current) => [...current, created].sort(compareRoutes));
-      await selectRoute(created);
+      await selectRoute(created, true);
       setAdminMessage("New walking path created.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to create walking path. Confirm the Supabase migration has run."));
@@ -660,7 +619,7 @@ export function MapScreen({ character }: MapScreenProps) {
       setCompletedEventIds((current) => new Set([...current, event.id]));
       setActiveEvent(null);
       setActiveBattle(null);
-      setFeed((current) => [`${event.title} completed.`, ...current].slice(0, 10));
+      setGpsMessage(`${event.title} completed.`);
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to complete event."));
     }
@@ -688,7 +647,7 @@ export function MapScreen({ character }: MapScreenProps) {
       return;
     }
 
-    setFeed((current) => [`${activeEvent.title}: ${action}`, ...current].slice(0, 10));
+    setGpsMessage(`${activeEvent.title}: ${action}`);
   }
 
   function handleBattleAction(action: "Strike" | "Guard" | "Heavy Attack") {
@@ -966,8 +925,12 @@ export function MapScreen({ character }: MapScreenProps) {
         </View>
         <View style={styles.routePicker}>
           {orderedRoutes.map((item) => (
-            <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item)}>
-              <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+            <Pressable
+              key={item.id}
+              style={[styles.routeChip, route.id === item.id && styles.routeChipActive, !isAdmin && !unlockedRouteIds.has(item.id) && styles.routeChipLocked]}
+              onPress={() => void selectRoute(item)}
+            >
+              <Text style={styles.routeChipText}>{item.sort_order}. {item.name}{!isAdmin && !unlockedRouteIds.has(item.id) ? " (Locked)" : ""}</Text>
             </Pressable>
           ))}
         </View>
@@ -982,13 +945,6 @@ export function MapScreen({ character }: MapScreenProps) {
         <Text style={styles.gpsMessage}>{gpsMessage}</Text>
       </Frame>
 
-      <Frame style={styles.panel}>
-        <Text style={styles.sectionTitle}>Travel Feed</Text>
-        {feed.map((item, index) => (
-          <Text key={`${item}-${index}`} style={styles.feedItem}>{item}</Text>
-        ))}
-      </Frame>
-
       {isAdmin ? (
         <Frame style={styles.panel}>
           <Text style={styles.sectionTitle}>Admin Map Editor</Text>
@@ -996,7 +952,7 @@ export function MapScreen({ character }: MapScreenProps) {
           <View style={styles.routeList}>
             <Text style={styles.selectedTitle}>Walking Path Order</Text>
             {orderedRoutes.map((item) => (
-              <Pressable key={item.id} style={[styles.routeRow, route.id === item.id && styles.routeRowActive]} onPress={() => void selectRoute(item)}>
+              <Pressable key={item.id} style={[styles.routeRow, route.id === item.id && styles.routeRowActive]} onPress={() => void selectRoute(item, true)}>
                 <Text style={styles.routeNumber}>{item.sort_order}</Text>
                 <View style={styles.routeRowText}>
                   <Text style={styles.markerName}>{item.name}</Text>
@@ -1065,7 +1021,7 @@ export function MapScreen({ character }: MapScreenProps) {
             <Text style={styles.copy}>Select the route before adding a story instance. Random stories use the chance percent below when travel progress reaches a new 10% route bucket.</Text>
             <View style={styles.storyRoutePicker}>
               {orderedRoutes.map((item) => (
-                <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item)}>
+                <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item, true)}>
                   <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
                 </Pressable>
               ))}
@@ -1111,7 +1067,7 @@ export function MapScreen({ character }: MapScreenProps) {
             <Text style={styles.copy}>Create story or battle events for the selected trail. The distance marker is the route progress percent where the event opens for players.</Text>
             <View style={styles.storyRoutePicker}>
               {orderedRoutes.map((item) => (
-                <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item)}>
+                <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item, true)}>
                   <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
                 </Pressable>
               ))}
@@ -1277,10 +1233,6 @@ function getErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-function formatStoryFeed(story: MapStoryInstance) {
-  return story.body ? `${story.title}: ${story.body}` : story.title;
-}
-
 function compareRoutes(a: MapRoute, b: MapRoute) {
   if (a.sort_order !== b.sort_order) {
     return a.sort_order - b.sort_order;
@@ -1297,6 +1249,31 @@ function getNextRoute(routes: MapRoute[], currentRoute: MapRoute) {
 function getFirstUnfinishedRoute(routes: MapRoute[], progressRows: Array<{ route_id: string; progress_percent: number }>) {
   const progressByRoute = new Map(progressRows.map((progress) => [progress.route_id, Number(progress.progress_percent)]));
   return routes.find((mapRoute) => mapRoute.is_active && (progressByRoute.get(mapRoute.id) ?? 0) < 100) ?? null;
+}
+
+function getUnlockedRouteIds(routes: MapRoute[], progressRows: Array<{ route_id: string; progress_percent: number }>) {
+  const progressByRoute = new Map(progressRows.map((progress) => [progress.route_id, Number(progress.progress_percent)]));
+  const unlocked = new Set<string>();
+
+  for (const route of routes.filter((item) => item.is_active)) {
+    unlocked.add(route.id);
+
+    if ((progressByRoute.get(route.id) ?? 0) < 100) {
+      break;
+    }
+  }
+
+  return unlocked;
+}
+
+function upsertRouteProgressRow(rows: Array<{ route_id: string; progress_percent: number }>, routeId: string, progressPercent: number) {
+  const existing = rows.some((row) => row.route_id === routeId);
+
+  if (existing) {
+    return rows.map((row) => (row.route_id === routeId ? { ...row, progress_percent: progressPercent } : row));
+  }
+
+  return [...rows, { route_id: routeId, progress_percent: progressPercent }];
 }
 
 function getNextRouteOrder(routes: MapRoute[]) {
@@ -1662,6 +1639,10 @@ const styles = StyleSheet.create({
   routeChipActive: {
     borderColor: colors.blue,
     backgroundColor: "rgba(20, 61, 86, 0.7)",
+  },
+  routeChipLocked: {
+    opacity: 0.45,
+    borderStyle: "dashed",
   },
   routeChipText: {
     color: colors.text,

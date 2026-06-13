@@ -12,7 +12,7 @@ type HomeScreenProps = {
 };
 
 const homeTabs = ["Overview", "Identity", "Attributes", "Skills", "Inventory"] as const;
-const attributeKeys = ["strength", "endurance", "knowledge", "craft", "wealth", "influence", "exploration", "spirit"] as const;
+const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 
 export function HomeScreen({ character }: HomeScreenProps) {
   const [activeTab, setActiveTab] = useState<(typeof homeTabs)[number]>("Overview");
