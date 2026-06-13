@@ -171,6 +171,24 @@ export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | 
   return data as MapMarker;
 }
 
+export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active">>) {
+  const { data, error } = await supabase
+    .from("map_routes")
+    .update({
+      ...values,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", routeId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MapRoute;
+}
+
 export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key">>) {
   const { data, error } = await supabase
     .from("map_markers")

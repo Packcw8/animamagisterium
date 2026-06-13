@@ -20,6 +20,7 @@ import {
   Role,
   saveRouteProgress,
   updateMapMarker,
+  updateMapRoute,
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
@@ -27,6 +28,7 @@ const mapSize = { width: 1800, height: 1400 };
 const markerTypes = ["Town", "Village", "Quest", "Dungeon", "Battle", "Boss", "Merchant", "Training Area", "Landmark", "Occult Clue", "Guild", "Custom"];
 const feedSeeds = ["Wolf tracks discovered", "Merchant caravan spotted", "Broken Moon symbol found", "Cultist activity nearby"];
 const encounterTypes = ["Wolves", "Bandits", "Merchants", "Quest discoveries", "Bosses", "Occult events"];
+const editorModes = ["Marker", "Walking Path"] as const;
 
 type MapScreenProps = {
   character: CharacterWithDetails;
@@ -51,6 +53,13 @@ export function MapScreen({ character }: MapScreenProps) {
   const [draftType, setDraftType] = useState(markerTypes[0]);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDescription, setDraftDescription] = useState("");
+  const [editorMode, setEditorMode] = useState<(typeof editorModes)[number]>("Marker");
+  const [pathDraft, setPathDraft] = useState<Array<{ x: number; y: number }>>([]);
+  const [routeName, setRouteName] = useState("");
+  const [routeTerrain, setRouteTerrain] = useState("");
+  const [routeDanger, setRouteDanger] = useState("");
+  const [routeDistance, setRouteDistance] = useState("");
+  const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [scale, setScale] = useState(0.72);
   const [offset, setOffset] = useState({ x: -320, y: -210 });
   const [followPlayer, setFollowPlayer] = useState(true);
@@ -63,13 +72,15 @@ export function MapScreen({ character }: MapScreenProps) {
 
   const progressPercent = Math.min(100, Math.max(0, (distanceWalked / route.distance_required_meters) * 100));
   const playerPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
-  const visibleMarkers = markers.filter((marker) => marker.is_active && marker.is_unlocked);
+  const pathForDisplay = pathDraft.length > 0 ? pathDraft : route.path_points;
+  const routeSegments = useMemo(() => getRouteSegments(pathForDisplay), [pathForDisplay]);
+  const visibleMarkers = isAdmin ? markers : markers.filter((marker) => marker.is_active && marker.is_unlocked);
 
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6,
         onPanResponderGrant: (event) => {
           panStart.current = offset;
           const touches = event.nativeEvent.touches;
@@ -86,10 +97,10 @@ export function MapScreen({ character }: MapScreenProps) {
             return;
           }
 
-          setOffset({
-            x: panStart.current.x + gesture.dx,
-            y: panStart.current.y + gesture.dy,
-          });
+          setOffset(clampOffset({
+            x: panStart.current.x + gesture.dx * 1.18,
+            y: panStart.current.y + gesture.dy * 1.18,
+          }, scale));
           setFollowPlayer(false);
         },
         onPanResponderRelease: () => setPinchDistance(null),
@@ -130,6 +141,11 @@ export function MapScreen({ character }: MapScreenProps) {
   async function loadMap() {
     const [loadedRoute, loadedMarkers, loadedRole] = await Promise.all([getActiveRoute(), getMapMarkers(), getCurrentRole()]);
     setRoute(loadedRoute);
+    setRouteName(loadedRoute.name);
+    setRouteTerrain(loadedRoute.terrain);
+    setRouteDanger(loadedRoute.danger_level);
+    setRouteDistance(String(Math.round(loadedRoute.distance_required_meters)));
+    setPathDraft(loadedRoute.path_points);
     setMarkers(loadedMarkers);
     setRole(loadedRole);
 
@@ -241,8 +257,13 @@ export function MapScreen({ character }: MapScreenProps) {
 
     const x = clamp((event.nativeEvent.locationX / mapSize.width) * 100, 0, 100);
     const y = clamp((event.nativeEvent.locationY / mapSize.height) * 100, 0, 100);
-    setClickedPercent({ x: roundPercent(x), y: roundPercent(y) });
+    const nextPoint = { x: roundPercent(x), y: roundPercent(y) };
+    setClickedPercent(nextPoint);
     setSelectedMarker(null);
+
+    if (editorMode === "Walking Path") {
+      setPathDraft((current) => [...current, nextPoint]);
+    }
   }
 
   async function copyCoordinates() {
@@ -258,20 +279,25 @@ export function MapScreen({ character }: MapScreenProps) {
       return;
     }
 
-    const created = await createMapMarker({
-      type: draftType,
-      title: draftTitle.trim(),
-      description: draftDescription.trim() || null,
-      x_percent: clickedPercent.x,
-      y_percent: clickedPercent.y,
-      is_active: true,
-      is_unlocked: true,
-      route_id: route.id,
-      quest_key: null,
-    });
-    setMarkers((current) => [...current, created]);
-    setDraftTitle("");
-    setDraftDescription("");
+    try {
+      const created = await createMapMarker({
+        type: draftType,
+        title: draftTitle.trim(),
+        description: draftDescription.trim() || null,
+        x_percent: clickedPercent.x,
+        y_percent: clickedPercent.y,
+        is_active: true,
+        is_unlocked: true,
+        route_id: route.id,
+        quest_key: null,
+      });
+      setMarkers((current) => [...current, created]);
+      setDraftTitle("");
+      setDraftDescription("");
+      setAdminMessage("Marker created.");
+    } catch (error) {
+      setAdminMessage(error instanceof Error ? error.message : "Unable to create marker. Confirm the Supabase migration has run.");
+    }
   }
 
   async function moveSelectedMarker() {
@@ -279,12 +305,17 @@ export function MapScreen({ character }: MapScreenProps) {
       return;
     }
 
-    const updated = await updateMapMarker(selectedMarker.id, {
-      x_percent: clickedPercent.x,
-      y_percent: clickedPercent.y,
-    });
-    setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
-    setSelectedMarker(updated);
+    try {
+      const updated = await updateMapMarker(selectedMarker.id, {
+        x_percent: clickedPercent.x,
+        y_percent: clickedPercent.y,
+      });
+      setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
+      setSelectedMarker(updated);
+      setAdminMessage("Marker moved.");
+    } catch (error) {
+      setAdminMessage(error instanceof Error ? error.message : "Unable to move marker.");
+    }
   }
 
   async function toggleSelectedMarker() {
@@ -292,11 +323,16 @@ export function MapScreen({ character }: MapScreenProps) {
       return;
     }
 
-    const updated = await updateMapMarker(selectedMarker.id, {
-      is_active: !selectedMarker.is_active,
-    });
-    setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
-    setSelectedMarker(updated);
+    try {
+      const updated = await updateMapMarker(selectedMarker.id, {
+        is_active: !selectedMarker.is_active,
+      });
+      setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
+      setSelectedMarker(updated);
+      setAdminMessage(updated.is_active ? "Marker revealed." : "Marker hidden.");
+    } catch (error) {
+      setAdminMessage(error instanceof Error ? error.message : "Unable to update marker.");
+    }
   }
 
   async function removeSelectedMarker() {
@@ -304,9 +340,39 @@ export function MapScreen({ character }: MapScreenProps) {
       return;
     }
 
-    await deleteMapMarker(selectedMarker.id);
-    setMarkers((current) => current.filter((marker) => marker.id !== selectedMarker.id));
-    setSelectedMarker(null);
+    try {
+      await deleteMapMarker(selectedMarker.id);
+      setMarkers((current) => current.filter((marker) => marker.id !== selectedMarker.id));
+      setSelectedMarker(null);
+      setAdminMessage("Marker deleted.");
+    } catch (error) {
+      setAdminMessage(error instanceof Error ? error.message : "Unable to delete marker.");
+    }
+  }
+
+  async function saveWalkingPath() {
+    if (pathDraft.length < 2) {
+      setAdminMessage("Add at least two path points before saving.");
+      return;
+    }
+
+    try {
+      const updated = await updateMapRoute(route.id, {
+        name: routeName.trim() || route.name,
+        terrain: routeTerrain.trim() || route.terrain,
+        danger_level: routeDanger.trim() || route.danger_level,
+        distance_required_meters: Number(routeDistance) || route.distance_required_meters,
+        path_points: pathDraft,
+      });
+      setRoute(updated);
+      setAdminMessage("Walking path saved.");
+    } catch (error) {
+      setAdminMessage(error instanceof Error ? error.message : "Unable to save walking path. Confirm the Supabase migration has run.");
+    }
+  }
+
+  function undoPathPoint() {
+    setPathDraft((current) => current.slice(0, -1));
   }
 
   return (
@@ -326,6 +392,7 @@ export function MapScreen({ character }: MapScreenProps) {
         <Pressable style={styles.toolButton} onPress={centerOnPlayer}><Text style={styles.toolText}>Center Player</Text></Pressable>
         <Pressable style={[styles.toolButton, followPlayer && styles.toolActive]} onPress={() => setFollowPlayer((value) => !value)}><Text style={styles.toolText}>Follow {followPlayer ? "On" : "Off"}</Text></Pressable>
       </View>
+      <Text style={styles.mapHint}>Drag the map to pan. Pinch or use the controls to zoom. GPS distance moves your portrait along fantasy routes only.</Text>
 
       <View style={styles.viewport} {...panResponder.panHandlers} {...({ onWheel: handleWheel } as object)}>
         <Pressable
@@ -340,11 +407,29 @@ export function MapScreen({ character }: MapScreenProps) {
           onPress={handleMapPress}
         >
           <Image source={forgottenMarches} style={styles.mapImage} />
-          <View style={styles.routeLine} />
+          {routeSegments.map((segment, index) => (
+            <View
+              key={`${segment.left}-${segment.top}-${index}`}
+              style={[
+                styles.routeSegment,
+                {
+                  left: `${segment.left}%`,
+                  top: `${segment.top}%`,
+                  width: segment.length,
+                  transform: [{ rotate: `${segment.angle}deg` }],
+                },
+              ]}
+            />
+          ))}
+          {pathForDisplay.map((point, index) => (
+            <View key={`${point.x}-${point.y}-${index}`} style={[styles.pathPoint, { left: `${point.x}%`, top: `${point.y}%` }]}>
+              <Text style={styles.pathPointText}>{index + 1}</Text>
+            </View>
+          ))}
           {visibleMarkers.map((marker) => (
             <Pressable
               key={marker.id}
-              style={[styles.marker, { left: `${marker.x_percent}%`, top: `${marker.y_percent}%` }]}
+              style={[styles.marker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, { left: `${marker.x_percent}%`, top: `${marker.y_percent}%` }]}
               onPress={(event) => {
                 event.stopPropagation();
                 setSelectedMarker(marker);
@@ -398,24 +483,55 @@ export function MapScreen({ character }: MapScreenProps) {
       {isAdmin ? (
         <Frame style={styles.panel}>
           <Text style={styles.sectionTitle}>Admin Map Editor</Text>
-          <Text style={styles.copy}>Click the map to inspect percentage coordinates, create markers, or move a selected marker.</Text>
+          <Text style={styles.copy}>Choose a mode, then click the map. All map content uses percentage coordinates, never pixels or GPS coordinates.</Text>
+          <View style={styles.modeRow}>
+            {editorModes.map((mode) => (
+              <Pressable key={mode} style={[styles.modeButton, editorMode === mode && styles.typeSelected]} onPress={() => setEditorMode(mode)}>
+                <Text style={styles.typeText}>{mode}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {adminMessage ? <Text style={styles.adminMessage}>{adminMessage}</Text> : null}
           <Info label="Clicked Coordinates" value={clickedPercent ? `X ${clickedPercent.x}% / Y ${clickedPercent.y}%` : "Tap the map"} />
           <Pressable style={styles.secondaryButton} onPress={() => void copyCoordinates()} disabled={!clickedPercent}>
             <Text style={styles.secondaryText}>Copy Coordinates</Text>
           </Pressable>
-          <View style={styles.typeGrid}>
-            {markerTypes.map((type) => (
-              <Pressable key={type} style={[styles.typeButton, draftType === type && styles.typeSelected]} onPress={() => setDraftType(type)}>
-                <Text style={styles.typeText}>{type}</Text>
+          {editorMode === "Marker" ? (
+            <>
+              <View style={styles.typeGrid}>
+                {markerTypes.map((type) => (
+                  <Pressable key={type} style={[styles.typeButton, draftType === type && styles.typeSelected]} onPress={() => setDraftType(type)}>
+                    <Text style={styles.typeText}>{type}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
+              <Pressable style={styles.primaryButton} onPress={() => void addMarker()} disabled={!clickedPercent || !draftTitle.trim()}>
+                <Text style={styles.primaryText}>Create Marker</Text>
               </Pressable>
-            ))}
-          </View>
-          <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
-          <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
-          <Pressable style={styles.primaryButton} onPress={() => void addMarker()} disabled={!clickedPercent || !draftTitle.trim()}>
-            <Text style={styles.primaryText}>Create Marker</Text>
-          </Pressable>
-          {selectedMarker ? (
+            </>
+          ) : (
+            <View style={styles.pathEditor}>
+              <TextInput value={routeName} onChangeText={setRouteName} placeholder="Route name" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={routeTerrain} onChangeText={setRouteTerrain} placeholder="Terrain" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={routeDanger} onChangeText={setRouteDanger} placeholder="Danger level" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
+              <Info label="Path Points" value={String(pathDraft.length)} />
+              <View style={styles.modeRow}>
+                <Pressable style={styles.secondaryButtonFlex} onPress={() => setPathDraft([])}>
+                  <Text style={styles.secondaryText}>Clear Path</Text>
+                </Pressable>
+                <Pressable style={styles.secondaryButtonFlex} onPress={undoPathPoint}>
+                  <Text style={styles.secondaryText}>Undo Point</Text>
+                </Pressable>
+              </View>
+              <Pressable style={styles.primaryButton} onPress={() => void saveWalkingPath()}>
+                <Text style={styles.primaryText}>Save Walking Path</Text>
+              </Pressable>
+            </View>
+          )}
+          {selectedMarker && editorMode === "Marker" ? (
             <View style={styles.adminActions}>
               <Text style={styles.selectedTitle}>Selected: {selectedMarker.title}</Text>
               <Pressable style={styles.secondaryButton} onPress={() => void moveSelectedMarker()} disabled={!clickedPercent}>
@@ -475,6 +591,33 @@ function getPointOnRoute(points: Array<{ x: number; y: number }>, progressPercen
   }
 
   return points[points.length - 1];
+}
+
+function getRouteSegments(points: Array<{ x: number; y: number }>) {
+  return points.slice(1).map((point, index) => {
+    const previous = points[index];
+    const dx = point.x - previous.x;
+    const dy = point.y - previous.y;
+
+    return {
+      left: previous.x,
+      top: previous.y,
+      length: (Math.hypot(dx, dy) / 100) * mapSize.width,
+      angle: Math.atan2(dy * mapSize.height, dx * mapSize.width) * (180 / Math.PI),
+    };
+  });
+}
+
+function clampOffset(nextOffset: { x: number; y: number }, scale: number) {
+  const scaledWidth = mapSize.width * scale;
+  const scaledHeight = mapSize.height * scale;
+  const minX = Math.min(40, 360 - scaledWidth);
+  const minY = Math.min(40, 520 - scaledHeight);
+
+  return {
+    x: clamp(nextOffset.x, minX, 80),
+    y: clamp(nextOffset.y, minY, 80),
+  };
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -544,6 +687,13 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 12,
   },
+  mapHint: {
+    color: colors.muted,
+    lineHeight: 18,
+    paddingHorizontal: 14,
+    paddingBottom: 10,
+    fontSize: 12,
+  },
   viewport: {
     height: 520,
     marginHorizontal: 12,
@@ -563,17 +713,29 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  routeLine: {
+  routeSegment: {
     position: "absolute",
-    left: "18%",
-    top: "38%",
-    width: "50%",
-    height: "32%",
-    borderLeftWidth: 4,
-    borderBottomWidth: 4,
-    borderColor: "rgba(66, 178, 232, 0.55)",
-    borderBottomLeftRadius: 120,
-    transform: [{ rotate: "-14deg" }],
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: "rgba(66, 178, 232, 0.62)",
+    transformOrigin: "0 50%",
+  } as object,
+  pathPoint: {
+    position: "absolute",
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.blue,
+    backgroundColor: "rgba(4, 6, 6, 0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ translateX: -14 }, { translateY: -14 }],
+  },
+  pathPointText: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 11,
   },
   marker: {
     position: "absolute",
@@ -585,6 +747,10 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(4, 6, 6, 0.78)",
     padding: 8,
     transform: [{ translateX: -48 }, { translateY: -29 }],
+  },
+  markerHidden: {
+    opacity: 0.46,
+    borderStyle: "dashed",
   },
   markerDot: {
     position: "absolute",
@@ -698,6 +864,26 @@ const styles = StyleSheet.create({
     color: colors.muted,
     lineHeight: 20,
   },
+  modeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  modeButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  adminMessage: {
+    color: colors.blue,
+    fontWeight: "800",
+    lineHeight: 20,
+  },
   secondaryButton: {
     minHeight: 46,
     alignItems: "center",
@@ -709,6 +895,15 @@ const styles = StyleSheet.create({
   secondaryText: {
     color: colors.blue,
     fontWeight: "900",
+  },
+  secondaryButtonFlex: {
+    flex: 1,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
   },
   typeGrid: {
     flexDirection: "row",
@@ -751,6 +946,9 @@ const styles = StyleSheet.create({
   primaryText: {
     color: "#120e08",
     fontWeight: "900",
+  },
+  pathEditor: {
+    gap: 10,
   },
   adminActions: {
     gap: 10,
