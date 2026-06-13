@@ -26,6 +26,18 @@ export const fallbackRoute: MapRoute = {
 
 export const fallbackMarkers: MapMarker[] = [];
 
+const seededMarkerTitles = new Set([
+  "Mirehold Crossing",
+  "Wolf Track Bend",
+  "Copper Cart Waystation",
+  "Broken Moon Cairn",
+  "Hollow Watch",
+]);
+
+function isSeededMarker(marker: MapMarker) {
+  return !marker.created_by || seededMarkerTitles.has(marker.title);
+}
+
 export async function getCurrentRole(): Promise<Role> {
   const {
     data: { user },
@@ -64,7 +76,7 @@ export async function getMapMarkers() {
     return fallbackMarkers;
   }
 
-  return (data ?? []) as MapMarker[];
+  return ((data ?? []) as MapMarker[]).filter((marker) => !isSeededMarker(marker));
 }
 
 export async function getRouteProgress(routeId: string) {
