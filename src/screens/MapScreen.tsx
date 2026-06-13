@@ -327,7 +327,7 @@ export function MapScreen({ character }: MapScreenProps) {
       setClickedPercent(null);
       setAdminMessage("Marker created.");
     } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : "Unable to create marker. Confirm the Supabase migration has run.");
+      setAdminMessage(getErrorMessage(error, "Unable to create marker. Confirm the Supabase migration has run."));
     }
   }
 
@@ -345,7 +345,7 @@ export function MapScreen({ character }: MapScreenProps) {
       setSelectedMarker(updated);
       setAdminMessage("Marker moved.");
     } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : "Unable to move marker.");
+      setAdminMessage(getErrorMessage(error, "Unable to move marker."));
     }
   }
 
@@ -362,7 +362,7 @@ export function MapScreen({ character }: MapScreenProps) {
       setSelectedMarker(updated);
       setAdminMessage(updated.is_active ? "Marker revealed." : "Marker hidden.");
     } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : "Unable to update marker.");
+      setAdminMessage(getErrorMessage(error, "Unable to update marker."));
     }
   }
 
@@ -377,7 +377,7 @@ export function MapScreen({ character }: MapScreenProps) {
       setSelectedMarker(null);
       setAdminMessage("Marker deleted.");
     } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : "Unable to delete marker.");
+      setAdminMessage(getErrorMessage(error, "Unable to delete marker."));
     }
   }
 
@@ -398,7 +398,7 @@ export function MapScreen({ character }: MapScreenProps) {
       setRoute(updated);
       setAdminMessage("Walking path saved.");
     } catch (error) {
-      setAdminMessage(error instanceof Error ? error.message : "Unable to save walking path. Confirm the Supabase migration has run.");
+      setAdminMessage(getErrorMessage(error, "Unable to save walking path. Confirm the Supabase migration has run."));
     }
   }
 
@@ -658,6 +658,18 @@ function roundPercent(value: number) {
 
 function metersToMiles(meters: number) {
   return (meters / 1609.344).toFixed(2);
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "object" && error !== null && "message" in error && typeof error.message === "string") {
+    return error.message;
+  }
+
+  return fallback;
 }
 
 function Info({ label, value }: { label: string; value: string }) {
