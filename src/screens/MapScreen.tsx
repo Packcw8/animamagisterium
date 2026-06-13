@@ -7,6 +7,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
+import { AbilityDefinition, CharacterResources, getAbilityDamage, getCharacterResources, getCombatLoadout } from "../services/abilityService";
 import {
   completeMapEvent,
   createDialogueChoice,
@@ -32,6 +33,7 @@ import {
   MapEvent,
   MapRoute,
   Role,
+  resetRouteProgress,
   StoryDialogueChoice,
   StoryDialogueNode,
   saveRouteProgress,
@@ -90,9 +92,13 @@ export function MapScreen({ character }: MapScreenProps) {
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [dialogueLog, setDialogueLog] = useState<string[]>([]);
   const [battlePlayerHp, setBattlePlayerHp] = useState(100);
+  const [battleStamina, setBattleStamina] = useState(0);
+  const [battleMagicka, setBattleMagicka] = useState(0);
   const [battleEnemyHp, setBattleEnemyHp] = useState(0);
   const [battleLog, setBattleLog] = useState<string[]>([]);
   const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | null>(null);
+  const [combatResources, setCombatResources] = useState<CharacterResources>(() => getCharacterResources(character));
+  const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
   const [role, setRole] = useState<Role>("player");
   const [distanceWalked, setDistanceWalked] = useState(0);
   const [savedPlayerPosition, setSavedPlayerPosition] = useState<{ x: number; y: number } | null>(null);
@@ -194,6 +200,7 @@ export function MapScreen({ character }: MapScreenProps) {
 
   useEffect(() => {
     void loadMap();
+    void loadCombatLoadout();
 
     return () => {
       if (watchId.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
@@ -201,6 +208,20 @@ export function MapScreen({ character }: MapScreenProps) {
       }
     };
   }, []);
+
+  useEffect(() => {
+    void loadCombatLoadout();
+  }, [character.id, character.attributes]);
+
+  async function loadCombatLoadout() {
+    try {
+      const loadout = await getCombatLoadout(character);
+      setCombatResources(loadout.resources);
+      setEquippedAbilities(loadout.equipped);
+    } catch (error) {
+      setBattleLog((current) => [getErrorMessage(error, "Unable to load combat abilities."), ...current].slice(0, 8));
+    }
+  }
 
   useEffect(() => {
     if (followPlayer) {
@@ -685,7 +706,9 @@ export function MapScreen({ character }: MapScreenProps) {
   function startBattle(event: MapEvent) {
     setActiveEvent(null);
     setActiveBattle(event);
-    setBattlePlayerHp(100);
+    setBattlePlayerHp(combatResources.maxHp);
+    setBattleStamina(combatResources.maxStamina);
+    setBattleMagicka(combatResources.maxMagicka);
     setBattleEnemyHp(Number(event.enemy_hp) || 30);
     setBattleFinished(null);
     setBattleLog([event.battle_intro_text || `${event.enemy_name || "An enemy"} blocks the trail.`]);
@@ -778,14 +801,27 @@ export function MapScreen({ character }: MapScreenProps) {
     setActiveEvent(null);
   }
 
-  function handleBattleAction(action: "Strike" | "Guard" | "Heavy Attack") {
+  async function handleBattleAction(ability: AbilityDefinition) {
     if (!activeBattle || battleFinished) {
       return;
     }
 
-    const playerDamage = action === "Heavy Attack" ? 18 : action === "Guard" ? 6 : 10;
-    const nextEnemyHp = Math.max(0, battleEnemyHp - playerDamage);
-    const nextLog = [`${action} deals ${playerDamage} damage.`];
+    const currentResource = ability.resource === "stamina" ? battleStamina : battleMagicka;
+
+    if (currentResource < ability.cost) {
+      setBattleLog((current) => [`Not enough ${ability.resource} for ${ability.name}.`, ...current].slice(0, 8));
+      return;
+    }
+
+    if (ability.resource === "stamina") {
+      setBattleStamina((current) => Math.max(0, current - ability.cost));
+    } else {
+      setBattleMagicka((current) => Math.max(0, current - ability.cost));
+    }
+
+    const damageResult = getAbilityDamage(ability, character);
+    const nextEnemyHp = Math.max(0, battleEnemyHp - damageResult.damage);
+    const nextLog = [`${ability.name} deals ${damageResult.damage} ${ability.kind} damage${damageResult.crit ? " (critical)" : ""}.`];
 
     if (nextEnemyHp <= 0) {
       setBattleEnemyHp(0);
@@ -795,9 +831,8 @@ export function MapScreen({ character }: MapScreenProps) {
     }
 
     const incoming = Math.max(1, Number(activeBattle.enemy_attack_damage) || 5);
-    const enemyDamage = action === "Guard" ? Math.ceil(incoming / 2) : incoming;
-    const nextPlayerHp = Math.max(0, battlePlayerHp - enemyDamage);
-    nextLog.push(`${activeBattle.enemy_name || "Enemy"} hits for ${enemyDamage}.`);
+    const nextPlayerHp = Math.max(0, battlePlayerHp - incoming);
+    nextLog.push(`${activeBattle.enemy_name || "Enemy"} hits for ${incoming}.`);
 
     setBattleEnemyHp(nextEnemyHp);
     setBattlePlayerHp(nextPlayerHp);
@@ -805,9 +840,20 @@ export function MapScreen({ character }: MapScreenProps) {
     if (nextPlayerHp <= 0) {
       setBattleFinished("defeat");
       nextLog.push(activeBattle.defeat_text || "Defeat.");
+      await resetCurrentRouteAfterDefeat();
     }
 
     setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+  }
+
+  async function resetCurrentRouteAfterDefeat() {
+    const startPoint = route.path_points[0] ?? { x: 33.8, y: 73.81 };
+    distanceWalkedRef.current = 0;
+    setDistanceWalked(0);
+    setSavedPlayerPosition(startPoint);
+    setRouteProgressRows((current) => upsertRouteProgressRow(current, route.id, 0));
+    await resetRouteProgress(route.id, startPoint);
+    setGpsMessage("Defeated. Route progress reset to the start of this path.");
   }
 
   function editMapEvent(event: MapEvent) {
@@ -1094,10 +1140,14 @@ export function MapScreen({ character }: MapScreenProps) {
         character={character}
         event={activeBattle}
         playerHp={battlePlayerHp}
+        stamina={battleStamina}
+        magicka={battleMagicka}
+        resources={combatResources}
         enemyHp={battleEnemyHp}
+        equippedAbilities={equippedAbilities}
         battleLog={battleLog}
         result={battleFinished}
-        onAction={handleBattleAction}
+        onAction={(ability) => void handleBattleAction(ability)}
         onRetry={() => startBattle(activeBattle)}
         onComplete={() => void finishEvent(activeBattle)}
       />
@@ -1955,7 +2005,11 @@ function BattleEventScreen({
   character,
   event,
   playerHp,
+  stamina,
+  magicka,
+  resources,
   enemyHp,
+  equippedAbilities,
   battleLog,
   result,
   onAction,
@@ -1965,10 +2019,14 @@ function BattleEventScreen({
   character: CharacterWithDetails;
   event: MapEvent;
   playerHp: number;
+  stamina: number;
+  magicka: number;
+  resources: CharacterResources;
   enemyHp: number;
+  equippedAbilities: Array<AbilityDefinition | null>;
   battleLog: string[];
   result: "victory" | "defeat" | null;
-  onAction: (action: "Strike" | "Guard" | "Heavy Attack") => void;
+  onAction: (ability: AbilityDefinition) => void;
   onRetry: () => void;
   onComplete: () => void;
 }) {
@@ -1988,12 +2046,28 @@ function BattleEventScreen({
             <Text style={styles.copy}>HP {playerHp}</Text>
           </View>
         </View>
+        <View style={styles.resourceBars}>
+          <Text style={styles.copy}>HP {playerHp} / {resources.maxHp}</Text>
+          <ProgressBar value={playerHp} max={resources.maxHp} color={colors.red} height={7} />
+          <Text style={styles.copy}>Stamina {stamina} / {resources.maxStamina}</Text>
+          <ProgressBar value={stamina} max={resources.maxStamina} color={colors.gold} height={7} />
+          <Text style={styles.copy}>Magicka {magicka} / {resources.maxMagicka}</Text>
+          <ProgressBar value={magicka} max={resources.maxMagicka} color={colors.blue} height={7} />
+        </View>
         <View style={styles.modeRow}>
-          {(["Strike", "Guard", "Heavy Attack"] as const).map((action) => (
-            <Pressable key={action} style={styles.secondaryButtonFlex} onPress={() => onAction(action)} disabled={Boolean(result)}>
-              <Text style={styles.secondaryText}>{action}</Text>
+          {equippedAbilities.map((ability, index) => {
+            const hasResource = ability ? (ability.resource === "stamina" ? stamina : magicka) >= ability.cost : false;
+            return (
+            <Pressable
+              key={`ability-${index}`}
+              style={[styles.secondaryButtonFlex, (!ability || !hasResource || Boolean(result)) && styles.disabledAction]}
+              onPress={() => ability ? onAction(ability) : undefined}
+              disabled={!ability || !hasResource || Boolean(result)}
+            >
+              <Text style={styles.secondaryText}>{ability?.name ?? `Empty Slot ${index + 1}`}</Text>
+              {ability ? <Text style={styles.actionCost}>{ability.cost} {ability.resource}</Text> : null}
             </Pressable>
-          ))}
+          )})}
         </View>
         {result === "victory" ? (
           <Pressable style={styles.primaryButton} onPress={onComplete}>
@@ -2399,6 +2473,24 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
+  },
+  disabledAction: {
+    opacity: 0.45,
+  },
+  actionCost: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 2,
+    textTransform: "capitalize",
+  },
+  resourceBars: {
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
   },
   typeGrid: {
     flexDirection: "row",

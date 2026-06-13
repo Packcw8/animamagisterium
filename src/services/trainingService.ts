@@ -1,5 +1,6 @@
 import { supabase, Tables } from "../lib/supabase";
 import { CharacterWithDetails, getCharacter } from "./characterService";
+import { syncUnlockedAbilities } from "./abilityService";
 
 export type AttributeKey = Tables["attribute_progress"]["attribute_key"];
 export type AttributeProgress = Tables["attribute_progress"];
@@ -301,6 +302,8 @@ export async function completeTrainingSession(character: CharacterWithDetails, a
   if (!updatedCharacter) {
     throw new Error("Training completed, but character could not be reloaded.");
   }
+
+  await syncUnlockedAbilities(updatedCharacter);
 
   return {
     character: updatedCharacter,

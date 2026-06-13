@@ -91,6 +91,22 @@ export type Tables = {
     training_date: string;
     completed_at: string;
   };
+  player_abilities: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    ability_key: string;
+    unlocked_by_attribute: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit";
+    unlocked_at: string;
+  };
+  equipped_abilities: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    slot: number;
+    ability_key: string | null;
+    updated_at: string;
+  };
   avatar_assets: {
     id: string;
     type: "base" | "face" | "hair" | "armor" | "weapon" | "cloak" | "background";

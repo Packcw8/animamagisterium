@@ -188,6 +188,17 @@ export async function saveRouteProgress(routeId: string, values: Pick<RouteProgr
   return data as RouteProgress;
 }
 
+export async function resetRouteProgress(routeId: string, startPoint: { x: number; y: number }) {
+  return saveRouteProgress(routeId, {
+    distance_walked_meters: 0,
+    progress_percent: 0,
+    current_x_percent: startPoint.x,
+    current_y_percent: startPoint.y,
+    last_lat: null,
+    last_lng: null,
+  });
+}
+
 export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key">) {
   const {
     data: { user },
