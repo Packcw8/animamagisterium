@@ -97,7 +97,7 @@ export default function App() {
             ) : activeScreen === "map" ? (
               <MapScreen character={character} />
             ) : activeScreen === "quests" ? (
-              <QuestsScreen />
+              <QuestsScreen character={character} onCharacterUpdated={setCharacter} />
             ) : activeScreen === "social" ? (
               <SimpleSectionScreen title="Social" description="Guilds, friends, parties, leaderboards, chat, community events, PvP, and cooperative content will gather here." />
             ) : (

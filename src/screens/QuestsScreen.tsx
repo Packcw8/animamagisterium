@@ -1,172 +1,406 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { Frame } from "../components/Frame";
 import { Header } from "../components/Header";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors } from "../components/theme";
-import { quests } from "../data/mockData";
+import { CharacterWithDetails } from "../services/characterService";
+import { AttributeKey, completeTrainingSession, getTrainingState, TrainingCardState } from "../services/trainingService";
 
-export function QuestsScreen() {
+type QuestsScreenProps = {
+  character: CharacterWithDetails;
+  onCharacterUpdated: (character: CharacterWithDetails) => void;
+};
+
+export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProps) {
+  const [cards, setCards] = useState<TrainingCardState[]>([]);
+  const [dailyCompleted, setDailyCompleted] = useState(0);
+  const [dailyLimit, setDailyLimit] = useState(2);
+  const [selectedAttribute, setSelectedAttribute] = useState<AttributeKey | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isCompleting, setIsCompleting] = useState<AttributeKey | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    void loadTraining();
+  }, [character.id, character.xp, character.level]);
+
+  async function loadTraining() {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const state = await getTrainingState(character);
+      setCards(state.cards);
+      setDailyCompleted(state.dailyCompleted);
+      setDailyLimit(state.dailyLimit);
+      setSelectedAttribute((current) => current ?? state.cards[0]?.key ?? null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Unable to load training.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function completeTraining(attributeKey: AttributeKey) {
+    setIsCompleting(attributeKey);
+    setError(null);
+
+    try {
+      const result = await completeTrainingSession(character, attributeKey);
+      onCharacterUpdated(result.character);
+      setMessage(`${result.message} The ledger glows as your discipline is recorded.`);
+      const state = await getTrainingState(result.character);
+      setCards(state.cards);
+      setDailyCompleted(state.dailyCompleted);
+      setDailyLimit(state.dailyLimit);
+    } catch (completeError) {
+      setError(completeError instanceof Error ? completeError.message : "Unable to complete training.");
+    } finally {
+      setIsCompleting(null);
+    }
+  }
+
+  const selectedCard = cards.find((card) => card.key === selectedAttribute) ?? cards[0] ?? null;
+
   return (
     <Screen>
       <Header title="Quests / Training" />
       <View style={styles.tabs}>
         <View style={styles.activeTab}>
-          <Text style={styles.activeTabText}>Daily</Text>
-          <Text style={styles.badge}>3</Text>
+          <Text style={styles.activeTabText}>Training</Text>
         </View>
-        <Text style={styles.tabText}>Weekly</Text>
-        <Text style={styles.tabText}>Achievements</Text>
+        <View style={styles.inactiveTab}>
+          <Text style={styles.inactiveTabText}>Quest Goals / Coming Soon</Text>
+        </View>
       </View>
-      <View style={styles.list}>
-        {quests.map((quest) => (
-          <Frame key={quest.id} style={styles.quest}>
-            <View style={[styles.questIcon, { borderColor: quest.color }]}>
-              <Text style={[styles.questIconText, { color: quest.color }]}>{quest.icon}</Text>
-            </View>
-            <View style={styles.questBody}>
-              <Text style={styles.questTitle}>{quest.title}</Text>
-              <Text style={styles.questDescription}>{quest.description}</Text>
-              <View style={styles.rewardRow}>
-                <Text style={styles.reward}>+{quest.xp} XP</Text>
-                <Text style={styles.reward}>+{quest.coins}</Text>
-                <Text style={[styles.progressText, { color: quest.color }]}>{quest.progress.toLocaleString()} / {quest.target.toLocaleString()}</Text>
+
+      <Frame style={styles.summary}>
+        <Text style={styles.sectionTitle}>Daily Training Ledger</Text>
+        <Text style={styles.copy}>Complete up to {dailyLimit} full training sessions per day. Only one attribute can be trained at a time.</Text>
+        <View style={styles.limitRow}>
+          <Text style={styles.limitText}>{dailyCompleted} / {dailyLimit} sessions today</Text>
+          <Text style={styles.limitText}>Character XP {character.xp}</Text>
+        </View>
+        <ProgressBar value={dailyCompleted} max={dailyLimit} color={colors.gold} height={8} />
+      </Frame>
+
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {isLoading ? (
+        <Frame style={styles.loading}>
+          <ActivityIndicator color={colors.gold} />
+          <Text style={styles.copy}>Opening the training ledger...</Text>
+        </Frame>
+      ) : (
+        <View style={styles.content}>
+          <View style={styles.attributeGrid}>
+            {cards.map((card) => (
+              <Pressable
+                key={card.key}
+                style={[styles.attributeCard, selectedCard?.key === card.key && styles.attributeCardActive]}
+                onPress={() => setSelectedAttribute(card.key)}
+              >
+                <Text style={styles.attributeName}>{card.name}</Text>
+                <Text style={styles.attributeMeta}>Level {card.currentLevel}</Text>
+                <Text style={styles.attributeMeta}>{card.currentXp} XP</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {selectedCard ? (
+            <Frame style={styles.trainingCard}>
+              <Text style={styles.trainingTitle}>{selectedCard.name} Training</Text>
+              <Text style={styles.effect}>{selectedCard.effect}</Text>
+              <Info label="Current Goal" value={selectedCard.goalLabel} />
+              <Info label="Cooldown" value={getCooldownText(selectedCard.cooldownUntil)} />
+              <Info label="Activities" value={selectedCard.activities} />
+              <View style={styles.xpBlock}>
+                <Text style={styles.xpText}>Attribute XP</Text>
+                <ProgressBar value={selectedCard.currentXp % 100} max={100} color={colors.blue} height={8} />
+                <Text style={styles.copy}>{selectedCard.currentXp % 100} / 100 XP to next level</Text>
               </View>
-              {quest.target > 1 ? (
-                <View style={styles.progress}>
-                  <ProgressBar value={quest.progress} max={quest.target} color={quest.color} height={5} />
-                </View>
-              ) : null}
-            </View>
-          </Frame>
-        ))}
-      </View>
-      <Frame style={styles.training}>
-        <Text style={styles.sectionTitle}>Training Activities</Text>
-        <Text style={styles.trainingText}>Skill-building activities will connect real-world habits to progression after entering the world.</Text>
+              <Pressable
+                style={[styles.primaryButton, (!canTrain(selectedCard, dailyCompleted, dailyLimit) || isCompleting !== null) && styles.disabledButton]}
+                onPress={() => void completeTraining(selectedCard.key)}
+                disabled={!canTrain(selectedCard, dailyCompleted, dailyLimit) || isCompleting !== null}
+              >
+                <Text style={styles.primaryText}>{isCompleting === selectedCard.key ? "Recording Training..." : "Complete Training Session"}</Text>
+              </Pressable>
+              <View style={styles.history}>
+                <Text style={styles.sectionTitle}>Completion History</Text>
+                {selectedCard.history.length === 0 ? (
+                  <Text style={styles.copy}>No sessions recorded yet.</Text>
+                ) : (
+                  selectedCard.history.map((session) => (
+                    <Text key={session.id} style={styles.historyItem}>
+                      {new Date(session.completed_at).toLocaleDateString()} - {session.activity_label} - +{session.attribute_xp} XP
+                    </Text>
+                  ))
+                )}
+              </View>
+            </Frame>
+          ) : null}
+        </View>
+      )}
+
+      <Frame style={styles.comingSoon}>
+        <Text style={styles.sectionTitle}>Quest Goals / Coming Soon</Text>
+        <Text style={styles.copy}>Story quests, seasonal objectives, map discoveries, and event rewards will connect here after the map/event system grows.</Text>
       </Frame>
-      <Frame style={styles.training}>
-        <Text style={styles.sectionTitle}>Story & Seasonal Quests</Text>
-        <Text style={styles.trainingText}>Seasonal story progress, quest rewards, and active chapter objectives will gather here.</Text>
-      </Frame>
-      <Text style={styles.refresh}>New daily quests in: 08:45:12</Text>
+
+      <Modal transparent visible={Boolean(message)} animationType="fade" onRequestClose={() => setMessage(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Training Complete</Text>
+            <Text style={styles.modalText}>{message}</Text>
+            <Pressable style={styles.primaryButton} onPress={() => setMessage(null)}>
+              <Text style={styles.primaryText}>Continue</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
 
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
+function canTrain(card: TrainingCardState, dailyCompleted: number, dailyLimit: number) {
+  if (dailyCompleted >= dailyLimit) {
+    return false;
+  }
+
+  if (!card.cooldownUntil) {
+    return true;
+  }
+
+  return new Date(card.cooldownUntil).getTime() <= Date.now();
+}
+
+function getCooldownText(cooldownUntil: string | null) {
+  if (!cooldownUntil) {
+    return "Ready";
+  }
+
+  const remainingMs = new Date(cooldownUntil).getTime() - Date.now();
+
+  if (remainingMs <= 0) {
+    return "Ready";
+  }
+
+  const minutes = Math.ceil(remainingMs / 60000);
+  return `${minutes} min remaining`;
+}
+
 const styles = StyleSheet.create({
   tabs: {
-    height: 58,
     flexDirection: "row",
-    alignItems: "center",
     paddingHorizontal: 14,
+    paddingVertical: 10,
+    gap: 8,
     borderBottomWidth: 1,
     borderColor: colors.borderSoft,
-    gap: 14,
   },
   activeTab: {
-    height: 40,
-    paddingHorizontal: 18,
-    flexDirection: "row",
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.gold,
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+    backgroundColor: "rgba(62, 43, 22, 0.65)",
+  },
+  inactiveTab: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    borderRadius: 6,
-    backgroundColor: "rgba(62, 43, 22, 0.55)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
   activeTabText: {
     color: colors.text,
-    fontSize: 14,
+    fontWeight: "900",
   },
-  badge: {
-    color: "#fff",
-    backgroundColor: colors.red,
-    borderRadius: 10,
-    overflow: "hidden",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  tabText: {
-    flex: 1,
-    color: colors.text,
+  inactiveTabText: {
+    color: colors.muted,
+    fontWeight: "800",
     textAlign: "center",
-    fontSize: 14,
+    fontSize: 12,
   },
-  list: {
+  summary: {
+    margin: 14,
     padding: 14,
     gap: 10,
-  },
-  quest: {
-    minHeight: 118,
-    padding: 14,
-    flexDirection: "row",
-    gap: 16,
-  },
-  questIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.32)",
-  },
-  questIconText: {
-    fontWeight: "800",
-  },
-  questBody: {
-    flex: 1,
-  },
-  questTitle: {
-    color: colors.text,
-    fontSize: 18,
-    marginBottom: 6,
-  },
-  questDescription: {
-    color: colors.muted,
-    fontSize: 13,
-  },
-  rewardRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 18,
-    marginTop: 18,
-  },
-  reward: {
-    color: colors.text,
-    fontSize: 13,
-  },
-  progressText: {
-    marginLeft: "auto",
-    fontSize: 13,
-  },
-  progress: {
-    alignSelf: "flex-end",
-    width: 96,
-    marginTop: 4,
-    height: 5,
-  },
-  refresh: {
-    color: colors.muted,
-    textAlign: "center",
-    marginTop: 2,
-  },
-  training: {
-    marginHorizontal: 14,
-    marginBottom: 10,
-    padding: 14,
-    gap: 8,
   },
   sectionTitle: {
     color: colors.gold,
     fontWeight: "900",
     textTransform: "uppercase",
   },
-  trainingText: {
+  copy: {
     color: colors.muted,
     lineHeight: 20,
+  },
+  limitRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  limitText: {
+    color: colors.text,
+    fontWeight: "800",
+  },
+  loading: {
+    marginHorizontal: 14,
+    padding: 18,
+    alignItems: "center",
+    gap: 10,
+  },
+  content: {
+    paddingHorizontal: 14,
+    gap: 12,
+  },
+  attributeGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  attributeCard: {
+    width: "48%",
+    minHeight: 96,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 12,
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  attributeCardActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.55)",
+  },
+  attributeName: {
+    color: colors.gold,
+    fontWeight: "900",
+    marginBottom: 8,
+  },
+  attributeMeta: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  trainingCard: {
+    padding: 14,
+    gap: 12,
+  },
+  trainingTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  effect: {
+    color: colors.blue,
+    lineHeight: 20,
+    fontWeight: "800",
+  },
+  infoRow: {
+    gap: 6,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    paddingBottom: 10,
+  },
+  infoLabel: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 12,
+    textTransform: "uppercase",
+  },
+  infoValue: {
+    color: colors.text,
+    lineHeight: 20,
+  },
+  xpBlock: {
+    gap: 6,
+  },
+  xpText: {
+    color: colors.text,
+    fontWeight: "900",
+  },
+  primaryButton: {
+    minHeight: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    backgroundColor: colors.gold,
+  },
+  primaryText: {
+    color: "#120e08",
+    fontWeight: "900",
+  },
+  disabledButton: {
+    opacity: 0.45,
+  },
+  history: {
+    gap: 8,
+    paddingTop: 4,
+  },
+  historyItem: {
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  comingSoon: {
+    margin: 14,
+    padding: 14,
+    gap: 8,
+  },
+  errorText: {
+    color: "#ffb4aa",
+    marginHorizontal: 14,
+    marginBottom: 10,
+    lineHeight: 20,
+    fontWeight: "800",
+  },
+  modalBackdrop: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    backgroundColor: "rgba(0,0,0,0.72)",
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    padding: 18,
+    gap: 14,
+    backgroundColor: "#080b0b",
+  },
+  modalTitle: {
+    color: colors.gold,
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  modalText: {
+    color: colors.text,
+    lineHeight: 22,
   },
 });

@@ -65,6 +65,32 @@ export type Tables = {
     charisma: number;
     spirit: number;
   };
+  attribute_progress: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    attribute_key: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit";
+    current_level: number;
+    current_xp: number;
+    next_goal_value: number;
+    last_completed_at: string | null;
+    cooldown_until: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  training_sessions: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    attribute_key: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit";
+    activity_label: string;
+    goal_value: number;
+    goal_unit: string;
+    attribute_xp: number;
+    character_xp: number;
+    training_date: string;
+    completed_at: string;
+  };
   avatar_assets: {
     id: string;
     type: "base" | "face" | "hair" | "armor" | "weapon" | "cloak" | "background";
