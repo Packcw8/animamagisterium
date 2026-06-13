@@ -1,6 +1,6 @@
 import { distance as turfDistance } from "@turf/turf";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { ProgressBar } from "../components/ProgressBar";
@@ -72,6 +72,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const watchId = useRef<number | null>(null);
   const lastEncounterBucket = useRef(0);
   const distanceWalkedRef = useRef(0);
+  const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const isAdmin = role === "admin";
   const scaledMapSize = useMemo(() => ({ width: mapSize.width * scale, height: mapSize.height * scale }), [scale]);
 
@@ -239,29 +240,53 @@ export function MapScreen({ character }: MapScreenProps) {
     zoomBy(deltaY > 0 ? -0.08 : 0.08);
   }
 
-  function handleMapPress(event: { nativeEvent: { locationX: number; locationY: number } }) {
+  function handleMapPointer(event: {
+    clientX?: number;
+    clientY?: number;
+    currentTarget?: { getBoundingClientRect?: () => { left: number; top: number; width: number; height: number } };
+    nativeEvent?: {
+      clientX?: number;
+      clientY?: number;
+      locationX?: number;
+      locationY?: number;
+      changedTouches?: Array<{ clientX?: number; clientY?: number }>;
+      touches?: Array<{ clientX?: number; clientY?: number }>;
+    };
+  }) {
     if (!isAdmin) {
       return;
     }
 
-    const x = clamp((event.nativeEvent.locationX / scaledMapSize.width) * 100, 0, 100);
-    const y = clamp((event.nativeEvent.locationY / scaledMapSize.height) * 100, 0, 100);
-    captureMapPercent(x, y);
-  }
+    const nativeEvent = event.nativeEvent ?? {};
+    const touch = nativeEvent.changedTouches?.[0] ?? nativeEvent.touches?.[0];
+    const clientX = touch?.clientX ?? nativeEvent.clientX ?? event.clientX;
+    const clientY = touch?.clientY ?? nativeEvent.clientY ?? event.clientY;
+    const rect = event.currentTarget?.getBoundingClientRect?.();
 
-  function handleMapClick(event: { clientX?: number; clientY?: number; currentTarget?: { getBoundingClientRect?: () => { left: number; top: number; width: number; height: number } } }) {
-    if (!isAdmin || !event.currentTarget?.getBoundingClientRect || event.clientX === undefined || event.clientY === undefined) {
+    if (rect && clientX !== undefined && clientY !== undefined) {
+      const x = clamp(((clientX - rect.left) / rect.width) * 100, 0, 100);
+      const y = clamp(((clientY - rect.top) / rect.height) * 100, 0, 100);
+      captureMapPercent(x, y);
       return;
     }
 
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100);
-    const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100);
-    captureMapPercent(x, y);
+    if (nativeEvent.locationX !== undefined && nativeEvent.locationY !== undefined) {
+      const x = clamp((nativeEvent.locationX / scaledMapSize.width) * 100, 0, 100);
+      const y = clamp((nativeEvent.locationY / scaledMapSize.height) * 100, 0, 100);
+      captureMapPercent(x, y);
+    }
   }
 
   function captureMapPercent(x: number, y: number) {
     const nextPoint = { x: roundPercent(x), y: roundPercent(y) };
+    const now = Date.now();
+    const lastCapture = lastCaptureRef.current;
+
+    if (lastCapture && now - lastCapture.time < 180 && Math.abs(lastCapture.x - nextPoint.x) < 0.05 && Math.abs(lastCapture.y - nextPoint.y) < 0.05) {
+      return;
+    }
+
+    lastCaptureRef.current = { time: now, ...nextPoint };
     setClickedPercent(nextPoint);
     setSelectedMarker(null);
     setAdminMessage(`Coordinates captured: X ${nextPoint.x}% / Y ${nextPoint.y}%`);
@@ -299,6 +324,7 @@ export function MapScreen({ character }: MapScreenProps) {
       setMarkers((current) => [...current, created]);
       setDraftTitle("");
       setDraftDescription("");
+      setClickedPercent(null);
       setAdminMessage("Marker created.");
     } catch (error) {
       setAdminMessage(error instanceof Error ? error.message : "Unable to create marker. Confirm the Supabase migration has run.");
@@ -400,7 +426,7 @@ export function MapScreen({ character }: MapScreenProps) {
       <Text style={styles.mapHint}>Scroll the map frame horizontally and vertically to explore the full image. Use the controls or mouse wheel to zoom. Click the image in admin mode to capture X/Y coordinates.</Text>
 
       <View ref={viewportRef as never} style={styles.viewport} {...({ onWheel: handleWheel } as object)}>
-        <Pressable
+        <View
           style={[
             styles.mapSurface,
             {
@@ -408,8 +434,13 @@ export function MapScreen({ character }: MapScreenProps) {
               height: scaledMapSize.height,
             },
           ]}
-          onPress={Platform.OS === "web" ? undefined : handleMapPress}
-          {...({ onClick: handleMapClick } as object)}
+          {...({
+            onMouseDown: handleMapPointer,
+            onTouchEnd: handleMapPointer,
+            onClick: handleMapPointer,
+            onStartShouldSetResponder: () => isAdmin,
+            onResponderRelease: handleMapPointer,
+          } as object)}
         >
           <Image source={forgottenMarches} style={styles.mapImage} {...({ pointerEvents: "none" } as object)} />
           {routeSegments.map((segment, index) => (
@@ -432,6 +463,12 @@ export function MapScreen({ character }: MapScreenProps) {
               <Text style={styles.pathPointText}>{index + 1}</Text>
             </View>
           ))}
+          {clickedPercent ? (
+            <View pointerEvents="none" style={[styles.tempMarker, { left: `${clickedPercent.x}%`, top: `${clickedPercent.y}%` }]}>
+              <View style={styles.tempPulse} />
+              <Text style={styles.tempMarkerText}>New Marker</Text>
+            </View>
+          ) : null}
           {visibleMarkers.map((marker) => (
             <Pressable
               key={marker.id}
@@ -459,7 +496,7 @@ export function MapScreen({ character }: MapScreenProps) {
           >
             {character.portrait_url ? <Image source={{ uri: character.portrait_url }} style={styles.playerPortrait} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
           </View>
-        </Pressable>
+        </View>
       </View>
 
       <Frame style={styles.panel}>
@@ -500,6 +537,7 @@ export function MapScreen({ character }: MapScreenProps) {
           </View>
           {adminMessage ? <Text style={styles.adminMessage}>{adminMessage}</Text> : null}
           <Info label="Clicked Coordinates" value={clickedPercent ? `X ${clickedPercent.x}% / Y ${clickedPercent.y}%` : "Tap the map"} />
+          <Text style={styles.debugLine}>Last click: x: {clickedPercent ? `${clickedPercent.x}%` : "--"}, y: {clickedPercent ? `${clickedPercent.y}%` : "--"}</Text>
           <Pressable style={styles.secondaryButton} onPress={() => void copyCoordinates()} disabled={!clickedPercent}>
             <Text style={styles.secondaryText}>Copy Coordinates</Text>
           </Pressable>
@@ -735,6 +773,37 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 11,
   },
+  tempMarker: {
+    position: "absolute",
+    width: 102,
+    minHeight: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ translateX: -51 }, { translateY: -21 }],
+  },
+  tempPulse: {
+    position: "absolute",
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 3,
+    borderColor: "#7fe7ff",
+    backgroundColor: "rgba(30, 168, 236, 0.42)",
+    shadowColor: "#7fe7ff",
+    shadowOpacity: 1,
+    shadowRadius: 14,
+  },
+  tempMarkerText: {
+    color: "#071011",
+    backgroundColor: "#7fe7ff",
+    borderRadius: 999,
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    fontWeight: "900",
+    fontSize: 11,
+    marginTop: 40,
+  },
   marker: {
     position: "absolute",
     width: 136,
@@ -881,6 +950,11 @@ const styles = StyleSheet.create({
     color: colors.blue,
     fontWeight: "800",
     lineHeight: 20,
+  },
+  debugLine: {
+    color: colors.goldSoft,
+    fontSize: 12,
+    fontWeight: "800",
   },
   secondaryButton: {
     minHeight: 46,
