@@ -55,7 +55,7 @@ export async function getCurrentRole(): Promise<Role> {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (user?.email?.toLowerCase() === "packcw8@gmail.com") {
+  if (user?.email?.toLowerCase() === "pack8cw@gmail.com") {
     return "admin";
   }
 

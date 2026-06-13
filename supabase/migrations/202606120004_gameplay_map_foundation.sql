@@ -14,7 +14,7 @@ set role = 'admin'
 where id in (
   select id
   from auth.users
-  where lower(email) = 'packcw8@gmail.com'
+  where lower(email) = 'pack8cw@gmail.com'
 );
 
 create or replace function public.current_user_role()
@@ -25,7 +25,7 @@ set search_path = public
 as $$
   select coalesce(
     case
-      when lower(coalesce(auth.jwt() ->> 'email', '')) = 'packcw8@gmail.com' then 'admin'
+      when lower(coalesce(auth.jwt() ->> 'email', '')) = 'pack8cw@gmail.com' then 'admin'
       else null
     end,
     (
