@@ -185,6 +185,12 @@ export function MapScreen({ character }: MapScreenProps) {
   const draftSegments = useMemo(() => getRouteSegments(pathDraft).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [pathDraft]);
   const visibleMarkers = isAdmin ? markers : markers.filter((marker) => marker.is_active && marker.is_unlocked);
   const unlockedRouteIds = useMemo(() => getUnlockedRouteIds(orderedRoutes, routeProgressRows), [orderedRoutes, routeProgressRows]);
+  const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
+  const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
+  const selectedNodeChoices = useMemo(
+    () => (choiceNodeId ? dialogueChoices.filter((choice) => choice.node_id === choiceNodeId).sort((a, b) => a.sort_order - b.sort_order) : []),
+    [choiceNodeId, dialogueChoices],
+  );
 
   useEffect(() => {
     void loadMap();
@@ -670,6 +676,12 @@ export function MapScreen({ character }: MapScreenProps) {
     clearDialogueChoiceForm();
   }
 
+  function startNewDialogueStep() {
+    clearDialogueNodeForm();
+    setNodeSortOrder(String(getNextDialogueNodeOrder(dialogueNodes)));
+    setNodeIsStart(dialogueNodes.length === 0);
+  }
+
   function startBattle(event: MapEvent) {
     setActiveEvent(null);
     setActiveBattle(event);
@@ -910,6 +922,11 @@ export function MapScreen({ character }: MapScreenProps) {
     setChoiceNodeId(node.id);
   }
 
+  function selectDialogueNode(nodeId: string) {
+    setChoiceNodeId(nodeId);
+    clearDialogueChoiceForm();
+  }
+
   function clearDialogueNodeForm() {
     setEditingNode(null);
     setNodeTitle("");
@@ -918,7 +935,7 @@ export function MapScreen({ character }: MapScreenProps) {
     setNodeNpcPortrait("");
     setNodeBackgroundImage("");
     setNodeDialogue("");
-    setNodeSortOrder("0");
+    setNodeSortOrder(String(getNextDialogueNodeOrder(dialogueNodes)));
     setNodeIsStart(false);
     setNodeIsEnding(false);
     setNodeAllowEndChat(true);
@@ -953,8 +970,9 @@ export function MapScreen({ character }: MapScreenProps) {
         return next.sort((a, b) => a.sort_order - b.sort_order);
       });
       setChoiceNodeId(saved.id);
+      setChoiceSortOrder(String(getNextChoiceOrder(dialogueChoices, saved.id)));
       clearDialogueNodeForm();
-      setAdminMessage("Dialogue node saved.");
+      setAdminMessage(`Dialogue step saved. Add player choices for "${saved.title}" next.`);
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to save dialogue node."));
     }
@@ -987,6 +1005,13 @@ export function MapScreen({ character }: MapScreenProps) {
     setChoiceSortOrder(String(choice.sort_order));
   }
 
+  function startChoiceForNode(node: StoryDialogueNode) {
+    setChoiceNodeId(node.id);
+    clearDialogueChoiceForm();
+    setChoiceSortOrder(String(getNextChoiceOrder(dialogueChoices, node.id)));
+    setAdminMessage(`Adding a player choice to "${node.title}".`);
+  }
+
   function clearDialogueChoiceForm() {
     setEditingChoice(null);
     setChoiceButtonText("");
@@ -996,7 +1021,7 @@ export function MapScreen({ character }: MapScreenProps) {
     setChoiceBattleEventId(null);
     setChoiceRewardXp("0");
     setChoiceRewardItem("");
-    setChoiceSortOrder("0");
+    setChoiceSortOrder(String(choiceNodeId ? getNextChoiceOrder(dialogueChoices, choiceNodeId) : 0));
   }
 
   async function saveDialogueChoice() {
@@ -1022,7 +1047,8 @@ export function MapScreen({ character }: MapScreenProps) {
         return next.sort((a, b) => a.sort_order - b.sort_order);
       });
       clearDialogueChoiceForm();
-      setAdminMessage("Dialogue choice saved.");
+      setChoiceSortOrder(String(getNextChoiceOrder([...dialogueChoices.filter((choice) => choice.id !== saved.id), saved], choiceNodeId)));
+      setAdminMessage(`Player choice saved for "${selectedChoiceNode?.title ?? "this step"}".`);
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to save dialogue choice."));
     }
@@ -1358,7 +1384,7 @@ export function MapScreen({ character }: MapScreenProps) {
             ))}
             <View style={styles.storyEditor}>
               <Text style={styles.selectedTitle}>Branching Dialogue Editor</Text>
-              <Text style={styles.copy}>Select a dialogue, clue, or reward event, add dialogue steps, then add player choices that link to another step or trigger an action.</Text>
+              <Text style={styles.copy}>1. Select an event. 2. Add dialogue steps. 3. Select a step and add player choices under it.</Text>
               <View style={styles.storyRoutePicker}>
                 {mapEvents.filter((event) => event.event_type !== "battle").map((event) => (
                   <Pressable
@@ -1370,6 +1396,17 @@ export function MapScreen({ character }: MapScreenProps) {
                   </Pressable>
                 ))}
               </View>
+              {selectedDialogueEvent ? (
+                <View style={styles.builderStatus}>
+                  <Text style={styles.selectedTitle}>Editing: {selectedDialogueEvent.title}</Text>
+                  <Text style={styles.copy}>{dialogueNodes.length} dialogue steps - {dialogueChoices.length} player choices</Text>
+                </View>
+              ) : (
+                <Text style={styles.adminMessage}>Select a dialogue, clue, or reward event before adding steps.</Text>
+              )}
+              <Pressable style={styles.secondaryButton} onPress={startNewDialogueStep} disabled={!selectedDialogueEventId}>
+                <Text style={styles.secondaryText}>New Dialogue Step</Text>
+              </Pressable>
               <TextInput value={nodeTitle} onChangeText={setNodeTitle} placeholder="Dialogue step title / internal label" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeKey} onChangeText={setNodeKey} placeholder="Optional node key" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeNpcName} onChangeText={setNodeNpcName} placeholder="NPC name" placeholderTextColor={colors.muted} style={styles.input} />
@@ -1395,22 +1432,38 @@ export function MapScreen({ character }: MapScreenProps) {
                 <Text style={styles.primaryText}>{editingNode ? "Update Dialogue Step" : "Add Dialogue Step"}</Text>
               </Pressable>
               {editingNode ? <Pressable style={styles.secondaryButton} onPress={clearDialogueNodeForm}><Text style={styles.secondaryText}>Cancel Step Edit</Text></Pressable> : null}
-              {dialogueNodes.map((node) => (
-                <View key={node.id} style={styles.storyCard}>
+              {dialogueNodes.map((node) => {
+                const nodeChoices = dialogueChoices.filter((choice) => choice.node_id === node.id).sort((a, b) => a.sort_order - b.sort_order);
+                return (
+                <View key={node.id} style={[styles.storyCard, choiceNodeId === node.id && styles.storyCardActive]}>
                   <Text style={styles.markerName}>{node.sort_order}. {node.title}{node.is_start ? " - Start" : ""}{node.is_ending ? " - Ending" : ""}</Text>
                   <Text style={styles.copy}>{node.dialogue_text || "No dialogue yet."}</Text>
+                  {nodeChoices.length > 0 ? (
+                    <View style={styles.choicePreviewList}>
+                      {nodeChoices.map((choice) => (
+                        <Pressable key={choice.id} style={styles.choicePreview} onPress={() => editDialogueChoice(choice)}>
+                          <Text style={styles.choicePreviewTitle}>{choice.sort_order}. {choice.button_text}</Text>
+                          <Text style={styles.choicePreviewAction}>{choiceActionLabel(choice.action)}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={styles.debugLine}>No player choices yet.</Text>
+                  )}
                   <View style={styles.modeRow}>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => selectDialogueNode(node.id)}><Text style={styles.secondaryText}>Select Step</Text></Pressable>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueNode(node)}><Text style={styles.secondaryText}>Edit Step</Text></Pressable>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => setChoiceNodeId(node.id)}><Text style={styles.secondaryText}>Add Player Choice Here</Text></Pressable>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => startChoiceForNode(node)}><Text style={styles.secondaryText}>Add Choice</Text></Pressable>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueNode(node.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
                   </View>
                 </View>
-              ))}
-              <Text style={styles.selectedTitle}>Player Choices</Text>
+              )})}
+              <Text style={styles.selectedTitle}>Player Choices{selectedChoiceNode ? ` for ${selectedChoiceNode.title}` : ""}</Text>
+              <Text style={styles.copy}>{selectedChoiceNode ? "Create choices for the selected dialogue step. Choices can move the conversation, start battle, reward the player, or return to the map." : "Select a dialogue step first."}</Text>
               <View style={styles.storyRoutePicker}>
                 {dialogueNodes.map((node) => (
-                  <Pressable key={node.id} style={[styles.routeChip, choiceNodeId === node.id && styles.routeChipActive]} onPress={() => setChoiceNodeId(node.id)}>
-                    <Text style={styles.routeChipText}>{node.title}</Text>
+                  <Pressable key={node.id} style={[styles.routeChip, choiceNodeId === node.id && styles.routeChipActive]} onPress={() => selectDialogueNode(node.id)}>
+                    <Text style={styles.routeChipText}>{node.sort_order}. {node.title}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -1452,7 +1505,7 @@ export function MapScreen({ character }: MapScreenProps) {
                 <Text style={styles.primaryText}>{editingChoice ? "Update Player Choice" : "Add Player Choice"}</Text>
               </Pressable>
               {editingChoice ? <Pressable style={styles.secondaryButton} onPress={clearDialogueChoiceForm}><Text style={styles.secondaryText}>Cancel Choice Edit</Text></Pressable> : null}
-              {dialogueChoices.map((choice) => (
+              {selectedNodeChoices.map((choice) => (
                 <View key={choice.id} style={styles.storyCard}>
                   <Text style={styles.markerName}>{choice.button_text}</Text>
                   <Text style={styles.copy}>{choiceActionLabel(choice.action)}{choice.player_dialogue_text ? ` - "${choice.player_dialogue_text}"` : ""}</Text>
@@ -1702,6 +1755,14 @@ function upsertRouteProgressRow(rows: Array<{ route_id: string; progress_percent
 
 function getNextRouteOrder(routes: MapRoute[]) {
   return routes.reduce((highest, item) => Math.max(highest, item.sort_order), 0) + 1;
+}
+
+function getNextDialogueNodeOrder(nodes: StoryDialogueNode[]) {
+  return nodes.reduce((highest, item) => Math.max(highest, item.sort_order), 0) + 1;
+}
+
+function getNextChoiceOrder(choices: StoryDialogueChoice[], nodeId: string) {
+  return choices.filter((choice) => choice.node_id === nodeId).reduce((highest, item) => Math.max(highest, item.sort_order), 0) + 1;
 }
 
 function parseChoices(value: string): MapEvent["choices"] {
@@ -2340,6 +2401,38 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSoft,
     padding: 10,
     backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  storyCardActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.35)",
+  },
+  builderStatus: {
+    gap: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 10,
+    backgroundColor: "rgba(232, 181, 94, 0.08)",
+  },
+  choicePreviewList: {
+    gap: 6,
+  },
+  choicePreview: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(232, 181, 94, 0.25)",
+    padding: 8,
+    backgroundColor: "rgba(0,0,0,0.2)",
+  },
+  choicePreviewTitle: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  choicePreviewAction: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 2,
   },
   adminActions: {
     gap: 10,
