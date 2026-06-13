@@ -13,7 +13,7 @@ export const fallbackRoute: MapRoute = {
   distance_required_meters: 5000,
   estimated_encounters: 3,
   path_points: [
-    { x: 18, y: 70 },
+    { x: 33.8, y: 73.81 },
     { x: 28, y: 62 },
     { x: 42, y: 54 },
     { x: 56, y: 41 },
