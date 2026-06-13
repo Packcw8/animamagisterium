@@ -806,6 +806,14 @@ export function MapScreen({ character }: MapScreenProps) {
           )}
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Story Instances on {route.name}</Text>
+            <Text style={styles.copy}>Select the route before adding a story instance. Random stories use the chance percent below when travel progress reaches a new 10% route bucket.</Text>
+            <View style={styles.storyRoutePicker}>
+              {orderedRoutes.map((item) => (
+                <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item)}>
+                  <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+                </Pressable>
+              ))}
+            </View>
             <TextInput value={storyTitle} onChangeText={setStoryTitle} placeholder="Story title" placeholderTextColor={colors.muted} style={styles.input} />
             <TextInput value={storyBody} onChangeText={setStoryBody} placeholder="Story text or encounter note" placeholderTextColor={colors.muted} style={styles.input} />
             <View style={styles.modeRow}>
@@ -818,7 +826,7 @@ export function MapScreen({ character }: MapScreenProps) {
             {storyTriggerType === "progress" ? (
               <TextInput value={storyTriggerPercent} onChangeText={setStoryTriggerPercent} placeholder="Trigger percent, 0-100" placeholderTextColor={colors.muted} style={styles.input} />
             ) : (
-              <TextInput value={storyChancePercent} onChangeText={setStoryChancePercent} placeholder="Random chance percent, 0-100" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={storyChancePercent} onChangeText={setStoryChancePercent} placeholder="Encounter chance percent per 10% route progress" placeholderTextColor={colors.muted} style={styles.input} />
             )}
             <Pressable style={styles.primaryButton} onPress={() => void addStoryInstance()} disabled={!storyTitle.trim()}>
               <Text style={styles.primaryText}>Add Story Instance</Text>
@@ -1408,6 +1416,11 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     borderTopWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
+  },
+  storyRoutePicker: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   storyCard: {
     gap: 8,
