@@ -143,6 +143,37 @@ export type Tables = {
     event_id: string;
     completed_at: string;
   };
+  story_dialogue_nodes: {
+    id: string;
+    event_id: string;
+    node_key: string;
+    title: string;
+    npc_name: string | null;
+    npc_portrait_url: string | null;
+    background_image_url: string | null;
+    dialogue_text: string;
+    is_start: boolean;
+    is_ending: boolean;
+    allow_end_chat: boolean;
+    end_completes_event: boolean;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+  };
+  story_dialogue_choices: {
+    id: string;
+    node_id: string;
+    button_text: string;
+    player_dialogue_text: string | null;
+    action: "go_to_node" | "start_battle" | "complete_event" | "give_reward" | "end_conversation" | "return_to_map";
+    next_node_id: string | null;
+    battle_event_id: string | null;
+    reward_xp: number;
+    reward_item: string | null;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+  };
   route_progress: {
     id: string;
     user_id: string;

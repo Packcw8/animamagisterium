@@ -6,6 +6,8 @@ export type MapMarker = Tables["map_markers"];
 export type MapStoryInstance = Tables["map_story_instances"];
 export type MapEvent = Tables["map_events"];
 export type MapEventCompletion = Tables["map_event_completions"];
+export type StoryDialogueNode = Tables["story_dialogue_nodes"];
+export type StoryDialogueChoice = Tables["story_dialogue_choices"];
 export type Role = Tables["profiles"]["role"];
 
 export const fallbackRoute: MapRoute = {
@@ -444,4 +446,106 @@ export async function completeMapEvent(eventId: string) {
   }
 
   return data as MapEventCompletion;
+}
+
+export async function getDialogueNodes(eventId: string) {
+  const { data, error } = await supabase
+    .from("story_dialogue_nodes")
+    .select("*")
+    .eq("event_id", eventId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("[map] dialogue nodes unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as StoryDialogueNode[];
+}
+
+export async function getDialogueChoices(nodeIds: string[]) {
+  if (nodeIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("story_dialogue_choices")
+    .select("*")
+    .in("node_id", nodeIds)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("[map] dialogue choices unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as StoryDialogueChoice[];
+}
+
+export async function createDialogueNode(input: Omit<StoryDialogueNode, "id" | "created_at" | "updated_at">) {
+  const { data, error } = await supabase.from("story_dialogue_nodes").insert(input).select().single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as StoryDialogueNode;
+}
+
+export async function updateDialogueNode(nodeId: string, values: Partial<Omit<StoryDialogueNode, "id" | "event_id" | "created_at" | "updated_at">>) {
+  const { data, error } = await supabase
+    .from("story_dialogue_nodes")
+    .update({ ...values, updated_at: new Date().toISOString() })
+    .eq("id", nodeId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as StoryDialogueNode;
+}
+
+export async function deleteDialogueNode(nodeId: string) {
+  const { error } = await supabase.from("story_dialogue_nodes").delete().eq("id", nodeId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at">) {
+  const { data, error } = await supabase.from("story_dialogue_choices").insert(input).select().single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as StoryDialogueChoice;
+}
+
+export async function updateDialogueChoice(choiceId: string, values: Partial<Omit<StoryDialogueChoice, "id" | "node_id" | "created_at" | "updated_at">>) {
+  const { data, error } = await supabase
+    .from("story_dialogue_choices")
+    .update({ ...values, updated_at: new Date().toISOString() })
+    .eq("id", choiceId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as StoryDialogueChoice;
+}
+
+export async function deleteDialogueChoice(choiceId: string) {
+  const { error } = await supabase.from("story_dialogue_choices").delete().eq("id", choiceId);
+
+  if (error) {
+    throw error;
+  }
 }

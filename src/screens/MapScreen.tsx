@@ -9,10 +9,14 @@ import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
 import {
   completeMapEvent,
+  createDialogueChoice,
+  createDialogueNode,
   createMapRoute,
   createMapEvent,
   createMapMarker,
   createStoryInstance,
+  deleteDialogueChoice,
+  deleteDialogueNode,
   deleteMapEvent,
   deleteMapMarker,
   deleteStoryInstance,
@@ -21,6 +25,8 @@ import {
   getMapMarkers,
   getMapRoutes,
   getMapEvents,
+  getDialogueChoices,
+  getDialogueNodes,
   getEventCompletions,
   getRouteProgress,
   getRouteProgressForRoutes,
@@ -30,7 +36,11 @@ import {
   MapRoute,
   MapStoryInstance,
   Role,
+  StoryDialogueChoice,
+  StoryDialogueNode,
   saveRouteProgress,
+  updateDialogueChoice,
+  updateDialogueNode,
   updateMapEvent,
   updateStoryInstance,
   updateMapMarker,
@@ -63,6 +73,10 @@ export function MapScreen({ character }: MapScreenProps) {
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
   const [activeBattle, setActiveBattle] = useState<MapEvent | null>(null);
+  const [dialogueNodes, setDialogueNodes] = useState<StoryDialogueNode[]>([]);
+  const [dialogueChoices, setDialogueChoices] = useState<StoryDialogueChoice[]>([]);
+  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
+  const [dialogueLog, setDialogueLog] = useState<string[]>([]);
   const [battlePlayerHp, setBattlePlayerHp] = useState(100);
   const [battleEnemyHp, setBattleEnemyHp] = useState(0);
   const [battleLog, setBattleLog] = useState<string[]>([]);
@@ -109,6 +123,29 @@ export function MapScreen({ character }: MapScreenProps) {
   const [defeatText, setDefeatText] = useState("");
   const [rewardXp, setRewardXp] = useState("0");
   const [rewardItem, setRewardItem] = useState("");
+  const [selectedDialogueEventId, setSelectedDialogueEventId] = useState<string | null>(null);
+  const [editingNode, setEditingNode] = useState<StoryDialogueNode | null>(null);
+  const [editingChoice, setEditingChoice] = useState<StoryDialogueChoice | null>(null);
+  const [nodeTitle, setNodeTitle] = useState("");
+  const [nodeKey, setNodeKey] = useState("");
+  const [nodeNpcName, setNodeNpcName] = useState("");
+  const [nodeNpcPortrait, setNodeNpcPortrait] = useState("");
+  const [nodeBackgroundImage, setNodeBackgroundImage] = useState("");
+  const [nodeDialogue, setNodeDialogue] = useState("");
+  const [nodeSortOrder, setNodeSortOrder] = useState("0");
+  const [nodeIsStart, setNodeIsStart] = useState(false);
+  const [nodeIsEnding, setNodeIsEnding] = useState(false);
+  const [nodeAllowEndChat, setNodeAllowEndChat] = useState(true);
+  const [nodeEndCompletesEvent, setNodeEndCompletesEvent] = useState(false);
+  const [choiceNodeId, setChoiceNodeId] = useState<string | null>(null);
+  const [choiceButtonText, setChoiceButtonText] = useState("");
+  const [choicePlayerText, setChoicePlayerText] = useState("");
+  const [choiceAction, setChoiceAction] = useState<StoryDialogueChoice["action"]>("go_to_node");
+  const [choiceNextNodeId, setChoiceNextNodeId] = useState<string | null>(null);
+  const [choiceBattleEventId, setChoiceBattleEventId] = useState<string | null>(null);
+  const [choiceRewardXp, setChoiceRewardXp] = useState("0");
+  const [choiceRewardItem, setChoiceRewardItem] = useState("");
+  const [choiceSortOrder, setChoiceSortOrder] = useState("0");
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [scale, setScale] = useState(0.86);
   const [followPlayer, setFollowPlayer] = useState(true);
@@ -201,6 +238,18 @@ export function MapScreen({ character }: MapScreenProps) {
 
     setActiveEvent(nextEvent);
   }, [activeBattle, activeEvent, completedEventIds, mapEvents, progressPercent, route.id]);
+
+  useEffect(() => {
+    if (!activeEvent || activeEvent.event_type !== "story") {
+      setDialogueNodes([]);
+      setDialogueChoices([]);
+      setActiveNodeId(null);
+      setDialogueLog([]);
+      return;
+    }
+
+    void loadDialogueForEvent(activeEvent);
+  }, [activeEvent]);
 
   async function loadMap() {
     const [loadedRoutes, loadedMarkers, loadedRole] = await Promise.all([getMapRoutes(), getMapMarkers(), getCurrentRole()]);
@@ -604,6 +653,27 @@ export function MapScreen({ character }: MapScreenProps) {
     }
   }
 
+  async function loadDialogueForEvent(event: MapEvent) {
+    const nodes = await getDialogueNodes(event.id);
+    const choices = await getDialogueChoices(nodes.map((node) => node.id));
+    const startNode = nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
+    setDialogueNodes(nodes);
+    setDialogueChoices(choices);
+    setActiveNodeId(startNode?.id ?? null);
+    setDialogueLog([]);
+  }
+
+  async function loadDialogueEditor(eventId: string) {
+    setSelectedDialogueEventId(eventId);
+    const nodes = await getDialogueNodes(eventId);
+    const choices = await getDialogueChoices(nodes.map((node) => node.id));
+    setDialogueNodes(nodes);
+    setDialogueChoices(choices);
+    setChoiceNodeId(nodes[0]?.id ?? null);
+    clearDialogueNodeForm();
+    clearDialogueChoiceForm();
+  }
+
   function startBattle(event: MapEvent) {
     setActiveEvent(null);
     setActiveBattle(event);
@@ -648,6 +718,56 @@ export function MapScreen({ character }: MapScreenProps) {
     }
 
     setGpsMessage(`${activeEvent.title}: ${action}`);
+  }
+
+  async function handleDialogueChoice(choice: StoryDialogueChoice) {
+    if (!activeEvent) {
+      return;
+    }
+
+    if (choice.player_dialogue_text) {
+      setDialogueLog((current) => [`You: ${choice.player_dialogue_text}`, ...current].slice(0, 4));
+    }
+
+    if (choice.action === "go_to_node") {
+      if (choice.next_node_id && dialogueNodes.some((node) => node.id === choice.next_node_id)) {
+        setActiveNodeId(choice.next_node_id);
+        return;
+      }
+      setDialogueLog((current) => ["The conversation path is missing. Return to the map when ready.", ...current].slice(0, 4));
+      return;
+    }
+
+    if (choice.action === "start_battle") {
+      const battle = mapEvents.find((event) => event.id === choice.battle_event_id) ?? mapEvents.find((event) => event.event_type === "battle" && event.route_id === activeEvent.route_id);
+      if (battle) {
+        startBattle(battle);
+        return;
+      }
+      setDialogueLog((current) => ["No battle is linked yet.", ...current].slice(0, 4));
+      return;
+    }
+
+    if (choice.action === "complete_event") {
+      await finishEvent(activeEvent);
+      return;
+    }
+
+    if (choice.action === "give_reward") {
+      setDialogueLog((current) => [`Reward: ${choice.reward_xp} XP${choice.reward_item ? `, ${choice.reward_item}` : ""}`, ...current].slice(0, 4));
+      return;
+    }
+
+    setActiveEvent(null);
+  }
+
+  async function endDialogueChat(completeEvent: boolean) {
+    if (activeEvent && completeEvent) {
+      await finishEvent(activeEvent);
+      return;
+    }
+
+    setActiveEvent(null);
   }
 
   function handleBattleAction(action: "Strike" | "Guard" | "Heavy Attack") {
@@ -777,6 +897,150 @@ export function MapScreen({ character }: MapScreenProps) {
     }
   }
 
+  function editDialogueNode(node: StoryDialogueNode) {
+    setEditingNode(node);
+    setNodeTitle(node.title);
+    setNodeKey(node.node_key);
+    setNodeNpcName(node.npc_name ?? "");
+    setNodeNpcPortrait(node.npc_portrait_url ?? "");
+    setNodeBackgroundImage(node.background_image_url ?? "");
+    setNodeDialogue(node.dialogue_text);
+    setNodeSortOrder(String(node.sort_order));
+    setNodeIsStart(node.is_start);
+    setNodeIsEnding(node.is_ending);
+    setNodeAllowEndChat(node.allow_end_chat);
+    setNodeEndCompletesEvent(node.end_completes_event);
+    setChoiceNodeId(node.id);
+  }
+
+  function clearDialogueNodeForm() {
+    setEditingNode(null);
+    setNodeTitle("");
+    setNodeKey("");
+    setNodeNpcName("");
+    setNodeNpcPortrait("");
+    setNodeBackgroundImage("");
+    setNodeDialogue("");
+    setNodeSortOrder("0");
+    setNodeIsStart(false);
+    setNodeIsEnding(false);
+    setNodeAllowEndChat(true);
+    setNodeEndCompletesEvent(false);
+  }
+
+  async function saveDialogueNode() {
+    if (!selectedDialogueEventId || !nodeTitle.trim()) {
+      setAdminMessage("Select a story event and add a node title.");
+      return;
+    }
+
+    try {
+      const input = {
+        node_key: nodeKey.trim() || nodeTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        title: nodeTitle.trim(),
+        npc_name: nodeNpcName.trim() || null,
+        npc_portrait_url: nodeNpcPortrait.trim() || null,
+        background_image_url: nodeBackgroundImage.trim() || null,
+        dialogue_text: nodeDialogue.trim(),
+        is_start: nodeIsStart,
+        is_ending: nodeIsEnding,
+        allow_end_chat: nodeAllowEndChat,
+        end_completes_event: nodeEndCompletesEvent,
+        sort_order: Number(nodeSortOrder) || 0,
+      };
+      const saved = editingNode
+        ? await updateDialogueNode(editingNode.id, input)
+        : await createDialogueNode({ ...input, event_id: selectedDialogueEventId });
+      setDialogueNodes((current) => {
+        const next = editingNode ? current.map((node) => (node.id === saved.id ? saved : node)) : [...current, saved];
+        return next.sort((a, b) => a.sort_order - b.sort_order);
+      });
+      setChoiceNodeId(saved.id);
+      clearDialogueNodeForm();
+      setAdminMessage("Dialogue node saved.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save dialogue node."));
+    }
+  }
+
+  async function removeDialogueNode(nodeId: string) {
+    try {
+      await deleteDialogueNode(nodeId);
+      setDialogueNodes((current) => current.filter((node) => node.id !== nodeId));
+      setDialogueChoices((current) => current.filter((choice) => choice.node_id !== nodeId));
+      if (choiceNodeId === nodeId) {
+        setChoiceNodeId(null);
+      }
+      setAdminMessage("Dialogue node deleted.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to delete dialogue node."));
+    }
+  }
+
+  function editDialogueChoice(choice: StoryDialogueChoice) {
+    setEditingChoice(choice);
+    setChoiceNodeId(choice.node_id);
+    setChoiceButtonText(choice.button_text);
+    setChoicePlayerText(choice.player_dialogue_text ?? "");
+    setChoiceAction(choice.action);
+    setChoiceNextNodeId(choice.next_node_id);
+    setChoiceBattleEventId(choice.battle_event_id);
+    setChoiceRewardXp(String(choice.reward_xp));
+    setChoiceRewardItem(choice.reward_item ?? "");
+    setChoiceSortOrder(String(choice.sort_order));
+  }
+
+  function clearDialogueChoiceForm() {
+    setEditingChoice(null);
+    setChoiceButtonText("");
+    setChoicePlayerText("");
+    setChoiceAction("go_to_node");
+    setChoiceNextNodeId(null);
+    setChoiceBattleEventId(null);
+    setChoiceRewardXp("0");
+    setChoiceRewardItem("");
+    setChoiceSortOrder("0");
+  }
+
+  async function saveDialogueChoice() {
+    if (!choiceNodeId || !choiceButtonText.trim()) {
+      setAdminMessage("Select a dialogue node and add choice button text.");
+      return;
+    }
+
+    try {
+      const input = {
+        button_text: choiceButtonText.trim(),
+        player_dialogue_text: choicePlayerText.trim() || null,
+        action: choiceAction,
+        next_node_id: choiceAction === "go_to_node" ? choiceNextNodeId : null,
+        battle_event_id: choiceAction === "start_battle" ? choiceBattleEventId : null,
+        reward_xp: Number(choiceRewardXp) || 0,
+        reward_item: choiceRewardItem.trim() || null,
+        sort_order: Number(choiceSortOrder) || 0,
+      };
+      const saved = editingChoice ? await updateDialogueChoice(editingChoice.id, input) : await createDialogueChoice({ ...input, node_id: choiceNodeId });
+      setDialogueChoices((current) => {
+        const next = editingChoice ? current.map((choice) => (choice.id === saved.id ? saved : choice)) : [...current, saved];
+        return next.sort((a, b) => a.sort_order - b.sort_order);
+      });
+      clearDialogueChoiceForm();
+      setAdminMessage("Dialogue choice saved.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save dialogue choice."));
+    }
+  }
+
+  async function removeDialogueChoice(choiceId: string) {
+    try {
+      await deleteDialogueChoice(choiceId);
+      setDialogueChoices((current) => current.filter((choice) => choice.id !== choiceId));
+      setAdminMessage("Dialogue choice deleted.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to delete dialogue choice."));
+    }
+  }
+
   function undoPathPoint() {
     setPathDraft((current) => current.slice(0, -1));
   }
@@ -787,7 +1051,18 @@ export function MapScreen({ character }: MapScreenProps) {
   }
 
   if (activeEvent) {
-    return <StoryInstanceScreen event={activeEvent} onChoice={handleStoryChoice} />;
+    return (
+      <StoryInstanceScreen
+        event={activeEvent}
+        nodes={dialogueNodes}
+        choices={dialogueChoices}
+        activeNodeId={activeNodeId}
+        dialogueLog={dialogueLog}
+        onLegacyChoice={handleStoryChoice}
+        onChoice={(choice) => void handleDialogueChoice(choice)}
+        onEndChat={(completeEvent) => void endDialogueChat(completeEvent)}
+      />
+    );
   }
 
   if (activeBattle) {
@@ -1125,6 +1400,113 @@ export function MapScreen({ character }: MapScreenProps) {
                 </View>
               </View>
             ))}
+            <View style={styles.storyEditor}>
+              <Text style={styles.selectedTitle}>Branching Dialogue Editor</Text>
+              <Text style={styles.copy}>Select a Story Event, create dialogue nodes, then add player choices that link to other nodes or actions.</Text>
+              <View style={styles.storyRoutePicker}>
+                {mapEvents.filter((event) => event.event_type === "story").map((event) => (
+                  <Pressable
+                    key={event.id}
+                    style={[styles.routeChip, selectedDialogueEventId === event.id && styles.routeChipActive]}
+                    onPress={() => void loadDialogueEditor(event.id)}
+                  >
+                    <Text style={styles.routeChipText}>{event.title}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput value={nodeTitle} onChangeText={setNodeTitle} placeholder="Node title / internal label" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={nodeKey} onChangeText={setNodeKey} placeholder="Optional node key" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={nodeNpcName} onChangeText={setNodeNpcName} placeholder="NPC name" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={nodeNpcPortrait} onChangeText={setNodeNpcPortrait} placeholder="NPC portrait URL optional" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={nodeBackgroundImage} onChangeText={setNodeBackgroundImage} placeholder="Background image URL optional" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={nodeDialogue} onChangeText={setNodeDialogue} placeholder="NPC dialogue text" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+              <TextInput value={nodeSortOrder} onChangeText={setNodeSortOrder} placeholder="Node order" placeholderTextColor={colors.muted} style={styles.input} />
+              <View style={styles.typeGrid}>
+                <Pressable style={[styles.typeButton, nodeIsStart && styles.typeSelected]} onPress={() => setNodeIsStart((value) => !value)}>
+                  <Text style={styles.typeText}>Start Node</Text>
+                </Pressable>
+                <Pressable style={[styles.typeButton, nodeIsEnding && styles.typeSelected]} onPress={() => setNodeIsEnding((value) => !value)}>
+                  <Text style={styles.typeText}>Ending Node</Text>
+                </Pressable>
+                <Pressable style={[styles.typeButton, nodeAllowEndChat && styles.typeSelected]} onPress={() => setNodeAllowEndChat((value) => !value)}>
+                  <Text style={styles.typeText}>Allow End Chat</Text>
+                </Pressable>
+                <Pressable style={[styles.typeButton, nodeEndCompletesEvent && styles.typeSelected]} onPress={() => setNodeEndCompletesEvent((value) => !value)}>
+                  <Text style={styles.typeText}>End Completes</Text>
+                </Pressable>
+              </View>
+              <Pressable style={styles.primaryButton} onPress={() => void saveDialogueNode()} disabled={!selectedDialogueEventId || !nodeTitle.trim()}>
+                <Text style={styles.primaryText}>{editingNode ? "Update Dialogue Node" : "Create Dialogue Node"}</Text>
+              </Pressable>
+              {editingNode ? <Pressable style={styles.secondaryButton} onPress={clearDialogueNodeForm}><Text style={styles.secondaryText}>Cancel Node Edit</Text></Pressable> : null}
+              {dialogueNodes.map((node) => (
+                <View key={node.id} style={styles.storyCard}>
+                  <Text style={styles.markerName}>{node.sort_order}. {node.title}{node.is_start ? " · Start" : ""}{node.is_ending ? " · Ending" : ""}</Text>
+                  <Text style={styles.copy}>{node.dialogue_text || "No dialogue yet."}</Text>
+                  <View style={styles.modeRow}>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueNode(node)}><Text style={styles.secondaryText}>Edit Node</Text></Pressable>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => setChoiceNodeId(node.id)}><Text style={styles.secondaryText}>Add Choice Here</Text></Pressable>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueNode(node.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
+                  </View>
+                </View>
+              ))}
+              <Text style={styles.selectedTitle}>Player Choices</Text>
+              <View style={styles.storyRoutePicker}>
+                {dialogueNodes.map((node) => (
+                  <Pressable key={node.id} style={[styles.routeChip, choiceNodeId === node.id && styles.routeChipActive]} onPress={() => setChoiceNodeId(node.id)}>
+                    <Text style={styles.routeChipText}>{node.title}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput value={choiceButtonText} onChangeText={setChoiceButtonText} placeholder="Choice button text" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={choicePlayerText} onChangeText={setChoicePlayerText} placeholder="Optional player dialogue text" placeholderTextColor={colors.muted} style={styles.input} />
+              <View style={styles.typeGrid}>
+                {(["go_to_node", "start_battle", "complete_event", "give_reward", "end_conversation", "return_to_map"] as const).map((action) => (
+                  <Pressable key={action} style={[styles.typeButton, choiceAction === action && styles.typeSelected]} onPress={() => setChoiceAction(action)}>
+                    <Text style={styles.typeText}>{action.replace(/_/g, " ")}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {choiceAction === "go_to_node" ? (
+                <View style={styles.storyRoutePicker}>
+                  {dialogueNodes.map((node) => (
+                    <Pressable key={node.id} style={[styles.routeChip, choiceNextNodeId === node.id && styles.routeChipActive]} onPress={() => setChoiceNextNodeId(node.id)}>
+                      <Text style={styles.routeChipText}>Next: {node.title}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              {choiceAction === "start_battle" ? (
+                <View style={styles.storyRoutePicker}>
+                  {mapEvents.filter((event) => event.event_type === "battle").map((event) => (
+                    <Pressable key={event.id} style={[styles.routeChip, choiceBattleEventId === event.id && styles.routeChipActive]} onPress={() => setChoiceBattleEventId(event.id)}>
+                      <Text style={styles.routeChipText}>{event.title}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+              {choiceAction === "give_reward" ? (
+                <>
+                  <TextInput value={choiceRewardXp} onChangeText={setChoiceRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={choiceRewardItem} onChangeText={setChoiceRewardItem} placeholder="Reward item optional" placeholderTextColor={colors.muted} style={styles.input} />
+                </>
+              ) : null}
+              <TextInput value={choiceSortOrder} onChangeText={setChoiceSortOrder} placeholder="Choice order" placeholderTextColor={colors.muted} style={styles.input} />
+              <Pressable style={styles.primaryButton} onPress={() => void saveDialogueChoice()} disabled={!choiceNodeId || !choiceButtonText.trim()}>
+                <Text style={styles.primaryText}>{editingChoice ? "Update Choice" : "Create Choice"}</Text>
+              </Pressable>
+              {editingChoice ? <Pressable style={styles.secondaryButton} onPress={clearDialogueChoiceForm}><Text style={styles.secondaryText}>Cancel Choice Edit</Text></Pressable> : null}
+              {dialogueChoices.map((choice) => (
+                <View key={choice.id} style={styles.storyCard}>
+                  <Text style={styles.markerName}>{choice.button_text}</Text>
+                  <Text style={styles.copy}>{choice.action.replace(/_/g, " ")}{choice.player_dialogue_text ? ` · "${choice.player_dialogue_text}"` : ""}</Text>
+                  <View style={styles.modeRow}>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueChoice(choice)}><Text style={styles.secondaryText}>Edit Choice</Text></Pressable>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueChoice(choice.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
           </View>
           {selectedMarker && editorMode === "Marker" ? (
             <View style={styles.adminActions}>
@@ -1292,20 +1674,61 @@ function parseChoices(value: string): MapEvent["choices"] {
     });
 }
 
-function StoryInstanceScreen({ event, onChoice }: { event: MapEvent; onChoice: (action: MapEvent["choices"][number]["action"]) => void }) {
-  const choices = event.choices.length > 0 ? event.choices : [{ label: "Continue", action: "Continue" as const }];
+function StoryInstanceScreen({
+  event,
+  nodes,
+  choices,
+  activeNodeId,
+  dialogueLog,
+  onLegacyChoice,
+  onChoice,
+  onEndChat,
+}: {
+  event: MapEvent;
+  nodes: StoryDialogueNode[];
+  choices: StoryDialogueChoice[];
+  activeNodeId: string | null;
+  dialogueLog: string[];
+  onLegacyChoice: (action: MapEvent["choices"][number]["action"]) => void;
+  onChoice: (choice: StoryDialogueChoice) => void;
+  onEndChat: (completeEvent: boolean) => void;
+}) {
+  const activeNode = nodes.find((node) => node.id === activeNodeId) ?? nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
+  const nodeChoices = activeNode ? choices.filter((choice) => choice.node_id === activeNode.id) : [];
+  const legacyChoices = event.choices.length > 0 ? event.choices : [{ label: "Return to Map", action: "Continue" as const }];
 
   return (
     <Screen>
       <Frame style={styles.eventScreen}>
-        {event.background_image_url ? <Image source={{ uri: event.background_image_url }} style={styles.eventImage} /> : <View style={styles.eventImagePlaceholder} />}
-        {event.npc_portrait_url ? <Image source={{ uri: event.npc_portrait_url }} style={styles.npcPortrait} /> : null}
+        {(activeNode?.background_image_url ?? event.background_image_url) ? <Image source={{ uri: activeNode?.background_image_url ?? event.background_image_url ?? "" }} style={styles.eventImage} /> : <View style={styles.eventImagePlaceholder} />}
+        {(activeNode?.npc_portrait_url ?? event.npc_portrait_url) ? <Image source={{ uri: activeNode?.npc_portrait_url ?? event.npc_portrait_url ?? "" }} style={styles.npcPortrait} /> : null}
         <Text style={styles.sectionTitle}>{event.title}</Text>
-        {event.npc_name ? <Text style={styles.selectedTitle}>{event.npc_name}</Text> : null}
-        <Text style={styles.dialogueText}>{event.dialogue_text || "The trail grows quiet."}</Text>
+        {(activeNode?.npc_name ?? event.npc_name) ? <Text style={styles.selectedTitle}>{activeNode?.npc_name ?? event.npc_name}</Text> : null}
+        <Text style={styles.dialogueText}>{activeNode?.dialogue_text || event.dialogue_text || "The trail grows quiet."}</Text>
+        {dialogueLog.map((line, index) => (
+          <Text key={`${line}-${index}`} style={styles.copy}>{line}</Text>
+        ))}
         <View style={styles.choiceStack}>
-          {choices.map((choice, index) => (
-            <Pressable key={`${choice.label}-${index}`} style={styles.primaryButton} onPress={() => onChoice(choice.action)}>
+          {activeNode ? (
+            <>
+              {nodeChoices.map((choice) => (
+                <Pressable key={choice.id} style={styles.primaryButton} onPress={() => onChoice(choice)}>
+                  <Text style={styles.primaryText}>{choice.button_text}</Text>
+                </Pressable>
+              ))}
+              {nodeChoices.length === 0 || activeNode.is_ending ? (
+                <Pressable style={styles.primaryButton} onPress={() => onEndChat(activeNode.end_completes_event)}>
+                  <Text style={styles.primaryText}>{activeNode.end_completes_event ? "Complete Event" : "Return to Map"}</Text>
+                </Pressable>
+              ) : null}
+              {activeNode.allow_end_chat ? (
+                <Pressable style={styles.secondaryButton} onPress={() => onEndChat(activeNode.end_completes_event)}>
+                  <Text style={styles.secondaryText}>End Chat</Text>
+                </Pressable>
+              ) : null}
+            </>
+          ) : legacyChoices.map((choice, index) => (
+            <Pressable key={`${choice.label}-${index}`} style={styles.primaryButton} onPress={() => onLegacyChoice(choice.action)}>
               <Text style={styles.primaryText}>{choice.label}</Text>
             </Pressable>
           ))}
