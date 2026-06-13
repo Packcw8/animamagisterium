@@ -119,6 +119,8 @@ export type Tables = {
     route_id: string;
     distance_walked_meters: number;
     progress_percent: number;
+    current_x_percent: number | null;
+    current_y_percent: number | null;
     last_lat: number | null;
     last_lng: number | null;
     updated_at: string;

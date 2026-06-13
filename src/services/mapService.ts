@@ -123,7 +123,31 @@ export async function getRouteProgress(routeId: string) {
   return data as RouteProgress | null;
 }
 
-export async function saveRouteProgress(routeId: string, values: Pick<RouteProgress, "distance_walked_meters" | "progress_percent" | "last_lat" | "last_lng">) {
+export async function getRouteProgressForRoutes(routeIds: string[]) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user || routeIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("route_progress")
+    .select("*")
+    .eq("user_id", user.id)
+    .in("route_id", routeIds);
+
+  if (error) {
+    console.warn("[map] route progress list unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as RouteProgress[];
+}
+
+export async function saveRouteProgress(routeId: string, values: Pick<RouteProgress, "distance_walked_meters" | "progress_percent" | "current_x_percent" | "current_y_percent" | "last_lat" | "last_lng">) {
   const {
     data: { user },
     error: userError,
@@ -141,6 +165,8 @@ export async function saveRouteProgress(routeId: string, values: Pick<RouteProgr
         route_id: routeId,
         distance_walked_meters: values.distance_walked_meters,
         progress_percent: values.progress_percent,
+        current_x_percent: values.current_x_percent,
+        current_y_percent: values.current_y_percent,
         last_lat: values.last_lat,
         last_lng: values.last_lng,
         updated_at: new Date().toISOString(),

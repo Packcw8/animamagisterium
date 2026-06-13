@@ -18,6 +18,7 @@ import {
   getMapMarkers,
   getMapRoutes,
   getRouteProgress,
+  getRouteProgressForRoutes,
   getStoryInstances,
   MapMarker,
   MapRoute,
@@ -53,6 +54,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const [storyInstances, setStoryInstances] = useState<MapStoryInstance[]>([]);
   const [role, setRole] = useState<Role>("player");
   const [distanceWalked, setDistanceWalked] = useState(0);
+  const [savedPlayerPosition, setSavedPlayerPosition] = useState<{ x: number; y: number } | null>(null);
   const [lastPosition, setLastPosition] = useState<Coordinate | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [gpsMessage, setGpsMessage] = useState("GPS is off. Start tracking to count real-world walking distance.");
@@ -96,10 +98,12 @@ export function MapScreen({ character }: MapScreenProps) {
   const scaledMapSize = useMemo(() => ({ width: mapSize.width * scale, height: mapSize.height * scale }), [scale]);
 
   const progressPercent = Math.min(100, Math.max(0, (distanceWalked / route.distance_required_meters) * 100));
-  const playerPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
-  const routeSegments = useMemo(() => getRouteSegments(pathDraft), [pathDraft]);
-  const visibleMarkers = isAdmin ? markers : markers.filter((marker) => marker.is_active && marker.is_unlocked);
   const orderedRoutes = useMemo(() => [...routes].sort(compareRoutes), [routes]);
+  const routeProgressPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
+  const playerPosition = savedPlayerPosition ?? routeProgressPosition;
+  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(orderedRoutes, route.id), [orderedRoutes, route.id]);
+  const draftSegments = useMemo(() => getRouteSegments(pathDraft).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [pathDraft]);
+  const visibleMarkers = isAdmin ? markers : markers.filter((marker) => marker.is_active && marker.is_unlocked);
 
   useEffect(() => {
     void loadMap();
@@ -188,7 +192,8 @@ export function MapScreen({ character }: MapScreenProps) {
   async function loadMap() {
     const [loadedRoutes, loadedMarkers, loadedRole] = await Promise.all([getMapRoutes(), getMapMarkers(), getCurrentRole()]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
-    const firstRoute = nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
+    const progressRows = await getRouteProgressForRoutes(nextRoutes.map((item) => item.id));
+    const firstRoute = getFirstUnfinishedRoute(nextRoutes, progressRows) ?? nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
     setRoutes(nextRoutes);
     setPathDraft([]);
     setMarkers(loadedMarkers);
@@ -208,6 +213,7 @@ export function MapScreen({ character }: MapScreenProps) {
     lastEncounterBucket.current = 0;
     lastStoryBucket.current = 0;
     distanceWalkedRef.current = 0;
+    setSavedPlayerPosition(null);
     setDistanceWalked(0);
     setLastPosition(null);
 
@@ -216,6 +222,9 @@ export function MapScreen({ character }: MapScreenProps) {
 
     if (progress) {
       setDistanceWalked(Number(progress.distance_walked_meters));
+      if (progress.current_x_percent !== null && progress.current_y_percent !== null) {
+        setSavedPlayerPosition({ x: Number(progress.current_x_percent), y: Number(progress.current_y_percent) });
+      }
       if (progress.last_lat !== null && progress.last_lng !== null) {
         setLastPosition({ latitude: Number(progress.last_lat), longitude: Number(progress.last_lng) });
       }
@@ -247,6 +256,8 @@ export function MapScreen({ character }: MapScreenProps) {
             void saveRouteProgress(activeRoute.id, {
               distance_walked_meters: distanceWalkedRef.current,
               progress_percent: (distanceWalkedRef.current / activeRoute.distance_required_meters) * 100,
+              current_x_percent: playerPosition.x,
+              current_y_percent: playerPosition.y,
               last_lat: next.latitude,
               last_lng: next.longitude,
             });
@@ -258,12 +269,16 @@ export function MapScreen({ character }: MapScreenProps) {
           const cleanMeters = meters > 2 && meters < 250 ? meters : 0;
           const nextDistance = Math.min(activeRoute.distance_required_meters, distanceWalkedRef.current + cleanMeters);
           const nextProgress = Math.min(100, (nextDistance / activeRoute.distance_required_meters) * 100);
+          const nextMapPosition = getPointOnRoute(activeRoute.path_points, nextProgress);
 
           distanceWalkedRef.current = nextDistance;
+          setSavedPlayerPosition(nextMapPosition);
           setDistanceWalked(nextDistance);
           void saveRouteProgress(activeRoute.id, {
             distance_walked_meters: nextDistance,
             progress_percent: nextProgress,
+            current_x_percent: nextMapPosition.x,
+            current_y_percent: nextMapPosition.y,
             last_lat: next.latitude,
             last_lng: next.longitude,
           });
@@ -571,6 +586,11 @@ export function MapScreen({ character }: MapScreenProps) {
     setPathDraft((current) => current.slice(0, -1));
   }
 
+  function loadSelectedPathIntoDraft() {
+    setPathDraft(route.path_points);
+    setAdminMessage(`Loaded ${route.name} into the walking path editor.`);
+  }
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -610,10 +630,27 @@ export function MapScreen({ character }: MapScreenProps) {
           <Image source={forgottenMarches} style={styles.mapImage} {...({ pointerEvents: "none" } as object)} />
           {routeSegments.map((segment, index) => (
             <View
-              key={`${segment.left}-${segment.top}-${index}`}
+              key={`${segment.id}-${index}`}
               pointerEvents="none"
               style={[
                 styles.routeSegment,
+                !segment.isActive && styles.routeSegmentInactive,
+                {
+                  left: `${segment.left}%`,
+                  top: `${segment.top}%`,
+                  width: segment.length,
+                  transform: [{ rotate: `${segment.angle}deg` }],
+                },
+              ]}
+            />
+          ))}
+          {draftSegments.map((segment, index) => (
+            <View
+              key={`${segment.id}-${index}`}
+              pointerEvents="none"
+              style={[
+                styles.routeSegment,
+                styles.routeSegmentDraft,
                 {
                   left: `${segment.left}%`,
                   top: `${segment.top}%`,
@@ -749,6 +786,9 @@ export function MapScreen({ character }: MapScreenProps) {
               <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
               <Info label="Path Points" value={String(pathDraft.length)} />
               <View style={styles.modeRow}>
+                <Pressable style={styles.secondaryButtonFlex} onPress={loadSelectedPathIntoDraft}>
+                  <Text style={styles.secondaryText}>Load Selected Path</Text>
+                </Pressable>
                 <Pressable style={styles.secondaryButtonFlex} onPress={() => setPathDraft([])}>
                   <Text style={styles.secondaryText}>Clear Path</Text>
                 </Pressable>
@@ -874,6 +914,17 @@ function getRouteSegments(points: Array<{ x: number; y: number }>) {
   });
 }
 
+function getRouteSegmentsForRoutes(routes: MapRoute[], activeRouteId: string) {
+  return routes.flatMap((mapRoute) =>
+    getRouteSegments(mapRoute.path_points).map((segment, index) => ({
+      ...segment,
+      id: `${mapRoute.id}-${index}`,
+      isActive: mapRoute.id === activeRouteId,
+      isDraft: false,
+    })),
+  );
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -913,6 +964,11 @@ function compareRoutes(a: MapRoute, b: MapRoute) {
 function getNextRoute(routes: MapRoute[], currentRoute: MapRoute) {
   const currentIndex = routes.findIndex((item) => item.id === currentRoute.id);
   return routes.slice(currentIndex + 1).find((item) => item.is_active) ?? null;
+}
+
+function getFirstUnfinishedRoute(routes: MapRoute[], progressRows: Array<{ route_id: string; progress_percent: number }>) {
+  const progressByRoute = new Map(progressRows.map((progress) => [progress.route_id, Number(progress.progress_percent)]));
+  return routes.find((mapRoute) => mapRoute.is_active && (progressByRoute.get(mapRoute.id) ?? 0) < 100) ?? null;
 }
 
 function getNextRouteOrder(routes: MapRoute[]) {
@@ -1015,6 +1071,14 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(66, 178, 232, 0.62)",
     transformOrigin: "0 50%",
   } as object,
+  routeSegmentInactive: {
+    height: 3,
+    backgroundColor: "rgba(213, 164, 65, 0.42)",
+  },
+  routeSegmentDraft: {
+    height: 6,
+    backgroundColor: "rgba(127, 231, 255, 0.88)",
+  },
   pathPoint: {
     position: "absolute",
     width: 28,
