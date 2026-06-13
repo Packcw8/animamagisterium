@@ -1,6 +1,6 @@
 import { distance as turfDistance } from "@turf/turf";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Image, PanResponder, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { ProgressBar } from "../components/ProgressBar";
@@ -60,52 +60,25 @@ export function MapScreen({ character }: MapScreenProps) {
   const [routeDanger, setRouteDanger] = useState("");
   const [routeDistance, setRouteDistance] = useState("");
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
-  const [scale, setScale] = useState(0.72);
-  const [offset, setOffset] = useState({ x: -320, y: -210 });
+  const [scale, setScale] = useState(0.86);
   const [followPlayer, setFollowPlayer] = useState(true);
-  const [pinchDistance, setPinchDistance] = useState<number | null>(null);
+  const viewportRef = useRef<{
+    scrollLeft?: number;
+    scrollTop?: number;
+    clientWidth?: number;
+    clientHeight?: number;
+    scrollTo?: (options: { left: number; top: number; behavior?: "smooth" | "auto" }) => void;
+  } | null>(null);
   const watchId = useRef<number | null>(null);
   const lastEncounterBucket = useRef(0);
-  const panStart = useRef(offset);
   const distanceWalkedRef = useRef(0);
   const isAdmin = role === "admin";
+  const scaledMapSize = useMemo(() => ({ width: mapSize.width * scale, height: mapSize.height * scale }), [scale]);
 
   const progressPercent = Math.min(100, Math.max(0, (distanceWalked / route.distance_required_meters) * 100));
   const playerPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
   const routeSegments = useMemo(() => getRouteSegments(pathDraft), [pathDraft]);
   const visibleMarkers = isAdmin ? markers : markers.filter((marker) => marker.is_active && marker.is_unlocked);
-
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onMoveShouldSetPanResponder: (_event, gesture) => Math.abs(gesture.dx) > 6 || Math.abs(gesture.dy) > 6,
-        onPanResponderGrant: (event) => {
-          panStart.current = offset;
-          const touches = event.nativeEvent.touches;
-          if (touches?.length === 2) {
-            setPinchDistance(getTouchDistance(touches));
-          }
-        },
-        onPanResponderMove: (event, gesture) => {
-          const touches = event.nativeEvent.touches;
-          if (touches?.length === 2 && pinchDistance) {
-            const nextDistance = getTouchDistance(touches);
-            setScale((current) => clamp(current * (nextDistance / pinchDistance), 0.5, 2.7));
-            setPinchDistance(nextDistance);
-            return;
-          }
-
-          setOffset(clampOffset({
-            x: panStart.current.x + gesture.dx * 1.18,
-            y: panStart.current.y + gesture.dy * 1.18,
-          }, scale));
-          setFollowPlayer(false);
-        },
-        onPanResponderRelease: () => setPinchDistance(null),
-      }),
-    [offset, pinchDistance],
-  );
 
   useEffect(() => {
     void loadMap();
@@ -226,8 +199,8 @@ export function MapScreen({ character }: MapScreenProps) {
   }
 
   function resetZoom() {
-    setScale(0.72);
-    setOffset({ x: -320, y: -210 });
+    setScale(0.86);
+    scrollMapTo(0, 0, "auto");
     setFollowPlayer(false);
   }
 
@@ -237,10 +210,28 @@ export function MapScreen({ character }: MapScreenProps) {
   }
 
   function centerOn(xPercent: number, yPercent: number) {
-    setOffset({
-      x: 180 - (xPercent / 100) * mapSize.width * scale,
-      y: 210 - (yPercent / 100) * mapSize.height * scale,
-    });
+    const viewport = viewportRef.current;
+    const viewportWidth = viewport?.clientWidth ?? 360;
+    const viewportHeight = viewport?.clientHeight ?? 520;
+    const left = (xPercent / 100) * scaledMapSize.width - viewportWidth / 2;
+    const top = (yPercent / 100) * scaledMapSize.height - viewportHeight / 2;
+    scrollMapTo(left, top);
+  }
+
+  function scrollMapTo(left: number, top: number, behavior: "smooth" | "auto" = "smooth") {
+    const viewport = viewportRef.current;
+
+    if (!viewport) {
+      return;
+    }
+
+    if (viewport.scrollTo) {
+      viewport.scrollTo({ left: Math.max(0, left), top: Math.max(0, top), behavior });
+      return;
+    }
+
+    viewport.scrollLeft = Math.max(0, left);
+    viewport.scrollTop = Math.max(0, top);
   }
 
   function handleWheel(event: { nativeEvent?: { deltaY?: number } }) {
@@ -253,8 +244,8 @@ export function MapScreen({ character }: MapScreenProps) {
       return;
     }
 
-    const x = clamp((event.nativeEvent.locationX / mapSize.width) * 100, 0, 100);
-    const y = clamp((event.nativeEvent.locationY / mapSize.height) * 100, 0, 100);
+    const x = clamp((event.nativeEvent.locationX / scaledMapSize.width) * 100, 0, 100);
+    const y = clamp((event.nativeEvent.locationY / scaledMapSize.height) * 100, 0, 100);
     captureMapPercent(x, y);
   }
 
@@ -406,16 +397,15 @@ export function MapScreen({ character }: MapScreenProps) {
         <Pressable style={styles.toolButton} onPress={centerOnPlayer}><Text style={styles.toolText}>Center Player</Text></Pressable>
         <Pressable style={[styles.toolButton, followPlayer && styles.toolActive]} onPress={() => setFollowPlayer((value) => !value)}><Text style={styles.toolText}>Follow {followPlayer ? "On" : "Off"}</Text></Pressable>
       </View>
-      <Text style={styles.mapHint}>Drag the map to pan. Pinch or use the controls to zoom. GPS distance moves your portrait along fantasy routes only.</Text>
+      <Text style={styles.mapHint}>Scroll the map frame horizontally and vertically to explore the full image. Use the controls or mouse wheel to zoom. Click the image in admin mode to capture X/Y coordinates.</Text>
 
-      <View style={styles.viewport} {...panResponder.panHandlers} {...({ onWheel: handleWheel } as object)}>
+      <View ref={viewportRef as never} style={styles.viewport} {...({ onWheel: handleWheel } as object)}>
         <Pressable
           style={[
             styles.mapSurface,
             {
-              width: mapSize.width,
-              height: mapSize.height,
-              transform: [{ translateX: offset.x }, { translateY: offset.y }, { scale }],
+              width: scaledMapSize.width,
+              height: scaledMapSize.height,
             },
           ]}
           onPress={Platform.OS === "web" ? undefined : handleMapPress}
@@ -568,11 +558,6 @@ export function MapScreen({ character }: MapScreenProps) {
   );
 }
 
-function getTouchDistance(touches: Array<{ pageX: number; pageY: number }>) {
-  const [first, second] = touches;
-  return Math.hypot(first.pageX - second.pageX, first.pageY - second.pageY);
-}
-
 function getPointOnRoute(points: Array<{ x: number; y: number }>, progressPercent: number) {
   if (points.length === 0) {
     return { x: 50, y: 50 };
@@ -623,18 +608,6 @@ function getRouteSegments(points: Array<{ x: number; y: number }>) {
       angle: Math.atan2(dy * mapSize.height, dx * mapSize.width) * (180 / Math.PI),
     };
   });
-}
-
-function clampOffset(nextOffset: { x: number; y: number }, scale: number) {
-  const scaledWidth = mapSize.width * scale;
-  const scaledHeight = mapSize.height * scale;
-  const minX = Math.min(40, 360 - scaledWidth);
-  const minY = Math.min(40, 520 - scaledHeight);
-
-  return {
-    x: clamp(nextOffset.x, minX, 80),
-    y: clamp(nextOffset.y, minY, 80),
-  };
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -717,17 +690,20 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    overflow: "hidden",
+    overflow: "auto",
+    overflowX: "auto",
+    overflowY: "auto",
     backgroundColor: "#061010",
-    cursor: "grab",
-    touchAction: "none",
+    cursor: "crosshair",
+    touchAction: "pan-x pan-y",
     overscrollBehavior: "contain",
     userSelect: "none",
+    WebkitOverflowScrolling: "touch",
   } as object,
   mapSurface: {
     position: "relative",
     transformOrigin: "0 0",
-    touchAction: "none",
+    touchAction: "auto",
     userSelect: "none",
   } as object,
   mapImage: {
