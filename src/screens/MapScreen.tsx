@@ -58,7 +58,8 @@ const eventTypeLabels: Record<(typeof eventTypes)[number], string> = {
 };
 const maxGpsAccuracyMeters = 50;
 const maxTrackingGapSeconds = 60;
-const minHumanSpeedMph = 0.5;
+const movementSpeedThresholdMph = 1.5;
+const movementStateDebounceMs = 5000;
 const maxHumanSpeedMph = 12;
 
 type MapScreenProps = {
@@ -78,6 +79,8 @@ type MovementStatus = {
   countedMeters: number;
   blockedReason: string | null;
 };
+
+type PlayerMovementState = "IDLE" | "MOVING";
 
 export function MapScreen({ character }: MapScreenProps) {
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
@@ -105,8 +108,9 @@ export function MapScreen({ character }: MapScreenProps) {
   const [lastPosition, setLastPosition] = useState<Coordinate | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [gpsMessage, setGpsMessage] = useState("GPS is off. Start tracking to count real-world walking distance.");
+  const [playerMovementState, setPlayerMovementState] = useState<PlayerMovementState>("IDLE");
   const [movementStatus, setMovementStatus] = useState<MovementStatus>({
-    label: "GPS off",
+    label: "IDLE",
     speedMph: 0,
     countedMeters: 0,
     blockedReason: null,
@@ -179,6 +183,8 @@ export function MapScreen({ character }: MapScreenProps) {
   const watchId = useRef<number | null>(null);
   const distanceWalkedRef = useRef(0);
   const routeRef = useRef(fallbackRoute);
+  const movementStateRef = useRef<PlayerMovementState>("IDLE");
+  const movementCandidateRef = useRef<{ state: PlayerMovementState; since: number } | null>(null);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const isAdmin = role === "admin";
   const scaledMapSize = useMemo(() => ({ width: mapSize.width * scale, height: mapSize.height * scale }), [scale]);
@@ -223,6 +229,29 @@ export function MapScreen({ character }: MapScreenProps) {
     }
   }
 
+  function resolveMovementState(speedMph: number, sampleTime: number) {
+    const current = movementStateRef.current;
+    const desired: PlayerMovementState = speedMph > movementSpeedThresholdMph ? "MOVING" : "IDLE";
+
+    if (desired === current) {
+      movementCandidateRef.current = null;
+      return { state: current, changed: false };
+    }
+
+    const candidate = movementCandidateRef.current;
+    const nextCandidate = candidate?.state === desired ? candidate : { state: desired, since: sampleTime };
+    movementCandidateRef.current = nextCandidate;
+
+    if (sampleTime - nextCandidate.since < movementStateDebounceMs) {
+      return { state: current, changed: false };
+    }
+
+    movementStateRef.current = desired;
+    movementCandidateRef.current = null;
+    setPlayerMovementState(desired);
+    return { state: desired, changed: true };
+  }
+
   useEffect(() => {
     if (followPlayer) {
       centerOn(playerPosition.x, playerPosition.y);
@@ -255,7 +284,7 @@ export function MapScreen({ character }: MapScreenProps) {
   }, [completedRouteId, orderedRoutes, progressPercent, route]);
 
   useEffect(() => {
-    if (activeEvent || activeBattle) {
+    if (activeEvent || activeBattle || playerMovementState !== "MOVING") {
       return;
     }
 
@@ -277,7 +306,7 @@ export function MapScreen({ character }: MapScreenProps) {
     }
 
     setActiveEvent(nextEvent);
-  }, [activeBattle, activeEvent, completedEventIds, mapEvents, progressPercent, route.id]);
+  }, [activeBattle, activeEvent, completedEventIds, mapEvents, playerMovementState, progressPercent, route.id]);
 
   useEffect(() => {
     if (!activeEvent || activeEvent.event_type === "battle") {
@@ -370,7 +399,7 @@ export function MapScreen({ character }: MapScreenProps) {
               last_lng: next.longitude,
             });
             setMovementStatus({
-              label: "Calibrating",
+              label: movementStateRef.current,
               speedMph: 0,
               countedMeters: 0,
               blockedReason: null,
@@ -388,11 +417,14 @@ export function MapScreen({ character }: MapScreenProps) {
             speedMph,
             accuracy: next.accuracy,
           });
+          const movementState = movement.blockedReason ? { state: movementStateRef.current, changed: false } : resolveMovementState(speedMph, next.timestamp);
+          const shouldCountDistance = movementState.state === "MOVING" && !movementState.changed;
+          const countedMeters = shouldCountDistance ? movement.countedMeters : 0;
 
           setMovementStatus({
-            label: movement.label,
+            label: movementState.state,
             speedMph,
-            countedMeters: movement.countedMeters,
+            countedMeters,
             blockedReason: movement.blockedReason,
           });
 
@@ -401,7 +433,12 @@ export function MapScreen({ character }: MapScreenProps) {
             return next;
           }
 
-          const cleanMeters = movement.countedMeters;
+          if (!shouldCountDistance) {
+            setGpsMessage(`State: ${movementState.state}. Speed ${speedMph.toFixed(1)} mph. Travel distance is not counting.`);
+            return next;
+          }
+
+          const cleanMeters = countedMeters;
           const nextDistance = Math.min(activeRoute.distance_required_meters, distanceWalkedRef.current + cleanMeters);
           const nextProgress = Math.min(100, (nextDistance / activeRoute.distance_required_meters) * 100);
           const nextMapPosition = getPointOnRoute(activeRoute.path_points, nextProgress);
@@ -418,7 +455,7 @@ export function MapScreen({ character }: MapScreenProps) {
             last_lat: next.latitude,
             last_lng: next.longitude,
           });
-          setGpsMessage(`${movement.label} counted: +${Math.round(cleanMeters)}m at ${speedMph.toFixed(1)} mph.`);
+          setGpsMessage(`State: MOVING. Counted +${Math.round(cleanMeters)}m at ${speedMph.toFixed(1)} mph.`);
 
           return next;
         });
@@ -438,8 +475,11 @@ export function MapScreen({ character }: MapScreenProps) {
     }
     setIsTracking(false);
     setLastPosition(null);
+    movementStateRef.current = "IDLE";
+    movementCandidateRef.current = null;
+    setPlayerMovementState("IDLE");
     setGpsMessage("GPS paused. Route progress is saved in Supabase.");
-    setMovementStatus((current) => ({ ...current, label: "GPS paused", speedMph: 0, countedMeters: 0 }));
+    setMovementStatus((current) => ({ ...current, label: "IDLE", speedMph: 0, countedMeters: 0 }));
   }
 
   function zoomBy(delta: number) {
@@ -1286,6 +1326,7 @@ export function MapScreen({ character }: MapScreenProps) {
         <Info label="Distance Walked" value={`${metersToMiles(distanceWalked)} mi`} />
         <Info label="Distance Remaining" value={`${metersToMiles(Math.max(0, route.distance_required_meters - distanceWalked))} mi`} />
         <Info label="Progress" value={`${Math.round(progressPercent)}%`} />
+        <Info label="State" value={playerMovementState} />
         <Info label="Movement" value={movementStatus.label} />
         <Info label="Current Speed" value={`${movementStatus.speedMph.toFixed(1)} mph`} />
         <Info label="Last Counted" value={`${Math.round(movementStatus.countedMeters)} m`} />
@@ -1733,17 +1774,9 @@ function classifyMovement({
     };
   }
 
-  if (meters < 2) {
+  if (meters < 2 || speedMph <= movementSpeedThresholdMph) {
     return {
-      label: "Idle",
-      countedMeters: 0,
-      blockedReason: null,
-    };
-  }
-
-  if (speedMph < minHumanSpeedMph) {
-    return {
-      label: "Idle",
+      label: "IDLE",
       countedMeters: 0,
       blockedReason: null,
     };
@@ -1757,24 +1790,8 @@ function classifyMovement({
     };
   }
 
-  if (speedMph <= 4) {
-    return {
-      label: "Walking",
-      countedMeters: meters,
-      blockedReason: null,
-    };
-  }
-
-  if (speedMph <= 7.5) {
-    return {
-      label: "Jogging",
-      countedMeters: meters,
-      blockedReason: null,
-    };
-  }
-
   return {
-    label: "Running",
+    label: "MOVING",
     countedMeters: meters,
     blockedReason: null,
   };
