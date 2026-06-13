@@ -8,17 +8,24 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
 import {
+  createMapRoute,
   createMapMarker,
+  createStoryInstance,
   deleteMapMarker,
+  deleteStoryInstance,
   fallbackRoute,
   getActiveRoute,
   getCurrentRole,
   getMapMarkers,
+  getMapRoutes,
   getRouteProgress,
+  getStoryInstances,
   MapMarker,
   MapRoute,
+  MapStoryInstance,
   Role,
   saveRouteProgress,
+  updateStoryInstance,
   updateMapMarker,
   updateMapRoute,
 } from "../services/mapService";
@@ -29,6 +36,7 @@ const markerTypes = ["Town", "Village", "Quest", "Dungeon", "Battle", "Boss", "M
 const feedSeeds = ["Wolf tracks discovered", "Merchant caravan spotted", "Broken Moon symbol found", "Cultist activity nearby"];
 const encounterTypes = ["Wolves", "Bandits", "Merchants", "Quest discoveries", "Bosses", "Occult events"];
 const editorModes = ["Marker", "Walking Path"] as const;
+const storyTriggerTypes = ["progress", "random"] as const;
 
 type MapScreenProps = {
   character: CharacterWithDetails;
@@ -41,7 +49,9 @@ type Coordinate = {
 
 export function MapScreen({ character }: MapScreenProps) {
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
+  const [routes, setRoutes] = useState<MapRoute[]>([fallbackRoute]);
   const [markers, setMarkers] = useState<MapMarker[]>([]);
+  const [storyInstances, setStoryInstances] = useState<MapStoryInstance[]>([]);
   const [role, setRole] = useState<Role>("player");
   const [distanceWalked, setDistanceWalked] = useState(0);
   const [lastPosition, setLastPosition] = useState<Coordinate | null>(null);
@@ -59,6 +69,11 @@ export function MapScreen({ character }: MapScreenProps) {
   const [routeTerrain, setRouteTerrain] = useState("");
   const [routeDanger, setRouteDanger] = useState("");
   const [routeDistance, setRouteDistance] = useState("");
+  const [storyTitle, setStoryTitle] = useState("");
+  const [storyBody, setStoryBody] = useState("");
+  const [storyTriggerType, setStoryTriggerType] = useState<(typeof storyTriggerTypes)[number]>("progress");
+  const [storyTriggerPercent, setStoryTriggerPercent] = useState("50");
+  const [storyChancePercent, setStoryChancePercent] = useState("25");
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [scale, setScale] = useState(0.86);
   const [followPlayer, setFollowPlayer] = useState(true);
@@ -71,6 +86,8 @@ export function MapScreen({ character }: MapScreenProps) {
   } | null>(null);
   const watchId = useRef<number | null>(null);
   const lastEncounterBucket = useRef(0);
+  const lastStoryBucket = useRef(0);
+  const triggeredStoryIds = useRef<Set<string>>(new Set());
   const distanceWalkedRef = useRef(0);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const isAdmin = role === "admin";
@@ -111,18 +128,65 @@ export function MapScreen({ character }: MapScreenProps) {
     }
   }, [progressPercent, route.name]);
 
+  useEffect(() => {
+    const activeStories = storyInstances.filter((story) => story.is_active);
+    const nextFeedItems: string[] = [];
+
+    activeStories.forEach((story) => {
+      if (story.trigger_type !== "progress" || story.trigger_percent === null || triggeredStoryIds.current.has(story.id)) {
+        return;
+      }
+
+      if (progressPercent >= Number(story.trigger_percent)) {
+        triggeredStoryIds.current.add(story.id);
+        nextFeedItems.push(formatStoryFeed(story));
+      }
+    });
+
+    const bucket = Math.floor(progressPercent / 10);
+    if (bucket > lastStoryBucket.current) {
+      lastStoryBucket.current = bucket;
+      activeStories
+        .filter((story) => story.trigger_type === "random" && !triggeredStoryIds.current.has(story.id))
+        .forEach((story) => {
+          if (Math.random() * 100 <= Number(story.chance_percent)) {
+            triggeredStoryIds.current.add(story.id);
+            nextFeedItems.push(formatStoryFeed(story));
+          }
+        });
+    }
+
+    if (nextFeedItems.length > 0) {
+      setFeed((current) => [...nextFeedItems, ...current].slice(0, 10));
+    }
+  }, [progressPercent, storyInstances]);
+
   async function loadMap() {
-    const [loadedRoute, loadedMarkers, loadedRole] = await Promise.all([getActiveRoute(), getMapMarkers(), getCurrentRole()]);
-    setRoute(loadedRoute);
-    setRouteName(loadedRoute.name);
-    setRouteTerrain(loadedRoute.terrain);
-    setRouteDanger(loadedRoute.danger_level);
-    setRouteDistance(String(Math.round(loadedRoute.distance_required_meters)));
+    const [loadedRoutes, loadedMarkers, loadedRole] = await Promise.all([getMapRoutes(), getMapMarkers(), getCurrentRole()]);
+    const firstRoute = loadedRoutes.find((item) => item.is_active) ?? loadedRoutes[0] ?? fallbackRoute;
+    setRoutes(loadedRoutes);
     setPathDraft([]);
     setMarkers(loadedMarkers);
     setRole(loadedRole);
+    await selectRoute(firstRoute);
+  }
 
-    const progress = await getRouteProgress(loadedRoute.id);
+  async function selectRoute(nextRoute: MapRoute) {
+    setRoute(nextRoute);
+    setRouteName(nextRoute.name);
+    setRouteTerrain(nextRoute.terrain);
+    setRouteDanger(nextRoute.danger_level);
+    setRouteDistance(String(Math.round(nextRoute.distance_required_meters)));
+    setPathDraft([]);
+    triggeredStoryIds.current = new Set();
+    lastEncounterBucket.current = 0;
+    lastStoryBucket.current = 0;
+    setDistanceWalked(0);
+    setLastPosition(null);
+
+    const [progress, stories] = await Promise.all([getRouteProgress(nextRoute.id), getStoryInstances(nextRoute.id)]);
+    setStoryInstances(stories);
+
     if (progress) {
       setDistanceWalked(Number(progress.distance_walked_meters));
       if (progress.last_lat !== null && progress.last_lng !== null) {
@@ -396,9 +460,79 @@ export function MapScreen({ character }: MapScreenProps) {
         path_points: pathDraft,
       });
       setRoute(updated);
+      setRoutes((current) => current.map((item) => (item.id === updated.id ? updated : item)));
       setAdminMessage("Walking path saved.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to save walking path. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function createWalkingPath() {
+    if (pathDraft.length < 2) {
+      setAdminMessage("Add at least two path points before creating a new route.");
+      return;
+    }
+
+    try {
+      const created = await createMapRoute({
+        name: routeName.trim() || "New Walking Path",
+        terrain: routeTerrain.trim() || "Unknown road",
+        danger_level: routeDanger.trim() || "Low",
+        distance_required_meters: Number(routeDistance) || 1000,
+        estimated_encounters: route.estimated_encounters,
+        path_points: pathDraft,
+        is_active: true,
+      });
+      setRoutes((current) => [...current, created]);
+      await selectRoute(created);
+      setAdminMessage("New walking path created.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to create walking path. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function addStoryInstance() {
+    if (!storyTitle.trim()) {
+      setAdminMessage("Add a story title first.");
+      return;
+    }
+
+    try {
+      const created = await createStoryInstance({
+        route_id: route.id,
+        title: storyTitle.trim(),
+        body: storyBody.trim() || null,
+        trigger_type: storyTriggerType,
+        trigger_percent: storyTriggerType === "progress" ? clamp(Number(storyTriggerPercent) || 0, 0, 100) : null,
+        chance_percent: clamp(Number(storyChancePercent) || 0, 0, 100),
+        is_active: true,
+      });
+      setStoryInstances((current) => [...current, created]);
+      setStoryTitle("");
+      setStoryBody("");
+      setAdminMessage("Story instance added.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to create story instance. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function toggleStoryInstance(story: MapStoryInstance) {
+    try {
+      const updated = await updateStoryInstance(story.id, { is_active: !story.is_active });
+      setStoryInstances((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+      setAdminMessage(updated.is_active ? "Story instance enabled." : "Story instance disabled.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to update story instance."));
+    }
+  }
+
+  async function removeStoryInstance(storyId: string) {
+    try {
+      await deleteStoryInstance(storyId);
+      setStoryInstances((current) => current.filter((story) => story.id !== storyId));
+      setAdminMessage("Story instance deleted.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to delete story instance."));
     }
   }
 
@@ -506,6 +640,13 @@ export function MapScreen({ character }: MapScreenProps) {
             <Text style={styles.gpsText}>{isTracking ? "Pause GPS" : "Track Walk"}</Text>
           </Pressable>
         </View>
+        <View style={styles.routePicker}>
+          {routes.map((item) => (
+            <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item)}>
+              <Text style={styles.routeChipText}>{item.name}</Text>
+            </Pressable>
+          ))}
+        </View>
         <Info label="Current Route" value={route.name} />
         <Info label="Distance Walked" value={`${metersToMiles(distanceWalked)} mi`} />
         <Info label="Distance Remaining" value={`${metersToMiles(Math.max(0, route.distance_required_meters - distanceWalked))} mi`} />
@@ -574,8 +715,49 @@ export function MapScreen({ character }: MapScreenProps) {
               <Pressable style={styles.primaryButton} onPress={() => void saveWalkingPath()}>
                 <Text style={styles.primaryText}>Save Walking Path</Text>
               </Pressable>
+              <Pressable style={styles.secondaryButton} onPress={() => void createWalkingPath()}>
+                <Text style={styles.secondaryText}>Create as New Walking Path</Text>
+              </Pressable>
             </View>
           )}
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Story Instances on {route.name}</Text>
+            <TextInput value={storyTitle} onChangeText={setStoryTitle} placeholder="Story title" placeholderTextColor={colors.muted} style={styles.input} />
+            <TextInput value={storyBody} onChangeText={setStoryBody} placeholder="Story text or encounter note" placeholderTextColor={colors.muted} style={styles.input} />
+            <View style={styles.modeRow}>
+              {storyTriggerTypes.map((type) => (
+                <Pressable key={type} style={[styles.modeButton, storyTriggerType === type && styles.typeSelected]} onPress={() => setStoryTriggerType(type)}>
+                  <Text style={styles.typeText}>{type === "progress" ? "At Route %" : "Random"}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {storyTriggerType === "progress" ? (
+              <TextInput value={storyTriggerPercent} onChangeText={setStoryTriggerPercent} placeholder="Trigger percent, 0-100" placeholderTextColor={colors.muted} style={styles.input} />
+            ) : (
+              <TextInput value={storyChancePercent} onChangeText={setStoryChancePercent} placeholder="Random chance percent, 0-100" placeholderTextColor={colors.muted} style={styles.input} />
+            )}
+            <Pressable style={styles.primaryButton} onPress={() => void addStoryInstance()} disabled={!storyTitle.trim()}>
+              <Text style={styles.primaryText}>Add Story Instance</Text>
+            </Pressable>
+            {storyInstances.map((story) => (
+              <View key={story.id} style={styles.storyCard}>
+                <Text style={styles.markerName}>{story.title}</Text>
+                <Text style={styles.copy}>{story.body || "No story text yet."}</Text>
+                <Info
+                  label="Trigger"
+                  value={story.trigger_type === "progress" ? `${story.trigger_percent ?? 0}%` : `Random ${story.chance_percent}%`}
+                />
+                <View style={styles.modeRow}>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={() => void toggleStoryInstance(story)}>
+                    <Text style={styles.secondaryText}>{story.is_active ? "Disable" : "Enable"}</Text>
+                  </Pressable>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeStoryInstance(story.id)}>
+                    <Text style={styles.dangerText}>Delete</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
           {selectedMarker && editorMode === "Marker" ? (
             <View style={styles.adminActions}>
               <Text style={styles.selectedTitle}>Selected: {selectedMarker.title}</Text>
@@ -670,6 +852,10 @@ function getErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function formatStoryFeed(story: MapStoryInstance) {
+  return story.body ? `${story.title}: ${story.body}` : story.title;
 }
 
 function Info({ label, value }: { label: string; value: string }) {
@@ -909,6 +1095,29 @@ const styles = StyleSheet.create({
     color: "#120e08",
     fontWeight: "900",
   },
+  routePicker: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  routeChip: {
+    minHeight: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingHorizontal: 10,
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  routeChipActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.7)",
+  },
+  routeChipText: {
+    color: colors.text,
+    fontWeight: "800",
+    fontSize: 12,
+  },
   gpsMessage: {
     color: colors.muted,
     lineHeight: 20,
@@ -1033,6 +1242,20 @@ const styles = StyleSheet.create({
   },
   pathEditor: {
     gap: 10,
+  },
+  storyEditor: {
+    gap: 10,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  storyCard: {
+    gap: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
   },
   adminActions: {
     gap: 10,

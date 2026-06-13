@@ -99,6 +99,19 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  map_story_instances: {
+    id: string;
+    route_id: string | null;
+    title: string;
+    body: string | null;
+    trigger_type: "progress" | "random";
+    trigger_percent: number | null;
+    chance_percent: number;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
   route_progress: {
     id: string;
     user_id: string;

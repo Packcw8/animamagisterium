@@ -3,6 +3,7 @@ import { supabase, Tables } from "../lib/supabase";
 export type MapRoute = Tables["map_routes"];
 export type RouteProgress = Tables["route_progress"];
 export type MapMarker = Tables["map_markers"];
+export type MapStoryInstance = Tables["map_story_instances"];
 export type Role = Tables["profiles"]["role"];
 
 export const fallbackRoute: MapRoute = {
@@ -43,7 +44,7 @@ export async function getCurrentRole(): Promise<Role> {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (user?.email?.toLowerCase() === "pack8cw@gmail.com") {
+  if (["pack8cw@gmail.com", "packcw8@gmail.com"].includes(user?.email?.toLowerCase() ?? "")) {
     return "admin";
   }
 
@@ -66,6 +67,18 @@ export async function getActiveRoute() {
   }
 
   return (data as MapRoute | null) ?? fallbackRoute;
+}
+
+export async function getMapRoutes() {
+  const { data, error } = await supabase.from("map_routes").select("*").order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("[map] falling back to local route list", error.message);
+    return [fallbackRoute];
+  }
+
+  const routes = (data ?? []) as MapRoute[];
+  return routes.length > 0 ? routes : [fallbackRoute];
 }
 
 export async function getMapMarkers() {
@@ -159,6 +172,23 @@ export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | 
   return data as MapMarker;
 }
 
+export async function createMapRoute(input: Pick<MapRoute, "name" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active">) {
+  const { data, error } = await supabase
+    .from("map_routes")
+    .insert({
+      ...input,
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MapRoute;
+}
+
 export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active">>) {
   const { data, error } = await supabase
     .from("map_routes")
@@ -197,6 +227,68 @@ export async function updateMapMarker(markerId: string, values: Partial<Pick<Map
 
 export async function deleteMapMarker(markerId: string) {
   const { error } = await supabase.from("map_markers").delete().eq("id", markerId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function getStoryInstances(routeId: string) {
+  const { data, error } = await supabase
+    .from("map_story_instances")
+    .select("*")
+    .eq("route_id", routeId)
+    .order("trigger_percent", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("[map] story instances unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as MapStoryInstance[];
+}
+
+export async function createStoryInstance(input: Pick<MapStoryInstance, "route_id" | "title" | "body" | "trigger_type" | "trigger_percent" | "chance_percent" | "is_active">) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from("map_story_instances")
+    .insert({
+      ...input,
+      created_by: user?.id ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MapStoryInstance;
+}
+
+export async function updateStoryInstance(storyId: string, values: Partial<Pick<MapStoryInstance, "title" | "body" | "trigger_type" | "trigger_percent" | "chance_percent" | "is_active">>) {
+  const { data, error } = await supabase
+    .from("map_story_instances")
+    .update({
+      ...values,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", storyId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MapStoryInstance;
+}
+
+export async function deleteStoryInstance(storyId: string) {
+  const { error } = await supabase.from("map_story_instances").delete().eq("id", storyId);
 
   if (error) {
     throw error;
