@@ -95,7 +95,7 @@ export default function App() {
             {activeScreen === "home" ? (
               <HomeScreen character={character} />
             ) : activeScreen === "map" ? (
-              <MapScreen />
+              <MapScreen character={character} />
             ) : activeScreen === "quests" ? (
               <QuestsScreen />
             ) : activeScreen === "social" ? (

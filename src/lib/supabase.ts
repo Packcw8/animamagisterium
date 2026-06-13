@@ -34,6 +34,7 @@ export type Tables = {
   profiles: {
     id: string;
     username: string | null;
+    role: "player" | "moderator" | "admin";
     created_at: string;
   };
   characters: {
@@ -84,6 +85,43 @@ export type Tables = {
     weapon_asset_id: string | null;
     cloak_asset_id: string | null;
     skin_tone: string | null;
+    updated_at: string;
+  };
+  map_routes: {
+    id: string;
+    name: string;
+    terrain: string;
+    danger_level: string;
+    distance_required_meters: number;
+    estimated_encounters: number;
+    path_points: Array<{ x: number; y: number }>;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  route_progress: {
+    id: string;
+    user_id: string;
+    route_id: string;
+    distance_walked_meters: number;
+    progress_percent: number;
+    last_lat: number | null;
+    last_lng: number | null;
+    updated_at: string;
+  };
+  map_markers: {
+    id: string;
+    type: string;
+    title: string;
+    description: string | null;
+    x_percent: number;
+    y_percent: number;
+    is_active: boolean;
+    is_unlocked: boolean;
+    quest_key: string | null;
+    route_id: string | null;
+    created_by: string | null;
+    created_at: string;
     updated_at: string;
   };
 };
