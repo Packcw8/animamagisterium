@@ -14,12 +14,10 @@ import {
   createMapRoute,
   createMapEvent,
   createMapMarker,
-  createStoryInstance,
   deleteDialogueChoice,
   deleteDialogueNode,
   deleteMapEvent,
   deleteMapMarker,
-  deleteStoryInstance,
   fallbackRoute,
   getCurrentRole,
   getMapMarkers,
@@ -30,11 +28,9 @@ import {
   getEventCompletions,
   getRouteProgress,
   getRouteProgressForRoutes,
-  getStoryInstances,
   MapMarker,
   MapEvent,
   MapRoute,
-  MapStoryInstance,
   Role,
   StoryDialogueChoice,
   StoryDialogueNode,
@@ -42,7 +38,6 @@ import {
   updateDialogueChoice,
   updateDialogueNode,
   updateMapEvent,
-  updateStoryInstance,
   updateMapMarker,
   updateMapRoute,
 } from "../services/mapService";
@@ -51,9 +46,14 @@ const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const mapSize = { width: 1800, height: 1400 };
 const markerTypes = ["Town", "Village", "Quest", "Dungeon", "Battle", "Boss", "Merchant", "Training Area", "Landmark", "Occult Clue", "Guild", "Custom"];
 const editorModes = ["Marker", "Walking Path"] as const;
-const storyTriggerTypes = ["progress", "random"] as const;
-const eventTypes = ["story", "battle"] as const;
+const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
 const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle", "Complete Event"] as const;
+const eventTypeLabels: Record<(typeof eventTypes)[number], string> = {
+  dialogue: "Dialogue Event",
+  battle: "Battle Event",
+  clue: "Clue / Investigation Event",
+  reward: "Reward Event",
+};
 
 type MapScreenProps = {
   character: CharacterWithDetails;
@@ -68,7 +68,6 @@ export function MapScreen({ character }: MapScreenProps) {
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
   const [routes, setRoutes] = useState<MapRoute[]>([fallbackRoute]);
   const [markers, setMarkers] = useState<MapMarker[]>([]);
-  const [storyInstances, setStoryInstances] = useState<MapStoryInstance[]>([]);
   const [mapEvents, setMapEvents] = useState<MapEvent[]>([]);
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
@@ -100,13 +99,8 @@ export function MapScreen({ character }: MapScreenProps) {
   const [routeTerrain, setRouteTerrain] = useState("");
   const [routeDanger, setRouteDanger] = useState("");
   const [routeDistance, setRouteDistance] = useState("");
-  const [storyTitle, setStoryTitle] = useState("");
-  const [storyBody, setStoryBody] = useState("");
-  const [storyTriggerType, setStoryTriggerType] = useState<(typeof storyTriggerTypes)[number]>("progress");
-  const [storyTriggerPercent, setStoryTriggerPercent] = useState("50");
-  const [storyChancePercent, setStoryChancePercent] = useState("25");
   const [editingEvent, setEditingEvent] = useState<MapEvent | null>(null);
-  const [eventType, setEventType] = useState<(typeof eventTypes)[number]>("story");
+  const [eventType, setEventType] = useState<(typeof eventTypes)[number]>("dialogue");
   const [eventTitle, setEventTitle] = useState("");
   const [eventDistance, setEventDistance] = useState("25");
   const [eventBackgroundImage, setEventBackgroundImage] = useState("");
@@ -240,7 +234,7 @@ export function MapScreen({ character }: MapScreenProps) {
   }, [activeBattle, activeEvent, completedEventIds, mapEvents, progressPercent, route.id]);
 
   useEffect(() => {
-    if (!activeEvent || activeEvent.event_type !== "story") {
+    if (!activeEvent || activeEvent.event_type === "battle") {
       setDialogueNodes([]);
       setDialogueChoices([]);
       setActiveNodeId(null);
@@ -282,8 +276,7 @@ export function MapScreen({ character }: MapScreenProps) {
     setDistanceWalked(0);
     setLastPosition(null);
 
-    const [progress, stories, events] = await Promise.all([getRouteProgress(nextRoute.id), getStoryInstances(nextRoute.id), getMapEvents(nextRoute.id)]);
-    setStoryInstances(stories);
+    const [progress, events] = await Promise.all([getRouteProgress(nextRoute.id), getMapEvents(nextRoute.id)]);
     setMapEvents(events);
     const completions = await getEventCompletions(events.map((event) => event.id));
     setCompletedEventIds(new Set(completions.map((completion) => completion.event_id)));
@@ -608,51 +601,6 @@ export function MapScreen({ character }: MapScreenProps) {
     }
   }
 
-  async function addStoryInstance() {
-    if (!storyTitle.trim()) {
-      setAdminMessage("Add a story title first.");
-      return;
-    }
-
-    try {
-      const created = await createStoryInstance({
-        route_id: route.id,
-        title: storyTitle.trim(),
-        body: storyBody.trim() || null,
-        trigger_type: storyTriggerType,
-        trigger_percent: storyTriggerType === "progress" ? clamp(Number(storyTriggerPercent) || 0, 0, 100) : null,
-        chance_percent: clamp(Number(storyChancePercent) || 0, 0, 100),
-        is_active: true,
-      });
-      setStoryInstances((current) => [...current, created]);
-      setStoryTitle("");
-      setStoryBody("");
-      setAdminMessage("Story instance added.");
-    } catch (error) {
-      setAdminMessage(getErrorMessage(error, "Unable to create story instance. Confirm the Supabase migration has run."));
-    }
-  }
-
-  async function toggleStoryInstance(story: MapStoryInstance) {
-    try {
-      const updated = await updateStoryInstance(story.id, { is_active: !story.is_active });
-      setStoryInstances((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setAdminMessage(updated.is_active ? "Story instance enabled." : "Story instance disabled.");
-    } catch (error) {
-      setAdminMessage(getErrorMessage(error, "Unable to update story instance."));
-    }
-  }
-
-  async function removeStoryInstance(storyId: string) {
-    try {
-      await deleteStoryInstance(storyId);
-      setStoryInstances((current) => current.filter((story) => story.id !== storyId));
-      setAdminMessage("Story instance deleted.");
-    } catch (error) {
-      setAdminMessage(getErrorMessage(error, "Unable to delete story instance."));
-    }
-  }
-
   async function loadDialogueForEvent(event: MapEvent) {
     const nodes = await getDialogueNodes(event.id);
     const choices = await getDialogueChoices(nodes.map((node) => node.id));
@@ -748,7 +696,7 @@ export function MapScreen({ character }: MapScreenProps) {
       return;
     }
 
-    if (choice.action === "complete_event") {
+    if (choice.action === "complete_event" || choice.action === "unlock_next_event") {
       await finishEvent(activeEvent);
       return;
     }
@@ -804,7 +752,7 @@ export function MapScreen({ character }: MapScreenProps) {
 
   function editMapEvent(event: MapEvent) {
     setEditingEvent(event);
-    setEventType(event.event_type);
+    setEventType(event.event_type === "story" ? "dialogue" : event.event_type);
     setEventTitle(event.title);
     setEventDistance(String(event.distance_marker_percent));
     setEventBackgroundImage(event.background_image_url ?? "");
@@ -825,6 +773,7 @@ export function MapScreen({ character }: MapScreenProps) {
 
   function clearEventForm() {
     setEditingEvent(null);
+    setEventType("dialogue");
     setEventTitle("");
     setEventDistance("25");
     setEventBackgroundImage("");
@@ -930,7 +879,7 @@ export function MapScreen({ character }: MapScreenProps) {
 
   async function saveDialogueNode() {
     if (!selectedDialogueEventId || !nodeTitle.trim()) {
-      setAdminMessage("Select a story event and add a node title.");
+      setAdminMessage("Select a dialogue/event and add a dialogue step title.");
       return;
     }
 
@@ -1292,54 +1241,8 @@ export function MapScreen({ character }: MapScreenProps) {
             </View>
           )}
           <View style={styles.storyEditor}>
-            <Text style={styles.selectedTitle}>Story Instances on {route.name}</Text>
-            <Text style={styles.copy}>Select the route before adding a story instance. Random stories use the chance percent below when travel progress reaches a new 10% route bucket.</Text>
-            <View style={styles.storyRoutePicker}>
-              {orderedRoutes.map((item) => (
-                <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item, true)}>
-                  <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <TextInput value={storyTitle} onChangeText={setStoryTitle} placeholder="Story title" placeholderTextColor={colors.muted} style={styles.input} />
-            <TextInput value={storyBody} onChangeText={setStoryBody} placeholder="Story text or encounter note" placeholderTextColor={colors.muted} style={styles.input} />
-            <View style={styles.modeRow}>
-              {storyTriggerTypes.map((type) => (
-                <Pressable key={type} style={[styles.modeButton, storyTriggerType === type && styles.typeSelected]} onPress={() => setStoryTriggerType(type)}>
-                  <Text style={styles.typeText}>{type === "progress" ? "At Route %" : "Random"}</Text>
-                </Pressable>
-              ))}
-            </View>
-            {storyTriggerType === "progress" ? (
-              <TextInput value={storyTriggerPercent} onChangeText={setStoryTriggerPercent} placeholder="Trigger percent, 0-100" placeholderTextColor={colors.muted} style={styles.input} />
-            ) : (
-              <TextInput value={storyChancePercent} onChangeText={setStoryChancePercent} placeholder="Encounter chance percent per 10% route progress" placeholderTextColor={colors.muted} style={styles.input} />
-            )}
-            <Pressable style={styles.primaryButton} onPress={() => void addStoryInstance()} disabled={!storyTitle.trim()}>
-              <Text style={styles.primaryText}>Add Story Instance</Text>
-            </Pressable>
-            {storyInstances.map((story) => (
-              <View key={story.id} style={styles.storyCard}>
-                <Text style={styles.markerName}>{story.title}</Text>
-                <Text style={styles.copy}>{story.body || "No story text yet."}</Text>
-                <Info
-                  label="Trigger"
-                  value={story.trigger_type === "progress" ? `${story.trigger_percent ?? 0}%` : `Random ${story.chance_percent}%`}
-                />
-                <View style={styles.modeRow}>
-                  <Pressable style={styles.secondaryButtonFlex} onPress={() => void toggleStoryInstance(story)}>
-                    <Text style={styles.secondaryText}>{story.is_active ? "Disable" : "Enable"}</Text>
-                  </Pressable>
-                  <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeStoryInstance(story.id)}>
-                    <Text style={styles.dangerText}>Delete</Text>
-                  </Pressable>
-                </View>
-              </View>
-            ))}
-          </View>
-          <View style={styles.storyEditor}>
-            <Text style={styles.selectedTitle}>Events on {route.name}</Text>
-            <Text style={styles.copy}>Create story or battle events for the selected trail. The distance marker is the route progress percent where the event opens for players.</Text>
+            <Text style={styles.selectedTitle}>Dialogue / Event Builder on {route.name}</Text>
+            <Text style={styles.copy}>Create dialogue, investigation, reward, or battle events for the selected trail. The distance marker is the route progress percent where the event opens for players.</Text>
             <View style={styles.storyRoutePicker}>
               {orderedRoutes.map((item) => (
                 <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item, true)}>
@@ -1350,20 +1253,18 @@ export function MapScreen({ character }: MapScreenProps) {
             <View style={styles.modeRow}>
               {eventTypes.map((type) => (
                 <Pressable key={type} style={[styles.modeButton, eventType === type && styles.typeSelected]} onPress={() => setEventType(type)}>
-                  <Text style={styles.typeText}>{type === "story" ? "Story Event" : "Battle Event"}</Text>
+                  <Text style={styles.typeText}>{eventTypeLabels[type]}</Text>
                 </Pressable>
               ))}
             </View>
             <TextInput value={eventTitle} onChangeText={setEventTitle} placeholder="Event title" placeholderTextColor={colors.muted} style={styles.input} />
             <TextInput value={eventDistance} onChangeText={setEventDistance} placeholder="Distance marker on trail, 0-100" placeholderTextColor={colors.muted} style={styles.input} />
-            {eventType === "story" ? (
+            {eventType !== "battle" ? (
               <>
                 <TextInput value={eventBackgroundImage} onChangeText={setEventBackgroundImage} placeholder="Background image URL" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={eventNpcName} onChangeText={setEventNpcName} placeholder="NPC name optional" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={eventNpcPortrait} onChangeText={setEventNpcPortrait} placeholder="NPC portrait URL optional" placeholderTextColor={colors.muted} style={styles.input} />
-                <TextInput value={eventDialogue} onChangeText={setEventDialogue} placeholder="Dialogue text" placeholderTextColor={colors.muted} style={styles.input} />
-                <Text style={styles.copy}>Choices format: Button Label|Action. Actions: {choiceActions.join(", ")}.</Text>
-                <TextInput value={eventChoices} onChangeText={setEventChoices} placeholder="Continue|Continue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+                <TextInput value={eventDialogue} onChangeText={setEventDialogue} placeholder="Fallback dialogue text if no dialogue steps exist" placeholderTextColor={colors.muted} style={styles.input} />
               </>
             ) : (
               <>
@@ -1379,7 +1280,7 @@ export function MapScreen({ character }: MapScreenProps) {
               </>
             )}
             <Pressable style={styles.primaryButton} onPress={() => void saveMapEvent()} disabled={!eventTitle.trim()}>
-              <Text style={styles.primaryText}>{editingEvent ? "Update Event" : "Create Event"}</Text>
+              <Text style={styles.primaryText}>{editingEvent ? "Update Dialogue / Event" : "Create Dialogue / Event"}</Text>
             </Pressable>
             {editingEvent ? (
               <Pressable style={styles.secondaryButton} onPress={clearEventForm}>
@@ -1388,8 +1289,12 @@ export function MapScreen({ character }: MapScreenProps) {
             ) : null}
             {mapEvents.map((event) => (
               <View key={event.id} style={styles.storyCard}>
-                <Text style={styles.markerName}>{event.distance_marker_percent}% · {event.title}</Text>
-                <Text style={styles.copy}>{event.event_type === "story" ? event.dialogue_text || "Story event" : `${event.enemy_name || "Enemy"} · HP ${event.enemy_hp}`}</Text>
+                <Text style={styles.markerName}>{event.distance_marker_percent}% - {event.title}</Text>
+                <Text style={styles.copy}>
+                  {event.event_type === "battle"
+                    ? `${event.enemy_name || "Enemy"} - HP ${event.enemy_hp}`
+                    : `${eventTypeName(event.event_type)} - ${event.dialogue_text || "Add dialogue steps below."}`}
+                </Text>
                 <View style={styles.modeRow}>
                   <Pressable style={styles.secondaryButtonFlex} onPress={() => editMapEvent(event)}>
                     <Text style={styles.secondaryText}>Edit</Text>
@@ -1402,9 +1307,9 @@ export function MapScreen({ character }: MapScreenProps) {
             ))}
             <View style={styles.storyEditor}>
               <Text style={styles.selectedTitle}>Branching Dialogue Editor</Text>
-              <Text style={styles.copy}>Select a Story Event, create dialogue nodes, then add player choices that link to other nodes or actions.</Text>
+              <Text style={styles.copy}>Select a dialogue, clue, or reward event, add dialogue steps, then add player choices that link to another step or trigger an action.</Text>
               <View style={styles.storyRoutePicker}>
-                {mapEvents.filter((event) => event.event_type === "story").map((event) => (
+                {mapEvents.filter((event) => event.event_type !== "battle").map((event) => (
                   <Pressable
                     key={event.id}
                     style={[styles.routeChip, selectedDialogueEventId === event.id && styles.routeChipActive]}
@@ -1414,19 +1319,19 @@ export function MapScreen({ character }: MapScreenProps) {
                   </Pressable>
                 ))}
               </View>
-              <TextInput value={nodeTitle} onChangeText={setNodeTitle} placeholder="Node title / internal label" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={nodeTitle} onChangeText={setNodeTitle} placeholder="Dialogue step title / internal label" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeKey} onChangeText={setNodeKey} placeholder="Optional node key" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeNpcName} onChangeText={setNodeNpcName} placeholder="NPC name" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeNpcPortrait} onChangeText={setNodeNpcPortrait} placeholder="NPC portrait URL optional" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeBackgroundImage} onChangeText={setNodeBackgroundImage} placeholder="Background image URL optional" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeDialogue} onChangeText={setNodeDialogue} placeholder="NPC dialogue text" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
-              <TextInput value={nodeSortOrder} onChangeText={setNodeSortOrder} placeholder="Node order" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={nodeSortOrder} onChangeText={setNodeSortOrder} placeholder="Dialogue step order" placeholderTextColor={colors.muted} style={styles.input} />
               <View style={styles.typeGrid}>
                 <Pressable style={[styles.typeButton, nodeIsStart && styles.typeSelected]} onPress={() => setNodeIsStart((value) => !value)}>
-                  <Text style={styles.typeText}>Start Node</Text>
+                  <Text style={styles.typeText}>Start Step</Text>
                 </Pressable>
                 <Pressable style={[styles.typeButton, nodeIsEnding && styles.typeSelected]} onPress={() => setNodeIsEnding((value) => !value)}>
-                  <Text style={styles.typeText}>Ending Node</Text>
+                  <Text style={styles.typeText}>Ending Step</Text>
                 </Pressable>
                 <Pressable style={[styles.typeButton, nodeAllowEndChat && styles.typeSelected]} onPress={() => setNodeAllowEndChat((value) => !value)}>
                   <Text style={styles.typeText}>Allow End Chat</Text>
@@ -1436,16 +1341,16 @@ export function MapScreen({ character }: MapScreenProps) {
                 </Pressable>
               </View>
               <Pressable style={styles.primaryButton} onPress={() => void saveDialogueNode()} disabled={!selectedDialogueEventId || !nodeTitle.trim()}>
-                <Text style={styles.primaryText}>{editingNode ? "Update Dialogue Node" : "Create Dialogue Node"}</Text>
+                <Text style={styles.primaryText}>{editingNode ? "Update Dialogue Step" : "Add Dialogue Step"}</Text>
               </Pressable>
-              {editingNode ? <Pressable style={styles.secondaryButton} onPress={clearDialogueNodeForm}><Text style={styles.secondaryText}>Cancel Node Edit</Text></Pressable> : null}
+              {editingNode ? <Pressable style={styles.secondaryButton} onPress={clearDialogueNodeForm}><Text style={styles.secondaryText}>Cancel Step Edit</Text></Pressable> : null}
               {dialogueNodes.map((node) => (
                 <View key={node.id} style={styles.storyCard}>
-                  <Text style={styles.markerName}>{node.sort_order}. {node.title}{node.is_start ? " · Start" : ""}{node.is_ending ? " · Ending" : ""}</Text>
+                  <Text style={styles.markerName}>{node.sort_order}. {node.title}{node.is_start ? " - Start" : ""}{node.is_ending ? " - Ending" : ""}</Text>
                   <Text style={styles.copy}>{node.dialogue_text || "No dialogue yet."}</Text>
                   <View style={styles.modeRow}>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueNode(node)}><Text style={styles.secondaryText}>Edit Node</Text></Pressable>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => setChoiceNodeId(node.id)}><Text style={styles.secondaryText}>Add Choice Here</Text></Pressable>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueNode(node)}><Text style={styles.secondaryText}>Edit Step</Text></Pressable>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => setChoiceNodeId(node.id)}><Text style={styles.secondaryText}>Add Player Choice Here</Text></Pressable>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueNode(node.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
                   </View>
                 </View>
@@ -1458,12 +1363,12 @@ export function MapScreen({ character }: MapScreenProps) {
                   </Pressable>
                 ))}
               </View>
-              <TextInput value={choiceButtonText} onChangeText={setChoiceButtonText} placeholder="Choice button text" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={choiceButtonText} onChangeText={setChoiceButtonText} placeholder="Player button text" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={choicePlayerText} onChangeText={setChoicePlayerText} placeholder="Optional player dialogue text" placeholderTextColor={colors.muted} style={styles.input} />
               <View style={styles.typeGrid}>
-                {(["go_to_node", "start_battle", "complete_event", "give_reward", "end_conversation", "return_to_map"] as const).map((action) => (
+                {(["go_to_node", "start_battle", "complete_event", "unlock_next_event", "give_reward", "end_conversation", "return_to_map"] as const).map((action) => (
                   <Pressable key={action} style={[styles.typeButton, choiceAction === action && styles.typeSelected]} onPress={() => setChoiceAction(action)}>
-                    <Text style={styles.typeText}>{action.replace(/_/g, " ")}</Text>
+                    <Text style={styles.typeText}>{choiceActionLabel(action)}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -1493,13 +1398,13 @@ export function MapScreen({ character }: MapScreenProps) {
               ) : null}
               <TextInput value={choiceSortOrder} onChangeText={setChoiceSortOrder} placeholder="Choice order" placeholderTextColor={colors.muted} style={styles.input} />
               <Pressable style={styles.primaryButton} onPress={() => void saveDialogueChoice()} disabled={!choiceNodeId || !choiceButtonText.trim()}>
-                <Text style={styles.primaryText}>{editingChoice ? "Update Choice" : "Create Choice"}</Text>
+                <Text style={styles.primaryText}>{editingChoice ? "Update Player Choice" : "Add Player Choice"}</Text>
               </Pressable>
               {editingChoice ? <Pressable style={styles.secondaryButton} onPress={clearDialogueChoiceForm}><Text style={styles.secondaryText}>Cancel Choice Edit</Text></Pressable> : null}
               {dialogueChoices.map((choice) => (
                 <View key={choice.id} style={styles.storyCard}>
                   <Text style={styles.markerName}>{choice.button_text}</Text>
-                  <Text style={styles.copy}>{choice.action.replace(/_/g, " ")}{choice.player_dialogue_text ? ` · "${choice.player_dialogue_text}"` : ""}</Text>
+                  <Text style={styles.copy}>{choiceActionLabel(choice.action)}{choice.player_dialogue_text ? ` - "${choice.player_dialogue_text}"` : ""}</Text>
                   <View style={styles.modeRow}>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueChoice(choice)}><Text style={styles.secondaryText}>Edit Choice</Text></Pressable>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueChoice(choice.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
@@ -1672,6 +1577,50 @@ function parseChoices(value: string): MapEvent["choices"] {
       const safeAction = choiceActions.includes(action as MapEvent["choices"][number]["action"]) ? (action as MapEvent["choices"][number]["action"]) : "Continue";
       return { label, action: safeAction };
     });
+}
+
+function eventTypeName(type: MapEvent["event_type"]) {
+  if (type === "battle") {
+    return "Battle Event";
+  }
+
+  if (type === "clue") {
+    return "Clue / Investigation Event";
+  }
+
+  if (type === "reward") {
+    return "Reward Event";
+  }
+
+  return "Dialogue Event";
+}
+
+function choiceActionLabel(action: StoryDialogueChoice["action"]) {
+  if (action === "go_to_node") {
+    return "Go to another dialogue step";
+  }
+
+  if (action === "start_battle") {
+    return "Start linked battle event";
+  }
+
+  if (action === "complete_event") {
+    return "Complete this event";
+  }
+
+  if (action === "unlock_next_event") {
+    return "Unlock next event";
+  }
+
+  if (action === "give_reward") {
+    return "Give reward";
+  }
+
+  if (action === "end_conversation") {
+    return "End conversation";
+  }
+
+  return "Return to map";
 }
 
 function StoryInstanceScreen({

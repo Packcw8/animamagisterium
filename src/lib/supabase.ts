@@ -114,7 +114,7 @@ export type Tables = {
   };
   map_events: {
     id: string;
-    event_type: "story" | "battle";
+    event_type: "story" | "dialogue" | "battle" | "clue" | "reward";
     title: string;
     route_id: string | null;
     distance_marker_percent: number;
@@ -165,7 +165,7 @@ export type Tables = {
     node_id: string;
     button_text: string;
     player_dialogue_text: string | null;
-    action: "go_to_node" | "start_battle" | "complete_event" | "give_reward" | "end_conversation" | "return_to_map";
+    action: "go_to_node" | "start_battle" | "complete_event" | "unlock_next_event" | "give_reward" | "end_conversation" | "return_to_map";
     next_node_id: string | null;
     battle_event_id: string | null;
     reward_xp: number;
