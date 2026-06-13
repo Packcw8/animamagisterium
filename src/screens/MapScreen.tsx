@@ -1407,6 +1407,38 @@ export function MapScreen({ character }: MapScreenProps) {
               <Pressable style={styles.secondaryButton} onPress={startNewDialogueStep} disabled={!selectedDialogueEventId}>
                 <Text style={styles.secondaryText}>New Dialogue Step</Text>
               </Pressable>
+              {selectedDialogueEvent ? (
+                <View style={styles.flowPreview}>
+                  <Text style={styles.selectedTitle}>Dialogue Link Preview</Text>
+                  {dialogueNodes.length === 0 ? (
+                    <Text style={styles.copy}>No dialogue steps yet. Add a start step first.</Text>
+                  ) : (
+                    dialogueNodes.map((node) => {
+                      const nodeChoices = dialogueChoices.filter((choice) => choice.node_id === node.id).sort((a, b) => a.sort_order - b.sort_order);
+                      return (
+                        <View key={`preview-${node.id}`} style={styles.flowStep}>
+                          <Text style={styles.flowStepTitle}>{node.sort_order}. {node.title}{node.is_start ? " - Start" : ""}{node.is_ending ? " - Ending" : ""}</Text>
+                          <Text style={styles.flowDialogue}>{node.npc_name ? `${node.npc_name}: ` : ""}{node.dialogue_text || "No NPC dialogue entered."}</Text>
+                          {nodeChoices.length === 0 ? (
+                            <Text style={styles.flowWarning}>No choices connected to this step.</Text>
+                          ) : (
+                            nodeChoices.map((choice) => {
+                              const target = getChoiceTargetSummary(choice, dialogueNodes, mapEvents);
+                              return (
+                                <Pressable key={`preview-choice-${choice.id}`} style={styles.flowChoice} onPress={() => editDialogueChoice(choice)}>
+                                  <Text style={styles.flowChoiceText}>If player chooses: {choice.button_text}</Text>
+                                  {choice.player_dialogue_text ? <Text style={styles.flowDialogue}>Player says: {choice.player_dialogue_text}</Text> : null}
+                                  <Text style={[styles.flowTarget, target.isBroken && styles.flowWarning]}>{target.label}</Text>
+                                </Pressable>
+                              );
+                            })
+                          )}
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+              ) : null}
               <TextInput value={nodeTitle} onChangeText={setNodeTitle} placeholder="Dialogue step title / internal label" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeKey} onChangeText={setNodeKey} placeholder="Optional node key" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeNpcName} onChangeText={setNodeNpcName} placeholder="NPC name" placeholderTextColor={colors.muted} style={styles.input} />
@@ -1819,6 +1851,40 @@ function choiceActionLabel(action: StoryDialogueChoice["action"]) {
   }
 
   return "Return to map";
+}
+
+function getChoiceTargetSummary(choice: StoryDialogueChoice, nodes: StoryDialogueNode[], events: MapEvent[]) {
+  if (choice.action === "go_to_node") {
+    const nextNode = nodes.find((node) => node.id === choice.next_node_id);
+    return nextNode
+      ? { label: `Then show dialogue step: ${nextNode.sort_order}. ${nextNode.title}`, isBroken: false }
+      : { label: "Broken link: choose a target dialogue step", isBroken: true };
+  }
+
+  if (choice.action === "start_battle") {
+    const battle = events.find((event) => event.id === choice.battle_event_id);
+    return battle
+      ? { label: `Then start battle: ${battle.title}`, isBroken: false }
+      : { label: "Broken link: choose a target battle event", isBroken: true };
+  }
+
+  if (choice.action === "complete_event") {
+    return { label: "Then complete this event", isBroken: false };
+  }
+
+  if (choice.action === "unlock_next_event") {
+    return { label: "Then unlock the next trail event", isBroken: false };
+  }
+
+  if (choice.action === "give_reward") {
+    return { label: `Then give reward: ${choice.reward_xp} XP${choice.reward_item ? ` and ${choice.reward_item}` : ""}`, isBroken: false };
+  }
+
+  if (choice.action === "end_conversation") {
+    return { label: "Then end conversation", isBroken: false };
+  }
+
+  return { label: "Then return to map", isBroken: false };
 }
 
 function StoryInstanceScreen({
@@ -2433,6 +2499,55 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     marginTop: 2,
+  },
+  flowPreview: {
+    gap: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(54, 171, 224, 0.42)",
+    padding: 10,
+    backgroundColor: "rgba(9, 22, 32, 0.5)",
+  },
+  flowStep: {
+    gap: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  flowStepTitle: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 13,
+  },
+  flowDialogue: {
+    color: colors.muted,
+    lineHeight: 18,
+    fontSize: 12,
+  },
+  flowChoice: {
+    gap: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(232, 181, 94, 0.25)",
+    padding: 8,
+    backgroundColor: "rgba(0,0,0,0.18)",
+  },
+  flowChoiceText: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  flowTarget: {
+    color: colors.blue,
+    fontWeight: "800",
+    fontSize: 12,
+  },
+  flowWarning: {
+    color: "#ffb4aa",
+    fontWeight: "900",
+    fontSize: 12,
   },
   adminActions: {
     gap: 10,
