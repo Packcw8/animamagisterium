@@ -24,31 +24,7 @@ export const fallbackRoute: MapRoute = {
   updated_at: new Date(0).toISOString(),
 };
 
-export const fallbackMarkers: MapMarker[] = [
-  marker("Town", "Mirehold Crossing", 18, 70, "A lantern town at the edge of the flooded road."),
-  marker("Battle", "Wolf Track Bend", 34, 58, "Fresh tracks cut through the mud."),
-  marker("Merchant", "Copper Cart Waystation", 47, 49, "A caravan camp with guarded supplies."),
-  marker("Occult Clue", "Broken Moon Cairn", 58, 41, "A cracked moon symbol carved into wet stone."),
-  marker("Dungeon", "Hollow Watch", 68, 38, "Ruins overlooking the old marsh road."),
-];
-
-function marker(type: string, title: string, x: number, y: number, description: string): MapMarker {
-  return {
-    id: `${type}-${title}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-    type,
-    title,
-    description,
-    x_percent: x,
-    y_percent: y,
-    is_active: true,
-    is_unlocked: true,
-    quest_key: null,
-    route_id: fallbackRoute.id,
-    created_by: null,
-    created_at: new Date(0).toISOString(),
-    updated_at: new Date(0).toISOString(),
-  };
-}
+export const fallbackMarkers: MapMarker[] = [];
 
 export async function getCurrentRole(): Promise<Role> {
   const {
@@ -88,7 +64,7 @@ export async function getMapMarkers() {
     return fallbackMarkers;
   }
 
-  return ((data ?? []) as MapMarker[]).length > 0 ? ((data ?? []) as MapMarker[]) : fallbackMarkers;
+  return (data ?? []) as MapMarker[];
 }
 
 export async function getRouteProgress(routeId: string) {
