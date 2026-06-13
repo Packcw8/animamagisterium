@@ -1,6 +1,6 @@
 import { distance as turfDistance } from "@turf/turf";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Image, PanResponder, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, PanResponder, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { ProgressBar } from "../components/ProgressBar";
@@ -72,8 +72,7 @@ export function MapScreen({ character }: MapScreenProps) {
 
   const progressPercent = Math.min(100, Math.max(0, (distanceWalked / route.distance_required_meters) * 100));
   const playerPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
-  const pathForDisplay = pathDraft.length > 0 ? pathDraft : route.path_points;
-  const routeSegments = useMemo(() => getRouteSegments(pathForDisplay), [pathForDisplay]);
+  const routeSegments = useMemo(() => getRouteSegments(pathDraft), [pathDraft]);
   const visibleMarkers = isAdmin ? markers : markers.filter((marker) => marker.is_active && marker.is_unlocked);
 
   const panResponder = useMemo(
@@ -145,7 +144,7 @@ export function MapScreen({ character }: MapScreenProps) {
     setRouteTerrain(loadedRoute.terrain);
     setRouteDanger(loadedRoute.danger_level);
     setRouteDistance(String(Math.round(loadedRoute.distance_required_meters)));
-    setPathDraft(loadedRoute.path_points);
+    setPathDraft([]);
     setMarkers(loadedMarkers);
     setRole(loadedRole);
 
@@ -244,8 +243,7 @@ export function MapScreen({ character }: MapScreenProps) {
     });
   }
 
-  function handleWheel(event: { nativeEvent?: { deltaY?: number }; preventDefault?: () => void }) {
-    event.preventDefault?.();
+  function handleWheel(event: { nativeEvent?: { deltaY?: number } }) {
     const deltaY = event.nativeEvent?.deltaY ?? 0;
     zoomBy(deltaY > 0 ? -0.08 : 0.08);
   }
@@ -257,9 +255,25 @@ export function MapScreen({ character }: MapScreenProps) {
 
     const x = clamp((event.nativeEvent.locationX / mapSize.width) * 100, 0, 100);
     const y = clamp((event.nativeEvent.locationY / mapSize.height) * 100, 0, 100);
+    captureMapPercent(x, y);
+  }
+
+  function handleMapClick(event: { clientX?: number; clientY?: number; currentTarget?: { getBoundingClientRect?: () => { left: number; top: number; width: number; height: number } } }) {
+    if (!isAdmin || !event.currentTarget?.getBoundingClientRect || event.clientX === undefined || event.clientY === undefined) {
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = clamp(((event.clientX - rect.left) / rect.width) * 100, 0, 100);
+    const y = clamp(((event.clientY - rect.top) / rect.height) * 100, 0, 100);
+    captureMapPercent(x, y);
+  }
+
+  function captureMapPercent(x: number, y: number) {
     const nextPoint = { x: roundPercent(x), y: roundPercent(y) };
     setClickedPercent(nextPoint);
     setSelectedMarker(null);
+    setAdminMessage(`Coordinates captured: X ${nextPoint.x}% / Y ${nextPoint.y}%`);
 
     if (editorMode === "Walking Path") {
       setPathDraft((current) => [...current, nextPoint]);
@@ -404,12 +418,14 @@ export function MapScreen({ character }: MapScreenProps) {
               transform: [{ translateX: offset.x }, { translateY: offset.y }, { scale }],
             },
           ]}
-          onPress={handleMapPress}
+          onPress={Platform.OS === "web" ? undefined : handleMapPress}
+          {...({ onClick: handleMapClick } as object)}
         >
-          <Image source={forgottenMarches} style={styles.mapImage} />
+          <Image source={forgottenMarches} style={styles.mapImage} {...({ pointerEvents: "none" } as object)} />
           {routeSegments.map((segment, index) => (
             <View
               key={`${segment.left}-${segment.top}-${index}`}
+              pointerEvents="none"
               style={[
                 styles.routeSegment,
                 {
@@ -421,8 +437,8 @@ export function MapScreen({ character }: MapScreenProps) {
               ]}
             />
           ))}
-          {pathForDisplay.map((point, index) => (
-            <View key={`${point.x}-${point.y}-${index}`} style={[styles.pathPoint, { left: `${point.x}%`, top: `${point.y}%` }]}>
+          {pathDraft.map((point, index) => (
+            <View key={`${point.x}-${point.y}-${index}`} pointerEvents="none" style={[styles.pathPoint, { left: `${point.x}%`, top: `${point.y}%` }]}>
               <Text style={styles.pathPointText}>{index + 1}</Text>
             </View>
           ))}
@@ -434,6 +450,7 @@ export function MapScreen({ character }: MapScreenProps) {
                 event.stopPropagation();
                 setSelectedMarker(marker);
               }}
+              {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
             >
               <View style={styles.markerDot} />
               <Text style={styles.markerType}>{marker.type}</Text>
@@ -703,10 +720,15 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "#061010",
     cursor: "grab",
+    touchAction: "none",
+    overscrollBehavior: "contain",
+    userSelect: "none",
   } as object,
   mapSurface: {
     position: "relative",
     transformOrigin: "0 0",
+    touchAction: "none",
+    userSelect: "none",
   } as object,
   mapImage: {
     position: "absolute",
