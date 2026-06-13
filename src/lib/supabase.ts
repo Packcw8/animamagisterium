@@ -113,6 +113,37 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  map_events: {
+    id: string;
+    event_type: "story" | "battle";
+    title: string;
+    route_id: string | null;
+    distance_marker_percent: number;
+    background_image_url: string | null;
+    npc_name: string | null;
+    npc_portrait_url: string | null;
+    dialogue_text: string | null;
+    choices: Array<{ label: string; action: "Continue" | "Investigate" | "Ask Questions" | "Start Battle" | "Complete Event"; battle_event_id?: string | null }>;
+    enemy_name: string | null;
+    enemy_image_url: string | null;
+    enemy_hp: number;
+    enemy_attack_damage: number;
+    battle_intro_text: string | null;
+    victory_text: string | null;
+    defeat_text: string | null;
+    reward_xp: number;
+    reward_item: string | null;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  map_event_completions: {
+    id: string;
+    user_id: string;
+    event_id: string;
+    completed_at: string;
+  };
   route_progress: {
     id: string;
     user_id: string;

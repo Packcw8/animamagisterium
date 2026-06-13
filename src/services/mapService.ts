@@ -4,6 +4,8 @@ export type MapRoute = Tables["map_routes"];
 export type RouteProgress = Tables["route_progress"];
 export type MapMarker = Tables["map_markers"];
 export type MapStoryInstance = Tables["map_story_instances"];
+export type MapEvent = Tables["map_events"];
+export type MapEventCompletion = Tables["map_event_completions"];
 export type Role = Tables["profiles"]["role"];
 
 export const fallbackRoute: MapRoute = {
@@ -325,4 +327,121 @@ export async function deleteStoryInstance(storyId: string) {
   if (error) {
     throw error;
   }
+}
+
+export async function getMapEvents(routeId?: string) {
+  let query = supabase.from("map_events").select("*").order("distance_marker_percent", { ascending: true }).order("created_at", { ascending: true });
+
+  if (routeId) {
+    query = query.eq("route_id", routeId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.warn("[map] events unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as MapEvent[];
+}
+
+export async function createMapEvent(input: Omit<MapEvent, "id" | "created_by" | "created_at" | "updated_at">) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const { data, error } = await supabase
+    .from("map_events")
+    .insert({
+      ...input,
+      created_by: user?.id ?? null,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MapEvent;
+}
+
+export async function updateMapEvent(eventId: string, values: Partial<Omit<MapEvent, "id" | "created_by" | "created_at" | "updated_at">>) {
+  const { data, error } = await supabase
+    .from("map_events")
+    .update({
+      ...values,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", eventId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MapEvent;
+}
+
+export async function deleteMapEvent(eventId: string) {
+  const { error } = await supabase.from("map_events").delete().eq("id", eventId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function getEventCompletions(eventIds: string[]) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user || eventIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("map_event_completions")
+    .select("*")
+    .eq("user_id", user.id)
+    .in("event_id", eventIds);
+
+  if (error) {
+    console.warn("[map] event completions unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as MapEventCompletion[];
+}
+
+export async function completeMapEvent(eventId: string) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to complete an event.");
+  }
+
+  const { data, error } = await supabase
+    .from("map_event_completions")
+    .upsert(
+      {
+        user_id: user.id,
+        event_id: eventId,
+        completed_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,event_id" },
+    )
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MapEventCompletion;
 }

@@ -8,23 +8,30 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
 import {
+  completeMapEvent,
   createMapRoute,
+  createMapEvent,
   createMapMarker,
   createStoryInstance,
+  deleteMapEvent,
   deleteMapMarker,
   deleteStoryInstance,
   fallbackRoute,
   getCurrentRole,
   getMapMarkers,
   getMapRoutes,
+  getMapEvents,
+  getEventCompletions,
   getRouteProgress,
   getRouteProgressForRoutes,
   getStoryInstances,
   MapMarker,
+  MapEvent,
   MapRoute,
   MapStoryInstance,
   Role,
   saveRouteProgress,
+  updateMapEvent,
   updateStoryInstance,
   updateMapMarker,
   updateMapRoute,
@@ -37,6 +44,8 @@ const feedSeeds = ["Wolf tracks discovered", "Merchant caravan spotted", "Broken
 const encounterTypes = ["Wolves", "Bandits", "Merchants", "Quest discoveries", "Bosses", "Occult events"];
 const editorModes = ["Marker", "Walking Path"] as const;
 const storyTriggerTypes = ["progress", "random"] as const;
+const eventTypes = ["story", "battle"] as const;
+const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle", "Complete Event"] as const;
 
 type MapScreenProps = {
   character: CharacterWithDetails;
@@ -52,6 +61,14 @@ export function MapScreen({ character }: MapScreenProps) {
   const [routes, setRoutes] = useState<MapRoute[]>([fallbackRoute]);
   const [markers, setMarkers] = useState<MapMarker[]>([]);
   const [storyInstances, setStoryInstances] = useState<MapStoryInstance[]>([]);
+  const [mapEvents, setMapEvents] = useState<MapEvent[]>([]);
+  const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
+  const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
+  const [activeBattle, setActiveBattle] = useState<MapEvent | null>(null);
+  const [battlePlayerHp, setBattlePlayerHp] = useState(100);
+  const [battleEnemyHp, setBattleEnemyHp] = useState(0);
+  const [battleLog, setBattleLog] = useState<string[]>([]);
+  const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | null>(null);
   const [role, setRole] = useState<Role>("player");
   const [distanceWalked, setDistanceWalked] = useState(0);
   const [savedPlayerPosition, setSavedPlayerPosition] = useState<{ x: number; y: number } | null>(null);
@@ -76,6 +93,24 @@ export function MapScreen({ character }: MapScreenProps) {
   const [storyTriggerType, setStoryTriggerType] = useState<(typeof storyTriggerTypes)[number]>("progress");
   const [storyTriggerPercent, setStoryTriggerPercent] = useState("50");
   const [storyChancePercent, setStoryChancePercent] = useState("25");
+  const [editingEvent, setEditingEvent] = useState<MapEvent | null>(null);
+  const [eventType, setEventType] = useState<(typeof eventTypes)[number]>("story");
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventDistance, setEventDistance] = useState("25");
+  const [eventBackgroundImage, setEventBackgroundImage] = useState("");
+  const [eventNpcName, setEventNpcName] = useState("");
+  const [eventNpcPortrait, setEventNpcPortrait] = useState("");
+  const [eventDialogue, setEventDialogue] = useState("");
+  const [eventChoices, setEventChoices] = useState("Continue|Continue\nInvestigate|Investigate\nStart Battle|Start Battle");
+  const [enemyName, setEnemyName] = useState("");
+  const [enemyImage, setEnemyImage] = useState("");
+  const [enemyHp, setEnemyHp] = useState("30");
+  const [enemyAttack, setEnemyAttack] = useState("5");
+  const [battleIntro, setBattleIntro] = useState("");
+  const [victoryText, setVictoryText] = useState("");
+  const [defeatText, setDefeatText] = useState("");
+  const [rewardXp, setRewardXp] = useState("0");
+  const [rewardItem, setRewardItem] = useState("");
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [scale, setScale] = useState(0.86);
   const [followPlayer, setFollowPlayer] = useState(true);
@@ -189,6 +224,31 @@ export function MapScreen({ character }: MapScreenProps) {
     void selectRoute(nextRoute);
   }, [completedRouteId, orderedRoutes, progressPercent, route]);
 
+  useEffect(() => {
+    if (activeEvent || activeBattle) {
+      return;
+    }
+
+    const nextEvent = mapEvents.find(
+      (event) =>
+        event.is_active &&
+        event.route_id === route.id &&
+        !completedEventIds.has(event.id) &&
+        Number(event.distance_marker_percent) <= progressPercent,
+    );
+
+    if (!nextEvent) {
+      return;
+    }
+
+    if (nextEvent.event_type === "battle") {
+      startBattle(nextEvent);
+      return;
+    }
+
+    setActiveEvent(nextEvent);
+  }, [activeBattle, activeEvent, completedEventIds, mapEvents, progressPercent, route.id]);
+
   async function loadMap() {
     const [loadedRoutes, loadedMarkers, loadedRole] = await Promise.all([getMapRoutes(), getMapMarkers(), getCurrentRole()]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
@@ -217,8 +277,11 @@ export function MapScreen({ character }: MapScreenProps) {
     setDistanceWalked(0);
     setLastPosition(null);
 
-    const [progress, stories] = await Promise.all([getRouteProgress(nextRoute.id), getStoryInstances(nextRoute.id)]);
+    const [progress, stories, events] = await Promise.all([getRouteProgress(nextRoute.id), getStoryInstances(nextRoute.id), getMapEvents(nextRoute.id)]);
     setStoryInstances(stories);
+    setMapEvents(events);
+    const completions = await getEventCompletions(events.map((event) => event.id));
+    setCompletedEventIds(new Set(completions.map((completion) => completion.event_id)));
 
     if (progress) {
       setDistanceWalked(Number(progress.distance_walked_meters));
@@ -582,6 +645,179 @@ export function MapScreen({ character }: MapScreenProps) {
     }
   }
 
+  function startBattle(event: MapEvent) {
+    setActiveEvent(null);
+    setActiveBattle(event);
+    setBattlePlayerHp(100);
+    setBattleEnemyHp(Number(event.enemy_hp) || 30);
+    setBattleFinished(null);
+    setBattleLog([event.battle_intro_text || `${event.enemy_name || "An enemy"} blocks the trail.`]);
+  }
+
+  async function finishEvent(event: MapEvent) {
+    try {
+      await completeMapEvent(event.id);
+      setCompletedEventIds((current) => new Set([...current, event.id]));
+      setActiveEvent(null);
+      setActiveBattle(null);
+      setFeed((current) => [`${event.title} completed.`, ...current].slice(0, 10));
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to complete event."));
+    }
+  }
+
+  function handleStoryChoice(action: MapEvent["choices"][number]["action"]) {
+    if (!activeEvent) {
+      return;
+    }
+
+    if (action === "Complete Event" || action === "Continue") {
+      void finishEvent(activeEvent);
+      return;
+    }
+
+    if (action === "Start Battle") {
+      const linkedBattle = mapEvents.find((event) => event.event_type === "battle" && !completedEventIds.has(event.id) && event.route_id === activeEvent.route_id);
+      if (linkedBattle) {
+        void completeMapEvent(activeEvent.id);
+        setCompletedEventIds((current) => new Set([...current, activeEvent.id]));
+        startBattle(linkedBattle);
+        return;
+      }
+      setBattleLog(["No linked battle exists on this trail yet."]);
+      return;
+    }
+
+    setFeed((current) => [`${activeEvent.title}: ${action}`, ...current].slice(0, 10));
+  }
+
+  function handleBattleAction(action: "Strike" | "Guard" | "Heavy Attack") {
+    if (!activeBattle || battleFinished) {
+      return;
+    }
+
+    const playerDamage = action === "Heavy Attack" ? 18 : action === "Guard" ? 6 : 10;
+    const nextEnemyHp = Math.max(0, battleEnemyHp - playerDamage);
+    const nextLog = [`${action} deals ${playerDamage} damage.`];
+
+    if (nextEnemyHp <= 0) {
+      setBattleEnemyHp(0);
+      setBattleFinished("victory");
+      setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+      return;
+    }
+
+    const incoming = Math.max(1, Number(activeBattle.enemy_attack_damage) || 5);
+    const enemyDamage = action === "Guard" ? Math.ceil(incoming / 2) : incoming;
+    const nextPlayerHp = Math.max(0, battlePlayerHp - enemyDamage);
+    nextLog.push(`${activeBattle.enemy_name || "Enemy"} hits for ${enemyDamage}.`);
+
+    setBattleEnemyHp(nextEnemyHp);
+    setBattlePlayerHp(nextPlayerHp);
+
+    if (nextPlayerHp <= 0) {
+      setBattleFinished("defeat");
+      nextLog.push(activeBattle.defeat_text || "Defeat.");
+    }
+
+    setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+  }
+
+  function editMapEvent(event: MapEvent) {
+    setEditingEvent(event);
+    setEventType(event.event_type);
+    setEventTitle(event.title);
+    setEventDistance(String(event.distance_marker_percent));
+    setEventBackgroundImage(event.background_image_url ?? "");
+    setEventNpcName(event.npc_name ?? "");
+    setEventNpcPortrait(event.npc_portrait_url ?? "");
+    setEventDialogue(event.dialogue_text ?? "");
+    setEventChoices(event.choices.map((choice) => `${choice.label}|${choice.action}`).join("\n"));
+    setEnemyName(event.enemy_name ?? "");
+    setEnemyImage(event.enemy_image_url ?? "");
+    setEnemyHp(String(event.enemy_hp));
+    setEnemyAttack(String(event.enemy_attack_damage));
+    setBattleIntro(event.battle_intro_text ?? "");
+    setVictoryText(event.victory_text ?? "");
+    setDefeatText(event.defeat_text ?? "");
+    setRewardXp(String(event.reward_xp));
+    setRewardItem(event.reward_item ?? "");
+  }
+
+  function clearEventForm() {
+    setEditingEvent(null);
+    setEventTitle("");
+    setEventDistance("25");
+    setEventBackgroundImage("");
+    setEventNpcName("");
+    setEventNpcPortrait("");
+    setEventDialogue("");
+    setEventChoices("Continue|Continue\nInvestigate|Investigate\nStart Battle|Start Battle");
+    setEnemyName("");
+    setEnemyImage("");
+    setEnemyHp("30");
+    setEnemyAttack("5");
+    setBattleIntro("");
+    setVictoryText("");
+    setDefeatText("");
+    setRewardXp("0");
+    setRewardItem("");
+  }
+
+  async function saveMapEvent() {
+    if (!eventTitle.trim()) {
+      setAdminMessage("Add an event title first.");
+      return;
+    }
+
+    const values = {
+      event_type: eventType,
+      title: eventTitle.trim(),
+      route_id: route.id,
+      distance_marker_percent: clamp(Number(eventDistance) || 0, 0, 100),
+      background_image_url: eventBackgroundImage.trim() || null,
+      npc_name: eventNpcName.trim() || null,
+      npc_portrait_url: eventNpcPortrait.trim() || null,
+      dialogue_text: eventDialogue.trim() || null,
+      choices: parseChoices(eventChoices),
+      enemy_name: enemyName.trim() || null,
+      enemy_image_url: enemyImage.trim() || null,
+      enemy_hp: Number(enemyHp) || 30,
+      enemy_attack_damage: Number(enemyAttack) || 5,
+      battle_intro_text: battleIntro.trim() || null,
+      victory_text: victoryText.trim() || null,
+      defeat_text: defeatText.trim() || null,
+      reward_xp: Number(rewardXp) || 0,
+      reward_item: rewardItem.trim() || null,
+      is_active: true,
+    };
+
+    try {
+      const saved = editingEvent ? await updateMapEvent(editingEvent.id, values) : await createMapEvent(values);
+      setMapEvents((current) => {
+        const next = editingEvent ? current.map((event) => (event.id === saved.id ? saved : event)) : [...current, saved];
+        return next.sort((a, b) => Number(a.distance_marker_percent) - Number(b.distance_marker_percent));
+      });
+      clearEventForm();
+      setAdminMessage("Event saved.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save event. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function removeMapEvent(eventId: string) {
+    try {
+      await deleteMapEvent(eventId);
+      setMapEvents((current) => current.filter((event) => event.id !== eventId));
+      if (editingEvent?.id === eventId) {
+        clearEventForm();
+      }
+      setAdminMessage("Event deleted.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to delete event."));
+    }
+  }
+
   function undoPathPoint() {
     setPathDraft((current) => current.slice(0, -1));
   }
@@ -589,6 +825,26 @@ export function MapScreen({ character }: MapScreenProps) {
   function loadSelectedPathIntoDraft() {
     setPathDraft(route.path_points);
     setAdminMessage(`Loaded ${route.name} into the walking path editor.`);
+  }
+
+  if (activeEvent) {
+    return <StoryInstanceScreen event={activeEvent} onChoice={handleStoryChoice} />;
+  }
+
+  if (activeBattle) {
+    return (
+      <BattleEventScreen
+        character={character}
+        event={activeBattle}
+        playerHp={battlePlayerHp}
+        enemyHp={battleEnemyHp}
+        battleLog={battleLog}
+        result={battleFinished}
+        onAction={handleBattleAction}
+        onRetry={() => startBattle(activeBattle)}
+        onComplete={() => void finishEvent(activeBattle)}
+      />
+    );
   }
 
   return (
@@ -850,6 +1106,70 @@ export function MapScreen({ character }: MapScreenProps) {
               </View>
             ))}
           </View>
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Events on {route.name}</Text>
+            <Text style={styles.copy}>Create story or battle events for the selected trail. The distance marker is the route progress percent where the event opens for players.</Text>
+            <View style={styles.storyRoutePicker}>
+              {orderedRoutes.map((item) => (
+                <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item)}>
+                  <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.modeRow}>
+              {eventTypes.map((type) => (
+                <Pressable key={type} style={[styles.modeButton, eventType === type && styles.typeSelected]} onPress={() => setEventType(type)}>
+                  <Text style={styles.typeText}>{type === "story" ? "Story Event" : "Battle Event"}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput value={eventTitle} onChangeText={setEventTitle} placeholder="Event title" placeholderTextColor={colors.muted} style={styles.input} />
+            <TextInput value={eventDistance} onChangeText={setEventDistance} placeholder="Distance marker on trail, 0-100" placeholderTextColor={colors.muted} style={styles.input} />
+            {eventType === "story" ? (
+              <>
+                <TextInput value={eventBackgroundImage} onChangeText={setEventBackgroundImage} placeholder="Background image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={eventNpcName} onChangeText={setEventNpcName} placeholder="NPC name optional" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={eventNpcPortrait} onChangeText={setEventNpcPortrait} placeholder="NPC portrait URL optional" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={eventDialogue} onChangeText={setEventDialogue} placeholder="Dialogue text" placeholderTextColor={colors.muted} style={styles.input} />
+                <Text style={styles.copy}>Choices format: Button Label|Action. Actions: {choiceActions.join(", ")}.</Text>
+                <TextInput value={eventChoices} onChangeText={setEventChoices} placeholder="Continue|Continue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+              </>
+            ) : (
+              <>
+                <TextInput value={enemyName} onChangeText={setEnemyName} placeholder="Enemy name" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={enemyImage} onChangeText={setEnemyImage} placeholder="Enemy image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={enemyHp} onChangeText={setEnemyHp} placeholder="Enemy HP" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={enemyAttack} onChangeText={setEnemyAttack} placeholder="Enemy attack damage" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={battleIntro} onChangeText={setBattleIntro} placeholder="Battle intro text" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={victoryText} onChangeText={setVictoryText} placeholder="Victory text" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={defeatText} onChangeText={setDefeatText} placeholder="Defeat text" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={rewardXp} onChangeText={setRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={rewardItem} onChangeText={setRewardItem} placeholder="Optional reward item" placeholderTextColor={colors.muted} style={styles.input} />
+              </>
+            )}
+            <Pressable style={styles.primaryButton} onPress={() => void saveMapEvent()} disabled={!eventTitle.trim()}>
+              <Text style={styles.primaryText}>{editingEvent ? "Update Event" : "Create Event"}</Text>
+            </Pressable>
+            {editingEvent ? (
+              <Pressable style={styles.secondaryButton} onPress={clearEventForm}>
+                <Text style={styles.secondaryText}>Cancel Edit</Text>
+              </Pressable>
+            ) : null}
+            {mapEvents.map((event) => (
+              <View key={event.id} style={styles.storyCard}>
+                <Text style={styles.markerName}>{event.distance_marker_percent}% · {event.title}</Text>
+                <Text style={styles.copy}>{event.event_type === "story" ? event.dialogue_text || "Story event" : `${event.enemy_name || "Enemy"} · HP ${event.enemy_hp}`}</Text>
+                <View style={styles.modeRow}>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={() => editMapEvent(event)}>
+                    <Text style={styles.secondaryText}>Edit</Text>
+                  </Pressable>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeMapEvent(event.id)}>
+                    <Text style={styles.dangerText}>Delete</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
           {selectedMarker && editorMode === "Marker" ? (
             <View style={styles.adminActions}>
               <Text style={styles.selectedTitle}>Selected: {selectedMarker.title}</Text>
@@ -981,6 +1301,103 @@ function getFirstUnfinishedRoute(routes: MapRoute[], progressRows: Array<{ route
 
 function getNextRouteOrder(routes: MapRoute[]) {
   return routes.reduce((highest, item) => Math.max(highest, item.sort_order), 0) + 1;
+}
+
+function parseChoices(value: string): MapEvent["choices"] {
+  return value
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [label = "Continue", action = "Continue"] = line.split("|").map((part) => part.trim());
+      const safeAction = choiceActions.includes(action as MapEvent["choices"][number]["action"]) ? (action as MapEvent["choices"][number]["action"]) : "Continue";
+      return { label, action: safeAction };
+    });
+}
+
+function StoryInstanceScreen({ event, onChoice }: { event: MapEvent; onChoice: (action: MapEvent["choices"][number]["action"]) => void }) {
+  const choices = event.choices.length > 0 ? event.choices : [{ label: "Continue", action: "Continue" as const }];
+
+  return (
+    <Screen>
+      <Frame style={styles.eventScreen}>
+        {event.background_image_url ? <Image source={{ uri: event.background_image_url }} style={styles.eventImage} /> : <View style={styles.eventImagePlaceholder} />}
+        {event.npc_portrait_url ? <Image source={{ uri: event.npc_portrait_url }} style={styles.npcPortrait} /> : null}
+        <Text style={styles.sectionTitle}>{event.title}</Text>
+        {event.npc_name ? <Text style={styles.selectedTitle}>{event.npc_name}</Text> : null}
+        <Text style={styles.dialogueText}>{event.dialogue_text || "The trail grows quiet."}</Text>
+        <View style={styles.choiceStack}>
+          {choices.map((choice, index) => (
+            <Pressable key={`${choice.label}-${index}`} style={styles.primaryButton} onPress={() => onChoice(choice.action)}>
+              <Text style={styles.primaryText}>{choice.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </Frame>
+    </Screen>
+  );
+}
+
+function BattleEventScreen({
+  character,
+  event,
+  playerHp,
+  enemyHp,
+  battleLog,
+  result,
+  onAction,
+  onRetry,
+  onComplete,
+}: {
+  character: CharacterWithDetails;
+  event: MapEvent;
+  playerHp: number;
+  enemyHp: number;
+  battleLog: string[];
+  result: "victory" | "defeat" | null;
+  onAction: (action: "Strike" | "Guard" | "Heavy Attack") => void;
+  onRetry: () => void;
+  onComplete: () => void;
+}) {
+  return (
+    <Screen>
+      <Frame style={styles.eventScreen}>
+        <Text style={styles.sectionTitle}>{event.title}</Text>
+        <View style={styles.battleArena}>
+          <View style={styles.enemyPanel}>
+            {event.enemy_image_url ? <Image source={{ uri: event.enemy_image_url }} style={styles.enemyImage} /> : <View style={styles.enemyImagePlaceholder} />}
+            <Text style={styles.markerName}>{event.enemy_name || "Enemy"}</Text>
+            <Text style={styles.copy}>HP {enemyHp}</Text>
+          </View>
+          <View style={styles.playerPanel}>
+            {character.portrait_url ? <Image source={{ uri: character.portrait_url }} style={styles.battlePortrait} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
+            <Text style={styles.markerName}>{character.name}</Text>
+            <Text style={styles.copy}>HP {playerHp}</Text>
+          </View>
+        </View>
+        <View style={styles.modeRow}>
+          {(["Strike", "Guard", "Heavy Attack"] as const).map((action) => (
+            <Pressable key={action} style={styles.secondaryButtonFlex} onPress={() => onAction(action)} disabled={Boolean(result)}>
+              <Text style={styles.secondaryText}>{action}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {result === "victory" ? (
+          <Pressable style={styles.primaryButton} onPress={onComplete}>
+            <Text style={styles.primaryText}>Complete Battle</Text>
+          </Pressable>
+        ) : null}
+        {result === "defeat" ? (
+          <Pressable style={styles.primaryButton} onPress={onRetry}>
+            <Text style={styles.primaryText}>Retry</Text>
+          </Pressable>
+        ) : null}
+        {battleLog.map((line, index) => (
+          <Text key={`${line}-${index}`} style={styles.feedItem}>{line}</Text>
+        ))}
+      </Frame>
+    </Screen>
+  );
 }
 
 function Info({ label, value }: { label: string; value: string }) {
@@ -1397,6 +1814,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     backgroundColor: "rgba(0,0,0,0.28)",
   },
+  multiInput: {
+    minHeight: 96,
+    textAlignVertical: "top",
+  },
   primaryButton: {
     minHeight: 52,
     alignItems: "center",
@@ -1449,5 +1870,80 @@ const styles = StyleSheet.create({
   dangerText: {
     color: "#ffb4aa",
     fontWeight: "900",
+  },
+  eventScreen: {
+    margin: 12,
+    padding: 14,
+    gap: 12,
+  },
+  eventImage: {
+    width: "100%",
+    height: 220,
+    borderRadius: 8,
+  },
+  eventImagePlaceholder: {
+    width: "100%",
+    height: 160,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(20, 61, 86, 0.35)",
+  },
+  npcPortrait: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    borderWidth: 2,
+    borderColor: colors.gold,
+  },
+  dialogueText: {
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 24,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "rgba(0,0,0,0.3)",
+  },
+  choiceStack: {
+    gap: 10,
+  },
+  battleArena: {
+    minHeight: 260,
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  enemyPanel: {
+    alignSelf: "flex-end",
+    alignItems: "center",
+    gap: 6,
+  },
+  playerPanel: {
+    alignSelf: "flex-start",
+    alignItems: "center",
+    gap: 6,
+  },
+  enemyImage: {
+    width: 124,
+    height: 124,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: "#ffb4aa",
+  },
+  enemyImagePlaceholder: {
+    width: 124,
+    height: 124,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: "#ffb4aa",
+    backgroundColor: "rgba(100, 20, 20, 0.38)",
+  },
+  battlePortrait: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    borderWidth: 2,
+    borderColor: colors.blue,
   },
 });
