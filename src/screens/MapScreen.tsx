@@ -54,6 +54,10 @@ const eventTypeLabels: Record<(typeof eventTypes)[number], string> = {
   clue: "Clue / Investigation Event",
   reward: "Reward Event",
 };
+const maxGpsAccuracyMeters = 50;
+const maxTrackingGapSeconds = 60;
+const minHumanSpeedMph = 0.5;
+const maxHumanSpeedMph = 12;
 
 type MapScreenProps = {
   character: CharacterWithDetails;
@@ -62,6 +66,15 @@ type MapScreenProps = {
 type Coordinate = {
   latitude: number;
   longitude: number;
+  timestamp: number;
+  accuracy: number | null;
+};
+
+type MovementStatus = {
+  label: string;
+  speedMph: number;
+  countedMeters: number;
+  blockedReason: string | null;
 };
 
 export function MapScreen({ character }: MapScreenProps) {
@@ -86,6 +99,12 @@ export function MapScreen({ character }: MapScreenProps) {
   const [lastPosition, setLastPosition] = useState<Coordinate | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [gpsMessage, setGpsMessage] = useState("GPS is off. Start tracking to count real-world walking distance.");
+  const [movementStatus, setMovementStatus] = useState<MovementStatus>({
+    label: "GPS off",
+    speedMph: 0,
+    countedMeters: 0,
+    blockedReason: null,
+  });
   const [routeProgressRows, setRouteProgressRows] = useState<Array<{ route_id: string; progress_percent: number }>>([]);
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
@@ -286,9 +305,6 @@ export function MapScreen({ character }: MapScreenProps) {
       if (progress.current_x_percent !== null && progress.current_y_percent !== null) {
         setSavedPlayerPosition({ x: Number(progress.current_x_percent), y: Number(progress.current_y_percent) });
       }
-      if (progress.last_lat !== null && progress.last_lng !== null) {
-        setLastPosition({ latitude: Number(progress.last_lat), longitude: Number(progress.last_lng) });
-      }
     }
   }
 
@@ -309,6 +325,8 @@ export function MapScreen({ character }: MapScreenProps) {
         const next = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
+          timestamp: position.timestamp || Date.now(),
+          accuracy: position.coords.accuracy ?? null,
         };
 
         setLastPosition((previous) => {
@@ -324,12 +342,39 @@ export function MapScreen({ character }: MapScreenProps) {
               last_lat: next.latitude,
               last_lng: next.longitude,
             });
+            setMovementStatus({
+              label: "Calibrating",
+              speedMph: 0,
+              countedMeters: 0,
+              blockedReason: null,
+            });
             return next;
           }
 
           const activeRoute = routeRef.current;
           const meters = turfDistance([previous.longitude, previous.latitude], [next.longitude, next.latitude], { units: "kilometers" }) * 1000;
-          const cleanMeters = meters > 2 && meters < 250 ? meters : 0;
+          const elapsedSeconds = Math.max(0, (next.timestamp - previous.timestamp) / 1000);
+          const speedMph = elapsedSeconds > 0 ? metersPerSecondToMph(meters / elapsedSeconds) : 0;
+          const movement = classifyMovement({
+            meters,
+            elapsedSeconds,
+            speedMph,
+            accuracy: next.accuracy,
+          });
+
+          setMovementStatus({
+            label: movement.label,
+            speedMph,
+            countedMeters: movement.countedMeters,
+            blockedReason: movement.blockedReason,
+          });
+
+          if (movement.blockedReason) {
+            setGpsMessage(movement.blockedReason);
+            return next;
+          }
+
+          const cleanMeters = movement.countedMeters;
           const nextDistance = Math.min(activeRoute.distance_required_meters, distanceWalkedRef.current + cleanMeters);
           const nextProgress = Math.min(100, (nextDistance / activeRoute.distance_required_meters) * 100);
           const nextMapPosition = getPointOnRoute(activeRoute.path_points, nextProgress);
@@ -346,6 +391,7 @@ export function MapScreen({ character }: MapScreenProps) {
             last_lat: next.latitude,
             last_lng: next.longitude,
           });
+          setGpsMessage(`${movement.label} counted: +${Math.round(cleanMeters)}m at ${speedMph.toFixed(1)} mph.`);
 
           return next;
         });
@@ -364,7 +410,9 @@ export function MapScreen({ character }: MapScreenProps) {
       watchId.current = null;
     }
     setIsTracking(false);
+    setLastPosition(null);
     setGpsMessage("GPS paused. Route progress is saved in Supabase.");
+    setMovementStatus((current) => ({ ...current, label: "GPS paused", speedMph: 0, countedMeters: 0 }));
   }
 
   function zoomBy(delta: number) {
@@ -1162,6 +1210,9 @@ export function MapScreen({ character }: MapScreenProps) {
         <Info label="Distance Walked" value={`${metersToMiles(distanceWalked)} mi`} />
         <Info label="Distance Remaining" value={`${metersToMiles(Math.max(0, route.distance_required_meters - distanceWalked))} mi`} />
         <Info label="Progress" value={`${Math.round(progressPercent)}%`} />
+        <Info label="Movement" value={movementStatus.label} />
+        <Info label="Current Speed" value={`${movementStatus.speedMph.toFixed(1)} mph`} />
+        <Info label="Last Counted" value={`${Math.round(movementStatus.countedMeters)} m`} />
         <Info label="Terrain" value={route.terrain} />
         <Info label="Danger Level" value={route.danger_level} />
         <Info label="Estimated Encounters" value={String(route.estimated_encounters)} />
@@ -1506,6 +1557,92 @@ function roundPercent(value: number) {
 
 function metersToMiles(meters: number) {
   return (meters / 1609.344).toFixed(2);
+}
+
+function metersPerSecondToMph(metersPerSecond: number) {
+  return metersPerSecond * 2.23694;
+}
+
+function classifyMovement({
+  meters,
+  elapsedSeconds,
+  speedMph,
+  accuracy,
+}: {
+  meters: number;
+  elapsedSeconds: number;
+  speedMph: number;
+  accuracy: number | null;
+}) {
+  if (accuracy !== null && accuracy > maxGpsAccuracyMeters) {
+    return {
+      label: "Low GPS accuracy",
+      countedMeters: 0,
+      blockedReason: `Travel paused: GPS accuracy is ${Math.round(accuracy)}m. Move somewhere with a clearer signal.`,
+    };
+  }
+
+  if (elapsedSeconds <= 0) {
+    return {
+      label: "Waiting for GPS",
+      countedMeters: 0,
+      blockedReason: "Travel paused: waiting for the next GPS sample.",
+    };
+  }
+
+  if (elapsedSeconds > maxTrackingGapSeconds) {
+    return {
+      label: "Tracking gap",
+      countedMeters: 0,
+      blockedReason: "Travel paused: GPS was inactive too long to count this jump.",
+    };
+  }
+
+  if (meters < 2) {
+    return {
+      label: "Idle",
+      countedMeters: 0,
+      blockedReason: null,
+    };
+  }
+
+  if (speedMph < minHumanSpeedMph) {
+    return {
+      label: "Idle",
+      countedMeters: 0,
+      blockedReason: null,
+    };
+  }
+
+  if (speedMph > maxHumanSpeedMph) {
+    return {
+      label: "Vehicle speed",
+      countedMeters: 0,
+      blockedReason: `Travel paused: ${speedMph.toFixed(1)} mph is too fast for walking progress.`,
+    };
+  }
+
+  if (speedMph <= 4) {
+    return {
+      label: "Walking",
+      countedMeters: meters,
+      blockedReason: null,
+    };
+  }
+
+  if (speedMph <= 7.5) {
+    return {
+      label: "Jogging",
+      countedMeters: meters,
+      blockedReason: null,
+    };
+  }
+
+  return {
+    label: "Running",
+    countedMeters: meters,
+    blockedReason: null,
+  };
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
