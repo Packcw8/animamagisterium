@@ -67,9 +67,10 @@ const eventTypeLabels: Record<(typeof eventTypes)[number], string> = {
 };
 const maxGpsAccuracyMeters = 50;
 const maxTrackingGapSeconds = 60;
-const movementSpeedThresholdMph = 1.5;
+const movementSpeedThresholdMph = 1;
 const movementStateDebounceMs = 5000;
 const maxHumanSpeedMph = 12;
+const minCountedGpsMeters = 0.5;
 
 type MapScreenProps = {
   character: CharacterWithDetails;
@@ -481,7 +482,7 @@ export function MapScreen({ character }: MapScreenProps) {
             accuracy: next.accuracy,
           });
           const movementState = movement.blockedReason ? { state: movementStateRef.current, changed: false } : resolveMovementState(speedMph, next.timestamp);
-          const shouldCountDistance = movementState.state === "MOVING" && !movementState.changed;
+          const shouldCountDistance = movementState.state === "MOVING" && movement.countedMeters > 0;
           const countedMeters = shouldCountDistance ? movement.countedMeters : 0;
 
           setMovementStatus({
@@ -497,7 +498,7 @@ export function MapScreen({ character }: MapScreenProps) {
           }
 
           if (!shouldCountDistance) {
-            setGpsMessage(`State: ${movementState.state}. Speed ${speedMph.toFixed(1)} mph. Travel distance is not counting.`);
+            setGpsMessage(`State: ${movementState.state}. Speed ${speedMph.toFixed(1)} mph. Progress starts above ${movementSpeedThresholdMph.toFixed(1)} mph after a steady GPS signal.`);
             return next;
           }
 
@@ -2371,7 +2372,7 @@ function classifyMovement({
     };
   }
 
-  if (meters < 2 || speedMph <= movementSpeedThresholdMph) {
+  if (meters < minCountedGpsMeters || speedMph <= movementSpeedThresholdMph) {
     return {
       label: "IDLE",
       countedMeters: 0,
