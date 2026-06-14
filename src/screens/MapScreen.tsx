@@ -137,6 +137,9 @@ export function MapScreen({ character }: MapScreenProps) {
   const [markerQuestTitle, setMarkerQuestTitle] = useState("");
   const [markerQuestDialogue, setMarkerQuestDialogue] = useState("");
   const [markerQuestImage, setMarkerQuestImage] = useState("");
+  const [markerShopImage, setMarkerShopImage] = useState("");
+  const [markerShopBackground, setMarkerShopBackground] = useState("");
+  const [markerInteractionRadius, setMarkerInteractionRadius] = useState("4");
   const [markerRewardXp, setMarkerRewardXp] = useState("0");
   const [markerRewardGold, setMarkerRewardGold] = useState("0");
   const [markerRewardItemId, setMarkerRewardItemId] = useState<string | null>(null);
@@ -238,6 +241,9 @@ export function MapScreen({ character }: MapScreenProps) {
     () => (choiceNodeId ? dialogueChoices.filter((choice) => choice.node_id === choiceNodeId).sort((a, b) => a.sort_order - b.sort_order) : []),
     [choiceNodeId, dialogueChoices],
   );
+  const selectedMarkerDistance = selectedMarker ? getPercentDistance(playerPosition, { x: Number(selectedMarker.x_percent), y: Number(selectedMarker.y_percent) }) : 0;
+  const selectedMarkerRadius = Number(selectedMarker?.interaction_radius_percent ?? 4) || 4;
+  const canUseSelectedMarker = isAdmin || Boolean(selectedMarker && selectedMarkerDistance <= selectedMarkerRadius);
 
   useEffect(() => {
     void loadMap();
@@ -681,6 +687,9 @@ export function MapScreen({ character }: MapScreenProps) {
       quest_title: markerQuestTitle.trim() || null,
       quest_dialogue: markerQuestDialogue.trim() || null,
       quest_image_url: markerQuestImage.trim() || null,
+      shop_image_url: markerShopImage.trim() || null,
+      shop_background_image_url: markerShopBackground.trim() || null,
+      interaction_radius_percent: Math.max(0.5, Number(markerInteractionRadius) || 4),
       reward_xp: Number(markerRewardXp) || 0,
       reward_gold: Number(markerRewardGold) || 0,
       reward_item_id: markerRewardItemId,
@@ -698,6 +707,9 @@ export function MapScreen({ character }: MapScreenProps) {
     setMarkerQuestTitle(marker.quest_title ?? "");
     setMarkerQuestDialogue(marker.quest_dialogue ?? "");
     setMarkerQuestImage(marker.quest_image_url ?? "");
+    setMarkerShopImage(marker.shop_image_url ?? "");
+    setMarkerShopBackground(marker.shop_background_image_url ?? "");
+    setMarkerInteractionRadius(String(marker.interaction_radius_percent ?? 4));
     setMarkerRewardXp(String(marker.reward_xp ?? 0));
     setMarkerRewardGold(String(marker.reward_gold ?? 0));
     setMarkerRewardItemId(marker.reward_item_id ?? null);
@@ -1692,8 +1704,22 @@ export function MapScreen({ character }: MapScreenProps) {
           </View>
           {selectedMarker.description ? <Text style={styles.copy}>{selectedMarker.description}</Text> : null}
           {markerPanelMessage ? <Text style={styles.adminMessage}>{markerPanelMessage}</Text> : null}
-          {selectedMarker.type === "Market" ? (
+          {!canUseSelectedMarker ? (
             <View style={styles.storyEditor}>
+              {selectedMarker.quest_image_url || selectedMarker.shop_image_url ? <Image source={{ uri: selectedMarker.shop_image_url || selectedMarker.quest_image_url || "" }} style={styles.eventImage} /> : null}
+              <Text style={styles.selectedTitle}>Travel Required</Text>
+              <Text style={styles.copy}>
+                You need to travel closer before entering. Distance: {selectedMarkerDistance.toFixed(2)}% / Required: {selectedMarkerRadius.toFixed(2)}%.
+              </Text>
+              <Pressable style={styles.primaryButton} onPress={isTracking ? undefined : startGpsTracking}>
+                <Text style={styles.primaryText}>{isTracking ? "Tracking Walk" : "Start Tracking Walk"}</Text>
+              </Pressable>
+            </View>
+          ) : selectedMarker.type === "Market" ? (
+            <View style={[styles.shopPanel, selectedMarker.shop_background_image_url ? ({ backgroundImage: `url(${selectedMarker.shop_background_image_url})` } as object) : null]}>
+              {selectedMarker.shop_image_url ? <Image source={{ uri: selectedMarker.shop_image_url }} style={styles.eventImage} /> : null}
+              <Text style={styles.selectedTitle}>{selectedMarker.quest_title || selectedMarker.title}</Text>
+              {selectedMarker.quest_dialogue ? <Text style={styles.dialogueText}>{selectedMarker.quest_dialogue}</Text> : null}
               <Text style={styles.selectedTitle}>Buy</Text>
               {markerMarketItems.length === 0 ? <Text style={styles.copy}>This market has no stock yet.</Text> : null}
               {markerMarketItems.map((marketItem) => (
@@ -1802,6 +1828,11 @@ export function MapScreen({ character }: MapScreenProps) {
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>Market / Shop Settings</Text>
                   <Text style={styles.copy}>{selectedMarker ? "Choose items from the admin item database for this market." : "Create or select a Market marker before adding shop stock."}</Text>
+                  <TextInput value={markerQuestTitle} onChangeText={setMarkerQuestTitle} placeholder="Shop display name optional" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Shop welcome text" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+                  <TextInput value={markerShopImage} onChangeText={setMarkerShopImage} placeholder="Shop image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={markerShopBackground} onChangeText={setMarkerShopBackground} placeholder="Shop background image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
                   <ItemPicker label="Market item" items={itemDefinitions} selectedId={marketItemId} onSelect={setMarketItemId} />
                   <TextInput value={marketBuyPrice} onChangeText={setMarketBuyPrice} placeholder="Buy price" placeholderTextColor={colors.muted} style={styles.input} />
                   <TextInput value={marketSellPrice} onChangeText={setMarketSellPrice} placeholder="Sell price" placeholderTextColor={colors.muted} style={styles.input} />
@@ -2189,6 +2220,10 @@ function clamp(value: number, min: number, max: number) {
 
 function roundPercent(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function getPercentDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
 function metersToMiles(meters: number) {
@@ -3094,6 +3129,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
   },
+  shopPanel: {
+    gap: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 12,
+    backgroundColor: "rgba(0,0,0,0.42)",
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+  } as object,
   storyRoutePicker: {
     flexDirection: "row",
     flexWrap: "wrap",

@@ -321,7 +321,7 @@ export async function updateMapMarker(markerId: string, values: Partial<Pick<Map
   return data as MapMarker;
 }
 
-export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "quest_title" | "quest_dialogue" | "quest_image_url" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "repeatable" | "reward_once_per_player">>) {
+export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "repeatable" | "reward_once_per_player">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({

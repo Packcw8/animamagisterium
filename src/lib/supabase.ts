@@ -300,6 +300,9 @@ export type Tables = {
     quest_title: string | null;
     quest_dialogue: string | null;
     quest_image_url: string | null;
+    shop_image_url: string | null;
+    shop_background_image_url: string | null;
+    interaction_radius_percent: number;
     reward_xp: number;
     reward_gold: number;
     reward_item_id: string | null;
