@@ -5,6 +5,8 @@ import { consumeInventoryItem, grantItemToCharacter, type InventoryItem } from "
 export type MapRoute = Tables["map_routes"];
 export type RouteProgress = Tables["route_progress"];
 export type MapMarker = Tables["map_markers"];
+export type MiniMap = Tables["mini_maps"];
+export type TutorialStep = Tables["tutorial_steps"];
 export type MarkerMarketItem = Tables["marker_market_items"];
 export type MapStoryInstance = Tables["map_story_instances"];
 export type MapEvent = Tables["map_events"];
@@ -28,6 +30,8 @@ export const fallbackRoute: MapRoute = {
     { x: 56, y: 41 },
     { x: 68, y: 38 },
   ],
+  mini_map_id: null,
+  parent_marker_id: null,
   is_active: true,
   created_at: new Date(0).toISOString(),
   updated_at: new Date(0).toISOString(),
@@ -103,6 +107,101 @@ export async function getMapMarkers() {
   }
 
   return ((data ?? []) as MapMarker[]).filter((marker) => !isSeededMarker(marker));
+}
+
+export async function getMiniMaps() {
+  const { data, error } = await supabase.from("mini_maps").select("*").order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("[map] mini maps unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as MiniMap[];
+}
+
+export async function saveMiniMap(input: Partial<MiniMap>) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const values = {
+    name: input.name?.trim() || "Untitled Mini Map",
+    type: input.type ?? "area",
+    background_image_url: input.background_image_url?.trim() || null,
+    description: input.description?.trim() || null,
+    is_active: input.is_active ?? true,
+    created_by: input.id ? input.created_by ?? user?.id ?? null : user?.id ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  const request = input.id
+    ? supabase.from("mini_maps").update(values).eq("id", input.id).select().single()
+    : supabase.from("mini_maps").insert(values).select().single();
+  const { data, error } = await request;
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MiniMap;
+}
+
+export async function deleteMiniMap(miniMapId: string) {
+  const { error } = await supabase.from("mini_maps").delete().eq("id", miniMapId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function getTutorialSteps() {
+  const { data, error } = await supabase.from("tutorial_steps").select("*").order("sort_order", { ascending: true }).order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("[map] tutorial steps unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as TutorialStep[];
+}
+
+export async function saveTutorialStep(input: Partial<TutorialStep>) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const values = {
+    title: input.title?.trim() || "Untitled Tutorial",
+    description: input.description?.trim() || null,
+    image_url: input.image_url?.trim() || null,
+    marker_id: input.marker_id ?? null,
+    mini_map_id: input.mini_map_id ?? null,
+    route_id: input.route_id ?? null,
+    reward_xp: Number(input.reward_xp) || 0,
+    reward_gold: Number(input.reward_gold) || 0,
+    reward_item_id: input.reward_item_id ?? null,
+    reward_item_quantity: Math.max(1, Number(input.reward_item_quantity) || 1),
+    sort_order: Number(input.sort_order) || 0,
+    is_active: input.is_active ?? true,
+    created_by: input.id ? input.created_by ?? user?.id ?? null : user?.id ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  const request = input.id
+    ? supabase.from("tutorial_steps").update(values).eq("id", input.id).select().single()
+    : supabase.from("tutorial_steps").insert(values).select().single();
+  const { data, error } = await request;
+
+  if (error) {
+    throw error;
+  }
+
+  return data as TutorialStep;
+}
+
+export async function deleteTutorialStep(stepId: string) {
+  const { error } = await supabase.from("tutorial_steps").delete().eq("id", stepId);
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function getRouteProgress(routeId: string) {
@@ -202,7 +301,7 @@ export async function resetRouteProgress(routeId: string, startPoint: { x: numbe
   });
 }
 
-export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key">) {
+export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key"> & Partial<Pick<MapMarker, "linked_mini_map_id" | "mini_map_id" | "parent_marker_id">>) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -303,7 +402,7 @@ export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRo
   return data as MapRoute;
 }
 
-export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key">>) {
+export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({
@@ -321,7 +420,7 @@ export async function updateMapMarker(markerId: string, values: Partial<Pick<Map
   return data as MapMarker;
 }
 
-export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "repeatable" | "reward_once_per_player">>) {
+export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({

@@ -197,6 +197,8 @@ export type Tables = {
     distance_required_meters: number;
     estimated_encounters: number;
     path_points: Array<{ x: number; y: number }>;
+    mini_map_id: string | null;
+    parent_marker_id: string | null;
     is_active: boolean;
     created_at: string;
     updated_at: string;
@@ -321,6 +323,9 @@ export type Tables = {
     reward_item_quantity: number;
     repeatable: boolean;
     reward_once_per_player: boolean;
+    linked_mini_map_id: string | null;
+    mini_map_id: string | null;
+    parent_marker_id: string | null;
     created_by: string | null;
     created_at: string;
     updated_at: string;
@@ -344,6 +349,35 @@ export type Tables = {
     event_id: string | null;
     choice_id: string | null;
     claimed_at: string;
+  };
+  mini_maps: {
+    id: string;
+    name: string;
+    type: "town" | "forest" | "dungeon" | "area" | "tutorial";
+    background_image_url: string | null;
+    description: string | null;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  tutorial_steps: {
+    id: string;
+    title: string;
+    description: string | null;
+    image_url: string | null;
+    marker_id: string | null;
+    mini_map_id: string | null;
+    route_id: string | null;
+    reward_xp: number;
+    reward_gold: number;
+    reward_item_id: string | null;
+    reward_item_quantity: number;
+    sort_order: number;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
   };
   combat_abilities: {
     id: string;
