@@ -4,19 +4,22 @@ import type { AttributeKey } from "./trainingService";
 
 export type PlayerAbility = Tables["player_abilities"];
 export type EquippedAbility = Tables["equipped_abilities"];
+export type ItemDefinition = Tables["item_definitions"];
 
 export type AbilityDefinition = {
   key: string;
   name: string;
-  attribute: AttributeKey;
+  attribute: AttributeKey | null;
   unlockLevel: number;
   kind: "physical" | "magic" | "divine";
-  resource: "stamina" | "magicka";
+  resource: "health" | "stamina" | "magicka" | "none";
   cost: number;
   baseDamage: number;
   scaling: number;
   critBonus?: number;
   description: string;
+  source: "default" | "training" | "weapon";
+  sourceWeapon?: ItemDefinition;
 };
 
 export type CharacterResources = {
@@ -31,6 +34,20 @@ export type CombatLoadout = {
   resources: CharacterResources;
 };
 
+export const defaultAttack: AbilityDefinition = {
+  key: "default_punch",
+  name: "Punch",
+  attribute: "strength",
+  unlockLevel: 0,
+  kind: "physical",
+  resource: "none",
+  cost: 0,
+  baseDamage: 3,
+  scaling: 1,
+  description: "A basic attack everyone knows. Costs nothing.",
+  source: "default",
+};
+
 export const abilityDefinitions: AbilityDefinition[] = [
   {
     key: "power_strike",
@@ -43,6 +60,7 @@ export const abilityDefinitions: AbilityDefinition[] = [
     baseDamage: 8,
     scaling: 2,
     description: "Physical attack. 8 damage plus Strength scaling.",
+    source: "training",
   },
   {
     key: "iron_bash",
@@ -55,6 +73,7 @@ export const abilityDefinitions: AbilityDefinition[] = [
     baseDamage: 7,
     scaling: 2,
     description: "Physical attack. 7 damage plus Endurance scaling.",
+    source: "training",
   },
   {
     key: "swift_slash",
@@ -68,6 +87,7 @@ export const abilityDefinitions: AbilityDefinition[] = [
     scaling: 2,
     critBonus: 0.1,
     description: "Physical attack. 6 damage plus Agility scaling with a small crit bonus.",
+    source: "training",
   },
   {
     key: "arcane_bolt",
@@ -80,6 +100,7 @@ export const abilityDefinitions: AbilityDefinition[] = [
     baseDamage: 8,
     scaling: 2,
     description: "Magic attack. 8 damage plus Intelligence scaling.",
+    source: "training",
   },
   {
     key: "mind_lance",
@@ -92,6 +113,7 @@ export const abilityDefinitions: AbilityDefinition[] = [
     baseDamage: 7,
     scaling: 2,
     description: "Magic attack. 7 damage plus Wisdom scaling.",
+    source: "training",
   },
   {
     key: "inspiring_shout",
@@ -104,6 +126,7 @@ export const abilityDefinitions: AbilityDefinition[] = [
     baseDamage: 7,
     scaling: 2,
     description: "Attack. 7 damage plus Charisma scaling.",
+    source: "training",
   },
   {
     key: "holy_spark",
@@ -116,6 +139,7 @@ export const abilityDefinitions: AbilityDefinition[] = [
     baseDamage: 8,
     scaling: 2,
     description: "Divine attack. 8 damage plus Spirit scaling.",
+    source: "training",
   },
 ];
 
@@ -135,7 +159,7 @@ export function getCharacterResources(character: CharacterWithDetails, bonuses?:
 }
 
 export function getAbilityDamage(ability: AbilityDefinition, character: CharacterWithDetails) {
-  const attributeLevel = character.attributes?.[ability.attribute] ?? 0;
+  const attributeLevel = ability.attribute ? character.attributes?.[ability.attribute] ?? 0 : 0;
   const base = ability.baseDamage + attributeLevel * ability.scaling;
   const crit = ability.critBonus ? Math.random() < ability.critBonus + attributeLevel * 0.01 : false;
   return {
@@ -163,10 +187,12 @@ export async function getCombatLoadout(character: CharacterWithDetails): Promise
 
   const unlockedRows = (abilitiesResult.data ?? []) as PlayerAbility[];
   const equippedRows = (equippedResult.data ?? []) as EquippedAbility[];
-  const unlocked = abilityDefinitions.filter((ability) => unlockedRows.some((row) => row.ability_key === ability.key));
+  const availableAbilities = [defaultAttack, ...abilityDefinitions.filter((ability) => unlockedRows.some((row) => row.ability_key === ability.key))];
+  const weaponAbility = await getEquippedWeaponAbility(character.id);
+  const unlocked = weaponAbility ? [...availableAbilities, weaponAbility] : availableAbilities;
   const equipped = [1, 2, 3, 4].map((slot) => {
     const row = equippedRows.find((item) => item.slot === slot);
-    return abilityDefinitions.find((ability) => ability.key === row?.ability_key) ?? null;
+    return unlocked.find((ability) => ability.key === row?.ability_key) ?? null;
   });
 
   return {
@@ -190,7 +216,7 @@ export async function equipAbility(characterId: string, slot: number, abilityKey
     throw new Error("You must be signed in to equip abilities.");
   }
 
-  if (abilityKey) {
+  if (abilityKey && abilityKey !== defaultAttack.key) {
     const { data: owned, error: ownedError } = await supabase
       .from("player_abilities")
       .select("id")
@@ -204,7 +230,11 @@ export async function equipAbility(characterId: string, slot: number, abilityKey
     }
 
     if (!owned) {
-      throw new Error("That ability is not unlocked yet.");
+      const weaponAbility = await getEquippedWeaponAbility(characterId);
+
+      if (weaponAbility?.key !== abilityKey) {
+        throw new Error("That ability is not unlocked yet.");
+      }
     }
   }
 
@@ -224,6 +254,80 @@ export async function equipAbility(characterId: string, slot: number, abilityKey
   }
 }
 
+async function getEquippedWeaponAbility(characterId: string): Promise<AbilityDefinition | null> {
+  const { data: equipped, error: equippedError } = await supabase
+    .from("equipped_items")
+    .select("item_id")
+    .eq("character_id", characterId)
+    .eq("slot", "weapon")
+    .maybeSingle();
+
+  if (equippedError) {
+    throw equippedError;
+  }
+
+  if (!equipped?.item_id) {
+    return null;
+  }
+
+  const { data: weapon, error: weaponError } = await supabase
+    .from("item_definitions")
+    .select("*")
+    .eq("id", equipped.item_id)
+    .eq("type", "weapon")
+    .maybeSingle();
+
+  if (weaponError) {
+    throw weaponError;
+  }
+
+  if (!weapon) {
+    return null;
+  }
+
+  return weaponToAbility(weapon as ItemDefinition);
+}
+
+function weaponToAbility(weapon: ItemDefinition): AbilityDefinition {
+  const costType = weapon.ability_cost_type === "magika" ? "magicka" : weapon.ability_cost_type;
+  const elementText = weapon.elemental_damage_type !== "none" && weapon.elemental_damage_amount > 0
+    ? ` plus ${weapon.elemental_damage_amount} ${weapon.elemental_damage_type} damage`
+    : "";
+
+  return {
+    key: `weapon:${weapon.id}`,
+    name: weapon.ability_name || weapon.name,
+    attribute: null,
+    unlockLevel: 0,
+    kind: weapon.elemental_damage_type === "holy" ? "divine" : weapon.elemental_damage_type === "none" ? "physical" : "magic",
+    resource: costType,
+    cost: Number(weapon.ability_cost_amount) || 0,
+    baseDamage: (Number(weapon.damage_amount) || 0) + (Number(weapon.elemental_damage_amount) || 0),
+    scaling: 0,
+    description: `${weapon.name} attack. ${weapon.damage_amount || 0} weapon damage${elementText}.`,
+    source: "weapon",
+    sourceWeapon: weapon,
+  };
+}
+
+export function getAbilityCostLabel(ability: AbilityDefinition) {
+  if (ability.resource === "none" || ability.cost <= 0) {
+    return "No cost";
+  }
+
+  return `${ability.cost} ${ability.resource === "magicka" ? "Magika" : ability.resource.charAt(0).toUpperCase() + ability.resource.slice(1)}`;
+}
+
+export function getAbilitySourceLabel(ability: AbilityDefinition) {
+  if (ability.source === "weapon") {
+    return "Weapon";
+  }
+  if (ability.source === "default") {
+    return "Default";
+  }
+  return "Training";
+}
+
 export async function syncUnlockedAbilities(character: CharacterWithDetails) {
   const {
     data: { user },
@@ -238,7 +342,7 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
     return;
   }
 
-  const unlocked = abilityDefinitions.filter((ability) => (character.attributes?.[ability.attribute] ?? 0) >= ability.unlockLevel);
+  const unlocked = abilityDefinitions.filter((ability) => ability.attribute && (character.attributes?.[ability.attribute] ?? 0) >= ability.unlockLevel);
 
   if (unlocked.length === 0) {
     return;

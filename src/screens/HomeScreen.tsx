@@ -6,7 +6,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
-import { AbilityDefinition, equipAbility, getCombatLoadout, getCharacterResources } from "../services/abilityService";
+import { AbilityDefinition, equipAbility, getAbilityCostLabel, getAbilitySourceLabel, getCombatLoadout, getCharacterResources } from "../services/abilityService";
 import {
   blankItemDefinition,
   boostTargets,
@@ -154,6 +154,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
       await equipInventoryItem(character.id, entry.item);
       setInventoryMessage(`${entry.item.name} equipped.`);
       await loadInventory();
+      await loadAbilities();
     } catch (error) {
       setInventoryMessage(error instanceof Error ? error.message : "Unable to equip item.");
     }
@@ -164,6 +165,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
       await unequipInventorySlot(character.id, slot);
       setInventoryMessage("Item unequipped.");
       await loadInventory();
+      await loadAbilities();
     } catch (error) {
       setInventoryMessage(error instanceof Error ? error.message : "Unable to unequip item.");
     }
@@ -249,7 +251,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
         ) : activeTab === "Abilities" ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Ability Management</Text>
-            <Text style={styles.muted}>Level 1 training unlocks abilities. Equip up to four before combat.</Text>
+            <Text style={styles.muted}>Punch is always available. Training and equipped weapons add more abilities. Equip up to four before combat.</Text>
             {abilityMessage ? <Text style={styles.abilityMessage}>{abilityMessage}</Text> : null}
             <Text style={styles.subTitle}>Equipped Slots</Text>
             <View style={styles.slotGrid}>
@@ -281,7 +283,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                   >
                     <Text style={styles.abilityName}>{ability.name}</Text>
                     <Text style={styles.muted}>{ability.description}</Text>
-                    <Text style={styles.abilityCost}>{ability.cost} {ability.resource === "magicka" ? "Magika" : "Stamina"}</Text>
+                    <Text style={styles.abilityCost}>{getAbilitySourceLabel(ability)} / {getAbilityCostLabel(ability)}</Text>
                   </Pressable>
                 ))}
               </View>

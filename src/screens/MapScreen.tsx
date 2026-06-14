@@ -7,7 +7,7 @@ import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
-import { AbilityDefinition, CharacterResources, getAbilityDamage, getCharacterResources, getCombatLoadout } from "../services/abilityService";
+import { AbilityDefinition, CharacterResources, getAbilityCostLabel, getAbilityDamage, getCharacterResources, getCombatLoadout } from "../services/abilityService";
 import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, InventoryItem, ItemDefinition } from "../services/inventoryService";
 import {
   completeMapEvent,
@@ -867,17 +867,24 @@ export function MapScreen({ character }: MapScreenProps) {
       return;
     }
 
-    const currentResource = ability.resource === "stamina" ? battleStamina : battleMagicka;
+    if (ability.sourceWeapon) {
+      await handleWeaponAction(ability.sourceWeapon);
+      return;
+    }
+
+    const currentResource = ability.resource === "stamina" ? battleStamina : ability.resource === "magicka" ? battleMagicka : ability.resource === "health" ? battlePlayerHp : Number.POSITIVE_INFINITY;
 
     if (currentResource < ability.cost) {
-      setBattleLog((current) => [`Not enough ${ability.resource === "magicka" ? "Magika" : "Stamina"} for ${ability.name}.`, ...current].slice(0, 8));
+      setBattleLog((current) => [`Not enough ${ability.resource === "magicka" ? "Magika" : ability.resource === "none" ? "power" : ability.resource} for ${ability.name}.`, ...current].slice(0, 8));
       return;
     }
 
     if (ability.resource === "stamina") {
       setBattleStamina((current) => Math.max(0, current - ability.cost));
-    } else {
+    } else if (ability.resource === "magicka") {
       setBattleMagicka((current) => Math.max(0, current - ability.cost));
+    } else if (ability.resource === "health") {
+      setBattlePlayerHp((current) => Math.max(1, current - ability.cost));
     }
 
     const damageResult = getAbilityDamage(ability, character);
@@ -2228,15 +2235,10 @@ function BattleEventScreen({
           <Text style={styles.copy}>Magika {magicka} / {resources.maxMagicka}</Text>
           <ProgressBar value={magicka} max={resources.maxMagicka} color={colors.blue} height={7} />
         </View>
-        {weapon ? (
-          <Pressable style={[styles.primaryButton, Boolean(result) && styles.disabledAction]} onPress={() => onWeaponAction(weapon)} disabled={Boolean(result)}>
-            <Text style={styles.primaryText}>{weapon.ability_name || weapon.name}</Text>
-            <Text style={styles.actionCost}>{weapon.ability_cost_type !== "none" ? `${weapon.ability_cost_amount} ${formatResourceName(weapon.ability_cost_type)}` : "no cost"} / {weapon.damage_amount + weapon.elemental_damage_amount} damage</Text>
-          </Pressable>
-        ) : null}
         <View style={styles.modeRow}>
           {equippedAbilities.map((ability, index) => {
-            const hasResource = ability ? (ability.resource === "stamina" ? stamina : magicka) >= ability.cost : false;
+            const resourcePool = ability?.resource === "stamina" ? stamina : ability?.resource === "magicka" ? magicka : ability?.resource === "health" ? playerHp : Number.POSITIVE_INFINITY;
+            const hasResource = ability ? resourcePool >= ability.cost : false;
             return (
             <Pressable
               key={`ability-${index}`}
@@ -2245,7 +2247,7 @@ function BattleEventScreen({
               disabled={!ability || !hasResource || Boolean(result)}
             >
               <Text style={styles.secondaryText}>{ability?.name ?? `Empty Slot ${index + 1}`}</Text>
-              {ability ? <Text style={styles.actionCost}>{ability.cost} {ability.resource === "magicka" ? "Magika" : "Stamina"}</Text> : null}
+              {ability ? <Text style={styles.actionCost}>{getAbilityCostLabel(ability)}</Text> : null}
             </Pressable>
           )})}
         </View>
