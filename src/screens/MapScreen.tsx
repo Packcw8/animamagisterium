@@ -9,7 +9,7 @@ import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
 import { AbilityDefinition, CharacterResources, getAbilityCostLabel, getCharacterResources, getCombatLoadout } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
-import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveAbilityImageUri, resolveInventoryImageUri } from "../services/inventoryService";
+import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../services/inventoryService";
 import {
   completeMapEvent,
   applyRewards,
@@ -131,6 +131,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const [battleEnemyMagika, setBattleEnemyMagika] = useState(0);
   const [battleLog, setBattleLog] = useState<string[]>([]);
   const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | null>(null);
+  const [revivePromptOpen, setRevivePromptOpen] = useState(false);
   const [activeEnemy, setActiveEnemy] = useState<EnemyWithLoadout | null>(null);
   const [combatIndicators, setCombatIndicators] = useState<CombatIndicator[]>([]);
   const [combatResources, setCombatResources] = useState<CharacterResources>(() => getCharacterResources(character));
@@ -1226,6 +1227,7 @@ export function MapScreen({ character }: MapScreenProps) {
       setBattleEnemyStamina(Number(enemy?.stamina ?? 0) || 0);
       setBattleEnemyMagika(Number(enemy?.magika ?? 0) || 0);
       setBattleFinished(null);
+      setRevivePromptOpen(false);
       setBattleLog([
         event.battle_intro_text || `${enemy?.name || event.enemy_name || "An enemy"} blocks the trail.`,
         enemy?.id ? `Loaded ${enemy.abilities.length} enemy abilities and ${enemy.drops.length} drop entries from Enemy Admin.` : "Using manual battle enemy data.",
@@ -1392,9 +1394,7 @@ export function MapScreen({ character }: MapScreenProps) {
       nextLog.push(...counter.log);
       setBattlePlayerHp(nextPlayerHp);
       if (nextPlayerHp <= 0) {
-        setBattleFinished("defeat");
-        nextLog.push(activeBattle.defeat_text || "Defeat.");
-        await resetCurrentRouteAfterDefeat();
+        await resolvePlayerDefeat(nextLog);
       }
       setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
@@ -1412,9 +1412,7 @@ export function MapScreen({ character }: MapScreenProps) {
       nextLog.push(...counter.log);
       setBattlePlayerHp(nextPlayerHp);
       if (nextPlayerHp <= 0) {
-        setBattleFinished("defeat");
-        nextLog.push(activeBattle.defeat_text || "Defeat.");
-        await resetCurrentRouteAfterDefeat();
+        await resolvePlayerDefeat(nextLog);
       }
       setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
@@ -1443,9 +1441,7 @@ export function MapScreen({ character }: MapScreenProps) {
     setBattlePlayerHp(nextPlayerHp);
 
     if (nextPlayerHp <= 0) {
-      setBattleFinished("defeat");
-      nextLog.push(activeBattle.defeat_text || "Defeat.");
-      await resetCurrentRouteAfterDefeat();
+      await resolvePlayerDefeat(nextLog);
     }
 
     setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
@@ -1494,9 +1490,7 @@ export function MapScreen({ character }: MapScreenProps) {
       nextLog.push(...counter.log);
       setBattlePlayerHp(nextPlayerHp);
       if (nextPlayerHp <= 0) {
-        setBattleFinished("defeat");
-        nextLog.push(activeBattle.defeat_text || "Defeat.");
-        await resetCurrentRouteAfterDefeat();
+        await resolvePlayerDefeat(nextLog);
       }
       setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
@@ -1535,9 +1529,7 @@ export function MapScreen({ character }: MapScreenProps) {
     setBattlePlayerHp(nextPlayerHp);
 
     if (nextPlayerHp <= 0) {
-      setBattleFinished("defeat");
-      nextLog.push(activeBattle.defeat_text || "Defeat.");
-      await resetCurrentRouteAfterDefeat();
+      await resolvePlayerDefeat(nextLog);
     }
 
     setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
@@ -1661,29 +1653,55 @@ export function MapScreen({ character }: MapScreenProps) {
     }
   }
 
+  async function resolvePlayerDefeat(log: string[]) {
+    setBattleFinished("defeat");
+    setBattlePlayerHp(0);
+    log.push(activeBattle?.defeat_text || "Defeat.");
+
+    const reviveItem = inventoryItems.find((entry) => entry.quantity > 0 && isReviveBattleItem(entry.item));
+
+    if (reviveItem) {
+      setRevivePromptOpen(true);
+      setBattleInventoryOpen(false);
+      log.push(`${reviveItem.item.name} is available. Use it now or return to the trail start.`);
+      return;
+    }
+
+    setRevivePromptOpen(false);
+    log.push("No Revive Scroll found. Returning to the start of this trail.");
+    await resetCurrentRouteAfterDefeat();
+  }
+
+  async function declineReviveAfterDefeat() {
+    setRevivePromptOpen(false);
+    setBattleLog((current) => ["No revive used. Returning to the start of this trail.", ...current].slice(0, 8));
+    await resetCurrentRouteAfterDefeat();
+  }
+
   async function useBattleItem(entry: InventoryItem) {
     const item = entry.item;
     const defeated = battlePlayerHp <= 0 || battleFinished === "defeat";
 
-    if (defeated && item.type !== "revive potion") {
-      setBattleLog((current) => ["Only revive potions can be used after defeat.", ...current].slice(0, 8));
+    if (defeated && !isReviveBattleItem(item)) {
+      setBattleLog((current) => ["Only Revive Scrolls can be used after defeat.", ...current].slice(0, 8));
       return;
     }
 
-    if (item.type !== "potion" && item.type !== "revive potion") {
+    if (item.type !== "potion" && !isReviveBattleItem(item)) {
       setBattleLog((current) => [`${item.name} has no battle use yet.`, ...current].slice(0, 8));
       return;
     }
 
-    const target = item.potion_target ?? "health";
+    const target = defeated ? "health" : item.potion_target ?? "health";
     const restoreFromPercent = item.restore_percent ? Math.ceil((target === "health" ? combatResources.maxHp : target === "stamina" ? combatResources.maxStamina : combatResources.maxMagicka) * (item.restore_percent / 100)) : 0;
-    const amount = Math.max(item.restore_amount, restoreFromPercent);
+    const amount = Math.max(item.restore_amount, restoreFromPercent, defeated ? Math.ceil(combatResources.maxHp * 0.5) : 0);
 
     if (target === "health") {
       setBattlePlayerHp((current) => Math.min(combatResources.maxHp, current + amount));
       pushCombatIndicator("player", `+${amount}`, "#42d77d");
       if (defeated) {
         setBattleFinished(null);
+        setRevivePromptOpen(false);
       }
     } else if (target === "stamina") {
       setBattleStamina((current) => Math.min(combatResources.maxStamina, current + amount));
@@ -2047,11 +2065,13 @@ export function MapScreen({ character }: MapScreenProps) {
         inventoryOpen={battleInventoryOpen}
         battleLog={battleLog}
         combatIndicators={combatIndicators}
+        revivePromptOpen={revivePromptOpen}
         result={battleFinished}
         onAction={(ability) => void handleBattleAction(ability)}
         onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
         onUseItem={(item) => void useBattleItem(item)}
         onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
+        onDeclineRevive={() => void declineReviveAfterDefeat()}
         onRetry={() => void startBattle(activeBattle)}
         onComplete={() => void finishEvent(activeBattle)}
       />
@@ -3328,11 +3348,13 @@ function BattleEventScreen({
   inventoryOpen,
   battleLog,
   combatIndicators,
+  revivePromptOpen,
   result,
   onAction,
   onWeaponAction,
   onUseItem,
   onToggleInventory,
+  onDeclineRevive,
   onRetry,
   onComplete,
 }: {
@@ -3350,11 +3372,13 @@ function BattleEventScreen({
   inventoryOpen: boolean;
   battleLog: string[];
   combatIndicators: CombatIndicator[];
+  revivePromptOpen: boolean;
   result: "victory" | "defeat" | null;
   onAction: (ability: AbilityDefinition) => void;
   onWeaponAction: (weapon: ItemDefinition) => void;
   onUseItem: (item: InventoryItem) => void;
   onToggleInventory: () => void;
+  onDeclineRevive: () => void;
   onRetry: () => void;
   onComplete: () => void;
 }) {
@@ -3372,6 +3396,7 @@ function BattleEventScreen({
 
   const enemyIndicators = combatIndicators.filter((indicator) => indicator.target === "enemy");
   const playerIndicators = combatIndicators.filter((indicator) => indicator.target === "player");
+  const reviveItem = battleItems.find((entry) => isReviveBattleItem(entry.item));
 
   return (
     <Screen>
@@ -3424,6 +3449,24 @@ function BattleEventScreen({
         <Pressable style={styles.secondaryButton} onPress={onToggleInventory}>
           <Text style={styles.secondaryText}>Inventory</Text>
         </Pressable>
+        {revivePromptOpen ? (
+          <View style={styles.revivePrompt}>
+            <Text style={styles.selectedTitle}>You have fallen</Text>
+            <Text style={styles.copy}>
+              {reviveItem ? `${reviveItem.item.name} is in your inventory. Use it to continue this battle, or return to the start of the trail.` : "No Revive Scroll found. Return to the start of the trail."}
+            </Text>
+            <View style={styles.modeRow}>
+              {reviveItem ? (
+                <Pressable style={styles.primaryButton} onPress={() => onUseItem(reviveItem)}>
+                  <Text style={styles.primaryText}>Use {reviveItem.item.name}</Text>
+                </Pressable>
+              ) : null}
+              <Pressable style={styles.secondaryButtonFlex} onPress={onDeclineRevive}>
+                <Text style={styles.secondaryText}>Return to Trail Start</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
         {inventoryOpen ? (
           <View style={styles.battleInventory}>
             {battleItems.length === 0 ? <Text style={styles.copy}>No usable battle items.</Text> : null}
@@ -4151,6 +4194,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
     backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  revivePrompt: {
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.red,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "rgba(62, 15, 15, 0.34)",
   },
   typeGrid: {
     flexDirection: "row",

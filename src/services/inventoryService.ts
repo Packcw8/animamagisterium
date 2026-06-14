@@ -373,16 +373,24 @@ export async function saveCarrySettings(settings: CarrySettings) {
 
 export function getBattleUsableItems(items: InventoryItem[], isDefeated: boolean) {
   return items.filter((entry) => {
-    if (entry.quantity <= 0 || !entry.item.usable_in_battle) {
+    if (entry.quantity <= 0) {
       return false;
     }
 
     if (isDefeated) {
-      return entry.item.type === "revive potion";
+      return isReviveBattleItem(entry.item);
     }
 
-    return entry.item.type !== "revive potion" || entry.item.usable_in_battle;
+    if (!entry.item.usable_in_battle) {
+      return false;
+    }
+
+    return !isReviveBattleItem(entry.item) || entry.item.usable_in_battle;
   });
+}
+
+export function isReviveBattleItem(item: ItemDefinition) {
+  return item.type === "revive potion" || (item.type === "scroll" && /revive/i.test(item.name));
 }
 
 async function ensureEquipmentSlots(characterId: string) {
