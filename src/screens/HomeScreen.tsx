@@ -73,6 +73,8 @@ export function HomeScreen({ character }: HomeScreenProps) {
   const [unlockedAbilities, setUnlockedAbilities] = useState<AbilityDefinition[]>([]);
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
   const [selectedAbilityKey, setSelectedAbilityKey] = useState<string | null>(null);
+  const [playerAbilityTab, setPlayerAbilityTab] = useState<(typeof abilityTypeTabs)[number]>("Attack");
+  const [selectedPlayerAbility, setSelectedPlayerAbility] = useState<AbilityDefinition | null>(null);
   const [selectedAdminAbilityId, setSelectedAdminAbilityId] = useState<string | null>(null);
   const [abilityTypeTab, setAbilityTypeTab] = useState<(typeof abilityTypeTabs)[number]>("Attack");
   const [abilityMessage, setAbilityMessage] = useState<string | null>(null);
@@ -110,7 +112,8 @@ export function HomeScreen({ character }: HomeScreenProps) {
     maxMagicka: inventoryBonuses.maxMagicka,
   });
   const isAdmin = role === "admin";
-  const abilityGroups = useMemo(() => groupAbilitiesForDisplay(unlockedAbilities), [unlockedAbilities]);
+  const playerAbilityCounts = useMemo(() => getAbilityTypeCounts(unlockedAbilities), [unlockedAbilities]);
+  const filteredPlayerAbilities = useMemo(() => unlockedAbilities.filter((ability) => getPlayerAbilityType(ability) === playerAbilityTab), [unlockedAbilities, playerAbilityTab]);
   const selectedInventoryItem = useMemo(() => inventoryItems.find((entry) => entry.id === selectedInventoryItemId) ?? inventoryItems[0] ?? null, [inventoryItems, selectedInventoryItemId]);
   const filteredInventoryItems = useMemo(() => inventoryItems.filter((entry) => itemMatchesCategory(entry.item, inventoryCategory)), [inventoryItems, inventoryCategory]);
   const filteredAdminItems = useMemo(() => itemDefinitions.filter((item) => itemMatchesCategory(item, inventoryCategory)), [itemDefinitions, inventoryCategory]);
@@ -455,32 +458,62 @@ export function HomeScreen({ character }: HomeScreenProps) {
             </View>
             <Text style={styles.subTitle}>Unlocked Abilities</Text>
             <Text style={styles.muted}>Tap an ability to select it, then choose an equipped slot above. Ability slots are what appear in battle.</Text>
-            {unlockedAbilities.length === 0 ? (
-              <Text style={styles.muted}>Train an attribute to level 1 to unlock its first ability.</Text>
+            <View style={styles.tabs}>
+              {abilityTypeTabs.map((tab) => (
+                <Pressable key={tab} style={[styles.tab, playerAbilityTab === tab && styles.activeTab]} onPress={() => { setPlayerAbilityTab(tab); setSelectedPlayerAbility(null); }}>
+                  <Text style={[styles.tabText, playerAbilityTab === tab && styles.activeTabText]}>{tab} ({playerAbilityCounts[tab] ?? 0})</Text>
+                </Pressable>
+              ))}
+            </View>
+            {selectedPlayerAbility ? (
+              <View style={styles.detailPanel}>
+                <View style={styles.abilityHeader}>
+                  <AbilityIcon ability={selectedPlayerAbility} />
+                  <View style={styles.itemBody}>
+                    <Text style={styles.abilityName}>{selectedPlayerAbility.name}</Text>
+                    <Text style={styles.abilityTag}>{getAbilityDetailedSource(selectedPlayerAbility)}</Text>
+                  </View>
+                </View>
+                <Text style={styles.muted}>{selectedPlayerAbility.description}</Text>
+                <Info label="Damage / Healing / Effect" value={getAbilityEffectSummary(selectedPlayerAbility)} />
+                <Info label="Stamina Cost" value={String(selectedPlayerAbility.adminAbility?.stamina_cost ?? (selectedPlayerAbility.resource === "stamina" ? selectedPlayerAbility.cost : 0))} />
+                <Info label="Magika Cost" value={String(selectedPlayerAbility.adminAbility?.magika_cost ?? (selectedPlayerAbility.resource === "magicka" ? selectedPlayerAbility.cost : 0))} />
+                <Info label="Health Cost" value={String(selectedPlayerAbility.adminAbility?.health_cost ?? (selectedPlayerAbility.resource === "health" ? selectedPlayerAbility.cost : 0))} />
+                <Info label="Cooldown" value={`${selectedPlayerAbility.adminAbility?.cooldown_turns ?? 0} turns`} />
+                <Info label="Linked Attribute" value={selectedPlayerAbility.attribute ?? "None"} />
+                <Info label="Required Level" value={String(selectedPlayerAbility.unlockLevel ?? 0)} />
+                <Info label="Source" value={getAbilityDetailedSource(selectedPlayerAbility)} />
+                <Pressable style={styles.smallButton} onPress={() => setSelectedPlayerAbility(null)}>
+                  <Text style={styles.smallButtonText}>Back to Ability Tabs</Text>
+                </Pressable>
+              </View>
+            ) : filteredPlayerAbilities.length === 0 ? (
+              <Text style={styles.muted}>No abilities learned yet.</Text>
             ) : (
               <View style={styles.abilityList}>
-                {abilityGroups.map((group) => (
-                  <View key={group.title} style={styles.abilityGroup}>
-                    <Text style={styles.abilityGroupTitle}>{group.title}</Text>
-                    {group.items.map((ability) => (
-                      <Pressable
-                        key={ability.key}
-                        style={[styles.abilityCard, selectedAbilityKey === ability.key && styles.abilityCardActive]}
-                        onPress={() => setSelectedAbilityKey(ability.key)}
-                      >
-                        <View style={styles.abilityHeader}>
-                          <Text style={styles.abilityName}>{ability.name}</Text>
-                          <Text style={styles.abilityTag}>{getAbilitySourceLabel(ability)}</Text>
-                        </View>
-                        <Text style={styles.muted}>{ability.description}</Text>
-                        <View style={styles.abilityMetaRow}>
-                          <Text style={styles.abilityCost}>{getAbilityCostLabel(ability)}</Text>
-                          <Text style={styles.abilityMeta}>{getAbilityUnlockLabel(ability)}</Text>
-                        </View>
-                        {selectedAbilityKey === ability.key ? <Text style={styles.selectedHint}>Selected - choose a slot above</Text> : null}
-                      </Pressable>
-                    ))}
-                  </View>
+                {filteredPlayerAbilities.map((ability) => (
+                  <Pressable
+                    key={ability.key}
+                    style={[styles.abilityCard, selectedAbilityKey === ability.key && styles.abilityCardActive]}
+                    onPress={() => {
+                      setSelectedAbilityKey(ability.key);
+                      setSelectedPlayerAbility(ability);
+                    }}
+                  >
+                    <View style={styles.abilityHeader}>
+                      <AbilityIcon ability={ability} />
+                      <View style={styles.itemBody}>
+                        <Text style={styles.abilityName}>{ability.name}</Text>
+                        <Text style={styles.muted}>{getShortAbilityDescription(ability)}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.abilityMetaRow}>
+                      <Text style={styles.abilityCost}>{getAbilityCostLabel(ability)}</Text>
+                      <Text style={styles.abilityMeta}>Cooldown {ability.adminAbility?.cooldown_turns ?? 0}</Text>
+                      <Text style={styles.abilityMeta}>{getAbilityUnlockLabel(ability)}</Text>
+                    </View>
+                    {selectedAbilityKey === ability.key ? <Text style={styles.selectedHint}>Selected - choose a slot above</Text> : null}
+                  </Pressable>
                 ))}
               </View>
             )}
@@ -890,16 +923,6 @@ function defaultSlotForType(type: ItemDefinition["type"]) {
   return null;
 }
 
-function groupAbilitiesForDisplay(abilities: AbilityDefinition[]) {
-  const groups = [
-    { title: "Default Attack", items: abilities.filter((ability) => ability.source === "default") },
-    { title: "Attribute Abilities", items: abilities.filter((ability) => ability.source === "training" || ability.source === "admin") },
-    { title: "Weapon / Gear Abilities", items: abilities.filter((ability) => ability.source === "weapon") },
-  ];
-
-  return groups.filter((group) => group.items.length > 0);
-}
-
 function getAbilityUnlockLabel(ability: AbilityDefinition) {
   if (ability.source === "default") {
     return "Always known";
@@ -914,6 +937,96 @@ function getAbilityUnlockLabel(ability: AbilityDefinition) {
   }
 
   return "Learned";
+}
+
+function getPlayerAbilityType(ability: AbilityDefinition): (typeof abilityTypeTabs)[number] {
+  if (ability.adminAbility?.type) {
+    return toAbilityTypeTab(ability.adminAbility.type);
+  }
+
+  if (ability.kind === "physical" || ability.kind === "magic" || ability.kind === "divine") {
+    return "Attack";
+  }
+
+  return "Passive";
+}
+
+function getAbilityTypeCounts(abilities: AbilityDefinition[]) {
+  return abilityTypeTabs.reduce((counts, tab) => {
+    counts[tab] = abilities.filter((ability) => getPlayerAbilityType(ability) === tab).length;
+    return counts;
+  }, {} as Record<(typeof abilityTypeTabs)[number], number>);
+}
+
+function getAbilityImageUri(ability: AbilityDefinition) {
+  if (ability.adminAbility?.image_path) {
+    return resolveAbilityImageUri(ability.adminAbility.image_path);
+  }
+
+  if (ability.sourceWeapon?.image_path) {
+    return resolveInventoryImageUri(ability.sourceWeapon.image_path);
+  }
+
+  return null;
+}
+
+function resolveAbilityImageUri(imagePath?: string | null) {
+  const trimmed = imagePath?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const normalized = trimmed.replaceAll("\\", "/");
+  if (normalized.startsWith("/assets/abilities/")) return normalized;
+  if (normalized.startsWith("assets/abilities/")) return `/${normalized}`;
+  if (!normalized.includes("/")) return `/assets/abilities/${normalized}`;
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function getAbilityEffectSummary(ability: AbilityDefinition) {
+  if (ability.adminAbility) {
+    const parts = [
+      ability.adminAbility.damage ? `${ability.adminAbility.damage} damage` : null,
+      ability.adminAbility.healing ? `${ability.adminAbility.healing} healing` : null,
+      ability.adminAbility.defense_amount ? `${ability.adminAbility.defense_amount} defense` : null,
+      ability.adminAbility.status_effect !== "none" ? `${ability.adminAbility.status_effect} ${ability.adminAbility.effect_amount} for ${ability.adminAbility.effect_duration} turns` : null,
+    ].filter(Boolean);
+
+    return parts.join(" / ") || "No direct effect";
+  }
+
+  return `${ability.baseDamage} damage + ${ability.attribute ?? "no"} scaling`;
+}
+
+function getAbilityDetailedSource(ability: AbilityDefinition) {
+  if (ability.source === "weapon") return ability.sourceWeapon ? `weapon: ${ability.sourceWeapon.name}` : "weapon";
+  if (ability.source === "admin") return ability.adminAbility?.learn_method ?? "admin";
+  if (ability.source === "training") return "learned";
+  return "default";
+}
+
+function getShortAbilityDescription(ability: AbilityDefinition) {
+  const type = getPlayerAbilityType(ability);
+  return `${type} / ${getAbilityCostLabel(ability)} / ${ability.attribute ? `${ability.attribute} Lv ${ability.unlockLevel}` : getAbilityDetailedSource(ability)}`;
+}
+
+function AbilityIcon({ ability }: { ability: AbilityDefinition }) {
+  const imageUri = getAbilityImageUri(ability);
+
+  if (imageUri) {
+    return <Image source={{ uri: imageUri }} style={styles.abilityIcon} />;
+  }
+
+  return (
+    <View style={styles.abilityIconFallback}>
+      <Text style={styles.abilityIconText}>{ability.name.slice(0, 2).toUpperCase()}</Text>
+    </View>
+  );
 }
 
 function itemMatchesCategory(item: ItemDefinition, category: (typeof inventoryCategoryTabs)[number]) {
@@ -1159,8 +1272,30 @@ const styles = StyleSheet.create({
   abilityHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: 8,
+  },
+  abilityIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  abilityIconFallback: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(20, 61, 86, 0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  abilityIconText: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 13,
   },
   abilityName: {
     color: colors.text,
