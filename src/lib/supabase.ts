@@ -115,6 +115,7 @@ export type Tables = {
     description: string | null;
     image_path: string | null;
     gold_value: number;
+    weight: number;
     stackable: boolean;
     sellable: boolean;
     usable_in_battle: boolean;
@@ -159,6 +160,11 @@ export type Tables = {
     character_id: string;
     slot: "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic";
     item_id: string | null;
+    updated_at: string;
+  };
+  game_balance_settings: {
+    key: string;
+    value: number;
     updated_at: string;
   };
   avatar_assets: {
@@ -360,6 +366,8 @@ export type Tables = {
     linked_stat: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | "weapon" | "item" | "none";
     learn_method: "level" | "weapon equipped" | "armor equipped" | "wearable equipped" | "scroll" | "quest" | "admin";
     required_level: number;
+    required_attribute: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | null;
+    required_attribute_level: number;
     image_path: string | null;
     attack_bonus: number;
     is_active: boolean;

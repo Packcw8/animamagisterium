@@ -1,6 +1,7 @@
 import { supabase, Tables } from "../lib/supabase";
 import type { CharacterWithDetails } from "./characterService";
 import type { AttributeKey } from "./trainingService";
+import type { CombatAbility } from "./combatAdminService";
 
 export type PlayerAbility = Tables["player_abilities"];
 export type EquippedAbility = Tables["equipped_abilities"];
@@ -18,8 +19,9 @@ export type AbilityDefinition = {
   scaling: number;
   critBonus?: number;
   description: string;
-  source: "default" | "training" | "weapon";
+  source: "default" | "training" | "weapon" | "admin";
   sourceWeapon?: ItemDefinition;
+  adminAbility?: CombatAbility;
 };
 
 export type CharacterResources = {
@@ -172,9 +174,10 @@ export async function getCombatLoadout(character: CharacterWithDetails): Promise
   await syncUnlockedAbilities(character);
   await ensureEquippedSlots(character.id);
 
-  const [abilitiesResult, equippedResult] = await Promise.all([
+  const [abilitiesResult, equippedResult, adminAbilitiesResult] = await Promise.all([
     supabase.from("player_abilities").select("*").eq("character_id", character.id),
     supabase.from("equipped_abilities").select("*").eq("character_id", character.id).order("slot", { ascending: true }),
+    supabase.from("combat_abilities").select("*").eq("is_active", true),
   ]);
 
   if (abilitiesResult.error) {
@@ -185,9 +188,20 @@ export async function getCombatLoadout(character: CharacterWithDetails): Promise
     throw equippedResult.error;
   }
 
+  if (adminAbilitiesResult.error) {
+    throw adminAbilitiesResult.error;
+  }
+
   const unlockedRows = (abilitiesResult.data ?? []) as PlayerAbility[];
   const equippedRows = (equippedResult.data ?? []) as EquippedAbility[];
-  const availableAbilities = [defaultAttack, ...abilityDefinitions.filter((ability) => unlockedRows.some((row) => row.ability_key === ability.key))];
+  const adminAbilityDefinitions = ((adminAbilitiesResult.data ?? []) as CombatAbility[])
+    .filter((ability) => unlockedRows.some((row) => row.ability_key === getAdminAbilityKey(ability.id)))
+    .map(adminAbilityToDefinition);
+  const availableAbilities = [
+    defaultAttack,
+    ...abilityDefinitions.filter((ability) => unlockedRows.some((row) => row.ability_key === ability.key)),
+    ...adminAbilityDefinitions,
+  ];
   const weaponAbility = await getEquippedWeaponAbility(character.id);
   const unlocked = weaponAbility ? [...availableAbilities, weaponAbility] : availableAbilities;
   const equipped = [1, 2, 3, 4].map((slot) => {
@@ -285,7 +299,30 @@ async function getEquippedWeaponAbility(characterId: string): Promise<AbilityDef
     return null;
   }
 
-  return weaponToAbility(weapon as ItemDefinition);
+  const weaponItem = weapon as ItemDefinition;
+
+  if (weaponItem.linked_ability_id) {
+    const { data: linkedAbility, error: linkedAbilityError } = await supabase
+      .from("combat_abilities")
+      .select("*")
+      .eq("id", weaponItem.linked_ability_id)
+      .maybeSingle();
+
+    if (linkedAbilityError) {
+      throw linkedAbilityError;
+    }
+
+    if (linkedAbility) {
+      return {
+        ...adminAbilityToDefinition(linkedAbility as CombatAbility),
+        key: `weapon:${weaponItem.id}:${linkedAbility.id}`,
+        source: "weapon",
+        sourceWeapon: weaponItem,
+      };
+    }
+  }
+
+  return weaponToAbility(weaponItem);
 }
 
 function weaponToAbility(weapon: ItemDefinition): AbilityDefinition {
@@ -311,6 +348,16 @@ function weaponToAbility(weapon: ItemDefinition): AbilityDefinition {
 }
 
 export function getAbilityCostLabel(ability: AbilityDefinition) {
+  if (ability.adminAbility) {
+    const costs = [
+      ability.adminAbility.health_cost > 0 ? `${ability.adminAbility.health_cost} Health` : null,
+      ability.adminAbility.stamina_cost > 0 ? `${ability.adminAbility.stamina_cost} Stamina` : null,
+      ability.adminAbility.magika_cost > 0 ? `${ability.adminAbility.magika_cost} Magika` : null,
+    ].filter(Boolean);
+
+    return costs.length > 0 ? costs.join(" + ") : "No cost";
+  }
+
   if (ability.resource === "none" || ability.cost <= 0) {
     return "No cost";
   }
@@ -321,6 +368,9 @@ export function getAbilityCostLabel(ability: AbilityDefinition) {
 export function getAbilitySourceLabel(ability: AbilityDefinition) {
   if (ability.source === "weapon") {
     return "Weapon";
+  }
+  if (ability.source === "admin") {
+    return "Learned";
   }
   if (ability.source === "default") {
     return "Default";
@@ -342,25 +392,76 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
     return;
   }
 
-  const unlocked = abilityDefinitions.filter((ability) => ability.attribute && (character.attributes?.[ability.attribute] ?? 0) >= ability.unlockLevel);
+  const [adminAbilitiesResult] = await Promise.all([
+    supabase
+      .from("combat_abilities")
+      .select("*")
+      .eq("is_active", true)
+      .not("required_attribute", "is", null),
+  ]);
 
-  if (unlocked.length === 0) {
+  if (adminAbilitiesResult.error) {
+    throw adminAbilitiesResult.error;
+  }
+
+  const unlocked = abilityDefinitions.filter((ability) => ability.attribute && (character.attributes?.[ability.attribute] ?? 0) >= ability.unlockLevel);
+  const adminUnlocked = ((adminAbilitiesResult.data ?? []) as CombatAbility[]).filter((ability) => {
+    const attribute = ability.required_attribute;
+    return attribute && (character.attributes?.[attribute] ?? 0) >= ability.required_attribute_level;
+  });
+
+  if (unlocked.length === 0 && adminUnlocked.length === 0) {
     return;
   }
 
   const { error } = await supabase.from("player_abilities").upsert(
-    unlocked.map((ability) => ({
-      user_id: user.id,
-      character_id: character.id,
-      ability_key: ability.key,
-      unlocked_by_attribute: ability.attribute,
-    })),
+    [
+      ...unlocked.map((ability) => ({
+        user_id: user.id,
+        character_id: character.id,
+        ability_key: ability.key,
+        unlocked_by_attribute: ability.attribute,
+      })),
+      ...adminUnlocked.map((ability) => ({
+        user_id: user.id,
+        character_id: character.id,
+        ability_key: getAdminAbilityKey(ability.id),
+        unlocked_by_attribute: ability.required_attribute as AttributeKey,
+      })),
+    ],
     { onConflict: "character_id,ability_key", ignoreDuplicates: true },
   );
 
   if (error) {
     throw error;
   }
+}
+
+function getAdminAbilityKey(abilityId: string) {
+  return `admin:${abilityId}`;
+}
+
+function adminAbilityToDefinition(ability: CombatAbility): AbilityDefinition {
+  const primaryAttribute = ability.required_attribute;
+  const cost = ability.magika_cost > 0 ? ability.magika_cost : ability.stamina_cost > 0 ? ability.stamina_cost : ability.health_cost > 0 ? ability.health_cost : 0;
+  const resource = ability.magika_cost > 0 ? "magicka" : ability.stamina_cost > 0 ? "stamina" : ability.health_cost > 0 ? "health" : "none";
+  const kind = ability.magika_cost > 0 || ability.type === "heal" || ability.status_effect !== "none" ? "magic" : "physical";
+
+  return {
+    key: getAdminAbilityKey(ability.id),
+    name: ability.name,
+    attribute: primaryAttribute,
+    unlockLevel: ability.required_attribute_level,
+    kind,
+    resource,
+    cost,
+    baseDamage: ability.damage,
+    scaling: primaryAttribute ? 2 : 0,
+    critBonus: ability.critical_chance / 100,
+    description: `${ability.type}. ${ability.damage} damage, ${ability.healing} healing, ${ability.defense_amount} defense.`,
+    source: "admin",
+    adminAbility: ability,
+  };
 }
 
 async function ensureEquippedSlots(characterId: string) {

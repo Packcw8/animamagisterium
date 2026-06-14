@@ -5,6 +5,7 @@ import type { CharacterResources } from "./abilityService";
 export type ItemDefinition = Tables["item_definitions"];
 export type PlayerInventoryRow = Tables["player_inventory"];
 export type EquippedItemRow = Tables["equipped_items"];
+export type GameBalanceSetting = Tables["game_balance_settings"];
 export type EquipmentSlot = EquippedItemRow["slot"];
 
 export type InventoryItem = PlayerInventoryRow & {
@@ -16,6 +17,13 @@ export type InventoryState = {
   items: InventoryItem[];
   definitions: ItemDefinition[];
   equipped: Record<EquipmentSlot, ItemDefinition | null>;
+  totalWeight: number;
+  carryCapacity: number;
+};
+
+export type CarrySettings = {
+  baseCarryWeight: number;
+  carryWeightPerStrengthLevel: number;
 };
 
 export const itemTypes: ItemDefinition["type"][] = ["weapon", "armor", "wearable", "potion", "revive potion", "consumable", "food", "scroll", "special", "material", "misc"];
@@ -28,6 +36,10 @@ export const buffTargets = ["max health", "max stamina", "max magika", "strength
 export const boostTargets = ["health", "stamina", "magika", "strength", "agility", "intelligence", "charisma", "defense", "damage", "gold gain", "xp gain"] as const;
 export const potionTargets = ["health", "stamina", "magika"] as const;
 export const inventoryAssetBasePath = "/assets/InventoryItems/";
+export const defaultCarrySettings: CarrySettings = {
+  baseCarryWeight: 50,
+  carryWeightPerStrengthLevel: 10,
+};
 
 export function resolveInventoryImageUri(imagePath?: string | null) {
   const trimmed = imagePath?.trim();
@@ -66,6 +78,7 @@ export function blankItemDefinition(): Partial<ItemDefinition> {
     description: "",
     image_path: inventoryAssetBasePath,
     gold_value: 0,
+    weight: 0,
     stackable: false,
     sellable: true,
     usable_in_battle: false,
@@ -135,7 +148,14 @@ export async function getInventoryState(characterId: string): Promise<InventoryS
       : null;
   }).filter(Boolean) as InventoryItem[];
 
-  return { items, definitions, equipped };
+  const [strength, carrySettings] = await Promise.all([getCharacterStrength(characterId), getCarrySettings()]);
+  return {
+    items,
+    definitions,
+    equipped,
+    totalWeight: getInventoryWeight(items),
+    carryCapacity: getCarryCapacity(strength, carrySettings),
+  };
 }
 
 export async function saveItemDefinition(input: Partial<ItemDefinition>) {
@@ -183,12 +203,9 @@ export async function grantItemToCharacter(characterId: string, itemId: string, 
     throw new Error("You must be signed in.");
   }
 
-  const { data: existing, error: existingError } = await supabase
-    .from("player_inventory")
-    .select("*")
-    .eq("character_id", characterId)
-    .eq("item_id", itemId)
-    .maybeSingle();
+  await assertCanCarryItem(characterId, itemId, quantity);
+
+  const { data: existing, error: existingError } = await supabase.from("player_inventory").select("*").eq("character_id", characterId).eq("item_id", itemId).maybeSingle();
 
   if (existingError) {
     throw existingError;
@@ -307,6 +324,43 @@ export function getInventoryResourceBonuses(equipped: Record<EquipmentSlot, Item
   };
 }
 
+export function getCarryCapacity(strengthLevel: number, settings = defaultCarrySettings) {
+  return settings.baseCarryWeight + Math.max(0, strengthLevel) * settings.carryWeightPerStrengthLevel;
+}
+
+export function getInventoryWeight(items: InventoryItem[]) {
+  return items.reduce((sum, entry) => sum + Number(entry.item.weight ?? 0) * entry.quantity, 0);
+}
+
+export async function getCarrySettings(): Promise<CarrySettings> {
+  const { data, error } = await supabase.from("game_balance_settings").select("*").in("key", ["base_carry_weight", "carry_weight_per_strength_level"]);
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = (data ?? []) as GameBalanceSetting[];
+  return {
+    baseCarryWeight: Number(rows.find((row) => row.key === "base_carry_weight")?.value ?? defaultCarrySettings.baseCarryWeight),
+    carryWeightPerStrengthLevel: Number(rows.find((row) => row.key === "carry_weight_per_strength_level")?.value ?? defaultCarrySettings.carryWeightPerStrengthLevel),
+  };
+}
+
+export async function saveCarrySettings(settings: CarrySettings) {
+  const now = new Date().toISOString();
+  const { error } = await supabase.from("game_balance_settings").upsert(
+    [
+      { key: "base_carry_weight", value: Number(settings.baseCarryWeight) || defaultCarrySettings.baseCarryWeight, updated_at: now },
+      { key: "carry_weight_per_strength_level", value: Number(settings.carryWeightPerStrengthLevel) || defaultCarrySettings.carryWeightPerStrengthLevel, updated_at: now },
+    ],
+    { onConflict: "key" },
+  );
+
+  if (error) {
+    throw error;
+  }
+}
+
 export function getBattleUsableItems(items: InventoryItem[], isDefeated: boolean) {
   return items.filter((entry) => {
     if (entry.quantity <= 0 || !entry.item.usable_in_battle) {
@@ -359,6 +413,7 @@ function normalizeItemInput(input: Partial<ItemDefinition>, userId: string | nul
     description: input.description?.trim() || null,
     image_path: input.image_path?.trim() || null,
     gold_value: Number(input.gold_value) || 0,
+    weight: Number(input.weight) || 0,
     stackable: Boolean(input.stackable),
     sellable: Boolean(input.sellable),
     usable_in_battle: Boolean(input.usable_in_battle),
@@ -387,4 +442,49 @@ function normalizeItemInput(input: Partial<ItemDefinition>, userId: string | nul
     created_by: input.id ? input.created_by ?? userId : userId,
     updated_at: new Date().toISOString(),
   };
+}
+
+async function assertCanCarryItem(characterId: string, itemId: string, quantity: number) {
+  const [inventoryResult, definitionsResult, strength, carrySettings] = await Promise.all([
+    supabase.from("player_inventory").select("*").eq("character_id", characterId),
+    supabase.from("item_definitions").select("*"),
+    getCharacterStrength(characterId),
+    getCarrySettings(),
+  ]);
+
+  if (inventoryResult.error) {
+    throw inventoryResult.error;
+  }
+
+  if (definitionsResult.error) {
+    throw definitionsResult.error;
+  }
+
+  const definitions = (definitionsResult.data ?? []) as ItemDefinition[];
+  const item = definitions.find((definition) => definition.id === itemId);
+
+  if (!item) {
+    throw new Error("Item definition could not be found.");
+  }
+
+  const currentItems = ((inventoryResult.data ?? []) as PlayerInventoryRow[]).map((row) => {
+    const definition = definitions.find((entry) => entry.id === row.item_id);
+    return definition ? { ...row, item: definition, equippedSlot: null } : null;
+  }).filter(Boolean) as InventoryItem[];
+  const nextWeight = getInventoryWeight(currentItems) + Number(item.weight ?? 0) * Math.max(1, quantity);
+  const capacity = getCarryCapacity(strength, carrySettings);
+
+  if (nextWeight > capacity) {
+    throw new Error(`Too heavy to carry. Inventory would be ${nextWeight.toFixed(1)} / ${capacity.toFixed(1)} weight.`);
+  }
+}
+
+async function getCharacterStrength(characterId: string) {
+  const { data, error } = await supabase.from("attributes").select("strength").eq("character_id", characterId).maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return Number(data?.strength ?? 0);
 }

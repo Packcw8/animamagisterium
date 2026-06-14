@@ -24,6 +24,7 @@ import {
   getEnemies,
   learnMethods,
   linkedStats,
+  requiredAttributes,
   saveCombatAbility,
   saveEnemy,
   saveEnemyAbility,
@@ -39,6 +40,7 @@ import {
   elementalTypes,
   equipmentSlots,
   equipInventoryItem,
+  getCarrySettings,
   getInventoryResourceBonuses,
   getInventoryState,
   grantItemToCharacter,
@@ -48,6 +50,7 @@ import {
   potionTargets,
   rarityOptions,
   resolveInventoryImageUri,
+  saveCarrySettings,
   saveItemDefinition,
   sellInventoryItem,
   unequipInventorySlot,
@@ -84,6 +87,10 @@ export function HomeScreen({ character }: HomeScreenProps) {
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
+  const [totalInventoryWeight, setTotalInventoryWeight] = useState(0);
+  const [carryCapacity, setCarryCapacity] = useState(50);
+  const [baseCarryWeight, setBaseCarryWeight] = useState("50");
+  const [carryWeightPerStrength, setCarryWeightPerStrength] = useState("10");
   const [itemForm, setItemForm] = useState<Partial<ItemDefinition>>(blankItemDefinition());
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [inventoryMessage, setInventoryMessage] = useState<string | null>(null);
@@ -223,6 +230,11 @@ export function HomeScreen({ character }: HomeScreenProps) {
       setInventoryItems(state.items);
       setItemDefinitions(state.definitions);
       setEquippedItems(state.equipped);
+      setTotalInventoryWeight(state.totalWeight);
+      setCarryCapacity(state.carryCapacity);
+      const settings = await getCarrySettings();
+      setBaseCarryWeight(String(settings.baseCarryWeight));
+      setCarryWeightPerStrength(String(settings.carryWeightPerStrengthLevel));
     } catch (error) {
       setInventoryMessage(error instanceof Error ? error.message : "Unable to load inventory.");
     }
@@ -262,6 +274,19 @@ export function HomeScreen({ character }: HomeScreenProps) {
       await loadInventory();
     } catch (error) {
       setInventoryMessage(error instanceof Error ? error.message : "Unable to save item.");
+    }
+  }
+
+  async function saveInventoryBalance() {
+    try {
+      await saveCarrySettings({
+        baseCarryWeight: Number(baseCarryWeight) || 50,
+        carryWeightPerStrengthLevel: Number(carryWeightPerStrength) || 10,
+      });
+      setInventoryMessage("Inventory balance saved.");
+      await loadInventory();
+    } catch (error) {
+      setInventoryMessage(error instanceof Error ? error.message : "Unable to save inventory balance.");
     }
   }
 
@@ -465,6 +490,8 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <ChoiceRow label="Linked stat" options={linkedStats} value={abilityForm.linked_stat ?? "none"} onSelect={(value) => setAbilityForm((current) => ({ ...current, linked_stat: value }))} />
                 <ChoiceRow label="Learn method" options={learnMethods} value={abilityForm.learn_method ?? "admin"} onSelect={(value) => setAbilityForm((current) => ({ ...current, learn_method: value }))} />
                 <ItemText label="Required level" value={String(abilityForm.required_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_level: Number(value) || 0 }))} />
+                <ChoiceRow label="Required Attribute" options={["", ...requiredAttributes]} value={abilityForm.required_attribute ?? ""} onSelect={(value) => setAbilityForm((current) => ({ ...current, required_attribute: value || null, linked_stat: value || current.linked_stat }))} />
+                <ItemText label="Required Attribute Level" value={String(abilityForm.required_attribute_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_attribute_level: Number(value) || 0, required_level: Number(value) || current.required_level || 0 }))} />
                 <ItemText label="Image URL/path" value={abilityForm.image_path ?? ""} onChange={(value) => setAbilityForm((current) => ({ ...current, image_path: value }))} />
                 <ToggleRow label="Active" value={abilityForm.is_active ?? true} onPress={() => setAbilityForm((current) => ({ ...current, is_active: !current.is_active }))} />
                 <Pressable style={styles.primaryAdminButton} onPress={() => void saveAdminAbility()}>
@@ -479,6 +506,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                   <View key={ability.id} style={styles.abilityCard}>
                     <Text style={styles.abilityName}>{ability.name}</Text>
                     <Text style={styles.muted}>{ability.type} / {ability.damage} damage / {ability.healing} healing / {ability.status_effect}</Text>
+                    <Text style={styles.muted}>Unlock: {ability.required_attribute ? `${ability.required_attribute} ${ability.required_attribute_level}` : "manual/gear/quest"}</Text>
                     <View style={styles.slotActions}>
                       <Pressable style={styles.smallButton} onPress={() => void editAdminAbility(ability)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
                       <Pressable style={styles.smallButton} onPress={() => void removeAdminAbility(ability.id)}><Text style={styles.smallButtonText}>Delete</Text></Pressable>
@@ -571,6 +599,8 @@ export function HomeScreen({ character }: HomeScreenProps) {
               ))}
             </View>
             <Text style={styles.subTitle}>Inventory</Text>
+            <Text style={styles.muted}>Carry Weight {totalInventoryWeight.toFixed(1)} / {carryCapacity.toFixed(1)}</Text>
+            <ProgressBar value={Math.min(totalInventoryWeight, carryCapacity)} max={Math.max(1, carryCapacity)} color={totalInventoryWeight > carryCapacity ? colors.red : colors.gold} height={8} />
             <View style={styles.abilityList}>
               {inventoryItems.length === 0 ? <Text style={styles.muted}>No items yet.</Text> : null}
               {inventoryItems.map((entry) => (
@@ -578,7 +608,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                   {resolveInventoryImageUri(entry.item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(entry.item.image_path) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                   <View style={styles.itemBody}>
                     <Text style={styles.abilityName}>{entry.item.name}{entry.equippedSlot ? " - Equipped" : ""}</Text>
-                    <Text style={styles.muted}>{entry.item.type} / {entry.item.rarity} / Qty {entry.quantity} / {entry.item.gold_value} gold</Text>
+                    <Text style={styles.muted}>{entry.item.type} / {entry.item.rarity} / Qty {entry.quantity} / {entry.item.gold_value} gold / {Number(entry.item.weight ?? 0).toFixed(1)} wt</Text>
                     <Text style={styles.muted}>{entry.item.description ?? "No description."}</Text>
                     <View style={styles.slotActions}>
                       {entry.item.equipment_slot ? (
@@ -610,6 +640,15 @@ export function HomeScreen({ character }: HomeScreenProps) {
               <View style={styles.adminBuilder}>
                 <Text style={styles.sectionTitle}>Admin Items</Text>
                 <Text style={styles.muted}>Create/edit items. Use /assets/InventoryItems/filename.png, paste a full URL, or type just the filename.</Text>
+                <Text style={styles.subTitle}>Carry Balance</Text>
+                <View style={styles.slotActions}>
+                  <ItemText label="Base Carry Weight" value={baseCarryWeight} onChange={setBaseCarryWeight} />
+                  <ItemText label="Carry Per Strength" value={carryWeightPerStrength} onChange={setCarryWeightPerStrength} />
+                </View>
+                <Pressable style={styles.smallButton} onPress={() => void saveInventoryBalance()}>
+                  <Text style={styles.smallButtonText}>Save Carry Balance</Text>
+                </Pressable>
+                <Text style={styles.subTitle}>Item Builder</Text>
                 <ItemText label="Name" value={itemForm.name ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, name: value }))} />
                 <ChoiceRow label="Type" options={itemTypes} value={itemForm.type ?? "misc"} onSelect={(value) => setItemForm((current) => ({ ...current, type: value, equipment_slot: defaultSlotForType(value) }))} />
                 <ChoiceRow label="Rarity" options={rarityOptions} value={itemForm.rarity ?? "common"} onSelect={(value) => setItemForm((current) => ({ ...current, rarity: value }))} />
@@ -617,6 +656,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <ItemText label="Image path" value={itemForm.image_path ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, image_path: value }))} />
                 {resolveInventoryImageUri(itemForm.image_path) ? <Image source={{ uri: resolveInventoryImageUri(itemForm.image_path) ?? "" }} style={styles.previewImage} /> : null}
                 <ItemText label="Gold value" value={String(itemForm.gold_value ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, gold_value: Number(value) || 0 }))} />
+                <ItemText label="Weight" value={String(itemForm.weight ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, weight: Number(value) || 0 }))} />
                 <ToggleRow label="Stackable" value={Boolean(itemForm.stackable)} onPress={() => setItemForm((current) => ({ ...current, stackable: !current.stackable }))} />
                 <ToggleRow label="Sellable" value={Boolean(itemForm.sellable)} onPress={() => setItemForm((current) => ({ ...current, sellable: !current.sellable }))} />
                 <ToggleRow label="Usable in battle" value={Boolean(itemForm.usable_in_battle)} onPress={() => setItemForm((current) => ({ ...current, usable_in_battle: !current.usable_in_battle }))} />
@@ -672,7 +712,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                     {resolveInventoryImageUri(item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(item.image_path) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                     <View style={styles.itemBody}>
                       <Text style={styles.abilityName}>{item.name}</Text>
-                      <Text style={styles.muted}>{item.type} / {item.rarity}</Text>
+                      <Text style={styles.muted}>{item.type} / {item.rarity} / {Number(item.weight ?? 0).toFixed(1)} wt</Text>
                       <View style={styles.slotActions}>
                         <Pressable style={styles.smallButton} onPress={() => void editItem(item)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
                         <Pressable style={styles.smallButton} onPress={() => void grantItem(item.id)}><Text style={styles.smallButtonText}>Grant</Text></Pressable>

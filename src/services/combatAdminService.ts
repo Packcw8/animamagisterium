@@ -13,6 +13,7 @@ export type EnemyWithLoadout = EnemyDefinition & {
 export const combatAbilityTypes: CombatAbility["type"][] = ["attack", "heal", "buff", "debuff", "defense", "passive"];
 export const statusEffects: CombatAbility["status_effect"][] = ["none", "poison", "burn", "regen", "shield", "weakness", "slow", "stun"];
 export const linkedStats: CombatAbility["linked_stat"][] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit", "weapon", "item", "none"];
+export const requiredAttributes: NonNullable<CombatAbility["required_attribute"]>[] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"];
 export const learnMethods: CombatAbility["learn_method"][] = ["level", "weapon equipped", "armor equipped", "wearable equipped", "scroll", "quest", "admin"];
 
 export function blankCombatAbility(): Partial<CombatAbility> {
@@ -36,6 +37,8 @@ export function blankCombatAbility(): Partial<CombatAbility> {
     linked_stat: "none",
     learn_method: "admin",
     required_level: 0,
+    required_attribute: null,
+    required_attribute_level: 0,
     image_path: "/assets/abilities/",
     attack_bonus: 0,
     is_active: true,
@@ -205,6 +208,8 @@ function normalizeCombatAbility(input: Partial<CombatAbility>, userId: string | 
     linked_stat: input.linked_stat ?? "none",
     learn_method: input.learn_method ?? "admin",
     required_level: Number(input.required_level) || 0,
+    required_attribute: input.required_attribute ?? null,
+    required_attribute_level: Number(input.required_attribute_level) || 0,
     image_path: input.image_path?.trim() || null,
     attack_bonus: Number(input.attack_bonus) || 0,
     is_active: input.is_active ?? true,
