@@ -15,6 +15,35 @@ export const statusEffects: CombatAbility["status_effect"][] = ["none", "poison"
 export const linkedStats: CombatAbility["linked_stat"][] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit", "weapon", "item", "none"];
 export const requiredAttributes: NonNullable<CombatAbility["required_attribute"]>[] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"];
 export const learnMethods: CombatAbility["learn_method"][] = ["level", "weapon equipped", "armor equipped", "wearable equipped", "scroll", "quest", "admin"];
+export const enemyAssetBasePath = "/assets/enemies/";
+
+export function resolveEnemyImageUri(imagePath?: string | null) {
+  const trimmed = imagePath?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const normalized = trimmed.replaceAll("\\", "/").replace(/^\/?assets\/enemy\//i, enemyAssetBasePath).replace(/^\/?assets\/enemies\//i, enemyAssetBasePath);
+
+  if (normalized.startsWith(enemyAssetBasePath)) {
+    return normalized;
+  }
+
+  if (normalized.startsWith("assets/enemies/")) {
+    return `/${normalized}`;
+  }
+
+  if (!normalized.includes("/")) {
+    return `${enemyAssetBasePath}${normalized}`;
+  }
+
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
 
 export function blankCombatAbility(): Partial<CombatAbility> {
   return {

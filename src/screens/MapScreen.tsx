@@ -7,9 +7,9 @@ import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
-import { AbilityDefinition, CharacterResources, getAbilityCostLabel, getAbilityDamage, getCharacterResources, getCombatLoadout } from "../services/abilityService";
-import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout } from "../services/combatAdminService";
-import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition } from "../services/inventoryService";
+import { AbilityDefinition, CharacterResources, getAbilityCostLabel, getCharacterResources, getCombatLoadout } from "../services/abilityService";
+import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
+import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveAbilityImageUri, resolveInventoryImageUri } from "../services/inventoryService";
 import {
   completeMapEvent,
   applyRewards,
@@ -104,6 +104,12 @@ type MovementStatus = {
 };
 
 type PlayerMovementState = "IDLE" | "MOVING";
+type CombatIndicator = {
+  id: string;
+  target: "enemy" | "player";
+  text: string;
+  color: string;
+};
 
 export function MapScreen({ character }: MapScreenProps) {
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
@@ -126,6 +132,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const [battleLog, setBattleLog] = useState<string[]>([]);
   const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | null>(null);
   const [activeEnemy, setActiveEnemy] = useState<EnemyWithLoadout | null>(null);
+  const [combatIndicators, setCombatIndicators] = useState<CombatIndicator[]>([]);
   const [combatResources, setCombatResources] = useState<CharacterResources>(() => getCharacterResources(character));
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
   const [enemyDefinitions, setEnemyDefinitions] = useState<EnemyDefinition[]>([]);
@@ -1198,18 +1205,37 @@ export function MapScreen({ character }: MapScreenProps) {
   }
 
   async function startBattle(event: MapEvent) {
-    const enemy = event.enemy_id ? await getEnemyLoadout(event.enemy_id) : null;
-    setActiveEvent(null);
-    setActiveBattle(event);
-    setActiveEnemy(enemy);
-    setBattlePlayerHp(combatResources.maxHp);
-    setBattleStamina(combatResources.maxStamina);
-    setBattleMagicka(combatResources.maxMagicka);
-    setBattleEnemyHp(Number(enemy?.health ?? event.enemy_hp) || 30);
-    setBattleEnemyStamina(Number(enemy?.stamina ?? 0) || 0);
-    setBattleEnemyMagika(Number(enemy?.magika ?? 0) || 0);
-    setBattleFinished(null);
-    setBattleLog([event.battle_intro_text || `${enemy?.name || event.enemy_name || "An enemy"} blocks the trail.`]);
+    try {
+      const enemy = event.enemy_id ? await getEnemyLoadout(event.enemy_id) : null;
+
+      if (event.enemy_id && !enemy) {
+        setAdminMessage("Battle enemy could not be loaded from Enemy Admin. Check the selected enemy.");
+        setBattleLog(["Battle enemy could not be loaded from Enemy Admin. Check the selected enemy."]);
+        return;
+      }
+
+      const enemyImage = resolveEnemyImageUri(enemy?.image_url ?? event.enemy_image_url);
+      setActiveEvent(null);
+      setActiveBattle(event);
+      setActiveEnemy(enemy);
+      setCombatIndicators([]);
+      setBattlePlayerHp(combatResources.maxHp);
+      setBattleStamina(combatResources.maxStamina);
+      setBattleMagicka(combatResources.maxMagicka);
+      setBattleEnemyHp(Number(enemy?.health ?? event.enemy_hp) || 30);
+      setBattleEnemyStamina(Number(enemy?.stamina ?? 0) || 0);
+      setBattleEnemyMagika(Number(enemy?.magika ?? 0) || 0);
+      setBattleFinished(null);
+      setBattleLog([
+        event.battle_intro_text || `${enemy?.name || event.enemy_name || "An enemy"} blocks the trail.`,
+        enemy?.id ? `Loaded ${enemy.abilities.length} enemy abilities and ${enemy.drops.length} drop entries from Enemy Admin.` : "Using manual battle enemy data.",
+        enemyImage ? "Enemy image ready." : "Enemy image missing. A placeholder will be shown.",
+      ]);
+    } catch (error) {
+      const message = getErrorMessage(error, "Unable to load battle enemy data.");
+      setAdminMessage(message);
+      setBattleLog([message]);
+    }
   }
 
   async function finishEvent(event: MapEvent) {
@@ -1238,6 +1264,14 @@ export function MapScreen({ character }: MapScreenProps) {
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to complete event."));
     }
+  }
+
+  function pushCombatIndicator(target: CombatIndicator["target"], text: string, color: string) {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setCombatIndicators((current) => [...current, { id, target, text, color }].slice(-8));
+    setTimeout(() => {
+      setCombatIndicators((current) => current.filter((indicator) => indicator.id !== id));
+    }, 1150);
   }
 
   function handleStoryChoice(action: MapEvent["choices"][number]["action"]) {
@@ -1348,9 +1382,51 @@ export function MapScreen({ character }: MapScreenProps) {
       setBattlePlayerHp((current) => Math.max(1, current - ability.cost));
     }
 
-    const damageResult = getAbilityDamage(ability, character);
-    const nextEnemyHp = Math.max(0, battleEnemyHp - damageResult.damage);
-    const nextLog = [`${ability.name} deals ${damageResult.damage} ${ability.kind} damage${damageResult.crit ? " (critical)" : ""}.`];
+    if (ability.adminAbility?.type === "heal") {
+      const healing = Math.max(1, Number(ability.adminAbility.healing) || ability.baseDamage || 1);
+      setBattlePlayerHp((current) => Math.min(combatResources.maxHp, current + healing));
+      pushCombatIndicator("player", `+${healing}`, "#42d77d");
+      const nextLog = [`${ability.name} restores ${healing} Health.`];
+      const counter = resolveEnemyCounterAttack();
+      const nextPlayerHp = Math.max(0, Math.min(combatResources.maxHp, battlePlayerHp + healing) - counter.damage);
+      nextLog.push(...counter.log);
+      setBattlePlayerHp(nextPlayerHp);
+      if (nextPlayerHp <= 0) {
+        setBattleFinished("defeat");
+        nextLog.push(activeBattle.defeat_text || "Defeat.");
+        await resetCurrentRouteAfterDefeat();
+      }
+      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+      return;
+    }
+
+    const enemyDefense = getEnemyDefense();
+    const attackRoll = rollD20Attack(getAbilityAttributeLevel(ability, "player"), getAbilityAttackBonus(ability), enemyDefense, ability.adminAbility?.critical_chance ?? 0, ability.adminAbility?.critical_multiplier ?? 2);
+    const nextLog = [`${ability.name}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
+
+    if (!attackRoll.hit) {
+      pushCombatIndicator("enemy", "MISS", "#9ca3af");
+      nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${ability.name} misses.`);
+      const counter = resolveEnemyCounterAttack();
+      const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
+      nextLog.push(...counter.log);
+      setBattlePlayerHp(nextPlayerHp);
+      if (nextPlayerHp <= 0) {
+        setBattleFinished("defeat");
+        nextLog.push(activeBattle.defeat_text || "Defeat.");
+        await resetCurrentRouteAfterDefeat();
+      }
+      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+      return;
+    }
+
+    const rawDamage = getAbilityBaseDamage(ability) + getAbilityAttributeLevel(ability, "player") + getEquipmentDamageBonus();
+    const reducedDamage = Math.max(1, rawDamage - getEnemyArmorReduction());
+    const totalDamage = attackRoll.critical ? Math.ceil(reducedDamage * Number(attackRoll.criticalMultiplier || 2)) : reducedDamage;
+    const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
+    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c");
+    nextLog.push(`${ability.name} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} ${ability.kind} damage.`);
+    applyAbilityStatusToTarget(ability, "enemy", nextLog);
 
     if (nextEnemyHp <= 0) {
       setBattleEnemyHp(0);
@@ -1405,10 +1481,32 @@ export function MapScreen({ character }: MapScreenProps) {
     }
 
     const bonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
-    const totalDamage = weapon.damage_amount + weapon.elemental_damage_amount + bonuses.damage;
-    const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
+    const enemyDefense = getEnemyDefense();
+    const attackRoll = rollD20Attack(character.attributes?.strength ?? 0, bonuses.damage, enemyDefense, 0, 2);
     const actionName = weapon.ability_name || weapon.name;
-    const nextLog = [`${actionName} deals ${totalDamage} damage${weapon.elemental_damage_type !== "none" ? ` with ${weapon.elemental_damage_type}` : ""}.`];
+    const nextLog = [`${actionName}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
+
+    if (!attackRoll.hit) {
+      pushCombatIndicator("enemy", "MISS", "#9ca3af");
+      nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${actionName} misses.`);
+      const counter = resolveEnemyCounterAttack(bonuses.defense);
+      const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
+      nextLog.push(...counter.log);
+      setBattlePlayerHp(nextPlayerHp);
+      if (nextPlayerHp <= 0) {
+        setBattleFinished("defeat");
+        nextLog.push(activeBattle.defeat_text || "Defeat.");
+        await resetCurrentRouteAfterDefeat();
+      }
+      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+      return;
+    }
+
+    const weaponDamage = Number(weapon.damage_amount ?? 0) + Number(weapon.elemental_damage_amount ?? 0) + bonuses.damage + Math.floor((character.attributes?.strength ?? 0) / 2);
+    const totalDamage = attackRoll.critical ? Math.ceil(Math.max(1, weaponDamage - getEnemyArmorReduction()) * 2) : Math.max(1, weaponDamage - getEnemyArmorReduction());
+    const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
+    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c");
+    nextLog.push(`${actionName} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} damage${weapon.elemental_damage_type !== "none" ? ` with ${weapon.elemental_damage_type}` : ""}.`);
 
     if (weapon.on_hit_effect === "restore health per hit") {
       setBattlePlayerHp((current) => Math.min(combatResources.maxHp, current + Math.max(1, weapon.buff_amount || 2)));
@@ -1453,10 +1551,13 @@ export function MapScreen({ character }: MapScreenProps) {
     if (!ability) {
       const roll = rollD20Attack(Number(activeEnemy?.strength ?? 0), 0, playerDefense, 0, 2);
       if (!roll.hit) {
+        pushCombatIndicator("player", "MISS", "#9ca3af");
         return { damage: 0, log: [`${enemyName} misses. d20 ${roll.roll} vs Defense ${playerDefense}.`] };
       }
       const damage = Math.max(1, (Number(activeBattle?.enemy_attack_damage) || 5) - extraPlayerDefense);
-      return { damage: roll.critical ? Math.ceil(damage * 2) : damage, log: [`${enemyName} hits for ${roll.critical ? "Critical " : ""}${roll.critical ? Math.ceil(damage * 2) : damage}.`] };
+      const totalDamage = roll.critical ? Math.ceil(damage * 2) : damage;
+      pushCombatIndicator("player", roll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, roll.critical ? "#f6d365" : "#ff5c5c");
+      return { damage: totalDamage, log: [`${enemyName} hits for ${roll.critical ? "Critical " : ""}${totalDamage}.`] };
     }
 
     if (ability.stamina_cost > 0) {
@@ -1469,6 +1570,7 @@ export function MapScreen({ character }: MapScreenProps) {
     if (ability.type === "heal") {
       const healing = Math.max(1, Number(ability.healing) || 1);
       setBattleEnemyHp((current) => Math.min(Number(activeEnemy?.health ?? activeBattle?.enemy_hp ?? 30), current + healing));
+      pushCombatIndicator("enemy", `+${healing}`, "#42d77d");
       return { damage: 0, log: [`${enemyName} uses ${ability.name} and heals ${healing}.`] };
     }
 
@@ -1479,6 +1581,7 @@ export function MapScreen({ character }: MapScreenProps) {
     const statBonus = Number(activeEnemy?.strength ?? 0);
     const roll = rollD20Attack(statBonus, ability.attack_bonus, playerDefense, ability.critical_chance, ability.critical_multiplier);
     if (!roll.hit) {
+      pushCombatIndicator("player", "MISS", "#9ca3af");
       return { damage: 0, log: [`${enemyName} uses ${ability.name} and misses. d20 ${roll.roll} vs Defense ${playerDefense}.`] };
     }
 
@@ -1486,12 +1589,76 @@ export function MapScreen({ character }: MapScreenProps) {
     const reducedDamage = Math.max(1, baseDamage - extraPlayerDefense);
     const damage = roll.critical ? Math.ceil(reducedDamage * Number(ability.critical_multiplier || 2)) : reducedDamage;
     const statusText = ability.status_effect !== "none" ? ` ${ability.status_effect} may linger.` : "";
+    pushCombatIndicator("player", roll.critical ? `CRITICAL -${damage}` : `-${damage}`, roll.critical ? "#f6d365" : "#ff5c5c");
+    pushStatusIndicator("player", ability.status_effect, ability.effect_amount);
     return { damage, log: [`${enemyName} uses ${ability.name} for ${roll.critical ? "Critical " : ""}${damage}.${statusText}`] };
   }
 
   function getPlayerDefense(extraDefense = 0) {
     const bonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
-    return 10 + Math.floor((character.attributes?.agility ?? 0) / 2) + bonuses.defense + extraDefense;
+    return 10 + Math.floor((character.attributes?.endurance ?? 0) / 2) + Math.floor((character.attributes?.agility ?? 0) / 2) + bonuses.defense + extraDefense;
+  }
+
+  function getEnemyDefense() {
+    return Number(activeEnemy?.defense ?? 10) + Math.floor(Number(activeEnemy?.endurance ?? 0) / 2) + Math.floor(Number(activeEnemy?.agility ?? 0) / 2) + Number(activeEnemy?.armor_rating ?? 0);
+  }
+
+  function getEnemyArmorReduction() {
+    return Math.floor(Number(activeEnemy?.armor_rating ?? 0) / 2);
+  }
+
+  function getEquipmentDamageBonus() {
+    const bonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
+    return bonuses.damage;
+  }
+
+  function getAbilityAttackBonus(ability: AbilityDefinition) {
+    return Number(ability.adminAbility?.attack_bonus ?? 0);
+  }
+
+  function getAbilityBaseDamage(ability: AbilityDefinition) {
+    return Math.max(1, Number(ability.adminAbility?.damage ?? ability.baseDamage) || 1);
+  }
+
+  function getAbilityAttributeLevel(ability: AbilityDefinition, side: "player" | "enemy") {
+    const key = ability.attribute ?? ability.adminAbility?.required_attribute ?? (ability.adminAbility?.linked_stat && ability.adminAbility.linked_stat !== "none" && ability.adminAbility.linked_stat !== "weapon" && ability.adminAbility.linked_stat !== "item" ? ability.adminAbility.linked_stat : null);
+
+    if (!key) {
+      return 0;
+    }
+
+    if (side === "enemy") {
+      return Number(activeEnemy?.[key] ?? 0);
+    }
+
+    return Number(character.attributes?.[key] ?? 0);
+  }
+
+  function applyAbilityStatusToTarget(ability: AbilityDefinition, target: CombatIndicator["target"], log: string[]) {
+    const status = ability.adminAbility?.status_effect;
+
+    if (!status || status === "none") {
+      return;
+    }
+
+    const amount = Number(ability.adminAbility?.effect_amount ?? 0);
+    const duration = Number(ability.adminAbility?.effect_duration ?? 0);
+    pushStatusIndicator(target, status, amount);
+    log.push(`${status} applied${duration ? ` for ${duration} turns` : ""}.`);
+  }
+
+  function pushStatusIndicator(target: CombatIndicator["target"], status: string | null | undefined, amount: number) {
+    if (!status || status === "none" || amount <= 0) {
+      return;
+    }
+
+    if (status === "poison") {
+      pushCombatIndicator(target, `Poison -${amount}`, "#b55cff");
+    } else if (status === "burn") {
+      pushCombatIndicator(target, `Burn -${amount}`, "#ff8a2a");
+    } else if (status === "regen") {
+      pushCombatIndicator(target, `+${amount}`, "#42d77d");
+    }
   }
 
   async function useBattleItem(entry: InventoryItem) {
@@ -1514,13 +1681,16 @@ export function MapScreen({ character }: MapScreenProps) {
 
     if (target === "health") {
       setBattlePlayerHp((current) => Math.min(combatResources.maxHp, current + amount));
+      pushCombatIndicator("player", `+${amount}`, "#42d77d");
       if (defeated) {
         setBattleFinished(null);
       }
     } else if (target === "stamina") {
       setBattleStamina((current) => Math.min(combatResources.maxStamina, current + amount));
+      pushCombatIndicator("player", `+${amount}`, "#2f80ed");
     } else {
       setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + amount));
+      pushCombatIndicator("player", `+${amount}`, "#7fdcff");
     }
 
     await consumeInventoryItem(entry, 1);
@@ -1876,6 +2046,7 @@ export function MapScreen({ character }: MapScreenProps) {
         battleItems={getBattleUsableItems(inventoryItems, battlePlayerHp <= 0 || battleFinished === "defeat")}
         inventoryOpen={battleInventoryOpen}
         battleLog={battleLog}
+        combatIndicators={combatIndicators}
         result={battleFinished}
         onAction={(ability) => void handleBattleAction(ability)}
         onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
@@ -3156,6 +3327,7 @@ function BattleEventScreen({
   battleItems,
   inventoryOpen,
   battleLog,
+  combatIndicators,
   result,
   onAction,
   onWeaponAction,
@@ -3177,6 +3349,7 @@ function BattleEventScreen({
   battleItems: InventoryItem[];
   inventoryOpen: boolean;
   battleLog: string[];
+  combatIndicators: CombatIndicator[];
   result: "victory" | "defeat" | null;
   onAction: (ability: AbilityDefinition) => void;
   onWeaponAction: (weapon: ItemDefinition) => void;
@@ -3185,18 +3358,40 @@ function BattleEventScreen({
   onRetry: () => void;
   onComplete: () => void;
 }) {
+  const [enemyImageFailed, setEnemyImageFailed] = useState(false);
+  const [playerImageFailed, setPlayerImageFailed] = useState(false);
+  const enemyImageUri = resolveEnemyImageUri(activeEnemy?.image_url ?? event.enemy_image_url);
+
+  useEffect(() => {
+    setEnemyImageFailed(false);
+  }, [enemyImageUri]);
+
+  useEffect(() => {
+    setPlayerImageFailed(false);
+  }, [character.portrait_url]);
+
+  const enemyIndicators = combatIndicators.filter((indicator) => indicator.target === "enemy");
+  const playerIndicators = combatIndicators.filter((indicator) => indicator.target === "player");
+
   return (
     <Screen>
       <Frame style={styles.eventScreen}>
         <Text style={styles.sectionTitle}>{event.title}</Text>
         <View style={styles.battleArena}>
           <View style={styles.enemyPanel}>
-            {(activeEnemy?.image_url || event.enemy_image_url) ? <Image source={{ uri: activeEnemy?.image_url || event.enemy_image_url || "" }} style={styles.enemyImage} /> : <View style={styles.enemyImagePlaceholder} />}
+            <View style={styles.combatImageWrap}>
+              {enemyImageUri && !enemyImageFailed ? <Image source={{ uri: enemyImageUri }} style={styles.enemyImage} onError={() => setEnemyImageFailed(true)} /> : <View style={styles.enemyImagePlaceholder}><Text style={styles.copy}>Enemy image missing</Text></View>}
+              <CombatIndicatorStack indicators={enemyIndicators} />
+            </View>
             <Text style={styles.markerName}>{activeEnemy?.name || event.enemy_name || "Enemy"}</Text>
             <Text style={styles.copy}>HP {enemyHp}</Text>
+            {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
           </View>
           <View style={styles.playerPanel}>
-            {character.portrait_url ? <Image source={{ uri: character.portrait_url }} style={styles.battlePortrait} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
+            <View style={styles.combatImageWrap}>
+              {character.portrait_url && !playerImageFailed ? <Image source={{ uri: character.portrait_url }} style={styles.battlePortrait} onError={() => setPlayerImageFailed(true)} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
+              <CombatIndicatorStack indicators={playerIndicators} />
+            </View>
             <Text style={styles.markerName}>{character.name}</Text>
             <Text style={styles.copy}>HP {playerHp}</Text>
           </View>
@@ -3220,6 +3415,7 @@ function BattleEventScreen({
               onPress={() => ability ? onAction(ability) : undefined}
               disabled={!ability || !hasResource || Boolean(result)}
             >
+              {ability ? <BattleAbilityIcon ability={ability} /> : null}
               <Text style={styles.secondaryText}>{ability?.name ?? `Empty Slot ${index + 1}`}</Text>
               {ability ? <Text style={styles.actionCost}>{getAbilityCostLabel(ability)}</Text> : null}
             </Pressable>
@@ -3255,6 +3451,32 @@ function BattleEventScreen({
       </Frame>
     </Screen>
   );
+}
+
+function CombatIndicatorStack({ indicators }: { indicators: CombatIndicator[] }) {
+  return (
+    <View style={styles.combatIndicatorStack} pointerEvents="none">
+      {indicators.map((indicator, index) => (
+        <Text key={indicator.id} style={[styles.combatIndicator, { color: indicator.color, top: -10 - index * 24 } as object]}>
+          {indicator.text}
+        </Text>
+      ))}
+    </View>
+  );
+}
+
+function BattleAbilityIcon({ ability }: { ability: AbilityDefinition }) {
+  const imageUri = ability.adminAbility?.image_path
+    ? resolveAbilityImageUri(ability.adminAbility.image_path)
+    : ability.sourceWeapon?.image_path
+      ? resolveInventoryImageUri(ability.sourceWeapon.image_path)
+      : null;
+
+  if (!imageUri) {
+    return null;
+  }
+
+  return <Image source={{ uri: imageUri }} style={styles.battleAbilityIcon} />;
 }
 
 function MarkerSceneScreen({
@@ -4162,6 +4384,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
+  combatImageWrap: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  combatIndicatorStack: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    alignItems: "center",
+  },
+  combatIndicator: {
+    position: "absolute",
+    fontWeight: "900",
+    fontSize: 16,
+    textShadowColor: "rgba(0,0,0,0.9)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 6,
+    opacity: 0.96,
+  },
   enemyImage: {
     width: 124,
     height: 124,
@@ -4176,6 +4419,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#ffb4aa",
     backgroundColor: "rgba(100, 20, 20, 0.38)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 8,
   },
   battlePortrait: {
     width: 92,
@@ -4183,5 +4429,17 @@ const styles = StyleSheet.create({
     borderRadius: 46,
     borderWidth: 2,
     borderColor: colors.blue,
+  },
+  battleAbilityIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    marginBottom: 4,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  errorText: {
+    color: colors.red,
+    fontWeight: "800",
+    fontSize: 11,
   },
 });

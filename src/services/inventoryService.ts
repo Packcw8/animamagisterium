@@ -36,12 +36,13 @@ export const buffTargets = ["max health", "max stamina", "max magika", "strength
 export const boostTargets = ["health", "stamina", "magika", "strength", "agility", "intelligence", "charisma", "defense", "damage", "gold gain", "xp gain"] as const;
 export const potionTargets = ["health", "stamina", "magika"] as const;
 export const inventoryAssetBasePath = "/assets/InventoryItems/";
+export const abilityAssetBasePath = "/assets/abilities/";
 export const defaultCarrySettings: CarrySettings = {
   baseCarryWeight: 50,
   carryWeightPerStrengthLevel: 10,
 };
 
-export function resolveInventoryImageUri(imagePath?: string | null) {
+function resolveAssetImageUri(imagePath: string | null | undefined, basePath: string, folderAliases: RegExp[] = []) {
   const trimmed = imagePath?.trim();
 
   if (!trimmed) {
@@ -53,21 +54,30 @@ export function resolveInventoryImageUri(imagePath?: string | null) {
   }
 
   const normalized = trimmed.replaceAll("\\", "/");
-  const fixedFolder = normalized.replace(/^\/?assets\/inventory\//i, inventoryAssetBasePath);
+  const fixedFolder = folderAliases.reduce((current, alias) => current.replace(alias, basePath), normalized);
 
-  if (fixedFolder.startsWith("/assets/InventoryItems/")) {
+  if (fixedFolder.startsWith(basePath)) {
     return fixedFolder;
   }
 
-  if (fixedFolder.startsWith("assets/InventoryItems/")) {
+  const relativeBasePath = basePath.replace(/^\//, "");
+  if (fixedFolder.startsWith(relativeBasePath)) {
     return `/${fixedFolder}`;
   }
 
   if (!fixedFolder.includes("/")) {
-    return `${inventoryAssetBasePath}${fixedFolder}`;
+    return `${basePath}${fixedFolder}`;
   }
 
   return fixedFolder.startsWith("/") ? fixedFolder : `/${fixedFolder}`;
+}
+
+export function resolveInventoryImageUri(imagePath?: string | null) {
+  return resolveAssetImageUri(imagePath, inventoryAssetBasePath, [/^\/?assets\/inventory\//i]);
+}
+
+export function resolveAbilityImageUri(imagePath?: string | null) {
+  return resolveAssetImageUri(imagePath, abilityAssetBasePath, [/^\/?assets\/ability\//i, /^\/?assets\/abilities\//i]);
 }
 
 export function blankItemDefinition(): Partial<ItemDefinition> {
@@ -475,7 +485,7 @@ async function assertCanCarryItem(characterId: string, itemId: string, quantity:
   const capacity = getCarryCapacity(strength, carrySettings);
 
   if (nextWeight > capacity) {
-    throw new Error(`Too heavy to carry. Inventory would be ${nextWeight.toFixed(1)} / ${capacity.toFixed(1)} weight.`);
+    throw new Error(`Inventory too heavy. Inventory would be ${nextWeight.toFixed(1)} / ${capacity.toFixed(1)} weight.`);
   }
 }
 

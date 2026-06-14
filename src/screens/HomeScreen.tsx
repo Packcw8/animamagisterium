@@ -25,6 +25,7 @@ import {
   learnMethods,
   linkedStats,
   requiredAttributes,
+  resolveEnemyImageUri,
   saveCombatAbility,
   saveEnemy,
   saveEnemyAbility,
@@ -49,6 +50,7 @@ import {
   onHitEffects,
   potionTargets,
   rarityOptions,
+  resolveAbilityImageUri,
   resolveInventoryImageUri,
   saveCarrySettings,
   saveItemDefinition,
@@ -538,6 +540,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 </View>
                 {selectedAdminAbility ? (
                   <View style={styles.detailPanel}>
+                    <AssetPreview label="Selected ability image" uri={resolveAbilityImageUri(selectedAdminAbility.image_path)} />
                     <Text style={styles.abilityName}>{selectedAdminAbility.name}</Text>
                     <Text style={styles.muted}>{selectedAdminAbility.type} / Damage {selectedAdminAbility.damage} / Healing {selectedAdminAbility.healing} / Defense {selectedAdminAbility.defense_amount}</Text>
                     <Text style={styles.muted}>Costs: {selectedAdminAbility.stamina_cost} Stamina / {selectedAdminAbility.magika_cost} Magika / {selectedAdminAbility.health_cost} Health</Text>
@@ -584,6 +587,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <ChoiceRow label="Required Attribute" options={["", ...requiredAttributes]} value={abilityForm.required_attribute ?? ""} onSelect={(value) => setAbilityForm((current) => ({ ...current, required_attribute: value || null, linked_stat: value || current.linked_stat }))} />
                 <ItemText label="Required Attribute Level" value={String(abilityForm.required_attribute_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_attribute_level: Number(value) || 0, required_level: Number(value) || current.required_level || 0 }))} />
                 <ItemText label="Image URL/path" value={abilityForm.image_path ?? ""} onChange={(value) => setAbilityForm((current) => ({ ...current, image_path: value }))} />
+                <AssetPreview label="Ability image preview" uri={resolveAbilityImageUri(abilityForm.image_path)} />
                 <ToggleRow label="Active" value={abilityForm.is_active ?? true} onPress={() => setAbilityForm((current) => ({ ...current, is_active: !current.is_active }))} />
                 <Pressable style={styles.primaryAdminButton} onPress={() => void saveAdminAbility()}>
                   <Text style={styles.primaryAdminText}>{editingAdminAbilityId ? "Update Ability" : "Add Ability"}</Text>
@@ -595,9 +599,14 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 ) : null}
                 {filteredAdminAbilities.map((ability) => (
                   <Pressable key={ability.id} style={[styles.abilityCard, selectedAdminAbilityId === ability.id && styles.abilityCardActive]} onPress={() => setSelectedAdminAbilityId(ability.id)}>
+                    <View style={styles.itemCardHeader}>
+                      {resolveAbilityImageUri(ability.image_path) ? <Image source={{ uri: resolveAbilityImageUri(ability.image_path) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
+                      <View style={styles.itemBody}>
                     <Text style={styles.abilityName}>{ability.name}</Text>
                     <Text style={styles.muted}>{ability.type} / {ability.damage} damage / {ability.healing} healing / {ability.status_effect}</Text>
                     <Text style={styles.muted}>Unlock: {ability.required_attribute ? `${ability.required_attribute} ${ability.required_attribute_level}` : "manual/gear/quest"}</Text>
+                      </View>
+                    </View>
                     <View style={styles.slotActions}>
                       <Pressable style={styles.smallButton} onPress={() => void editAdminAbility(ability)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
                       <Pressable style={styles.smallButton} onPress={() => void removeAdminAbility(ability.id)}><Text style={styles.smallButtonText}>Delete</Text></Pressable>
@@ -612,6 +621,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <ItemText label="Name" value={enemyForm.name ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, name: value }))} />
                 <ItemText label="Type" value={enemyForm.type ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, type: value }))} />
                 <ItemText label="Image URL/path" value={enemyForm.image_url ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, image_url: value }))} />
+                <AssetPreview label="Enemy image preview" uri={resolveEnemyImageUri(enemyForm.image_url)} />
                 <View style={styles.slotActions}>
                   <ItemText label="Health" value={String(enemyForm.health ?? 20)} onChange={(value) => setEnemyForm((current) => ({ ...current, health: Number(value) || 20 }))} />
                   <ItemText label="Stamina" value={String(enemyForm.stamina ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, stamina: Number(value) || 0 }))} />
@@ -635,7 +645,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 {editingEnemyId ? (
                   <View style={styles.adminBuilder}>
                     <Text style={styles.subTitle}>Enemy Abilities</Text>
-                    <ChoiceRow label="Ability" options={adminAbilities.map((ability) => ability.id)} value={selectedEnemyAbilityId ?? ""} onSelect={setSelectedEnemyAbilityId} />
+                    <NamedChoiceRow label="Ability" options={adminAbilities.map((ability) => ({ id: ability.id, label: ability.name }))} value={selectedEnemyAbilityId ?? ""} onSelect={setSelectedEnemyAbilityId} />
                     <ItemText label="Use chance / weight" value={enemyAbilityWeight} onChange={setEnemyAbilityWeight} />
                     <Pressable style={styles.smallButton} onPress={() => void addEnemyAbility()}><Text style={styles.smallButtonText}>Add Enemy Ability</Text></Pressable>
                     {enemyAbilities.map((row) => (
@@ -646,7 +656,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                       </View>
                     ))}
                     <Text style={styles.subTitle}>Item Drops</Text>
-                    <ChoiceRow label="Item Drop" options={itemDefinitions.map((item) => item.id)} value={selectedDropItemId ?? ""} onSelect={setSelectedDropItemId} />
+                    <NamedChoiceRow label="Item Drop" options={itemDefinitions.map((item) => ({ id: item.id, label: item.name }))} value={selectedDropItemId ?? ""} onSelect={setSelectedDropItemId} />
                     <View style={styles.slotActions}>
                       <ItemText label="Quantity" value={dropQuantity} onChange={setDropQuantity} />
                       <ItemText label="Drop chance %" value={dropChance} onChange={setDropChance} />
@@ -663,8 +673,13 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 ) : null}
                 {enemies.map((enemy) => (
                   <View key={enemy.id} style={styles.abilityCard}>
+                    <View style={styles.itemCardHeader}>
+                      {resolveEnemyImageUri(enemy.image_url) ? <Image source={{ uri: resolveEnemyImageUri(enemy.image_url) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
+                      <View style={styles.itemBody}>
                     <Text style={styles.abilityName}>{enemy.name}</Text>
                     <Text style={styles.muted}>{enemy.type || "Enemy"} / HP {enemy.health} / Defense {enemy.defense} / Armor {enemy.armor_rating}</Text>
+                      </View>
+                    </View>
                     <View style={styles.slotActions}>
                       <Pressable style={styles.smallButton} onPress={() => void editEnemy(enemy)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
                       <Pressable style={styles.smallButton} onPress={() => void removeEnemy(enemy.id)}><Text style={styles.smallButtonText}>Delete</Text></Pressable>
@@ -780,7 +795,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <ChoiceRow label="Rarity" options={rarityOptions} value={itemForm.rarity ?? "common"} onSelect={(value) => setItemForm((current) => ({ ...current, rarity: value }))} />
                 <ItemText label="Description" value={itemForm.description ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, description: value }))} />
                 <ItemText label="Image path" value={itemForm.image_path ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, image_path: value }))} />
-                {resolveInventoryImageUri(itemForm.image_path) ? <Image source={{ uri: resolveInventoryImageUri(itemForm.image_path) ?? "" }} style={styles.previewImage} /> : null}
+                <AssetPreview label="Item image preview" uri={resolveInventoryImageUri(itemForm.image_path)} />
                 <ItemText label="Gold value" value={String(itemForm.gold_value ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, gold_value: Number(value) || 0 }))} />
                 <ItemText label="Weight" value={String(itemForm.weight ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, weight: Number(value) || 0 }))} />
                 <ToggleRow label="Stackable" value={Boolean(itemForm.stackable)} onPress={() => setItemForm((current) => ({ ...current, stackable: !current.stackable }))} />
@@ -788,8 +803,8 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <ToggleRow label="Usable in battle" value={Boolean(itemForm.usable_in_battle)} onPress={() => setItemForm((current) => ({ ...current, usable_in_battle: !current.usable_in_battle }))} />
                 <ToggleRow label="Usable outside battle" value={Boolean(itemForm.usable_outside_battle)} onPress={() => setItemForm((current) => ({ ...current, usable_outside_battle: !current.usable_outside_battle }))} />
                 <ItemText label="Crafting value" value={String(itemForm.crafting_value ?? "")} onChange={(value) => setItemForm((current) => ({ ...current, crafting_value: value ? Number(value) || 0 : null }))} />
-                <ChoiceRow label="Linked ability" options={["", ...adminAbilities.map((ability) => ability.id)]} value={itemForm.linked_ability_id ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, linked_ability_id: value || null }))} />
-                <ChoiceRow label="Scroll teaches ability" options={["", ...adminAbilities.map((ability) => ability.id)]} value={itemForm.teaches_ability_id ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, teaches_ability_id: value || null }))} />
+                <NamedChoiceRow label="Linked ability" options={[{ id: "", label: "None" }, ...adminAbilities.map((ability) => ({ id: ability.id, label: ability.name }))]} value={itemForm.linked_ability_id ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, linked_ability_id: value || null }))} />
+                <NamedChoiceRow label="Scroll teaches ability" options={[{ id: "", label: "None" }, ...adminAbilities.map((ability) => ({ id: ability.id, label: ability.name }))]} value={itemForm.teaches_ability_id ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, teaches_ability_id: value || null }))} />
                 {(itemForm.type === "weapon" || itemForm.type === "armor" || itemForm.type === "wearable") ? (
                   <ChoiceRow label="Equipment slot" options={equipmentSlots} value={itemForm.equipment_slot ?? "weapon"} onSelect={(value) => setItemForm((current) => ({ ...current, equipment_slot: value }))} />
                 ) : null}
@@ -895,6 +910,39 @@ function ToggleRow({ label, value, onPress }: { label: string; value: boolean; o
   );
 }
 
+function AssetPreview({ label, uri }: { label: string; uri: string | null }) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [uri]);
+
+  if (!uri) {
+    return (
+      <View style={styles.inputGroup}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <View style={styles.previewPlaceholder}>
+          <Text style={styles.muted}>No image selected.</Text>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      {failed ? (
+        <View style={styles.previewPlaceholder}>
+          <Text style={styles.muted}>Image failed to load. Check the URL or asset path.</Text>
+          <Text style={styles.muted}>{uri}</Text>
+        </View>
+      ) : (
+        <Image source={{ uri }} style={styles.previewImage} onError={() => setFailed(true)} />
+      )}
+    </View>
+  );
+}
+
 function ChoiceRow<T extends string>({ label, options, value, onSelect }: { label: string; options: readonly T[]; value: T | string; onSelect: (value: T) => void }) {
   return (
     <View style={styles.inputGroup}>
@@ -903,6 +951,21 @@ function ChoiceRow<T extends string>({ label, options, value, onSelect }: { labe
         {options.map((option) => (
           <Pressable key={option || "none"} style={[styles.choiceButton, value === option && styles.choiceButtonActive]} onPress={() => onSelect(option)}>
             <Text style={styles.choiceText}>{option || "none"}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function NamedChoiceRow({ label, options, value, onSelect }: { label: string; options: Array<{ id: string; label: string }>; value: string; onSelect: (value: string) => void }) {
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <View style={styles.choiceRow}>
+        {options.map((option) => (
+          <Pressable key={option.id || "none"} style={[styles.choiceButton, value === option.id && styles.choiceButtonActive]} onPress={() => onSelect(option.id)}>
+            <Text style={styles.choiceText}>{option.label || "None"}</Text>
           </Pressable>
         ))}
       </View>
@@ -968,24 +1031,6 @@ function getAbilityImageUri(ability: AbilityDefinition) {
   }
 
   return null;
-}
-
-function resolveAbilityImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  if (normalized.startsWith("/assets/abilities/")) return normalized;
-  if (normalized.startsWith("assets/abilities/")) return `/${normalized}`;
-  if (!normalized.includes("/")) return `/assets/abilities/${normalized}`;
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
 }
 
 function getAbilityEffectSummary(ability: AbilityDefinition) {
@@ -1338,6 +1383,11 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: "rgba(0,0,0,0.22)",
   },
+  itemCardHeader: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+  },
   itemImage: {
     width: 64,
     height: 64,
@@ -1415,6 +1465,17 @@ const styles = StyleSheet.create({
     height: 160,
     borderRadius: 8,
     backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  previewPlaceholder: {
+    minHeight: 96,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.28)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+    gap: 6,
   },
   primaryAdminButton: {
     minHeight: 50,
