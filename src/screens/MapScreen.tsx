@@ -2072,7 +2072,6 @@ export function MapScreen({ character }: MapScreenProps) {
         onUseItem={(item) => void useBattleItem(item)}
         onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
         onDeclineRevive={() => void declineReviveAfterDefeat()}
-        onRetry={() => void startBattle(activeBattle)}
         onComplete={() => void finishEvent(activeBattle)}
       />
     );
@@ -3355,7 +3354,6 @@ function BattleEventScreen({
   onUseItem,
   onToggleInventory,
   onDeclineRevive,
-  onRetry,
   onComplete,
 }: {
   character: CharacterWithDetails;
@@ -3379,7 +3377,6 @@ function BattleEventScreen({
   onUseItem: (item: InventoryItem) => void;
   onToggleInventory: () => void;
   onDeclineRevive: () => void;
-  onRetry: () => void;
   onComplete: () => void;
 }) {
   const [enemyImageFailed, setEnemyImageFailed] = useState(false);
@@ -3483,11 +3480,7 @@ function BattleEventScreen({
             <Text style={styles.primaryText}>Complete Battle</Text>
           </Pressable>
         ) : null}
-        {result === "defeat" ? (
-          <Pressable style={styles.primaryButton} onPress={onRetry}>
-            <Text style={styles.primaryText}>Retry</Text>
-          </Pressable>
-        ) : null}
+        {result === "defeat" && !revivePromptOpen ? <Text style={styles.feedItem}>Defeat is final for this attempt. Return to the trail start to continue.</Text> : null}
         {battleLog.map((line, index) => (
           <Text key={`${line}-${index}`} style={styles.feedItem}>{line}</Text>
         ))}
