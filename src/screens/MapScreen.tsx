@@ -2264,6 +2264,10 @@ export function MapScreen({ character }: MapScreenProps) {
               setMarkerSceneBackground={setMarkerSceneBackground}
               markerNpcImage={markerNpcImage}
               setMarkerNpcImage={setMarkerNpcImage}
+              markerShopImage={markerShopImage}
+              setMarkerShopImage={setMarkerShopImage}
+              markerShopBackground={markerShopBackground}
+              setMarkerShopBackground={setMarkerShopBackground}
               markerInteractionRadius={markerInteractionRadius}
               setMarkerInteractionRadius={setMarkerInteractionRadius}
               markerInteractable={markerInteractable}
@@ -2292,10 +2296,23 @@ export function MapScreen({ character }: MapScreenProps) {
               setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
               routes={routes}
               itemDefinitions={itemDefinitions}
+              markerMarketItems={markerMarketItems}
+              marketItemId={marketItemId}
+              setMarketItemId={setMarketItemId}
+              marketBuyPrice={marketBuyPrice}
+              setMarketBuyPrice={setMarketBuyPrice}
+              marketSellPrice={marketSellPrice}
+              setMarketSellPrice={setMarketSellPrice}
+              marketStock={marketStock}
+              setMarketStock={setMarketStock}
+              marketUnlimited={marketUnlimited}
+              setMarketUnlimited={setMarketUnlimited}
               selectedMarker={selectedMarker}
               clickedPercent={clickedPercent}
               onAddMarker={() => void addMarker()}
               onSaveSelectedMarker={() => void saveSelectedMarkerSettings()}
+              onSaveMarketItem={() => void saveMarketItem()}
+              onRemoveMarketItem={(marketItemId) => void removeMarketItem(marketItemId)}
             />
           </Frame>
         ) : null}
@@ -3700,6 +3717,10 @@ function MiniMapMarkerAdminForm({
   setMarkerSceneBackground,
   markerNpcImage,
   setMarkerNpcImage,
+  markerShopImage,
+  setMarkerShopImage,
+  markerShopBackground,
+  setMarkerShopBackground,
   markerInteractionRadius,
   setMarkerInteractionRadius,
   markerInteractable,
@@ -3728,10 +3749,23 @@ function MiniMapMarkerAdminForm({
   setMarkerStartsRouteOnAccept,
   routes,
   itemDefinitions,
+  markerMarketItems,
+  marketItemId,
+  setMarketItemId,
+  marketBuyPrice,
+  setMarketBuyPrice,
+  marketSellPrice,
+  setMarketSellPrice,
+  marketStock,
+  setMarketStock,
+  marketUnlimited,
+  setMarketUnlimited,
   selectedMarker,
   clickedPercent,
   onAddMarker,
   onSaveSelectedMarker,
+  onSaveMarketItem,
+  onRemoveMarketItem,
 }: {
   activeSectionMarkerTypes: readonly string[];
   draftType: string;
@@ -3744,6 +3778,10 @@ function MiniMapMarkerAdminForm({
   setMarkerSceneBackground: (value: string) => void;
   markerNpcImage: string;
   setMarkerNpcImage: (value: string) => void;
+  markerShopImage: string;
+  setMarkerShopImage: (value: string) => void;
+  markerShopBackground: string;
+  setMarkerShopBackground: (value: string) => void;
   markerInteractionRadius: string;
   setMarkerInteractionRadius: (value: string) => void;
   markerInteractable: boolean;
@@ -3772,12 +3810,26 @@ function MiniMapMarkerAdminForm({
   setMarkerStartsRouteOnAccept: (value: boolean | ((current: boolean) => boolean)) => void;
   routes: MapRoute[];
   itemDefinitions: ItemDefinition[];
+  markerMarketItems: MarkerMarketItem[];
+  marketItemId: string | null;
+  setMarketItemId: (value: string | null) => void;
+  marketBuyPrice: string;
+  setMarketBuyPrice: (value: string) => void;
+  marketSellPrice: string;
+  setMarketSellPrice: (value: string) => void;
+  marketStock: string;
+  setMarketStock: (value: string) => void;
+  marketUnlimited: boolean;
+  setMarketUnlimited: (value: boolean | ((current: boolean) => boolean)) => void;
   selectedMarker: MapMarker | null;
   clickedPercent: { x: number; y: number } | null;
   onAddMarker: () => void;
   onSaveSelectedMarker: () => void;
+  onSaveMarketItem: () => void;
+  onRemoveMarketItem: (marketItemId: string) => void;
 }) {
   const supportsQuest = isQuestMarkerType(draftType);
+  const supportsMarket = draftType === "Market";
 
   return (
     <View style={styles.storyEditor}>
@@ -3819,6 +3871,37 @@ function MiniMapMarkerAdminForm({
               <Text style={styles.secondaryText}>Reward Once: {markerRewardOnce ? "Yes" : "No"}</Text>
             </Pressable>
           </View>
+        </View>
+      ) : null}
+      {supportsMarket ? (
+        <View style={styles.storyEditor}>
+          <Text style={styles.selectedTitle}>Market / Shop Settings</Text>
+          <Text style={styles.copy}>{selectedMarker ? "Choose items from the admin item database for this mini-map market." : "Create or select a Market marker before adding shop stock."}</Text>
+          <TextInput value={markerQuestTitle} onChangeText={setMarkerQuestTitle} placeholder="Shop display name optional" placeholderTextColor={colors.muted} style={styles.input} />
+          <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Shop welcome text" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+          <TextInput value={markerShopImage} onChangeText={setMarkerShopImage} placeholder="Shop image URL" placeholderTextColor={colors.muted} style={styles.input} />
+          <TextInput value={markerShopBackground} onChangeText={setMarkerShopBackground} placeholder="Shop background image URL" placeholderTextColor={colors.muted} style={styles.input} />
+          <ItemPicker label="Market item" items={itemDefinitions} selectedId={marketItemId} onSelect={setMarketItemId} />
+          <TextInput value={marketBuyPrice} onChangeText={setMarketBuyPrice} placeholder="Buy price" placeholderTextColor={colors.muted} style={styles.input} />
+          <TextInput value={marketSellPrice} onChangeText={setMarketSellPrice} placeholder="Sell price" placeholderTextColor={colors.muted} style={styles.input} />
+          <TextInput value={marketStock} onChangeText={setMarketStock} placeholder="Stock quantity" placeholderTextColor={colors.muted} style={styles.input} />
+          <Pressable style={[styles.secondaryButton, marketUnlimited && styles.typeSelected]} onPress={() => setMarketUnlimited((value) => !value)}>
+            <Text style={styles.secondaryText}>Unlimited Stock: {marketUnlimited ? "Yes" : "No"}</Text>
+          </Pressable>
+          <Pressable style={styles.primaryButton} onPress={onSaveMarketItem} disabled={!selectedMarker || !marketItemId}>
+            <Text style={styles.primaryText}>Save Market Item</Text>
+          </Pressable>
+          {selectedMarker?.type === "Market" ? null : <Text style={styles.copy}>Tip: save/select this marker as type Market before adding stock.</Text>}
+          {markerMarketItems.length === 0 ? <Text style={styles.copy}>This mini-map market has no stock yet.</Text> : null}
+          {markerMarketItems.map((marketItem) => (
+            <View key={marketItem.id} style={styles.storyCard}>
+              <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
+              <Text style={styles.copy}>Buy {marketItem.buy_price} / Sell {marketItem.sell_price} / {marketItem.unlimited_stock ? "Unlimited" : `Stock ${marketItem.stock_quantity ?? 0}`}</Text>
+              <Pressable style={styles.secondaryButton} onPress={() => onRemoveMarketItem(marketItem.id)}>
+                <Text style={styles.dangerText}>Remove Item</Text>
+              </Pressable>
+            </View>
+          ))}
         </View>
       ) : null}
       <Pressable style={styles.primaryButton} onPress={onAddMarker} disabled={!clickedPercent || !draftTitle.trim()}>
