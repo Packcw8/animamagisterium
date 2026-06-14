@@ -139,7 +139,10 @@ export function MapScreen({ character }: MapScreenProps) {
   const [markerQuestImage, setMarkerQuestImage] = useState("");
   const [markerShopImage, setMarkerShopImage] = useState("");
   const [markerShopBackground, setMarkerShopBackground] = useState("");
+  const [markerSceneBackground, setMarkerSceneBackground] = useState("");
+  const [markerNpcImage, setMarkerNpcImage] = useState("");
   const [markerInteractionRadius, setMarkerInteractionRadius] = useState("4");
+  const [markerInteractable, setMarkerInteractable] = useState(true);
   const [markerRewardXp, setMarkerRewardXp] = useState("0");
   const [markerRewardGold, setMarkerRewardGold] = useState("0");
   const [markerRewardItemId, setMarkerRewardItemId] = useState<string | null>(null);
@@ -153,6 +156,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const [marketStock, setMarketStock] = useState("0");
   const [marketUnlimited, setMarketUnlimited] = useState(true);
   const [markerPanelMessage, setMarkerPanelMessage] = useState<string | null>(null);
+  const [previewMarkerScene, setPreviewMarkerScene] = useState(false);
   const [editorMode, setEditorMode] = useState<(typeof editorModes)[number]>("Marker");
   const [pathDraft, setPathDraft] = useState<Array<{ x: number; y: number }>>([]);
   const [routeName, setRouteName] = useState("");
@@ -233,7 +237,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const playerPosition = savedPlayerPosition ?? routeProgressPosition;
   const routeSegments = useMemo(() => getRouteSegmentsForRoutes(orderedRoutes, route.id), [orderedRoutes, route.id]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [pathDraft]);
-  const visibleMarkers = isAdmin ? markers : markers.filter((marker) => marker.is_active && marker.is_unlocked);
+  const visibleMarkers = isAdmin ? markers : markers.filter((marker) => canPlayerSeeMarker(marker, playerPosition));
   const unlockedRouteIds = useMemo(() => getUnlockedRouteIds(orderedRoutes, routeProgressRows), [orderedRoutes, routeProgressRows]);
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
@@ -243,7 +247,7 @@ export function MapScreen({ character }: MapScreenProps) {
   );
   const selectedMarkerDistance = selectedMarker ? getPercentDistance(playerPosition, { x: Number(selectedMarker.x_percent), y: Number(selectedMarker.y_percent) }) : 0;
   const selectedMarkerRadius = Number(selectedMarker?.interaction_radius_percent ?? 4) || 4;
-  const canUseSelectedMarker = isAdmin || Boolean(selectedMarker && selectedMarkerDistance <= selectedMarkerRadius);
+  const canUseSelectedMarker = isAdmin || Boolean(selectedMarker && canPlayerSeeMarker(selectedMarker, playerPosition));
 
   useEffect(() => {
     void loadMap();
@@ -684,11 +688,14 @@ export function MapScreen({ character }: MapScreenProps) {
       type: draftType,
       title: draftTitle.trim() || selectedMarker?.title || "Untitled Marker",
       description: draftDescription.trim() || null,
+      is_interactable: markerInteractable,
       quest_title: markerQuestTitle.trim() || null,
       quest_dialogue: markerQuestDialogue.trim() || null,
       quest_image_url: markerQuestImage.trim() || null,
       shop_image_url: markerShopImage.trim() || null,
       shop_background_image_url: markerShopBackground.trim() || null,
+      scene_background_image_url: markerSceneBackground.trim() || null,
+      scene_npc_image_url: markerNpcImage.trim() || null,
       interaction_radius_percent: Math.max(0.5, Number(markerInteractionRadius) || 4),
       reward_xp: Number(markerRewardXp) || 0,
       reward_gold: Number(markerRewardGold) || 0,
@@ -700,6 +707,7 @@ export function MapScreen({ character }: MapScreenProps) {
   }
 
   async function selectMarker(marker: MapMarker) {
+    setPreviewMarkerScene(false);
     setSelectedMarker(marker);
     setDraftType(marker.type || markerTypes[0]);
     setDraftTitle(marker.title);
@@ -709,7 +717,10 @@ export function MapScreen({ character }: MapScreenProps) {
     setMarkerQuestImage(marker.quest_image_url ?? "");
     setMarkerShopImage(marker.shop_image_url ?? "");
     setMarkerShopBackground(marker.shop_background_image_url ?? "");
+    setMarkerSceneBackground(marker.scene_background_image_url ?? "");
+    setMarkerNpcImage(marker.scene_npc_image_url ?? "");
     setMarkerInteractionRadius(String(marker.interaction_radius_percent ?? 4));
+    setMarkerInteractable(marker.is_interactable ?? true);
     setMarkerRewardXp(String(marker.reward_xp ?? 0));
     setMarkerRewardGold(String(marker.reward_gold ?? 0));
     setMarkerRewardItemId(marker.reward_item_id ?? null);
@@ -723,6 +734,17 @@ export function MapScreen({ character }: MapScreenProps) {
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to load marker market."));
     }
+  }
+
+  async function previewMarker(marker: MapMarker) {
+    await selectMarker(marker);
+    setPreviewMarkerScene(true);
+  }
+
+  function closeMarkerScene() {
+    setPreviewMarkerScene(false);
+    setSelectedMarker(null);
+    setMarkerPanelMessage(null);
   }
 
   async function saveSelectedMarkerSettings() {
@@ -860,10 +882,16 @@ export function MapScreen({ character }: MapScreenProps) {
       return;
     }
 
+    await removeMarker(selectedMarker);
+  }
+
+  async function removeMarker(marker: MapMarker) {
     try {
-      await deleteMapMarker(selectedMarker.id);
-      setMarkers((current) => current.filter((marker) => marker.id !== selectedMarker.id));
-      setSelectedMarker(null);
+      await deleteMapMarker(marker.id);
+      setMarkers((current) => current.filter((item) => item.id !== marker.id));
+      if (selectedMarker?.id === marker.id) {
+        setSelectedMarker(null);
+      }
       setAdminMessage("Marker deleted.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to delete marker."));
@@ -1548,6 +1576,22 @@ export function MapScreen({ character }: MapScreenProps) {
     );
   }
 
+  if (selectedMarker && (previewMarkerScene || (!isAdmin && canUseSelectedMarker))) {
+    return (
+      <MarkerSceneScreen
+        marker={selectedMarker}
+        marketItems={markerMarketItems}
+        inventoryItems={inventoryItems}
+        itemDefinitions={itemDefinitions}
+        message={markerPanelMessage}
+        onExit={closeMarkerScene}
+        onBuy={(marketItem) => void buyFromMarker(marketItem)}
+        onSell={(entry) => void sellToMarker(entry)}
+        onClaimReward={() => void claimSelectedMarkerReward()}
+      />
+    );
+  }
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -1788,6 +1832,34 @@ export function MapScreen({ character }: MapScreenProps) {
             ))}
           </View>
           {adminMessage ? <Text style={styles.adminMessage}>{adminMessage}</Text> : null}
+          <View style={styles.routeList}>
+            <Text style={styles.selectedTitle}>Existing Markers</Text>
+            {markers.length === 0 ? <Text style={styles.copy}>No markers created yet.</Text> : null}
+            {markers.map((marker) => (
+              <View key={marker.id} style={styles.markerTableRow}>
+                <View style={styles.markerTableInfo}>
+                  <Text style={styles.markerName}>{marker.title}</Text>
+                  <Text style={styles.copy}>
+                    {marker.type} / X {Number(marker.x_percent).toFixed(2)}% / Y {Number(marker.y_percent).toFixed(2)}% / Radius {Number(marker.interaction_radius_percent ?? 4).toFixed(2)}%
+                  </Text>
+                  <Text style={styles.debugLine}>
+                    Interactable: {marker.is_interactable ? "true" : "false"} / Visible: {marker.is_active ? "true" : "false"} / Unlocked: {marker.is_unlocked ? "true" : "false"}
+                  </Text>
+                </View>
+                <View style={styles.markerTableActions}>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={() => { setEditorMode("Marker"); void selectMarker(marker); }}>
+                    <Text style={styles.secondaryText}>Edit</Text>
+                  </Pressable>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={() => void previewMarker(marker)}>
+                    <Text style={styles.secondaryText}>Preview/Test</Text>
+                  </Pressable>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeMarker(marker)}>
+                    <Text style={styles.dangerText}>Delete</Text>
+                  </Pressable>
+                </View>
+              </View>
+            ))}
+          </View>
           <Info label="Clicked Coordinates" value={clickedPercent ? `X ${clickedPercent.x}% / Y ${clickedPercent.y}%` : "Tap the map"} />
           <Text style={styles.debugLine}>Last click: x: {clickedPercent ? `${clickedPercent.x}%` : "--"}, y: {clickedPercent ? `${clickedPercent.y}%` : "--"}</Text>
           <Pressable style={styles.secondaryButton} onPress={() => void copyCoordinates()} disabled={!clickedPercent}>
@@ -1804,6 +1876,12 @@ export function MapScreen({ character }: MapScreenProps) {
               </View>
               <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
+              <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
+                <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
+              </Pressable>
               {(draftType === "Side Quest" || draftType === "Story" || draftType === "Point of Interest") ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>Marker Rewards / Quest Settings</Text>
@@ -2226,6 +2304,30 @@ function getPercentDistance(a: { x: number; y: number }, b: { x: number; y: numb
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
+function canPlayerSeeMarker(marker: MapMarker, playerPosition: { x: number; y: number }) {
+  if (!marker.is_active || !marker.is_unlocked || marker.is_interactable === false) {
+    return false;
+  }
+
+  const radius = Number(marker.interaction_radius_percent ?? 4) || 4;
+  return getPercentDistance(playerPosition, { x: Number(marker.x_percent), y: Number(marker.y_percent) }) <= radius;
+}
+
+function resolveSceneImageUri(imagePath?: string | null) {
+  const trimmed = imagePath?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const normalized = trimmed.replaceAll("\\", "/");
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
 function metersToMiles(meters: number) {
   return (meters / 1609.344).toFixed(2);
 }
@@ -2639,6 +2741,95 @@ function BattleEventScreen({
   );
 }
 
+function MarkerSceneScreen({
+  marker,
+  marketItems,
+  inventoryItems,
+  itemDefinitions,
+  message,
+  onExit,
+  onBuy,
+  onSell,
+  onClaimReward,
+}: {
+  marker: MapMarker;
+  marketItems: MarkerMarketItem[];
+  inventoryItems: InventoryItem[];
+  itemDefinitions: ItemDefinition[];
+  message: string | null;
+  onExit: () => void;
+  onBuy: (marketItem: MarkerMarketItem) => void;
+  onSell: (item: InventoryItem) => void;
+  onClaimReward: () => void;
+}) {
+  const backgroundUri = resolveSceneImageUri(marker.scene_background_image_url || marker.shop_background_image_url);
+  const npcUri = resolveSceneImageUri(marker.scene_npc_image_url || marker.shop_image_url || marker.quest_image_url);
+
+  return (
+    <Screen>
+      <Frame style={backgroundUri ? [styles.eventScreen, ({ backgroundImage: `url(${backgroundUri})`, backgroundSize: "cover", backgroundPosition: "center" } as never)] : styles.eventScreen}>
+        <View style={styles.panelHeader}>
+          <View>
+            <Text style={styles.sectionTitle}>{marker.quest_title || marker.title}</Text>
+            <Text style={styles.copy}>{marker.type}</Text>
+          </View>
+          <Pressable style={styles.secondaryButtonFlex} onPress={onExit}>
+            <Text style={styles.secondaryText}>Leave</Text>
+          </Pressable>
+        </View>
+        {npcUri ? <Image source={{ uri: npcUri }} style={marker.type === "Market" ? styles.eventImage : styles.npcPortrait} /> : null}
+        {marker.description ? <Text style={styles.copy}>{marker.description}</Text> : null}
+        {marker.quest_dialogue ? <Text style={styles.dialogueText}>{marker.quest_dialogue}</Text> : null}
+        {message ? <Text style={styles.adminMessage}>{message}</Text> : null}
+        {marker.type === "Market" ? (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Market</Text>
+            {marketItems.length === 0 ? <Text style={styles.copy}>This market has no stock yet.</Text> : null}
+            {marketItems.map((marketItem) => (
+              <View key={marketItem.id} style={styles.storyCard}>
+                <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
+                <Text style={styles.copy}>{marketItem.buy_price} gold / {marketItem.unlimited_stock ? "Unlimited stock" : `${marketItem.stock_quantity ?? 0} left`}</Text>
+                <Pressable style={styles.primaryButton} onPress={() => onBuy(marketItem)}>
+                  <Text style={styles.primaryText}>Buy</Text>
+                </Pressable>
+              </View>
+            ))}
+            <Text style={styles.selectedTitle}>Sell</Text>
+            {inventoryItems.filter((entry) => entry.item.sellable).length === 0 ? <Text style={styles.copy}>No sellable items.</Text> : null}
+            {inventoryItems.filter((entry) => entry.item.sellable).map((entry) => {
+              const marketItem = marketItems.find((item) => item.item_id === entry.item_id);
+              const price = marketItem?.sell_price ?? entry.item.gold_value;
+              return (
+                <View key={entry.id} style={styles.storyCard}>
+                  <Text style={styles.markerName}>{entry.item.name} x{entry.quantity}</Text>
+                  <Text style={styles.copy}>Sell for {price} gold</Text>
+                  <Pressable style={styles.secondaryButton} onPress={() => onSell(entry)}>
+                    <Text style={styles.secondaryText}>Sell One</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        ) : (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Options</Text>
+            <Text style={styles.copy}>
+              Rewards: {marker.reward_xp ?? 0} XP / {marker.reward_gold ?? 0} gold
+              {marker.reward_item_id ? ` / ${marker.reward_item_quantity ?? 1} ${getItemName(itemDefinitions, marker.reward_item_id)}` : ""}
+            </Text>
+            <Pressable style={styles.primaryButton} onPress={onClaimReward}>
+              <Text style={styles.primaryText}>{marker.type === "Side Quest" ? "Complete Quest" : "Claim Reward"}</Text>
+            </Pressable>
+          </View>
+        )}
+        <Pressable style={styles.secondaryButton} onPress={onExit}>
+          <Text style={styles.secondaryText}>Exit to Map</Text>
+        </Pressable>
+      </Frame>
+    </Screen>
+  );
+}
+
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
@@ -3001,6 +3192,22 @@ const styles = StyleSheet.create({
   routeRowText: {
     flex: 1,
     gap: 2,
+  },
+  markerTableRow: {
+    gap: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  markerTableInfo: {
+    gap: 4,
+  },
+  markerTableActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   modeRow: {
     flexDirection: "row",

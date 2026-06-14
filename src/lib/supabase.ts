@@ -295,6 +295,7 @@ export type Tables = {
     y_percent: number;
     is_active: boolean;
     is_unlocked: boolean;
+    is_interactable: boolean;
     quest_key: string | null;
     route_id: string | null;
     quest_title: string | null;
@@ -302,6 +303,8 @@ export type Tables = {
     quest_image_url: string | null;
     shop_image_url: string | null;
     shop_background_image_url: string | null;
+    scene_background_image_url: string | null;
+    scene_npc_image_url: string | null;
     interaction_radius_percent: number;
     reward_xp: number;
     reward_gold: number;
