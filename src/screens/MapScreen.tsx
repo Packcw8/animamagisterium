@@ -199,6 +199,8 @@ export function MapScreen({ character }: MapScreenProps) {
   const [markerRewardQuantity, setMarkerRewardQuantity] = useState("1");
   const [markerRepeatable, setMarkerRepeatable] = useState(false);
   const [markerRewardOnce, setMarkerRewardOnce] = useState(true);
+  const [markerLinkedRouteId, setMarkerLinkedRouteId] = useState<string | null>(null);
+  const [markerStartsRouteOnAccept, setMarkerStartsRouteOnAccept] = useState(false);
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
   const [marketItemId, setMarketItemId] = useState<string | null>(null);
   const [marketBuyPrice, setMarketBuyPrice] = useState("0");
@@ -489,7 +491,9 @@ export function MapScreen({ character }: MapScreenProps) {
     setCompletedEventIds(new Set(completions.map((completion) => completion.event_id)));
 
     if (progress) {
-      setDistanceWalked(Number(progress.distance_walked_meters));
+      const savedDistance = Number(progress.distance_walked_meters);
+      distanceWalkedRef.current = savedDistance;
+      setDistanceWalked(savedDistance);
       if (progress.current_x_percent !== null && progress.current_y_percent !== null) {
         setSavedPlayerPosition({ x: Number(progress.current_x_percent), y: Number(progress.current_y_percent) });
       }
@@ -747,6 +751,8 @@ export function MapScreen({ character }: MapScreenProps) {
         linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : null,
         mini_map_id: adminSection === "Mini Maps" ? selectedMiniMapId : null,
         parent_marker_id: adminSection === "Mini Maps" ? selectedMarker?.id ?? null : null,
+        linked_route_id: isQuestMarkerType(draftType) ? markerLinkedRouteId : null,
+        starts_route_on_accept: isQuestMarkerType(draftType) && markerStartsRouteOnAccept,
       });
       const configured = await updateMarkerSettings(created.id, getMarkerSettingsPayload());
       setMarkers((current) => [...current, configured]);
@@ -783,6 +789,8 @@ export function MapScreen({ character }: MapScreenProps) {
       linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : null,
       mini_map_id: selectedMarker?.mini_map_id ?? (adminSection === "Mini Maps" ? selectedMiniMapId : null),
       parent_marker_id: selectedMarker?.parent_marker_id ?? null,
+      linked_route_id: isQuestMarkerType(draftType) ? markerLinkedRouteId : null,
+      starts_route_on_accept: isQuestMarkerType(draftType) && markerStartsRouteOnAccept,
     };
   }
 
@@ -812,6 +820,8 @@ export function MapScreen({ character }: MapScreenProps) {
     setMarkerRewardQuantity(String(marker.reward_item_quantity ?? 1));
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
+    setMarkerLinkedRouteId(marker.linked_route_id ?? null);
+    setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
     setSelectedMiniMapId(marker.linked_mini_map_id ?? marker.mini_map_id ?? selectedMiniMapId);
     setMarkerPanelMessage(null);
 
@@ -839,9 +849,16 @@ export function MapScreen({ character }: MapScreenProps) {
     }
 
     try {
-      const updated = await updateMarkerSettings(selectedMarker.id, getMarkerSettingsPayload());
+      const moved = clickedPercent
+        ? await updateMapMarker(selectedMarker.id, {
+            x_percent: clickedPercent.x,
+            y_percent: clickedPercent.y,
+          })
+        : selectedMarker;
+      const updated = await updateMarkerSettings(moved.id, getMarkerSettingsPayload());
       setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
       setSelectedMarker(updated);
+      setClickedPercent(null);
       setAdminMessage("Marker settings saved.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to save marker settings."));
@@ -925,6 +942,48 @@ export function MapScreen({ character }: MapScreenProps) {
       await loadInventory();
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to claim marker reward."));
+    }
+  }
+
+  async function acceptSelectedMarkerQuest() {
+    if (!selectedMarker) {
+      return;
+    }
+
+    if (!selectedMarker.linked_route_id || !selectedMarker.starts_route_on_accept) {
+      await claimSelectedMarkerReward();
+      return;
+    }
+
+    const linkedRoute = routes.find((item) => item.id === selectedMarker.linked_route_id);
+
+    if (!linkedRoute) {
+      setMarkerPanelMessage("This quest is linked to a walking path that could not be found.");
+      return;
+    }
+
+    try {
+      const startPoint = linkedRoute.path_points[0] ?? { x: 33.8, y: 73.81 };
+      setActiveMiniMap(null);
+      setSelectedMarker(null);
+      setPreviewMarkerScene(false);
+      setMarkerPanelMessage(null);
+      setRouteProgressRows((current) => upsertRouteProgressRow(current, linkedRoute.id, 0));
+      await saveRouteProgress(linkedRoute.id, {
+        distance_walked_meters: 0,
+        progress_percent: 0,
+        current_x_percent: startPoint.x,
+        current_y_percent: startPoint.y,
+        last_lat: null,
+        last_lng: null,
+      });
+      await selectRoute(linkedRoute, true);
+      setSavedPlayerPosition(startPoint);
+      distanceWalkedRef.current = 0;
+      setDistanceWalked(0);
+      setGpsMessage(`${selectedMarker.quest_title || selectedMarker.title} accepted. ${linkedRoute.name} is now the active walking path.`);
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to start linked walking path."));
     }
   }
 
@@ -1032,6 +1091,9 @@ export function MapScreen({ character }: MapScreenProps) {
 
   function openMiniMap(miniMap: MiniMap) {
     setActiveMiniMap(miniMap);
+    setSelectedMiniMapId(miniMap.id);
+    setAdminSection("Mini Maps");
+    setEditorMode("Marker");
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setClickedPercent(null);
@@ -2089,6 +2151,7 @@ export function MapScreen({ character }: MapScreenProps) {
         onBuy={(marketItem) => void buyFromMarker(marketItem)}
         onSell={(entry) => void sellToMarker(entry)}
         onClaimReward={() => void claimSelectedMarkerReward()}
+        onAcceptQuest={() => void acceptSelectedMarkerQuest()}
       />
     );
   }
@@ -2115,13 +2178,38 @@ export function MapScreen({ character }: MapScreenProps) {
               <Text style={styles.secondaryText}>Exit / Leave</Text>
             </Pressable>
           </View>
-          <View style={styles.miniMapSurface}>
+          <View
+            style={styles.miniMapSurface}
+            {...(isAdmin
+              ? ({
+                  onMouseDown: handleMapPointer,
+                  onTouchEnd: handleMapPointer,
+                  onClick: handleMapPointer,
+                  onStartShouldSetResponder: () => true,
+                  onResponderRelease: handleMapPointer,
+                } as object)
+              : {})}
+          >
             {miniMapImage ? <Image source={{ uri: miniMapImage }} style={styles.miniMapImage} /> : <View style={styles.miniMapFallback}><Text style={styles.copy}>No mini map image set.</Text></View>}
             <View style={[styles.playerPin, { left: "50%", top: "50%" }]}>
               {character.portrait_url ? <Image source={{ uri: character.portrait_url }} style={styles.playerPortrait} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
             </View>
+            {isAdmin && clickedPercent ? (
+              <View pointerEvents="none" style={[styles.tempMarker, { left: `${clickedPercent.x}%`, top: `${clickedPercent.y}%` }]}>
+                <View style={styles.tempPulse} />
+                <Text style={styles.tempMarkerText}>New Marker</Text>
+              </View>
+            ) : null}
             {visibleMiniMapMarkers.map((marker) => (
-              <Pressable key={marker.id} style={[styles.marker, { left: `${marker.x_percent}%`, top: `${marker.y_percent}%` }]} onPress={() => void selectMarker(marker)}>
+              <Pressable
+                key={marker.id}
+                style={[styles.marker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, { left: `${marker.x_percent}%`, top: `${marker.y_percent}%` }]}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  void selectMarker(marker);
+                }}
+                {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
+              >
                 <View style={styles.markerDot} />
                 <Text style={styles.markerType}>{marker.type}</Text>
                 <Text style={styles.markerName}>{marker.title}</Text>
@@ -2130,6 +2218,87 @@ export function MapScreen({ character }: MapScreenProps) {
           </View>
           <Text style={styles.copy}>Only interactable mini-map markers within proximity are shown to players. Admins can see all mini-map markers.</Text>
         </Frame>
+        {isAdmin ? (
+          <Frame style={styles.panel}>
+            <Text style={styles.sectionTitle}>Mini Map Admin Preview</Text>
+            <Text style={styles.copy}>Click this mini map image to capture percentage coordinates, then create or edit markers inside {activeMiniMap.name}.</Text>
+            {adminMessage ? <Text style={styles.adminMessage}>{adminMessage}</Text> : null}
+            <Info label="Clicked Coordinates" value={clickedPercent ? `X ${clickedPercent.x}% / Y ${clickedPercent.y}%` : "Tap the mini map"} />
+            <Text style={styles.debugLine}>Last click: x: {clickedPercent ? `${clickedPercent.x}%` : "--"}, y: {clickedPercent ? `${clickedPercent.y}%` : "--"}</Text>
+            <Pressable style={styles.secondaryButton} onPress={() => void copyCoordinates()} disabled={!clickedPercent}>
+              <Text style={styles.secondaryText}>Copy Coordinates</Text>
+            </Pressable>
+            <View style={styles.routeList}>
+              <Text style={styles.selectedTitle}>Mini Map Markers</Text>
+              {miniMapMarkers.length === 0 ? <Text style={styles.copy}>No markers created in this mini map yet.</Text> : null}
+              {miniMapMarkers.map((marker) => (
+                <View key={marker.id} style={styles.markerTableRow}>
+                  <View style={styles.markerTableInfo}>
+                    <Text style={styles.markerName}>{marker.title}</Text>
+                    <Text style={styles.copy}>{marker.type} / X {Number(marker.x_percent).toFixed(2)}% / Y {Number(marker.y_percent).toFixed(2)}%</Text>
+                    {marker.linked_route_id ? <Text style={styles.debugLine}>Linked path: {getRouteName(routes, marker.linked_route_id)} / Starts on accept: {marker.starts_route_on_accept ? "Yes" : "No"}</Text> : null}
+                  </View>
+                  <View style={styles.markerTableActions}>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => { setAdminSection("Mini Maps"); setEditorMode("Marker"); void selectMarker(marker); }}>
+                      <Text style={styles.secondaryText}>Edit</Text>
+                    </Pressable>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void previewMarker(marker)}>
+                      <Text style={styles.secondaryText}>Preview/Test</Text>
+                    </Pressable>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeMarker(marker)}>
+                      <Text style={styles.dangerText}>Delete</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
+            <MiniMapMarkerAdminForm
+              activeSectionMarkerTypes={miniMapMarkerTypes}
+              draftType={draftType}
+              setDraftType={setDraftType}
+              draftTitle={draftTitle}
+              setDraftTitle={setDraftTitle}
+              draftDescription={draftDescription}
+              setDraftDescription={setDraftDescription}
+              markerSceneBackground={markerSceneBackground}
+              setMarkerSceneBackground={setMarkerSceneBackground}
+              markerNpcImage={markerNpcImage}
+              setMarkerNpcImage={setMarkerNpcImage}
+              markerInteractionRadius={markerInteractionRadius}
+              setMarkerInteractionRadius={setMarkerInteractionRadius}
+              markerInteractable={markerInteractable}
+              setMarkerInteractable={setMarkerInteractable}
+              markerQuestTitle={markerQuestTitle}
+              setMarkerQuestTitle={setMarkerQuestTitle}
+              markerQuestDialogue={markerQuestDialogue}
+              setMarkerQuestDialogue={setMarkerQuestDialogue}
+              markerQuestImage={markerQuestImage}
+              setMarkerQuestImage={setMarkerQuestImage}
+              markerRewardXp={markerRewardXp}
+              setMarkerRewardXp={setMarkerRewardXp}
+              markerRewardGold={markerRewardGold}
+              setMarkerRewardGold={setMarkerRewardGold}
+              markerRewardItemId={markerRewardItemId}
+              setMarkerRewardItemId={setMarkerRewardItemId}
+              markerRewardQuantity={markerRewardQuantity}
+              setMarkerRewardQuantity={setMarkerRewardQuantity}
+              markerRepeatable={markerRepeatable}
+              setMarkerRepeatable={setMarkerRepeatable}
+              markerRewardOnce={markerRewardOnce}
+              setMarkerRewardOnce={setMarkerRewardOnce}
+              markerLinkedRouteId={markerLinkedRouteId}
+              setMarkerLinkedRouteId={setMarkerLinkedRouteId}
+              markerStartsRouteOnAccept={markerStartsRouteOnAccept}
+              setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
+              routes={routes}
+              itemDefinitions={itemDefinitions}
+              selectedMarker={selectedMarker}
+              clickedPercent={clickedPercent}
+              onAddMarker={() => void addMarker()}
+              onSaveSelectedMarker={() => void saveSelectedMarkerSettings()}
+            />
+          </Frame>
+        ) : null}
       </Screen>
     );
   }
@@ -2511,6 +2680,10 @@ export function MapScreen({ character }: MapScreenProps) {
                   <TextInput value={markerQuestTitle} onChangeText={setMarkerQuestTitle} placeholder="Quest title optional" placeholderTextColor={colors.muted} style={styles.input} />
                   <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Quest dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
                   <TextInput value={markerQuestImage} onChangeText={setMarkerQuestImage} placeholder="Quest image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                  <RoutePicker routes={routes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
+                  <Pressable style={[styles.secondaryButton, markerStartsRouteOnAccept && styles.typeSelected]} onPress={() => setMarkerStartsRouteOnAccept((value) => !value)}>
+                    <Text style={styles.secondaryText}>Start Path On Accept: {markerStartsRouteOnAccept ? "Yes" : "No"}</Text>
+                  </Pressable>
                   <TextInput value={markerRewardXp} onChangeText={setMarkerRewardXp} placeholder="XP reward" placeholderTextColor={colors.muted} style={styles.input} />
                   <TextInput value={markerRewardGold} onChangeText={setMarkerRewardGold} placeholder="Gold reward" placeholderTextColor={colors.muted} style={styles.input} />
                   <ItemPicker label="Item reward" items={itemDefinitions} selectedId={markerRewardItemId} onSelect={setMarkerRewardItemId} />
@@ -3515,6 +3688,151 @@ function BattleAbilityIcon({ ability }: { ability: AbilityDefinition }) {
   return <Image source={{ uri: imageUri }} style={styles.battleAbilityIcon} />;
 }
 
+function MiniMapMarkerAdminForm({
+  activeSectionMarkerTypes,
+  draftType,
+  setDraftType,
+  draftTitle,
+  setDraftTitle,
+  draftDescription,
+  setDraftDescription,
+  markerSceneBackground,
+  setMarkerSceneBackground,
+  markerNpcImage,
+  setMarkerNpcImage,
+  markerInteractionRadius,
+  setMarkerInteractionRadius,
+  markerInteractable,
+  setMarkerInteractable,
+  markerQuestTitle,
+  setMarkerQuestTitle,
+  markerQuestDialogue,
+  setMarkerQuestDialogue,
+  markerQuestImage,
+  setMarkerQuestImage,
+  markerRewardXp,
+  setMarkerRewardXp,
+  markerRewardGold,
+  setMarkerRewardGold,
+  markerRewardItemId,
+  setMarkerRewardItemId,
+  markerRewardQuantity,
+  setMarkerRewardQuantity,
+  markerRepeatable,
+  setMarkerRepeatable,
+  markerRewardOnce,
+  setMarkerRewardOnce,
+  markerLinkedRouteId,
+  setMarkerLinkedRouteId,
+  markerStartsRouteOnAccept,
+  setMarkerStartsRouteOnAccept,
+  routes,
+  itemDefinitions,
+  selectedMarker,
+  clickedPercent,
+  onAddMarker,
+  onSaveSelectedMarker,
+}: {
+  activeSectionMarkerTypes: readonly string[];
+  draftType: string;
+  setDraftType: (value: string) => void;
+  draftTitle: string;
+  setDraftTitle: (value: string) => void;
+  draftDescription: string;
+  setDraftDescription: (value: string) => void;
+  markerSceneBackground: string;
+  setMarkerSceneBackground: (value: string) => void;
+  markerNpcImage: string;
+  setMarkerNpcImage: (value: string) => void;
+  markerInteractionRadius: string;
+  setMarkerInteractionRadius: (value: string) => void;
+  markerInteractable: boolean;
+  setMarkerInteractable: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerQuestTitle: string;
+  setMarkerQuestTitle: (value: string) => void;
+  markerQuestDialogue: string;
+  setMarkerQuestDialogue: (value: string) => void;
+  markerQuestImage: string;
+  setMarkerQuestImage: (value: string) => void;
+  markerRewardXp: string;
+  setMarkerRewardXp: (value: string) => void;
+  markerRewardGold: string;
+  setMarkerRewardGold: (value: string) => void;
+  markerRewardItemId: string | null;
+  setMarkerRewardItemId: (value: string | null) => void;
+  markerRewardQuantity: string;
+  setMarkerRewardQuantity: (value: string) => void;
+  markerRepeatable: boolean;
+  setMarkerRepeatable: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerRewardOnce: boolean;
+  setMarkerRewardOnce: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerLinkedRouteId: string | null;
+  setMarkerLinkedRouteId: (value: string | null) => void;
+  markerStartsRouteOnAccept: boolean;
+  setMarkerStartsRouteOnAccept: (value: boolean | ((current: boolean) => boolean)) => void;
+  routes: MapRoute[];
+  itemDefinitions: ItemDefinition[];
+  selectedMarker: MapMarker | null;
+  clickedPercent: { x: number; y: number } | null;
+  onAddMarker: () => void;
+  onSaveSelectedMarker: () => void;
+}) {
+  const supportsQuest = isQuestMarkerType(draftType);
+
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Create / Edit Mini Map Marker</Text>
+      <View style={styles.typeGrid}>
+        {activeSectionMarkerTypes.map((type) => (
+          <Pressable key={type} style={[styles.typeButton, draftType === type && styles.typeSelected]} onPress={() => setDraftType(type)}>
+            <Text style={styles.typeText}>{type}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
+      <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
+      <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+      <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+      <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
+      <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
+        <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
+      </Pressable>
+      {supportsQuest ? (
+        <View style={styles.storyEditor}>
+          <Text style={styles.selectedTitle}>Quest / Path Link</Text>
+          <TextInput value={markerQuestTitle} onChangeText={setMarkerQuestTitle} placeholder="Quest title optional" placeholderTextColor={colors.muted} style={styles.input} />
+          <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Quest dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+          <TextInput value={markerQuestImage} onChangeText={setMarkerQuestImage} placeholder="Quest image URL" placeholderTextColor={colors.muted} style={styles.input} />
+          <RoutePicker routes={routes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
+          <Pressable style={[styles.secondaryButton, markerStartsRouteOnAccept && styles.typeSelected]} onPress={() => setMarkerStartsRouteOnAccept((value) => !value)}>
+            <Text style={styles.secondaryText}>Start Path On Accept: {markerStartsRouteOnAccept ? "Yes" : "No"}</Text>
+          </Pressable>
+          <TextInput value={markerRewardXp} onChangeText={setMarkerRewardXp} placeholder="XP reward" placeholderTextColor={colors.muted} style={styles.input} />
+          <TextInput value={markerRewardGold} onChangeText={setMarkerRewardGold} placeholder="Gold reward" placeholderTextColor={colors.muted} style={styles.input} />
+          <ItemPicker label="Item reward" items={itemDefinitions} selectedId={markerRewardItemId} onSelect={setMarkerRewardItemId} />
+          <TextInput value={markerRewardQuantity} onChangeText={setMarkerRewardQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
+          <View style={styles.modeRow}>
+            <Pressable style={[styles.secondaryButtonFlex, markerRepeatable && styles.typeSelected]} onPress={() => setMarkerRepeatable((value) => !value)}>
+              <Text style={styles.secondaryText}>Repeatable: {markerRepeatable ? "Yes" : "No"}</Text>
+            </Pressable>
+            <Pressable style={[styles.secondaryButtonFlex, markerRewardOnce && styles.typeSelected]} onPress={() => setMarkerRewardOnce((value) => !value)}>
+              <Text style={styles.secondaryText}>Reward Once: {markerRewardOnce ? "Yes" : "No"}</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+      <Pressable style={styles.primaryButton} onPress={onAddMarker} disabled={!clickedPercent || !draftTitle.trim()}>
+        <Text style={styles.primaryText}>Create Mini Map Marker</Text>
+      </Pressable>
+      {selectedMarker ? (
+        <Pressable style={styles.secondaryButton} onPress={onSaveSelectedMarker}>
+          <Text style={styles.secondaryText}>Save Selected Marker Settings</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 function MarkerSceneScreen({
   marker,
   marketItems,
@@ -3525,6 +3843,7 @@ function MarkerSceneScreen({
   onBuy,
   onSell,
   onClaimReward,
+  onAcceptQuest,
 }: {
   marker: MapMarker;
   marketItems: MarkerMarketItem[];
@@ -3535,6 +3854,7 @@ function MarkerSceneScreen({
   onBuy: (marketItem: MarkerMarketItem) => void;
   onSell: (item: InventoryItem) => void;
   onClaimReward: () => void;
+  onAcceptQuest: () => void;
 }) {
   const backgroundUri = resolveSceneImageUri(marker.scene_background_image_url || marker.shop_background_image_url);
   const npcUri = resolveSceneImageUri(marker.scene_npc_image_url || marker.shop_image_url || marker.quest_image_url);
@@ -3591,8 +3911,9 @@ function MarkerSceneScreen({
               Rewards: {marker.reward_xp ?? 0} XP / {marker.reward_gold ?? 0} gold
               {marker.reward_item_id ? ` / ${marker.reward_item_quantity ?? 1} ${getItemName(itemDefinitions, marker.reward_item_id)}` : ""}
             </Text>
-            <Pressable style={styles.primaryButton} onPress={onClaimReward}>
-              <Text style={styles.primaryText}>{marker.type === "Side Quest" ? "Complete Quest" : "Claim Reward"}</Text>
+            {marker.linked_route_id && marker.starts_route_on_accept ? <Text style={styles.copy}>Accepting this quest starts its linked walking path.</Text> : null}
+            <Pressable style={styles.primaryButton} onPress={marker.linked_route_id && marker.starts_route_on_accept ? onAcceptQuest : onClaimReward}>
+              <Text style={styles.primaryText}>{marker.linked_route_id && marker.starts_route_on_accept ? "Accept Quest" : marker.type === "Side Quest" ? "Complete Quest" : "Claim Reward"}</Text>
             </Pressable>
           </View>
         )}
@@ -3736,6 +4057,14 @@ function getItemName(items: ItemDefinition[], itemId: string | null) {
 
 function getEnemyName(enemies: EnemyDefinition[], enemyId: string | null) {
   return enemies.find((enemy) => enemy.id === enemyId)?.name ?? "Unknown Enemy";
+}
+
+function getRouteName(routes: MapRoute[], routeId: string) {
+  return routes.find((route) => route.id === routeId)?.name ?? "Unknown Path";
+}
+
+function isQuestMarkerType(type: string) {
+  return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
 }
 
 const styles = StyleSheet.create({

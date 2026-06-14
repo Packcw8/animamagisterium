@@ -326,6 +326,8 @@ export type Tables = {
     linked_mini_map_id: string | null;
     mini_map_id: string | null;
     parent_marker_id: string | null;
+    linked_route_id: string | null;
+    starts_route_on_accept: boolean;
     created_by: string | null;
     created_at: string;
     updated_at: string;
