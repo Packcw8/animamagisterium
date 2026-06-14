@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
@@ -102,6 +102,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
     maxMagicka: inventoryBonuses.maxMagicka,
   });
   const isAdmin = role === "admin";
+  const abilityGroups = useMemo(() => groupAbilitiesForDisplay(unlockedAbilities), [unlockedAbilities]);
 
   useEffect(() => {
     void loadAbilities();
@@ -437,20 +438,33 @@ export function HomeScreen({ character }: HomeScreenProps) {
               ))}
             </View>
             <Text style={styles.subTitle}>Unlocked Abilities</Text>
+            <Text style={styles.muted}>Tap an ability to select it, then choose an equipped slot above. Ability slots are what appear in battle.</Text>
             {unlockedAbilities.length === 0 ? (
               <Text style={styles.muted}>Train an attribute to level 1 to unlock its first ability.</Text>
             ) : (
               <View style={styles.abilityList}>
-                {unlockedAbilities.map((ability) => (
-                  <Pressable
-                    key={ability.key}
-                    style={[styles.abilityCard, selectedAbilityKey === ability.key && styles.abilityCardActive]}
-                    onPress={() => setSelectedAbilityKey(ability.key)}
-                  >
-                    <Text style={styles.abilityName}>{ability.name}</Text>
-                    <Text style={styles.muted}>{ability.description}</Text>
-                    <Text style={styles.abilityCost}>{getAbilitySourceLabel(ability)} / {getAbilityCostLabel(ability)}</Text>
-                  </Pressable>
+                {abilityGroups.map((group) => (
+                  <View key={group.title} style={styles.abilityGroup}>
+                    <Text style={styles.abilityGroupTitle}>{group.title}</Text>
+                    {group.items.map((ability) => (
+                      <Pressable
+                        key={ability.key}
+                        style={[styles.abilityCard, selectedAbilityKey === ability.key && styles.abilityCardActive]}
+                        onPress={() => setSelectedAbilityKey(ability.key)}
+                      >
+                        <View style={styles.abilityHeader}>
+                          <Text style={styles.abilityName}>{ability.name}</Text>
+                          <Text style={styles.abilityTag}>{getAbilitySourceLabel(ability)}</Text>
+                        </View>
+                        <Text style={styles.muted}>{ability.description}</Text>
+                        <View style={styles.abilityMetaRow}>
+                          <Text style={styles.abilityCost}>{getAbilityCostLabel(ability)}</Text>
+                          <Text style={styles.abilityMeta}>{getAbilityUnlockLabel(ability)}</Text>
+                        </View>
+                        {selectedAbilityKey === ability.key ? <Text style={styles.selectedHint}>Selected - choose a slot above</Text> : null}
+                      </Pressable>
+                    ))}
+                  </View>
                 ))}
               </View>
             )}
@@ -793,6 +807,32 @@ function defaultSlotForType(type: ItemDefinition["type"]) {
   return null;
 }
 
+function groupAbilitiesForDisplay(abilities: AbilityDefinition[]) {
+  const groups = [
+    { title: "Default Attack", items: abilities.filter((ability) => ability.source === "default") },
+    { title: "Attribute Abilities", items: abilities.filter((ability) => ability.source === "training" || ability.source === "admin") },
+    { title: "Weapon / Gear Abilities", items: abilities.filter((ability) => ability.source === "weapon") },
+  ];
+
+  return groups.filter((group) => group.items.length > 0);
+}
+
+function getAbilityUnlockLabel(ability: AbilityDefinition) {
+  if (ability.source === "default") {
+    return "Always known";
+  }
+
+  if (ability.source === "weapon") {
+    return ability.sourceWeapon ? `From ${ability.sourceWeapon.name}` : "From equipped gear";
+  }
+
+  if (ability.attribute) {
+    return `${ability.attribute} Lv ${ability.unlockLevel}`;
+  }
+
+  return "Learned";
+}
+
 const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
@@ -981,6 +1021,14 @@ const styles = StyleSheet.create({
   abilityList: {
     gap: 8,
   },
+  abilityGroup: {
+    gap: 8,
+  },
+  abilityGroupTitle: {
+    color: colors.gold,
+    fontWeight: "900",
+    marginTop: 8,
+  },
   abilityCard: {
     gap: 6,
     borderWidth: 1,
@@ -993,15 +1041,43 @@ const styles = StyleSheet.create({
     borderColor: colors.blue,
     backgroundColor: "rgba(20, 61, 86, 0.45)",
   },
+  abilityHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
   abilityName: {
     color: colors.text,
     fontWeight: "900",
     fontSize: 16,
+    flex: 1,
+  },
+  abilityTag: {
+    color: colors.blue,
+    fontWeight: "900",
+    fontSize: 11,
+    textTransform: "uppercase",
+  },
+  abilityMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center",
   },
   abilityCost: {
     color: colors.gold,
     fontWeight: "900",
     textTransform: "capitalize",
+  },
+  abilityMeta: {
+    color: colors.muted,
+    fontWeight: "800",
+    textTransform: "capitalize",
+  },
+  selectedHint: {
+    color: colors.blue,
+    fontWeight: "900",
   },
   itemCard: {
     flexDirection: "row",

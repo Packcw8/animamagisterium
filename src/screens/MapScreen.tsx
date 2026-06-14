@@ -1356,6 +1356,28 @@ export function MapScreen({ character }: MapScreenProps) {
     setRewardItemQuantity(String(event.reward_item_quantity ?? 1));
   }
 
+  function selectEventEnemy(enemyId: string | null) {
+    setEventEnemyId(enemyId);
+
+    if (!enemyId) {
+      return;
+    }
+
+    const enemy = enemyDefinitions.find((entry) => entry.id === enemyId);
+
+    if (!enemy) {
+      return;
+    }
+
+    setEnemyName(enemy.name);
+    setEnemyImage(enemy.image_url ?? "");
+    setEnemyHp(String(enemy.health));
+    setEnemyAttack("0");
+    setBattleIntro((current) => current || `${enemy.name} blocks the trail.`);
+    setRewardXp((current) => current === "0" ? String(enemy.xp_reward ?? 0) : current);
+    setRewardGold((current) => current === "0" ? String(enemy.gold_reward ?? 0) : current);
+  }
+
   function clearEventForm() {
     setEditingEvent(null);
     setEventType("dialogue");
@@ -2078,20 +2100,22 @@ export function MapScreen({ character }: MapScreenProps) {
             ) : (
               <>
                 <Text style={styles.selectedTitle}>Enemy From Admin</Text>
-                <View style={styles.storyRoutePicker}>
-                  <Pressable style={[styles.routeChip, eventEnemyId === null && styles.routeChipActive]} onPress={() => setEventEnemyId(null)}>
-                    <Text style={styles.routeChipText}>Manual Enemy</Text>
-                  </Pressable>
-                  {enemyDefinitions.map((enemy) => (
-                    <Pressable key={enemy.id} style={[styles.routeChip, eventEnemyId === enemy.id && styles.routeChipActive]} onPress={() => setEventEnemyId(enemy.id)}>
-                      <Text style={styles.routeChipText}>{enemy.name}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <TextInput value={enemyName} onChangeText={setEnemyName} placeholder="Enemy name" placeholderTextColor={colors.muted} style={styles.input} />
-                <TextInput value={enemyImage} onChangeText={setEnemyImage} placeholder="Enemy image URL" placeholderTextColor={colors.muted} style={styles.input} />
-                <TextInput value={enemyHp} onChangeText={setEnemyHp} placeholder="Enemy HP" placeholderTextColor={colors.muted} style={styles.input} />
-                <TextInput value={enemyAttack} onChangeText={setEnemyAttack} placeholder="Enemy attack damage" placeholderTextColor={colors.muted} style={styles.input} />
+                <EnemyPicker enemies={enemyDefinitions} selectedId={eventEnemyId} onSelect={selectEventEnemy} />
+                {eventEnemyId ? (
+                  <View style={styles.storyCard}>
+                    <Text style={styles.markerName}>{getEnemyName(enemyDefinitions, eventEnemyId)}</Text>
+                    <Text style={styles.copy}>This battle will use the selected admin enemy's stats, resources, abilities, rewards, and drops.</Text>
+                  </View>
+                ) : (
+                  <View style={styles.storyCard}>
+                    <Text style={styles.markerName}>Manual Enemy Fallback</Text>
+                    <Text style={styles.copy}>Use these fields only when you have not created an enemy in Enemy Admin yet.</Text>
+                    <TextInput value={enemyName} onChangeText={setEnemyName} placeholder="Enemy name" placeholderTextColor={colors.muted} style={styles.input} />
+                    <TextInput value={enemyImage} onChangeText={setEnemyImage} placeholder="Enemy image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                    <TextInput value={enemyHp} onChangeText={setEnemyHp} placeholder="Enemy HP" placeholderTextColor={colors.muted} style={styles.input} />
+                    <TextInput value={enemyAttack} onChangeText={setEnemyAttack} placeholder="Enemy attack damage" placeholderTextColor={colors.muted} style={styles.input} />
+                  </View>
+                )}
                 <TextInput value={battleIntro} onChangeText={setBattleIntro} placeholder="Battle intro text" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={victoryText} onChangeText={setVictoryText} placeholder="Victory text" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={defeatText} onChangeText={setDefeatText} placeholder="Defeat text" placeholderTextColor={colors.muted} style={styles.input} />
@@ -2118,7 +2142,7 @@ export function MapScreen({ character }: MapScreenProps) {
                 <Text style={styles.markerName}>{event.distance_marker_percent}% - {event.title}</Text>
                 <Text style={styles.copy}>
                   {event.event_type === "battle"
-                    ? `${event.enemy_name || "Enemy"} - HP ${event.enemy_hp}`
+                    ? `${event.enemy_id ? getEnemyName(enemyDefinitions, event.enemy_id) : event.enemy_name || "Enemy"} - ${event.enemy_id ? "Admin Enemy" : `HP ${event.enemy_hp}`}`
                     : `${eventTypeName(event.event_type)} - ${event.dialogue_text || "Add dialogue steps below."}`}
                 </Text>
                 <View style={styles.modeRow}>
@@ -2986,8 +3010,30 @@ function ItemPicker({ label, items, selectedId, onSelect }: { label: string; ite
   );
 }
 
+function EnemyPicker({ enemies, selectedId, onSelect }: { enemies: EnemyDefinition[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.copy}>Select an enemy created in Home / Abilities / Enemy Admin.</Text>
+      <View style={styles.storyRoutePicker}>
+        <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
+          <Text style={styles.routeChipText}>Manual Enemy</Text>
+        </Pressable>
+        {enemies.map((enemy) => (
+          <Pressable key={enemy.id} style={[styles.routeChip, selectedId === enemy.id && styles.routeChipActive]} onPress={() => onSelect(enemy.id)}>
+            <Text style={styles.routeChipText}>{enemy.name}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function getItemName(items: ItemDefinition[], itemId: string | null) {
   return items.find((item) => item.id === itemId)?.name ?? "Unknown Item";
+}
+
+function getEnemyName(enemies: EnemyDefinition[], enemyId: string | null) {
+  return enemies.find((enemy) => enemy.id === enemyId)?.name ?? "Unknown Enemy";
 }
 
 const styles = StyleSheet.create({
