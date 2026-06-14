@@ -110,7 +110,7 @@ export type Tables = {
   item_definitions: {
     id: string;
     name: string;
-    type: "weapon" | "armor" | "wearable" | "potion" | "revive potion" | "special" | "material" | "misc";
+    type: "weapon" | "armor" | "wearable" | "potion" | "revive potion" | "consumable" | "food" | "scroll" | "special" | "material" | "misc";
     rarity: string;
     description: string | null;
     image_path: string | null;
@@ -137,6 +137,8 @@ export type Tables = {
     boost_target: "health" | "stamina" | "magika" | "strength" | "agility" | "intelligence" | "charisma" | "damage" | "defense" | "gold gain" | "xp gain" | null;
     boost_amount: number;
     passive_mode: "owned" | "equipped" | null;
+    linked_ability_id: string | null;
+    teaches_ability_id: string | null;
     is_active: boolean;
     created_by: string | null;
     created_at: string;
@@ -218,6 +220,7 @@ export type Tables = {
     dialogue_text: string | null;
     choices: Array<{ label: string; action: "Continue" | "Investigate" | "Ask Questions" | "Start Battle" | "Complete Event"; battle_event_id?: string | null }>;
     enemy_name: string | null;
+    enemy_id: string | null;
     enemy_image_url: string | null;
     enemy_hp: number;
     enemy_attack_damage: number;
@@ -335,6 +338,75 @@ export type Tables = {
     event_id: string | null;
     choice_id: string | null;
     claimed_at: string;
+  };
+  combat_abilities: {
+    id: string;
+    name: string;
+    type: "attack" | "heal" | "buff" | "debuff" | "defense" | "passive";
+    damage: number;
+    healing: number;
+    defense_amount: number;
+    stamina_cost: number;
+    magika_cost: number;
+    health_cost: number;
+    hit_chance: number;
+    critical_chance: number;
+    critical_multiplier: number;
+    cooldown_turns: number;
+    duration_turns: number;
+    status_effect: "none" | "poison" | "burn" | "regen" | "shield" | "weakness" | "slow" | "stun";
+    effect_amount: number;
+    effect_duration: number;
+    linked_stat: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | "weapon" | "item" | "none";
+    learn_method: "level" | "weapon equipped" | "armor equipped" | "wearable equipped" | "scroll" | "quest" | "admin";
+    required_level: number;
+    image_path: string | null;
+    attack_bonus: number;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  enemy_definitions: {
+    id: string;
+    name: string;
+    type: string | null;
+    image_url: string | null;
+    health: number;
+    stamina: number;
+    magika: number;
+    strength: number;
+    endurance: number;
+    agility: number;
+    intelligence: number;
+    wisdom: number;
+    charisma: number;
+    spirit: number;
+    defense: number;
+    armor_rating: number;
+    xp_reward: number;
+    gold_reward: number;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  enemy_abilities: {
+    id: string;
+    enemy_id: string;
+    ability_id: string;
+    use_weight: number;
+    created_at: string;
+    updated_at: string;
+  };
+  enemy_item_drops: {
+    id: string;
+    enemy_id: string;
+    item_id: string;
+    quantity: number;
+    drop_chance: number;
+    created_at: string;
+    updated_at: string;
   };
 };
 

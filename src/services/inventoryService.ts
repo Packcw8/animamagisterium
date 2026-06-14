@@ -18,7 +18,7 @@ export type InventoryState = {
   equipped: Record<EquipmentSlot, ItemDefinition | null>;
 };
 
-export const itemTypes: ItemDefinition["type"][] = ["weapon", "armor", "wearable", "potion", "revive potion", "special", "material", "misc"];
+export const itemTypes: ItemDefinition["type"][] = ["weapon", "armor", "wearable", "potion", "revive potion", "consumable", "food", "scroll", "special", "material", "misc"];
 export const equipmentSlots: EquipmentSlot[] = ["weapon", "armor", "necklace", "ring", "charm", "relic"];
 export const rarityOptions = ["common", "uncommon", "rare", "epic", "legendary"];
 export const costTypes: ItemDefinition["ability_cost_type"][] = ["none", "health", "stamina", "magika"];
@@ -88,6 +88,8 @@ export function blankItemDefinition(): Partial<ItemDefinition> {
     boost_target: null,
     boost_amount: 0,
     passive_mode: null,
+    linked_ability_id: null,
+    teaches_ability_id: null,
     is_active: true,
   };
 }
@@ -379,6 +381,8 @@ function normalizeItemInput(input: Partial<ItemDefinition>, userId: string | nul
     boost_target: input.boost_target ?? null,
     boost_amount: Number(input.boost_amount) || 0,
     passive_mode: input.passive_mode ?? null,
+    linked_ability_id: input.linked_ability_id ?? null,
+    teaches_ability_id: input.teaches_ability_id ?? null,
     is_active: input.is_active ?? true,
     created_by: input.id ? input.created_by ?? userId : userId,
     updated_at: new Date().toISOString(),

@@ -8,6 +8,29 @@ import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
 import { AbilityDefinition, equipAbility, getAbilityCostLabel, getAbilitySourceLabel, getCombatLoadout, getCharacterResources } from "../services/abilityService";
 import {
+  blankCombatAbility,
+  blankEnemy,
+  combatAbilityTypes,
+  CombatAbility,
+  deleteCombatAbility,
+  deleteEnemy,
+  deleteEnemyAbility,
+  deleteEnemyDrop,
+  EnemyAbility,
+  EnemyDefinition,
+  EnemyItemDrop,
+  getCombatAbilities,
+  getEnemyLoadout,
+  getEnemies,
+  learnMethods,
+  linkedStats,
+  saveCombatAbility,
+  saveEnemy,
+  saveEnemyAbility,
+  saveEnemyDrop,
+  statusEffects,
+} from "../services/combatAdminService";
+import {
   blankItemDefinition,
   boostTargets,
   buffTargets,
@@ -45,6 +68,19 @@ export function HomeScreen({ character }: HomeScreenProps) {
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
   const [selectedAbilityKey, setSelectedAbilityKey] = useState<string | null>(null);
   const [abilityMessage, setAbilityMessage] = useState<string | null>(null);
+  const [adminAbilities, setAdminAbilities] = useState<CombatAbility[]>([]);
+  const [abilityForm, setAbilityForm] = useState<Partial<CombatAbility>>(blankCombatAbility());
+  const [editingAdminAbilityId, setEditingAdminAbilityId] = useState<string | null>(null);
+  const [enemies, setEnemies] = useState<EnemyDefinition[]>([]);
+  const [enemyForm, setEnemyForm] = useState<Partial<EnemyDefinition>>(blankEnemy());
+  const [editingEnemyId, setEditingEnemyId] = useState<string | null>(null);
+  const [enemyAbilities, setEnemyAbilities] = useState<EnemyAbility[]>([]);
+  const [enemyDrops, setEnemyDrops] = useState<EnemyItemDrop[]>([]);
+  const [selectedEnemyAbilityId, setSelectedEnemyAbilityId] = useState<string | null>(null);
+  const [enemyAbilityWeight, setEnemyAbilityWeight] = useState("1");
+  const [selectedDropItemId, setSelectedDropItemId] = useState<string | null>(null);
+  const [dropQuantity, setDropQuantity] = useState("1");
+  const [dropChance, setDropChance] = useState("100");
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
@@ -63,6 +99,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
   useEffect(() => {
     void loadAbilities();
     void loadInventory();
+    void loadAdminCombat();
     void getCurrentRole().then(setRole);
   }, [character.id, character.attributes]);
 
@@ -73,6 +110,110 @@ export function HomeScreen({ character }: HomeScreenProps) {
       setEquippedAbilities(loadout.equipped);
     } catch (error) {
       setAbilityMessage(error instanceof Error ? error.message : "Unable to load abilities.");
+    }
+  }
+
+  async function loadAdminCombat() {
+    try {
+      const [abilities, enemyRows] = await Promise.all([getCombatAbilities(), getEnemies()]);
+      setAdminAbilities(abilities);
+      setEnemies(enemyRows);
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to load admin combat data.");
+    }
+  }
+
+  async function loadEnemyDetails(enemyId: string) {
+    const loadout = await getEnemyLoadout(enemyId);
+    setEnemyAbilities(loadout?.abilities ?? []);
+    setEnemyDrops(loadout?.drops ?? []);
+  }
+
+  async function saveAdminAbility() {
+    try {
+      const saved = await saveCombatAbility({ ...abilityForm, id: editingAdminAbilityId ?? undefined });
+      setAbilityMessage(`${saved.name} saved.`);
+      setAbilityForm(blankCombatAbility());
+      setEditingAdminAbilityId(null);
+      await loadAdminCombat();
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to save ability.");
+    }
+  }
+
+  async function editAdminAbility(ability: CombatAbility) {
+    setEditingAdminAbilityId(ability.id);
+    setAbilityForm(ability);
+  }
+
+  async function removeAdminAbility(id: string) {
+    try {
+      await deleteCombatAbility(id);
+      setAbilityMessage("Ability deleted.");
+      await loadAdminCombat();
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to delete ability.");
+    }
+  }
+
+  async function saveEnemyDefinition() {
+    try {
+      const saved = await saveEnemy({ ...enemyForm, id: editingEnemyId ?? undefined });
+      setAbilityMessage(`${saved.name} saved.`);
+      setEnemyForm(saved);
+      setEditingEnemyId(saved.id);
+      await loadAdminCombat();
+      await loadEnemyDetails(saved.id);
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to save enemy.");
+    }
+  }
+
+  async function editEnemy(enemy: EnemyDefinition) {
+    setEditingEnemyId(enemy.id);
+    setEnemyForm(enemy);
+    await loadEnemyDetails(enemy.id);
+  }
+
+  async function removeEnemy(id: string) {
+    try {
+      await deleteEnemy(id);
+      setAbilityMessage("Enemy deleted.");
+      setEditingEnemyId(null);
+      setEnemyForm(blankEnemy());
+      setEnemyAbilities([]);
+      setEnemyDrops([]);
+      await loadAdminCombat();
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to delete enemy.");
+    }
+  }
+
+  async function addEnemyAbility() {
+    if (!editingEnemyId || !selectedEnemyAbilityId) {
+      setAbilityMessage("Save/select an enemy and ability first.");
+      return;
+    }
+    try {
+      await saveEnemyAbility(editingEnemyId, selectedEnemyAbilityId, Number(enemyAbilityWeight) || 1);
+      await loadEnemyDetails(editingEnemyId);
+      setAbilityMessage("Enemy ability saved.");
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to save enemy ability.");
+    }
+  }
+
+  async function addEnemyDrop() {
+    if (!editingEnemyId || !selectedDropItemId) {
+      setAbilityMessage("Save/select an enemy and item first.");
+      return;
+    }
+    try {
+      await saveEnemyDrop(editingEnemyId, selectedDropItemId, Number(dropQuantity) || 1, Number(dropChance) || 0);
+      await loadEnemyDetails(editingEnemyId);
+      setAbilityMessage("Enemy drop saved.");
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to save enemy drop.");
     }
   }
 
@@ -288,6 +429,128 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 ))}
               </View>
             )}
+            {isAdmin ? (
+              <View style={styles.adminBuilder}>
+                <Text style={styles.sectionTitle}>Admin Abilities</Text>
+                <Text style={styles.muted}>Create database abilities for players, gear, scrolls, quests, and enemies. Images can use /assets/abilities/filename.png or a full URL.</Text>
+                <ItemText label="Name" value={abilityForm.name ?? ""} onChange={(value) => setAbilityForm((current) => ({ ...current, name: value }))} />
+                <ChoiceRow label="Type" options={combatAbilityTypes} value={abilityForm.type ?? "attack"} onSelect={(value) => setAbilityForm((current) => ({ ...current, type: value }))} />
+                <View style={styles.slotActions}>
+                  <ItemText label="Damage" value={String(abilityForm.damage ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, damage: Number(value) || 0 }))} />
+                  <ItemText label="Healing" value={String(abilityForm.healing ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, healing: Number(value) || 0 }))} />
+                </View>
+                <View style={styles.slotActions}>
+                  <ItemText label="Defense amount" value={String(abilityForm.defense_amount ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, defense_amount: Number(value) || 0 }))} />
+                  <ItemText label="Attack bonus" value={String(abilityForm.attack_bonus ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, attack_bonus: Number(value) || 0 }))} />
+                </View>
+                <View style={styles.slotActions}>
+                  <ItemText label="Stamina cost" value={String(abilityForm.stamina_cost ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, stamina_cost: Number(value) || 0 }))} />
+                  <ItemText label="Magika cost" value={String(abilityForm.magika_cost ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, magika_cost: Number(value) || 0 }))} />
+                  <ItemText label="Health cost" value={String(abilityForm.health_cost ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, health_cost: Number(value) || 0 }))} />
+                </View>
+                <View style={styles.slotActions}>
+                  <ItemText label="Hit chance %" value={String(abilityForm.hit_chance ?? 75)} onChange={(value) => setAbilityForm((current) => ({ ...current, hit_chance: Number(value) || 75 }))} />
+                  <ItemText label="Critical chance %" value={String(abilityForm.critical_chance ?? 5)} onChange={(value) => setAbilityForm((current) => ({ ...current, critical_chance: Number(value) || 0 }))} />
+                  <ItemText label="Critical multiplier" value={String(abilityForm.critical_multiplier ?? 2)} onChange={(value) => setAbilityForm((current) => ({ ...current, critical_multiplier: Number(value) || 2 }))} />
+                </View>
+                <View style={styles.slotActions}>
+                  <ItemText label="Cooldown turns" value={String(abilityForm.cooldown_turns ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, cooldown_turns: Number(value) || 0 }))} />
+                  <ItemText label="Duration turns" value={String(abilityForm.duration_turns ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, duration_turns: Number(value) || 0 }))} />
+                </View>
+                <ChoiceRow label="Status effect" options={statusEffects} value={abilityForm.status_effect ?? "none"} onSelect={(value) => setAbilityForm((current) => ({ ...current, status_effect: value }))} />
+                <View style={styles.slotActions}>
+                  <ItemText label="Effect amount" value={String(abilityForm.effect_amount ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, effect_amount: Number(value) || 0 }))} />
+                  <ItemText label="Effect duration" value={String(abilityForm.effect_duration ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, effect_duration: Number(value) || 0 }))} />
+                </View>
+                <ChoiceRow label="Linked stat" options={linkedStats} value={abilityForm.linked_stat ?? "none"} onSelect={(value) => setAbilityForm((current) => ({ ...current, linked_stat: value }))} />
+                <ChoiceRow label="Learn method" options={learnMethods} value={abilityForm.learn_method ?? "admin"} onSelect={(value) => setAbilityForm((current) => ({ ...current, learn_method: value }))} />
+                <ItemText label="Required level" value={String(abilityForm.required_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_level: Number(value) || 0 }))} />
+                <ItemText label="Image URL/path" value={abilityForm.image_path ?? ""} onChange={(value) => setAbilityForm((current) => ({ ...current, image_path: value }))} />
+                <ToggleRow label="Active" value={abilityForm.is_active ?? true} onPress={() => setAbilityForm((current) => ({ ...current, is_active: !current.is_active }))} />
+                <Pressable style={styles.primaryAdminButton} onPress={() => void saveAdminAbility()}>
+                  <Text style={styles.primaryAdminText}>{editingAdminAbilityId ? "Update Ability" : "Add Ability"}</Text>
+                </Pressable>
+                {editingAdminAbilityId ? (
+                  <Pressable style={styles.smallButton} onPress={() => { setEditingAdminAbilityId(null); setAbilityForm(blankCombatAbility()); }}>
+                    <Text style={styles.smallButtonText}>Cancel Ability Edit</Text>
+                  </Pressable>
+                ) : null}
+                {adminAbilities.map((ability) => (
+                  <View key={ability.id} style={styles.abilityCard}>
+                    <Text style={styles.abilityName}>{ability.name}</Text>
+                    <Text style={styles.muted}>{ability.type} / {ability.damage} damage / {ability.healing} healing / {ability.status_effect}</Text>
+                    <View style={styles.slotActions}>
+                      <Pressable style={styles.smallButton} onPress={() => void editAdminAbility(ability)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
+                      <Pressable style={styles.smallButton} onPress={() => void removeAdminAbility(ability.id)}><Text style={styles.smallButtonText}>Delete</Text></Pressable>
+                    </View>
+                  </View>
+                ))}
+
+                <Text style={styles.sectionTitle}>Enemy Admin</Text>
+                <ItemText label="Name" value={enemyForm.name ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, name: value }))} />
+                <ItemText label="Type" value={enemyForm.type ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, type: value }))} />
+                <ItemText label="Image URL/path" value={enemyForm.image_url ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, image_url: value }))} />
+                <View style={styles.slotActions}>
+                  <ItemText label="Health" value={String(enemyForm.health ?? 20)} onChange={(value) => setEnemyForm((current) => ({ ...current, health: Number(value) || 20 }))} />
+                  <ItemText label="Stamina" value={String(enemyForm.stamina ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, stamina: Number(value) || 0 }))} />
+                  <ItemText label="Magika" value={String(enemyForm.magika ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, magika: Number(value) || 0 }))} />
+                </View>
+                {attributeKeys.map((key) => (
+                  <ItemText key={key} label={key} value={String(enemyForm[key] ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, [key]: Number(value) || 0 }))} />
+                ))}
+                <View style={styles.slotActions}>
+                  <ItemText label="Defense" value={String(enemyForm.defense ?? 10)} onChange={(value) => setEnemyForm((current) => ({ ...current, defense: Number(value) || 10 }))} />
+                  <ItemText label="Armor Rating" value={String(enemyForm.armor_rating ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, armor_rating: Number(value) || 0 }))} />
+                </View>
+                <View style={styles.slotActions}>
+                  <ItemText label="XP Reward" value={String(enemyForm.xp_reward ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, xp_reward: Number(value) || 0 }))} />
+                  <ItemText label="Gold Reward" value={String(enemyForm.gold_reward ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, gold_reward: Number(value) || 0 }))} />
+                </View>
+                <ToggleRow label="Enemy Active" value={enemyForm.is_active ?? true} onPress={() => setEnemyForm((current) => ({ ...current, is_active: !current.is_active }))} />
+                <Pressable style={styles.primaryAdminButton} onPress={() => void saveEnemyDefinition()}>
+                  <Text style={styles.primaryAdminText}>{editingEnemyId ? "Update Enemy" : "Add Enemy"}</Text>
+                </Pressable>
+                {editingEnemyId ? (
+                  <View style={styles.adminBuilder}>
+                    <Text style={styles.subTitle}>Enemy Abilities</Text>
+                    <ChoiceRow label="Ability" options={adminAbilities.map((ability) => ability.id)} value={selectedEnemyAbilityId ?? ""} onSelect={setSelectedEnemyAbilityId} />
+                    <ItemText label="Use chance / weight" value={enemyAbilityWeight} onChange={setEnemyAbilityWeight} />
+                    <Pressable style={styles.smallButton} onPress={() => void addEnemyAbility()}><Text style={styles.smallButtonText}>Add Enemy Ability</Text></Pressable>
+                    {enemyAbilities.map((row) => (
+                      <View key={row.id} style={styles.slotCard}>
+                        <Text style={styles.slotName}>{adminAbilities.find((ability) => ability.id === row.ability_id)?.name ?? "Unknown Ability"}</Text>
+                        <Text style={styles.muted}>Weight {row.use_weight}</Text>
+                        <Pressable style={styles.smallButton} onPress={() => void deleteEnemyAbility(row.id).then(() => editingEnemyId ? loadEnemyDetails(editingEnemyId) : undefined)}><Text style={styles.smallButtonText}>Remove</Text></Pressable>
+                      </View>
+                    ))}
+                    <Text style={styles.subTitle}>Item Drops</Text>
+                    <ChoiceRow label="Item Drop" options={itemDefinitions.map((item) => item.id)} value={selectedDropItemId ?? ""} onSelect={setSelectedDropItemId} />
+                    <View style={styles.slotActions}>
+                      <ItemText label="Quantity" value={dropQuantity} onChange={setDropQuantity} />
+                      <ItemText label="Drop chance %" value={dropChance} onChange={setDropChance} />
+                    </View>
+                    <Pressable style={styles.smallButton} onPress={() => void addEnemyDrop()}><Text style={styles.smallButtonText}>Add Drop</Text></Pressable>
+                    {enemyDrops.map((drop) => (
+                      <View key={drop.id} style={styles.slotCard}>
+                        <Text style={styles.slotName}>{itemDefinitions.find((item) => item.id === drop.item_id)?.name ?? "Unknown Item"}</Text>
+                        <Text style={styles.muted}>Qty {drop.quantity} / Chance {drop.drop_chance}%</Text>
+                        <Pressable style={styles.smallButton} onPress={() => void deleteEnemyDrop(drop.id).then(() => editingEnemyId ? loadEnemyDetails(editingEnemyId) : undefined)}><Text style={styles.smallButtonText}>Remove</Text></Pressable>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                {enemies.map((enemy) => (
+                  <View key={enemy.id} style={styles.abilityCard}>
+                    <Text style={styles.abilityName}>{enemy.name}</Text>
+                    <Text style={styles.muted}>{enemy.type || "Enemy"} / HP {enemy.health} / Defense {enemy.defense} / Armor {enemy.armor_rating}</Text>
+                    <View style={styles.slotActions}>
+                      <Pressable style={styles.smallButton} onPress={() => void editEnemy(enemy)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
+                      <Pressable style={styles.smallButton} onPress={() => void removeEnemy(enemy.id)}><Text style={styles.smallButtonText}>Delete</Text></Pressable>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </View>
         ) : (
           <View style={styles.section}>
@@ -359,6 +622,8 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <ToggleRow label="Usable in battle" value={Boolean(itemForm.usable_in_battle)} onPress={() => setItemForm((current) => ({ ...current, usable_in_battle: !current.usable_in_battle }))} />
                 <ToggleRow label="Usable outside battle" value={Boolean(itemForm.usable_outside_battle)} onPress={() => setItemForm((current) => ({ ...current, usable_outside_battle: !current.usable_outside_battle }))} />
                 <ItemText label="Crafting value" value={String(itemForm.crafting_value ?? "")} onChange={(value) => setItemForm((current) => ({ ...current, crafting_value: value ? Number(value) || 0 : null }))} />
+                <ChoiceRow label="Linked ability" options={["", ...adminAbilities.map((ability) => ability.id)]} value={itemForm.linked_ability_id ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, linked_ability_id: value || null }))} />
+                <ChoiceRow label="Scroll teaches ability" options={["", ...adminAbilities.map((ability) => ability.id)]} value={itemForm.teaches_ability_id ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, teaches_ability_id: value || null }))} />
                 {(itemForm.type === "weapon" || itemForm.type === "armor" || itemForm.type === "wearable") ? (
                   <ChoiceRow label="Equipment slot" options={equipmentSlots} value={itemForm.equipment_slot ?? "weapon"} onSelect={(value) => setItemForm((current) => ({ ...current, equipment_slot: value }))} />
                 ) : null}

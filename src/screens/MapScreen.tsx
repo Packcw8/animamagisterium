@@ -8,7 +8,8 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
 import { AbilityDefinition, CharacterResources, getAbilityCostLabel, getAbilityDamage, getCharacterResources, getCombatLoadout } from "../services/abilityService";
-import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, InventoryItem, ItemDefinition } from "../services/inventoryService";
+import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout } from "../services/combatAdminService";
+import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition } from "../services/inventoryService";
 import {
   completeMapEvent,
   applyRewards,
@@ -108,10 +109,14 @@ export function MapScreen({ character }: MapScreenProps) {
   const [battleStamina, setBattleStamina] = useState(0);
   const [battleMagicka, setBattleMagicka] = useState(0);
   const [battleEnemyHp, setBattleEnemyHp] = useState(0);
+  const [battleEnemyStamina, setBattleEnemyStamina] = useState(0);
+  const [battleEnemyMagika, setBattleEnemyMagika] = useState(0);
   const [battleLog, setBattleLog] = useState<string[]>([]);
   const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | null>(null);
+  const [activeEnemy, setActiveEnemy] = useState<EnemyWithLoadout | null>(null);
   const [combatResources, setCombatResources] = useState<CharacterResources>(() => getCharacterResources(character));
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
+  const [enemyDefinitions, setEnemyDefinitions] = useState<EnemyDefinition[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
@@ -178,6 +183,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const [enemyImage, setEnemyImage] = useState("");
   const [enemyHp, setEnemyHp] = useState("30");
   const [enemyAttack, setEnemyAttack] = useState("5");
+  const [eventEnemyId, setEventEnemyId] = useState<string | null>(null);
   const [battleIntro, setBattleIntro] = useState("");
   const [victoryText, setVictoryText] = useState("");
   const [defeatText, setDefeatText] = useState("");
@@ -254,6 +260,7 @@ export function MapScreen({ character }: MapScreenProps) {
     void loadMap();
     void loadCombatLoadout();
     void loadInventory();
+    void loadEnemies();
 
     return () => {
       if (watchId.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
@@ -290,6 +297,14 @@ export function MapScreen({ character }: MapScreenProps) {
       }));
     } catch (error) {
       setBattleLog((current) => [getErrorMessage(error, "Unable to load inventory."), ...current].slice(0, 8));
+    }
+  }
+
+  async function loadEnemies() {
+    try {
+      setEnemyDefinitions(await getEnemies());
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to load enemies."));
     }
   }
 
@@ -365,7 +380,7 @@ export function MapScreen({ character }: MapScreenProps) {
     }
 
     if (nextEvent.event_type === "battle") {
-      startBattle(nextEvent);
+        void startBattle(nextEvent);
       return;
     }
 
@@ -974,31 +989,43 @@ export function MapScreen({ character }: MapScreenProps) {
     setNodeIsStart(dialogueNodes.length === 0);
   }
 
-  function startBattle(event: MapEvent) {
+  async function startBattle(event: MapEvent) {
+    const enemy = event.enemy_id ? await getEnemyLoadout(event.enemy_id) : null;
     setActiveEvent(null);
     setActiveBattle(event);
+    setActiveEnemy(enemy);
     setBattlePlayerHp(combatResources.maxHp);
     setBattleStamina(combatResources.maxStamina);
     setBattleMagicka(combatResources.maxMagicka);
-    setBattleEnemyHp(Number(event.enemy_hp) || 30);
+    setBattleEnemyHp(Number(enemy?.health ?? event.enemy_hp) || 30);
+    setBattleEnemyStamina(Number(enemy?.stamina ?? 0) || 0);
+    setBattleEnemyMagika(Number(enemy?.magika ?? 0) || 0);
     setBattleFinished(null);
-    setBattleLog([event.battle_intro_text || `${event.enemy_name || "An enemy"} blocks the trail.`]);
+    setBattleLog([event.battle_intro_text || `${enemy?.name || event.enemy_name || "An enemy"} blocks the trail.`]);
   }
 
   async function finishEvent(event: MapEvent) {
     try {
       const rewardResult = await applyRewards(character, {
-        xp: event.reward_xp,
-        gold: event.reward_gold,
+        xp: (event.reward_xp ?? 0) + (activeEnemy?.xp_reward ?? 0),
+        gold: (event.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
         itemId: event.reward_item_id,
         itemQuantity: event.reward_item_quantity,
         eventId: event.id,
       });
+      const drops: string[] = [];
+      for (const drop of activeEnemy?.drops ?? []) {
+        if (Math.random() * 100 <= Number(drop.drop_chance)) {
+          await grantItemToCharacter(character.id, drop.item_id, drop.quantity);
+          drops.push(`item x${drop.quantity}`);
+        }
+      }
       await completeMapEvent(event.id);
       setCompletedEventIds((current) => new Set([...current, event.id]));
       setActiveEvent(null);
       setActiveBattle(null);
-      setGpsMessage(`${event.title} completed. ${rewardResult.message}`);
+      setActiveEnemy(null);
+      setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}`);
       await loadInventory();
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to complete event."));
@@ -1020,7 +1047,7 @@ export function MapScreen({ character }: MapScreenProps) {
       if (linkedBattle) {
         void completeMapEvent(activeEvent.id);
         setCompletedEventIds((current) => new Set([...current, activeEvent.id]));
-        startBattle(linkedBattle);
+        void startBattle(linkedBattle);
         return;
       }
       setBattleLog(["No linked battle exists on this trail yet."]);
@@ -1051,7 +1078,7 @@ export function MapScreen({ character }: MapScreenProps) {
     if (choice.action === "start_battle") {
       const battle = mapEvents.find((event) => event.id === choice.battle_event_id) ?? mapEvents.find((event) => event.event_type === "battle" && event.route_id === activeEvent.route_id);
       if (battle) {
-        startBattle(battle);
+        void startBattle(battle);
         return;
       }
       setDialogueLog((current) => ["No battle is linked yet.", ...current].slice(0, 4));
@@ -1124,9 +1151,9 @@ export function MapScreen({ character }: MapScreenProps) {
       return;
     }
 
-    const incoming = Math.max(1, Number(activeBattle.enemy_attack_damage) || 5);
-    const nextPlayerHp = Math.max(0, battlePlayerHp - incoming);
-    nextLog.push(`${activeBattle.enemy_name || "Enemy"} hits for ${incoming}.`);
+    const counter = resolveEnemyCounterAttack();
+    const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
+    nextLog.push(...counter.log);
 
     setBattleEnemyHp(nextEnemyHp);
     setBattlePlayerHp(nextPlayerHp);
@@ -1195,9 +1222,9 @@ export function MapScreen({ character }: MapScreenProps) {
       return;
     }
 
-    const incoming = Math.max(1, (Number(activeBattle.enemy_attack_damage) || 5) - bonuses.defense);
-    const nextPlayerHp = Math.max(0, battlePlayerHp - incoming);
-    nextLog.push(`${activeBattle.enemy_name || "Enemy"} hits for ${incoming}.`);
+    const counter = resolveEnemyCounterAttack(bonuses.defense);
+    const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
+    nextLog.push(...counter.log);
     setBattleEnemyHp(nextEnemyHp);
     setBattlePlayerHp(nextPlayerHp);
 
@@ -1208,6 +1235,55 @@ export function MapScreen({ character }: MapScreenProps) {
     }
 
     setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+  }
+
+  function resolveEnemyCounterAttack(extraPlayerDefense = 0) {
+    const enemyName = activeEnemy?.name || activeBattle?.enemy_name || "Enemy";
+    const ability = chooseWeightedEnemyAbility(activeEnemy, battleEnemyStamina, battleEnemyMagika);
+    const playerDefense = getPlayerDefense(extraPlayerDefense);
+
+    if (!ability) {
+      const roll = rollD20Attack(Number(activeEnemy?.strength ?? 0), 0, playerDefense, 0, 2);
+      if (!roll.hit) {
+        return { damage: 0, log: [`${enemyName} misses. d20 ${roll.roll} vs Defense ${playerDefense}.`] };
+      }
+      const damage = Math.max(1, (Number(activeBattle?.enemy_attack_damage) || 5) - extraPlayerDefense);
+      return { damage: roll.critical ? Math.ceil(damage * 2) : damage, log: [`${enemyName} hits for ${roll.critical ? "Critical " : ""}${roll.critical ? Math.ceil(damage * 2) : damage}.`] };
+    }
+
+    if (ability.stamina_cost > 0) {
+      setBattleEnemyStamina((current) => Math.max(0, current - ability.stamina_cost));
+    }
+    if (ability.magika_cost > 0) {
+      setBattleEnemyMagika((current) => Math.max(0, current - ability.magika_cost));
+    }
+
+    if (ability.type === "heal") {
+      const healing = Math.max(1, Number(ability.healing) || 1);
+      setBattleEnemyHp((current) => Math.min(Number(activeEnemy?.health ?? activeBattle?.enemy_hp ?? 30), current + healing));
+      return { damage: 0, log: [`${enemyName} uses ${ability.name} and heals ${healing}.`] };
+    }
+
+    if (ability.type === "defense" || ability.type === "buff" || ability.type === "passive") {
+      return { damage: 0, log: [`${enemyName} uses ${ability.name}. ${ability.status_effect !== "none" ? `Status: ${ability.status_effect}.` : "It braces for the next exchange."}`] };
+    }
+
+    const statBonus = Number(activeEnemy?.strength ?? 0);
+    const roll = rollD20Attack(statBonus, ability.attack_bonus, playerDefense, ability.critical_chance, ability.critical_multiplier);
+    if (!roll.hit) {
+      return { damage: 0, log: [`${enemyName} uses ${ability.name} and misses. d20 ${roll.roll} vs Defense ${playerDefense}.`] };
+    }
+
+    const baseDamage = Math.max(1, Number(ability.damage) || 1);
+    const reducedDamage = Math.max(1, baseDamage - extraPlayerDefense);
+    const damage = roll.critical ? Math.ceil(reducedDamage * Number(ability.critical_multiplier || 2)) : reducedDamage;
+    const statusText = ability.status_effect !== "none" ? ` ${ability.status_effect} may linger.` : "";
+    return { damage, log: [`${enemyName} uses ${ability.name} for ${roll.critical ? "Critical " : ""}${damage}.${statusText}`] };
+  }
+
+  function getPlayerDefense(extraDefense = 0) {
+    const bonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
+    return 10 + Math.floor((character.attributes?.agility ?? 0) / 2) + bonuses.defense + extraDefense;
   }
 
   async function useBattleItem(entry: InventoryItem) {
@@ -1269,6 +1345,7 @@ export function MapScreen({ character }: MapScreenProps) {
     setEnemyImage(event.enemy_image_url ?? "");
     setEnemyHp(String(event.enemy_hp));
     setEnemyAttack(String(event.enemy_attack_damage));
+    setEventEnemyId(event.enemy_id ?? null);
     setBattleIntro(event.battle_intro_text ?? "");
     setVictoryText(event.victory_text ?? "");
     setDefeatText(event.defeat_text ?? "");
@@ -1293,6 +1370,7 @@ export function MapScreen({ character }: MapScreenProps) {
     setEnemyImage("");
     setEnemyHp("30");
     setEnemyAttack("5");
+    setEventEnemyId(null);
     setBattleIntro("");
     setVictoryText("");
     setDefeatText("");
@@ -1320,6 +1398,7 @@ export function MapScreen({ character }: MapScreenProps) {
       dialogue_text: eventDialogue.trim() || null,
       choices: parseChoices(eventChoices),
       enemy_name: enemyName.trim() || null,
+      enemy_id: eventEnemyId,
       enemy_image_url: enemyImage.trim() || null,
       enemy_hp: Number(enemyHp) || 30,
       enemy_attack_damage: Number(enemyAttack) || 5,
@@ -1561,6 +1640,7 @@ export function MapScreen({ character }: MapScreenProps) {
         magicka={battleMagicka}
         resources={combatResources}
         enemyHp={battleEnemyHp}
+        activeEnemy={activeEnemy}
         equippedAbilities={equippedAbilities}
         weapon={equippedItems.weapon ?? null}
         battleItems={getBattleUsableItems(inventoryItems, battlePlayerHp <= 0 || battleFinished === "defeat")}
@@ -1571,7 +1651,7 @@ export function MapScreen({ character }: MapScreenProps) {
         onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
         onUseItem={(item) => void useBattleItem(item)}
         onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
-        onRetry={() => startBattle(activeBattle)}
+        onRetry={() => void startBattle(activeBattle)}
         onComplete={() => void finishEvent(activeBattle)}
       />
     );
@@ -1997,6 +2077,17 @@ export function MapScreen({ character }: MapScreenProps) {
               </>
             ) : (
               <>
+                <Text style={styles.selectedTitle}>Enemy From Admin</Text>
+                <View style={styles.storyRoutePicker}>
+                  <Pressable style={[styles.routeChip, eventEnemyId === null && styles.routeChipActive]} onPress={() => setEventEnemyId(null)}>
+                    <Text style={styles.routeChipText}>Manual Enemy</Text>
+                  </Pressable>
+                  {enemyDefinitions.map((enemy) => (
+                    <Pressable key={enemy.id} style={[styles.routeChip, eventEnemyId === enemy.id && styles.routeChipActive]} onPress={() => setEventEnemyId(enemy.id)}>
+                      <Text style={styles.routeChipText}>{enemy.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
                 <TextInput value={enemyName} onChangeText={setEnemyName} placeholder="Enemy name" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={enemyImage} onChangeText={setEnemyImage} placeholder="Enemy image URL" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={enemyHp} onChangeText={setEnemyHp} placeholder="Enemy HP" placeholderTextColor={colors.muted} style={styles.input} />
@@ -2303,6 +2394,41 @@ function roundPercent(value: number) {
 
 function getPercentDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+}
+
+function chooseWeightedEnemyAbility(enemy: EnemyWithLoadout | null, stamina: number, magika: number) {
+  const valid = (enemy?.abilities ?? []).filter((row) => row.ability && row.ability.is_active && row.ability.stamina_cost <= stamina && row.ability.magika_cost <= magika);
+  const totalWeight = valid.reduce((sum, row) => sum + Math.max(1, Number(row.use_weight) || 1), 0);
+
+  if (valid.length === 0 || totalWeight <= 0) {
+    return null;
+  }
+
+  let roll = Math.random() * totalWeight;
+  for (const row of valid) {
+    roll -= Math.max(1, Number(row.use_weight) || 1);
+    if (roll <= 0) {
+      return row.ability ?? null;
+    }
+  }
+
+  return valid[0].ability ?? null;
+}
+
+function rollD20Attack(statBonus: number, abilityBonus: number, defense: number, criticalChance: number, criticalMultiplier: number) {
+  const roll = Math.ceil(Math.random() * 20);
+  const naturalCritical = roll === 20;
+  const naturalMiss = roll === 1;
+  const critical = naturalCritical || Math.random() * 100 < criticalChance;
+  const total = roll + Math.floor(statBonus / 2) + abilityBonus;
+
+  return {
+    roll,
+    total,
+    hit: !naturalMiss && (naturalCritical || total >= defense),
+    critical,
+    criticalMultiplier,
+  };
 }
 
 function canPlayerSeeMarker(marker: MapMarker, playerPosition: { x: number; y: number }) {
@@ -2637,6 +2763,7 @@ function BattleEventScreen({
   magicka,
   resources,
   enemyHp,
+  activeEnemy,
   equippedAbilities,
   weapon,
   battleItems,
@@ -2657,6 +2784,7 @@ function BattleEventScreen({
   magicka: number;
   resources: CharacterResources;
   enemyHp: number;
+  activeEnemy: EnemyWithLoadout | null;
   equippedAbilities: Array<AbilityDefinition | null>;
   weapon: ItemDefinition | null;
   battleItems: InventoryItem[];
@@ -2676,8 +2804,8 @@ function BattleEventScreen({
         <Text style={styles.sectionTitle}>{event.title}</Text>
         <View style={styles.battleArena}>
           <View style={styles.enemyPanel}>
-            {event.enemy_image_url ? <Image source={{ uri: event.enemy_image_url }} style={styles.enemyImage} /> : <View style={styles.enemyImagePlaceholder} />}
-            <Text style={styles.markerName}>{event.enemy_name || "Enemy"}</Text>
+            {(activeEnemy?.image_url || event.enemy_image_url) ? <Image source={{ uri: activeEnemy?.image_url || event.enemy_image_url || "" }} style={styles.enemyImage} /> : <View style={styles.enemyImagePlaceholder} />}
+            <Text style={styles.markerName}>{activeEnemy?.name || event.enemy_name || "Enemy"}</Text>
             <Text style={styles.copy}>HP {enemyHp}</Text>
           </View>
           <View style={styles.playerPanel}>
