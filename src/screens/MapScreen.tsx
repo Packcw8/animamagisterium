@@ -3829,7 +3829,7 @@ function MiniMapMarkerAdminForm({
   onRemoveMarketItem: (marketItemId: string) => void;
 }) {
   const supportsQuest = isQuestMarkerType(draftType);
-  const supportsMarket = draftType === "Market";
+  const supportsMarket = draftType === "Market" || selectedMarker?.type === "Market";
 
   return (
     <View style={styles.storyEditor}>
@@ -3873,6 +3873,11 @@ function MiniMapMarkerAdminForm({
           </View>
         </View>
       ) : null}
+      {selectedMarker ? (
+        <Pressable style={styles.secondaryButton} onPress={onSaveSelectedMarker}>
+          <Text style={styles.secondaryText}>Save Marker Details</Text>
+        </Pressable>
+      ) : null}
       {supportsMarket ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>Market / Shop Settings</Text>
@@ -3905,13 +3910,8 @@ function MiniMapMarkerAdminForm({
         </View>
       ) : null}
       <Pressable style={styles.primaryButton} onPress={onAddMarker} disabled={!clickedPercent || !draftTitle.trim()}>
-        <Text style={styles.primaryText}>Create Mini Map Marker</Text>
+        <Text style={styles.primaryText}>{selectedMarker ? "Create New Marker At Clicked Spot" : "Create Mini Map Marker"}</Text>
       </Pressable>
-      {selectedMarker ? (
-        <Pressable style={styles.secondaryButton} onPress={onSaveSelectedMarker}>
-          <Text style={styles.secondaryText}>Save Selected Marker Settings</Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
