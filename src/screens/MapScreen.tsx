@@ -25,6 +25,7 @@ import {
   deleteDialogueNode,
   deleteMapEvent,
   deleteMapMarker,
+  deleteMapRoute,
   deleteTutorialStep,
   fallbackRoute,
   getCurrentRole,
@@ -1150,6 +1151,25 @@ export function MapScreen({ character }: MapScreenProps) {
     }
   }
 
+  async function removeWalkingPath(routeId: string) {
+    if (routes.length <= 1) {
+      setAdminMessage("At least one walking path must remain.");
+      return;
+    }
+
+    try {
+      await deleteMapRoute(routeId);
+      const nextRoutes = routes.filter((item) => item.id !== routeId).sort(compareRoutes);
+      setRoutes(nextRoutes);
+      if (route.id === routeId) {
+        await selectRoute(nextRoutes[0] ?? fallbackRoute, true);
+      }
+      setAdminMessage("Walking path deleted.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to delete walking path."));
+    }
+  }
+
   async function loadDialogueForEvent(event: MapEvent) {
     const nodes = await getDialogueNodes(event.id);
     const choices = await getDialogueChoices(nodes.map((node) => node.id));
@@ -2185,13 +2205,16 @@ export function MapScreen({ character }: MapScreenProps) {
           {adminSection === "Walking Paths" ? <View style={styles.routeList}>
             <Text style={styles.selectedTitle}>Walking Path Order</Text>
             {orderedRoutes.map((item) => (
-              <Pressable key={item.id} style={[styles.routeRow, route.id === item.id && styles.routeRowActive]} onPress={() => void selectRoute(item, true)}>
+              <View key={item.id} style={[styles.routeRow, route.id === item.id && styles.routeRowActive]}>
                 <Text style={styles.routeNumber}>{item.sort_order}</Text>
-                <View style={styles.routeRowText}>
+                <Pressable style={styles.routeRowText} onPress={() => void selectRoute(item, true)}>
                   <Text style={styles.markerName}>{item.name}</Text>
                   <Text style={styles.copy}>{item.is_active ? "Active" : "Hidden"} · {metersToMiles(item.distance_required_meters)} mi · {item.terrain}</Text>
-                </View>
-              </Pressable>
+                </Pressable>
+                <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeWalkingPath(item.id)}>
+                  <Text style={styles.dangerText}>Delete</Text>
+                </Pressable>
+              </View>
             ))}
           </View> : null}
           {adminSection === "Walking Paths" ? <View style={styles.modeRow}>

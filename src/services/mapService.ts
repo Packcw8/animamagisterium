@@ -402,6 +402,14 @@ export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRo
   return data as MapRoute;
 }
 
+export async function deleteMapRoute(routeId: string) {
+  const { error } = await supabase.from("map_routes").delete().eq("id", routeId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id">>) {
   const { data, error } = await supabase
     .from("map_markers")

@@ -64,12 +64,17 @@ type HomeScreenProps = {
 
 const homeTabs = ["Overview", "Identity", "Attributes", "Abilities", "Inventory"] as const;
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
+const inventoryCategoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
+const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
+const adminToolTabs = ["Items", "Abilities", "Enemies"] as const;
 
 export function HomeScreen({ character }: HomeScreenProps) {
   const [activeTab, setActiveTab] = useState<(typeof homeTabs)[number]>("Overview");
   const [unlockedAbilities, setUnlockedAbilities] = useState<AbilityDefinition[]>([]);
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
   const [selectedAbilityKey, setSelectedAbilityKey] = useState<string | null>(null);
+  const [selectedAdminAbilityId, setSelectedAdminAbilityId] = useState<string | null>(null);
+  const [abilityTypeTab, setAbilityTypeTab] = useState<(typeof abilityTypeTabs)[number]>("Attack");
   const [abilityMessage, setAbilityMessage] = useState<string | null>(null);
   const [adminAbilities, setAdminAbilities] = useState<CombatAbility[]>([]);
   const [abilityForm, setAbilityForm] = useState<Partial<CombatAbility>>(blankCombatAbility());
@@ -86,6 +91,9 @@ export function HomeScreen({ character }: HomeScreenProps) {
   const [dropChance, setDropChance] = useState("100");
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
+  const [inventoryCategory, setInventoryCategory] = useState<(typeof inventoryCategoryTabs)[number]>("Weapons");
+  const [selectedInventoryItemId, setSelectedInventoryItemId] = useState<string | null>(null);
+  const [adminToolTab, setAdminToolTab] = useState<(typeof adminToolTabs)[number]>("Items");
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
   const [totalInventoryWeight, setTotalInventoryWeight] = useState(0);
   const [carryCapacity, setCarryCapacity] = useState(50);
@@ -103,6 +111,11 @@ export function HomeScreen({ character }: HomeScreenProps) {
   });
   const isAdmin = role === "admin";
   const abilityGroups = useMemo(() => groupAbilitiesForDisplay(unlockedAbilities), [unlockedAbilities]);
+  const selectedInventoryItem = useMemo(() => inventoryItems.find((entry) => entry.id === selectedInventoryItemId) ?? inventoryItems[0] ?? null, [inventoryItems, selectedInventoryItemId]);
+  const filteredInventoryItems = useMemo(() => inventoryItems.filter((entry) => itemMatchesCategory(entry.item, inventoryCategory)), [inventoryItems, inventoryCategory]);
+  const filteredAdminItems = useMemo(() => itemDefinitions.filter((item) => itemMatchesCategory(item, inventoryCategory)), [itemDefinitions, inventoryCategory]);
+  const filteredAdminAbilities = useMemo(() => adminAbilities.filter((ability) => ability.type === abilityTypeTab.toLowerCase()), [adminAbilities, abilityTypeTab]);
+  const selectedAdminAbility = useMemo(() => adminAbilities.find((ability) => ability.id === selectedAdminAbilityId) ?? filteredAdminAbilities[0] ?? null, [adminAbilities, filteredAdminAbilities, selectedAdminAbilityId]);
 
   useEffect(() => {
     void loadAbilities();
@@ -150,6 +163,8 @@ export function HomeScreen({ character }: HomeScreenProps) {
   }
 
   async function editAdminAbility(ability: CombatAbility) {
+    setSelectedAdminAbilityId(ability.id);
+    setAbilityTypeTab(toAbilityTypeTab(ability.type));
     setEditingAdminAbilityId(ability.id);
     setAbilityForm(ability);
   }
@@ -292,6 +307,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
   }
 
   async function editItem(item: ItemDefinition) {
+    setInventoryCategory(toInventoryCategory(item.type));
     setEditingItemId(item.id);
     setItemForm(item);
   }
@@ -470,7 +486,35 @@ export function HomeScreen({ character }: HomeScreenProps) {
             )}
             {isAdmin ? (
               <View style={styles.adminBuilder}>
+                <View style={styles.tabs}>
+                  {adminToolTabs.map((tab) => (
+                    <Pressable key={tab} style={[styles.tab, adminToolTab === tab && styles.activeTab]} onPress={() => setAdminToolTab(tab)}>
+                      <Text style={[styles.tabText, adminToolTab === tab && styles.activeTabText]}>{tab}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {adminToolTab === "Abilities" ? (
+                  <>
                 <Text style={styles.sectionTitle}>Admin Abilities</Text>
+                <View style={styles.tabs}>
+                  {abilityTypeTabs.map((tab) => (
+                    <Pressable key={tab} style={[styles.tab, abilityTypeTab === tab && styles.activeTab]} onPress={() => setAbilityTypeTab(tab)}>
+                      <Text style={[styles.tabText, abilityTypeTab === tab && styles.activeTabText]}>{tab}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {selectedAdminAbility ? (
+                  <View style={styles.detailPanel}>
+                    <Text style={styles.abilityName}>{selectedAdminAbility.name}</Text>
+                    <Text style={styles.muted}>{selectedAdminAbility.type} / Damage {selectedAdminAbility.damage} / Healing {selectedAdminAbility.healing} / Defense {selectedAdminAbility.defense_amount}</Text>
+                    <Text style={styles.muted}>Costs: {selectedAdminAbility.stamina_cost} Stamina / {selectedAdminAbility.magika_cost} Magika / {selectedAdminAbility.health_cost} Health</Text>
+                    <Text style={styles.muted}>Unlock: {selectedAdminAbility.required_attribute ? `${selectedAdminAbility.required_attribute} ${selectedAdminAbility.required_attribute_level}` : selectedAdminAbility.learn_method}</Text>
+                    <View style={styles.slotActions}>
+                      <Pressable style={styles.smallButton} onPress={() => void editAdminAbility(selectedAdminAbility)}><Text style={styles.smallButtonText}>Edit Selected</Text></Pressable>
+                      <Pressable style={styles.smallButton} onPress={() => void removeAdminAbility(selectedAdminAbility.id)}><Text style={styles.smallButtonText}>Delete Selected</Text></Pressable>
+                    </View>
+                  </View>
+                ) : null}
                 <Text style={styles.muted}>Create database abilities for players, gear, scrolls, quests, and enemies. Images can use /assets/abilities/filename.png or a full URL.</Text>
                 <ItemText label="Name" value={abilityForm.name ?? ""} onChange={(value) => setAbilityForm((current) => ({ ...current, name: value }))} />
                 <ChoiceRow label="Type" options={combatAbilityTypes} value={abilityForm.type ?? "attack"} onSelect={(value) => setAbilityForm((current) => ({ ...current, type: value }))} />
@@ -516,8 +560,8 @@ export function HomeScreen({ character }: HomeScreenProps) {
                     <Text style={styles.smallButtonText}>Cancel Ability Edit</Text>
                   </Pressable>
                 ) : null}
-                {adminAbilities.map((ability) => (
-                  <View key={ability.id} style={styles.abilityCard}>
+                {filteredAdminAbilities.map((ability) => (
+                  <Pressable key={ability.id} style={[styles.abilityCard, selectedAdminAbilityId === ability.id && styles.abilityCardActive]} onPress={() => setSelectedAdminAbilityId(ability.id)}>
                     <Text style={styles.abilityName}>{ability.name}</Text>
                     <Text style={styles.muted}>{ability.type} / {ability.damage} damage / {ability.healing} healing / {ability.status_effect}</Text>
                     <Text style={styles.muted}>Unlock: {ability.required_attribute ? `${ability.required_attribute} ${ability.required_attribute_level}` : "manual/gear/quest"}</Text>
@@ -525,9 +569,12 @@ export function HomeScreen({ character }: HomeScreenProps) {
                       <Pressable style={styles.smallButton} onPress={() => void editAdminAbility(ability)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
                       <Pressable style={styles.smallButton} onPress={() => void removeAdminAbility(ability.id)}><Text style={styles.smallButtonText}>Delete</Text></Pressable>
                     </View>
-                  </View>
+                  </Pressable>
                 ))}
-
+                  </>
+                ) : null}
+                {adminToolTab === "Enemies" ? (
+                  <>
                 <Text style={styles.sectionTitle}>Enemy Admin</Text>
                 <ItemText label="Name" value={enemyForm.name ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, name: value }))} />
                 <ItemText label="Type" value={enemyForm.type ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, type: value }))} />
@@ -591,6 +638,9 @@ export function HomeScreen({ character }: HomeScreenProps) {
                     </View>
                   </View>
                 ))}
+                  </>
+                ) : null}
+                {adminToolTab === "Items" ? <Text style={styles.muted}>Open the Inventory tab to manage item records by category.</Text> : null}
               </View>
             ) : null}
           </View>
@@ -615,10 +665,30 @@ export function HomeScreen({ character }: HomeScreenProps) {
             <Text style={styles.subTitle}>Inventory</Text>
             <Text style={styles.muted}>Carry Weight {totalInventoryWeight.toFixed(1)} / {carryCapacity.toFixed(1)}</Text>
             <ProgressBar value={Math.min(totalInventoryWeight, carryCapacity)} max={Math.max(1, carryCapacity)} color={totalInventoryWeight > carryCapacity ? colors.red : colors.gold} height={8} />
+            <View style={styles.tabs}>
+              {inventoryCategoryTabs.map((tab) => (
+                <Pressable key={tab} style={[styles.tab, inventoryCategory === tab && styles.activeTab]} onPress={() => setInventoryCategory(tab)}>
+                  <Text style={[styles.tabText, inventoryCategory === tab && styles.activeTabText]}>{tab}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {selectedInventoryItem ? (
+              <View style={styles.detailPanel}>
+                <Text style={styles.abilityName}>{selectedInventoryItem.item.name}</Text>
+                <Text style={styles.muted}>{selectedInventoryItem.item.type} / {selectedInventoryItem.item.rarity} / Qty {selectedInventoryItem.quantity}</Text>
+                <Text style={styles.muted}>{selectedInventoryItem.item.description ?? "No description."}</Text>
+                <Text style={styles.muted}>Value {selectedInventoryItem.item.gold_value} gold / Weight {(Number(selectedInventoryItem.item.weight ?? 0) * selectedInventoryItem.quantity).toFixed(1)}</Text>
+                <View style={styles.slotActions}>
+                  {selectedInventoryItem.item.equipment_slot ? <Pressable style={styles.smallButton} onPress={() => void equipItem(selectedInventoryItem)}><Text style={styles.smallButtonText}>Equip</Text></Pressable> : null}
+                  {selectedInventoryItem.equippedSlot ? <Pressable style={styles.smallButton} onPress={() => void unequipSlot(selectedInventoryItem.equippedSlot as "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic")}><Text style={styles.smallButtonText}>Unequip</Text></Pressable> : null}
+                  {selectedInventoryItem.item.sellable ? <Pressable style={styles.smallButton} onPress={() => void sellItem(selectedInventoryItem)}><Text style={styles.smallButtonText}>Sell</Text></Pressable> : null}
+                </View>
+              </View>
+            ) : null}
             <View style={styles.abilityList}>
-              {inventoryItems.length === 0 ? <Text style={styles.muted}>No items yet.</Text> : null}
-              {inventoryItems.map((entry) => (
-                <View key={entry.id} style={styles.itemCard}>
+              {filteredInventoryItems.length === 0 ? <Text style={styles.muted}>No items in this category yet.</Text> : null}
+              {filteredInventoryItems.map((entry) => (
+                <Pressable key={entry.id} style={[styles.itemCard, selectedInventoryItemId === entry.id && styles.abilityCardActive]} onPress={() => setSelectedInventoryItemId(entry.id)}>
                   {resolveInventoryImageUri(entry.item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(entry.item.image_path) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                   <View style={styles.itemBody}>
                     <Text style={styles.abilityName}>{entry.item.name}{entry.equippedSlot ? " - Equipped" : ""}</Text>
@@ -647,11 +717,20 @@ export function HomeScreen({ character }: HomeScreenProps) {
                       ) : null}
                     </View>
                   </View>
-                </View>
+                </Pressable>
               ))}
             </View>
             {isAdmin ? (
               <View style={styles.adminBuilder}>
+                <View style={styles.tabs}>
+                  {adminToolTabs.map((tab) => (
+                    <Pressable key={tab} style={[styles.tab, adminToolTab === tab && styles.activeTab]} onPress={() => setAdminToolTab(tab)}>
+                      <Text style={[styles.tabText, adminToolTab === tab && styles.activeTabText]}>{tab}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {adminToolTab === "Items" ? (
+                  <>
                 <Text style={styles.sectionTitle}>Admin Items</Text>
                 <Text style={styles.muted}>Create/edit items. Use /assets/InventoryItems/filename.png, paste a full URL, or type just the filename.</Text>
                 <Text style={styles.subTitle}>Carry Balance</Text>
@@ -721,7 +800,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                     <Text style={styles.smallButtonText}>Cancel Edit</Text>
                   </Pressable>
                 ) : null}
-                {itemDefinitions.map((item) => (
+                {filteredAdminItems.map((item) => (
                   <View key={item.id} style={styles.itemCard}>
                     {resolveInventoryImageUri(item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(item.image_path) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                     <View style={styles.itemBody}>
@@ -735,6 +814,10 @@ export function HomeScreen({ character }: HomeScreenProps) {
                     </View>
                   </View>
                 ))}
+                  </>
+                ) : null}
+                {adminToolTab === "Abilities" ? <Text style={styles.muted}>Open the Abilities tab to manage ability records by type.</Text> : null}
+                {adminToolTab === "Enemies" ? <Text style={styles.muted}>Open the Abilities tab to manage enemy records.</Text> : null}
               </View>
             ) : null}
           </View>
@@ -831,6 +914,30 @@ function getAbilityUnlockLabel(ability: AbilityDefinition) {
   }
 
   return "Learned";
+}
+
+function itemMatchesCategory(item: ItemDefinition, category: (typeof inventoryCategoryTabs)[number]) {
+  if (category === "Weapons") return item.type === "weapon";
+  if (category === "Armor") return item.type === "armor";
+  if (category === "Wearables") return item.type === "wearable";
+  if (category === "Consumables") return ["potion", "revive potion", "consumable", "food", "scroll"].includes(item.type);
+  if (category === "Materials") return item.type === "material";
+  if (category === "Special") return item.type === "special";
+  return item.type === "misc";
+}
+
+function toInventoryCategory(type: ItemDefinition["type"]): (typeof inventoryCategoryTabs)[number] {
+  if (type === "weapon") return "Weapons";
+  if (type === "armor") return "Armor";
+  if (type === "wearable") return "Wearables";
+  if (["potion", "revive potion", "consumable", "food", "scroll"].includes(type)) return "Consumables";
+  if (type === "material") return "Materials";
+  if (type === "special") return "Special";
+  return "Misc";
+}
+
+function toAbilityTypeTab(type: CombatAbility["type"]): (typeof abilityTypeTabs)[number] {
+  return type === "attack" ? "Attack" : type === "heal" ? "Heal" : type === "buff" ? "Buff" : type === "debuff" ? "Debuff" : type === "defense" ? "Defense" : "Passive";
 }
 
 const styles = StyleSheet.create({
@@ -1020,6 +1127,14 @@ const styles = StyleSheet.create({
   },
   abilityList: {
     gap: 8,
+  },
+  detailPanel: {
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.blue,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "rgba(20, 61, 86, 0.28)",
   },
   abilityGroup: {
     gap: 8,
