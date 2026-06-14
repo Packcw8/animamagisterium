@@ -27,6 +27,36 @@ export const onHitEffects = ["restore health per hit", "restore stamina per hit"
 export const buffTargets = ["max health", "max stamina", "max magika", "strength", "agility", "intelligence", "charisma", "defense", "damage", "gold gain", "xp gain"] as const;
 export const boostTargets = ["health", "stamina", "magika", "strength", "agility", "intelligence", "charisma", "defense", "damage", "gold gain", "xp gain"] as const;
 export const potionTargets = ["health", "stamina", "magika"] as const;
+export const inventoryAssetBasePath = "/assets/InventoryItems/";
+
+export function resolveInventoryImageUri(imagePath?: string | null) {
+  const trimmed = imagePath?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const normalized = trimmed.replaceAll("\\", "/");
+  const fixedFolder = normalized.replace(/^\/?assets\/inventory\//i, inventoryAssetBasePath);
+
+  if (fixedFolder.startsWith("/assets/InventoryItems/")) {
+    return fixedFolder;
+  }
+
+  if (fixedFolder.startsWith("assets/InventoryItems/")) {
+    return `/${fixedFolder}`;
+  }
+
+  if (!fixedFolder.includes("/")) {
+    return `${inventoryAssetBasePath}${fixedFolder}`;
+  }
+
+  return fixedFolder.startsWith("/") ? fixedFolder : `/${fixedFolder}`;
+}
 
 export function blankItemDefinition(): Partial<ItemDefinition> {
   return {
@@ -34,7 +64,7 @@ export function blankItemDefinition(): Partial<ItemDefinition> {
     type: "misc",
     rarity: "common",
     description: "",
-    image_path: "/assets/inventory/",
+    image_path: inventoryAssetBasePath,
     gold_value: 0,
     stackable: false,
     sellable: true,

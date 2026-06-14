@@ -16,6 +16,18 @@ for (const file of filesToCopy) {
   fs.copyFileSync(path.join(assets, file), path.join(dist, file));
 }
 
+const publicAssetFolders = ["InventoryItems", "Chapter1StoryImages"];
+
+for (const folder of publicAssetFolders) {
+  const source = path.join(assets, folder);
+  const target = path.join(dist, "assets", folder);
+
+  if (fs.existsSync(source)) {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.cpSync(source, target, { recursive: true });
+  }
+}
+
 const manifest = {
   name: "Anima Magisterium",
   short_name: "Anima",
@@ -57,4 +69,4 @@ if (!indexHtml.includes('rel="manifest"')) {
 }
 
 fs.writeFileSync(indexPath, indexHtml);
-console.log("Patched web app icons and manifest.");
+console.log("Patched web app icons, manifest, and public asset folders.");

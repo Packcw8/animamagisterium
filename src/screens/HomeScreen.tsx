@@ -24,6 +24,7 @@ import {
   onHitEffects,
   potionTargets,
   rarityOptions,
+  resolveInventoryImageUri,
   saveItemDefinition,
   sellInventoryItem,
   unequipInventorySlot,
@@ -309,7 +310,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
               {inventoryItems.length === 0 ? <Text style={styles.muted}>No items yet.</Text> : null}
               {inventoryItems.map((entry) => (
                 <View key={entry.id} style={styles.itemCard}>
-                  {entry.item.image_path ? <Image source={{ uri: entry.item.image_path }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
+                  {resolveInventoryImageUri(entry.item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(entry.item.image_path) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                   <View style={styles.itemBody}>
                     <Text style={styles.abilityName}>{entry.item.name}{entry.equippedSlot ? " - Equipped" : ""}</Text>
                     <Text style={styles.muted}>{entry.item.type} / {entry.item.rarity} / Qty {entry.quantity} / {entry.item.gold_value} gold</Text>
@@ -343,13 +344,13 @@ export function HomeScreen({ character }: HomeScreenProps) {
             {isAdmin ? (
               <View style={styles.adminBuilder}>
                 <Text style={styles.sectionTitle}>Admin Items</Text>
-                <Text style={styles.muted}>Create/edit items. Image paths can point to /assets/inventory/filename.png.</Text>
+                <Text style={styles.muted}>Create/edit items. Use /assets/InventoryItems/filename.png, paste a full URL, or type just the filename.</Text>
                 <ItemText label="Name" value={itemForm.name ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, name: value }))} />
                 <ChoiceRow label="Type" options={itemTypes} value={itemForm.type ?? "misc"} onSelect={(value) => setItemForm((current) => ({ ...current, type: value, equipment_slot: defaultSlotForType(value) }))} />
                 <ChoiceRow label="Rarity" options={rarityOptions} value={itemForm.rarity ?? "common"} onSelect={(value) => setItemForm((current) => ({ ...current, rarity: value }))} />
                 <ItemText label="Description" value={itemForm.description ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, description: value }))} />
                 <ItemText label="Image path" value={itemForm.image_path ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, image_path: value }))} />
-                {itemForm.image_path ? <Image source={{ uri: itemForm.image_path }} style={styles.previewImage} /> : null}
+                {resolveInventoryImageUri(itemForm.image_path) ? <Image source={{ uri: resolveInventoryImageUri(itemForm.image_path) ?? "" }} style={styles.previewImage} /> : null}
                 <ItemText label="Gold value" value={String(itemForm.gold_value ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, gold_value: Number(value) || 0 }))} />
                 <ToggleRow label="Stackable" value={Boolean(itemForm.stackable)} onPress={() => setItemForm((current) => ({ ...current, stackable: !current.stackable }))} />
                 <ToggleRow label="Sellable" value={Boolean(itemForm.sellable)} onPress={() => setItemForm((current) => ({ ...current, sellable: !current.sellable }))} />
@@ -401,7 +402,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 ) : null}
                 {itemDefinitions.map((item) => (
                   <View key={item.id} style={styles.itemCard}>
-                    {item.image_path ? <Image source={{ uri: item.image_path }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
+                    {resolveInventoryImageUri(item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(item.image_path) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                     <View style={styles.itemBody}>
                       <Text style={styles.abilityName}>{item.name}</Text>
                       <Text style={styles.muted}>{item.type} / {item.rarity}</Text>
