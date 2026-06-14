@@ -1,8 +1,11 @@
 import { supabase, Tables } from "../lib/supabase";
+import type { CharacterWithDetails } from "./characterService";
+import { consumeInventoryItem, grantItemToCharacter, type InventoryItem } from "./inventoryService";
 
 export type MapRoute = Tables["map_routes"];
 export type RouteProgress = Tables["route_progress"];
 export type MapMarker = Tables["map_markers"];
+export type MarkerMarketItem = Tables["marker_market_items"];
 export type MapStoryInstance = Tables["map_story_instances"];
 export type MapEvent = Tables["map_events"];
 export type MapEventCompletion = Tables["map_event_completions"];
@@ -219,6 +222,52 @@ export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | 
   return data as MapMarker;
 }
 
+export async function getMarkerMarketItems(markerId: string) {
+  const { data, error } = await supabase
+    .from("marker_market_items")
+    .select("*")
+    .eq("marker_id", markerId)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("[map] marker market unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as MarkerMarketItem[];
+}
+
+export async function saveMarkerMarketItem(input: Omit<MarkerMarketItem, "id" | "created_at" | "updated_at"> & { id?: string }) {
+  const values = {
+    marker_id: input.marker_id,
+    item_id: input.item_id,
+    buy_price: Number(input.buy_price) || 0,
+    sell_price: Number(input.sell_price) || 0,
+    stock_quantity: input.unlimited_stock ? null : Math.max(0, Number(input.stock_quantity) || 0),
+    unlimited_stock: Boolean(input.unlimited_stock),
+    updated_at: new Date().toISOString(),
+  };
+
+  const request = input.id
+    ? supabase.from("marker_market_items").update(values).eq("id", input.id).select().single()
+    : supabase.from("marker_market_items").upsert(values, { onConflict: "marker_id,item_id" }).select().single();
+  const { data, error } = await request;
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MarkerMarketItem;
+}
+
+export async function deleteMarkerMarketItem(marketItemId: string) {
+  const { error } = await supabase.from("marker_market_items").delete().eq("id", marketItemId);
+
+  if (error) {
+    throw error;
+  }
+}
+
 export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active">) {
   const { data, error } = await supabase
     .from("map_routes")
@@ -255,6 +304,24 @@ export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRo
 }
 
 export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key">>) {
+  const { data, error } = await supabase
+    .from("map_markers")
+    .update({
+      ...values,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", markerId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MapMarker;
+}
+
+export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "quest_title" | "quest_dialogue" | "quest_image_url" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "repeatable" | "reward_once_per_player">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({
@@ -457,6 +524,208 @@ export async function completeMapEvent(eventId: string) {
   }
 
   return data as MapEventCompletion;
+}
+
+export async function applyRewards(
+  character: CharacterWithDetails,
+  reward: {
+    xp?: number | null;
+    gold?: number | null;
+    itemId?: string | null;
+    itemQuantity?: number | null;
+    repeatable?: boolean | null;
+    rewardOncePerPlayer?: boolean | null;
+    markerId?: string | null;
+    eventId?: string | null;
+    choiceId?: string | null;
+  },
+) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to claim rewards.");
+  }
+
+  const shouldTrackClaim = Boolean(reward.markerId || reward.eventId || reward.choiceId);
+  const allowRepeat = Boolean(reward.repeatable) || reward.rewardOncePerPlayer === false;
+
+  if (shouldTrackClaim && !allowRepeat) {
+    let query = supabase.from("marker_reward_claims").select("id").eq("user_id", user.id).limit(1);
+    if (reward.markerId) {
+      query = query.eq("marker_id", reward.markerId);
+    } else if (reward.eventId) {
+      query = query.eq("event_id", reward.eventId);
+    } else if (reward.choiceId) {
+      query = query.eq("choice_id", reward.choiceId);
+    }
+
+    const { data: existing, error: existingError } = await query;
+    if (existingError) {
+      throw existingError;
+    }
+
+    if ((existing ?? []).length > 0) {
+      return { claimed: false, message: "Reward already claimed." };
+    }
+  }
+
+  const { data: currentCharacter, error: characterError } = await supabase
+    .from("characters")
+    .select("xp,gold")
+    .eq("id", character.id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (characterError) {
+    throw characterError;
+  }
+
+  const xp = Math.max(0, Number(reward.xp) || 0);
+  const gold = Math.max(0, Number(reward.gold) || 0);
+  const quantity = Math.max(1, Number(reward.itemQuantity) || 1);
+
+  if (xp > 0 || gold > 0) {
+    const { error } = await supabase
+      .from("characters")
+      .update({
+        xp: Number(currentCharacter.xp) + xp,
+        gold: Number(currentCharacter.gold) + gold,
+      })
+      .eq("id", character.id)
+      .eq("user_id", user.id);
+
+    if (error) {
+      throw error;
+    }
+  }
+
+  if (reward.itemId) {
+    await grantItemToCharacter(character.id, reward.itemId, quantity);
+  }
+
+  if (shouldTrackClaim && !allowRepeat) {
+    const { error } = await supabase.from("marker_reward_claims").insert({
+      user_id: user.id,
+      character_id: character.id,
+      marker_id: reward.markerId ?? null,
+      event_id: reward.eventId ?? null,
+      choice_id: reward.choiceId ?? null,
+    });
+
+    if (error && error.code !== "23505") {
+      throw error;
+    }
+  }
+
+  return { claimed: true, message: formatRewardMessage(xp, gold, reward.itemId ? quantity : 0) };
+}
+
+export async function buyMarketItem(character: CharacterWithDetails, marketItem: MarkerMarketItem) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to buy items.");
+  }
+
+  if (!marketItem.unlimited_stock && Number(marketItem.stock_quantity) <= 0) {
+    throw new Error("This item is out of stock.");
+  }
+
+  const { data: currentCharacter, error: characterError } = await supabase
+    .from("characters")
+    .select("gold")
+    .eq("id", character.id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (characterError) {
+    throw characterError;
+  }
+
+  const price = Math.max(0, Number(marketItem.buy_price) || 0);
+  if (Number(currentCharacter.gold) < price) {
+    throw new Error("Not enough gold.");
+  }
+
+  const { error: goldError } = await supabase
+    .from("characters")
+    .update({ gold: Number(currentCharacter.gold) - price })
+    .eq("id", character.id)
+    .eq("user_id", user.id);
+
+  if (goldError) {
+    throw goldError;
+  }
+
+  await grantItemToCharacter(character.id, marketItem.item_id, 1);
+
+  if (!marketItem.unlimited_stock) {
+    const { error: stockError } = await supabase
+      .from("marker_market_items")
+      .update({ stock_quantity: Math.max(0, Number(marketItem.stock_quantity) - 1), updated_at: new Date().toISOString() })
+      .eq("id", marketItem.id);
+
+    if (stockError) {
+      throw stockError;
+    }
+  }
+}
+
+export async function sellMarketInventoryItem(character: CharacterWithDetails, inventoryItem: InventoryItem, sellPrice: number) {
+  if (!inventoryItem.item.sellable) {
+    throw new Error("This item cannot be sold.");
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to sell items.");
+  }
+
+  const { data: currentCharacter, error: characterError } = await supabase
+    .from("characters")
+    .select("gold")
+    .eq("id", character.id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (characterError) {
+    throw characterError;
+  }
+
+  await consumeInventoryItem(inventoryItem, 1);
+  const { error } = await supabase
+    .from("characters")
+    .update({ gold: Number(currentCharacter.gold) + Math.max(0, Number(sellPrice) || 0) })
+    .eq("id", character.id)
+    .eq("user_id", user.id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+function formatRewardMessage(xp: number, gold: number, itemQuantity: number) {
+  const parts = [];
+  if (xp > 0) {
+    parts.push(`${xp} XP`);
+  }
+  if (gold > 0) {
+    parts.push(`${gold} gold`);
+  }
+  if (itemQuantity > 0) {
+    parts.push(`${itemQuantity} item${itemQuantity === 1 ? "" : "s"}`);
+  }
+  return parts.length > 0 ? `Reward claimed: ${parts.join(", ")}.` : "No reward configured.";
 }
 
 export async function getDialogueNodes(eventId: string) {

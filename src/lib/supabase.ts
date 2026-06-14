@@ -225,7 +225,10 @@ export type Tables = {
     victory_text: string | null;
     defeat_text: string | null;
     reward_xp: number;
+    reward_gold: number;
     reward_item: string | null;
+    reward_item_id: string | null;
+    reward_item_quantity: number;
     is_active: boolean;
     created_by: string | null;
     created_at: string;
@@ -263,7 +266,10 @@ export type Tables = {
     next_node_id: string | null;
     battle_event_id: string | null;
     reward_xp: number;
+    reward_gold: number;
     reward_item: string | null;
+    reward_item_id: string | null;
+    reward_item_quantity: number;
     sort_order: number;
     created_at: string;
     updated_at: string;
@@ -291,9 +297,38 @@ export type Tables = {
     is_unlocked: boolean;
     quest_key: string | null;
     route_id: string | null;
+    quest_title: string | null;
+    quest_dialogue: string | null;
+    quest_image_url: string | null;
+    reward_xp: number;
+    reward_gold: number;
+    reward_item_id: string | null;
+    reward_item_quantity: number;
+    repeatable: boolean;
+    reward_once_per_player: boolean;
     created_by: string | null;
     created_at: string;
     updated_at: string;
+  };
+  marker_market_items: {
+    id: string;
+    marker_id: string;
+    item_id: string;
+    buy_price: number;
+    sell_price: number;
+    stock_quantity: number | null;
+    unlimited_stock: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  marker_reward_claims: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    marker_id: string | null;
+    event_id: string | null;
+    choice_id: string | null;
+    claimed_at: string;
   };
 };
 

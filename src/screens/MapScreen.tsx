@@ -11,11 +11,14 @@ import { AbilityDefinition, CharacterResources, getAbilityCostLabel, getAbilityD
 import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, InventoryItem, ItemDefinition } from "../services/inventoryService";
 import {
   completeMapEvent,
+  applyRewards,
+  buyMarketItem,
   createDialogueChoice,
   createDialogueNode,
   createMapRoute,
   createMapEvent,
   createMapMarker,
+  deleteMarkerMarketItem,
   deleteDialogueChoice,
   deleteDialogueNode,
   deleteMapEvent,
@@ -25,6 +28,7 @@ import {
   getMapMarkers,
   getMapRoutes,
   getMapEvents,
+  getMarkerMarketItems,
   getDialogueChoices,
   getDialogueNodes,
   getEventCompletions,
@@ -33,21 +37,25 @@ import {
   MapMarker,
   MapEvent,
   MapRoute,
+  MarkerMarketItem,
   Role,
   resetRouteProgress,
   StoryDialogueChoice,
   StoryDialogueNode,
+  saveMarkerMarketItem,
   saveRouteProgress,
+  sellMarketInventoryItem,
   updateDialogueChoice,
   updateDialogueNode,
   updateMapEvent,
   updateMapMarker,
+  updateMarkerSettings,
   updateMapRoute,
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const mapSize = { width: 1800, height: 1400 };
-const markerTypes = ["Town", "Village", "Quest", "Dungeon", "Battle", "Boss", "Merchant", "Training Area", "Landmark", "Occult Clue", "Guild", "Custom"];
+const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot"];
 const editorModes = ["Marker", "Walking Path"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
 const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle", "Complete Event"] as const;
@@ -104,6 +112,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const [combatResources, setCombatResources] = useState<CharacterResources>(() => getCharacterResources(character));
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
   const [battleInventoryOpen, setBattleInventoryOpen] = useState(false);
   const [role, setRole] = useState<Role>("player");
@@ -125,6 +134,22 @@ export function MapScreen({ character }: MapScreenProps) {
   const [draftType, setDraftType] = useState(markerTypes[0]);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftDescription, setDraftDescription] = useState("");
+  const [markerQuestTitle, setMarkerQuestTitle] = useState("");
+  const [markerQuestDialogue, setMarkerQuestDialogue] = useState("");
+  const [markerQuestImage, setMarkerQuestImage] = useState("");
+  const [markerRewardXp, setMarkerRewardXp] = useState("0");
+  const [markerRewardGold, setMarkerRewardGold] = useState("0");
+  const [markerRewardItemId, setMarkerRewardItemId] = useState<string | null>(null);
+  const [markerRewardQuantity, setMarkerRewardQuantity] = useState("1");
+  const [markerRepeatable, setMarkerRepeatable] = useState(false);
+  const [markerRewardOnce, setMarkerRewardOnce] = useState(true);
+  const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
+  const [marketItemId, setMarketItemId] = useState<string | null>(null);
+  const [marketBuyPrice, setMarketBuyPrice] = useState("0");
+  const [marketSellPrice, setMarketSellPrice] = useState("0");
+  const [marketStock, setMarketStock] = useState("0");
+  const [marketUnlimited, setMarketUnlimited] = useState(true);
+  const [markerPanelMessage, setMarkerPanelMessage] = useState<string | null>(null);
   const [editorMode, setEditorMode] = useState<(typeof editorModes)[number]>("Marker");
   const [pathDraft, setPathDraft] = useState<Array<{ x: number; y: number }>>([]);
   const [routeName, setRouteName] = useState("");
@@ -149,7 +174,10 @@ export function MapScreen({ character }: MapScreenProps) {
   const [victoryText, setVictoryText] = useState("");
   const [defeatText, setDefeatText] = useState("");
   const [rewardXp, setRewardXp] = useState("0");
+  const [rewardGold, setRewardGold] = useState("0");
   const [rewardItem, setRewardItem] = useState("");
+  const [rewardItemId, setRewardItemId] = useState<string | null>(null);
+  const [rewardItemQuantity, setRewardItemQuantity] = useState("1");
   const [selectedDialogueEventId, setSelectedDialogueEventId] = useState<string | null>(null);
   const [editingNode, setEditingNode] = useState<StoryDialogueNode | null>(null);
   const [editingChoice, setEditingChoice] = useState<StoryDialogueChoice | null>(null);
@@ -171,7 +199,10 @@ export function MapScreen({ character }: MapScreenProps) {
   const [choiceNextNodeId, setChoiceNextNodeId] = useState<string | null>(null);
   const [choiceBattleEventId, setChoiceBattleEventId] = useState<string | null>(null);
   const [choiceRewardXp, setChoiceRewardXp] = useState("0");
+  const [choiceRewardGold, setChoiceRewardGold] = useState("0");
   const [choiceRewardItem, setChoiceRewardItem] = useState("");
+  const [choiceRewardItemId, setChoiceRewardItemId] = useState<string | null>(null);
+  const [choiceRewardItemQuantity, setChoiceRewardItemQuantity] = useState("1");
   const [choiceSortOrder, setChoiceSortOrder] = useState("0");
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [scale, setScale] = useState(0.86);
@@ -238,6 +269,7 @@ export function MapScreen({ character }: MapScreenProps) {
     try {
       const state = await getInventoryState(character.id);
       setInventoryItems(state.items);
+      setItemDefinitions(state.definitions);
       setEquippedItems(state.equipped);
       const bonuses = getInventoryResourceBonuses(state.equipped);
       setCombatResources(getCharacterResources(character, {
@@ -629,13 +661,150 @@ export function MapScreen({ character }: MapScreenProps) {
         route_id: route.id,
         quest_key: null,
       });
-      setMarkers((current) => [...current, created]);
+      const configured = await updateMarkerSettings(created.id, getMarkerSettingsPayload());
+      setMarkers((current) => [...current, configured]);
+      setSelectedMarker(configured);
       setDraftTitle("");
       setDraftDescription("");
       setClickedPercent(null);
       setAdminMessage("Marker created.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to create marker. Confirm the Supabase migration has run."));
+    }
+  }
+
+  function getMarkerSettingsPayload() {
+    return {
+      type: draftType,
+      title: draftTitle.trim() || selectedMarker?.title || "Untitled Marker",
+      description: draftDescription.trim() || null,
+      quest_title: markerQuestTitle.trim() || null,
+      quest_dialogue: markerQuestDialogue.trim() || null,
+      quest_image_url: markerQuestImage.trim() || null,
+      reward_xp: Number(markerRewardXp) || 0,
+      reward_gold: Number(markerRewardGold) || 0,
+      reward_item_id: markerRewardItemId,
+      reward_item_quantity: Math.max(1, Number(markerRewardQuantity) || 1),
+      repeatable: markerRepeatable,
+      reward_once_per_player: markerRewardOnce,
+    };
+  }
+
+  async function selectMarker(marker: MapMarker) {
+    setSelectedMarker(marker);
+    setDraftType(marker.type || markerTypes[0]);
+    setDraftTitle(marker.title);
+    setDraftDescription(marker.description ?? "");
+    setMarkerQuestTitle(marker.quest_title ?? "");
+    setMarkerQuestDialogue(marker.quest_dialogue ?? "");
+    setMarkerQuestImage(marker.quest_image_url ?? "");
+    setMarkerRewardXp(String(marker.reward_xp ?? 0));
+    setMarkerRewardGold(String(marker.reward_gold ?? 0));
+    setMarkerRewardItemId(marker.reward_item_id ?? null);
+    setMarkerRewardQuantity(String(marker.reward_item_quantity ?? 1));
+    setMarkerRepeatable(Boolean(marker.repeatable));
+    setMarkerRewardOnce(marker.reward_once_per_player ?? true);
+    setMarkerPanelMessage(null);
+
+    try {
+      setMarkerMarketItems(await getMarkerMarketItems(marker.id));
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to load marker market."));
+    }
+  }
+
+  async function saveSelectedMarkerSettings() {
+    if (!selectedMarker) {
+      return;
+    }
+
+    try {
+      const updated = await updateMarkerSettings(selectedMarker.id, getMarkerSettingsPayload());
+      setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
+      setSelectedMarker(updated);
+      setAdminMessage("Marker settings saved.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save marker settings."));
+    }
+  }
+
+  async function saveMarketItem() {
+    if (!selectedMarker || !marketItemId) {
+      setAdminMessage("Select a marker and item first.");
+      return;
+    }
+
+    try {
+      const saved = await saveMarkerMarketItem({
+        marker_id: selectedMarker.id,
+        item_id: marketItemId,
+        buy_price: Number(marketBuyPrice) || 0,
+        sell_price: Number(marketSellPrice) || 0,
+        stock_quantity: marketUnlimited ? null : Number(marketStock) || 0,
+        unlimited_stock: marketUnlimited,
+      });
+      setMarkerMarketItems((current) => [saved, ...current.filter((item) => item.id !== saved.id && item.item_id !== saved.item_id)]);
+      setAdminMessage("Market item saved.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save market item."));
+    }
+  }
+
+  async function removeMarketItem(marketItemId: string) {
+    try {
+      await deleteMarkerMarketItem(marketItemId);
+      setMarkerMarketItems((current) => current.filter((item) => item.id !== marketItemId));
+      setAdminMessage("Market item removed.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to remove market item."));
+    }
+  }
+
+  async function buyFromMarker(marketItem: MarkerMarketItem) {
+    try {
+      await buyMarketItem(character, marketItem);
+      setMarkerPanelMessage("Item purchased.");
+      await loadInventory();
+      if (selectedMarker) {
+        setMarkerMarketItems(await getMarkerMarketItems(selectedMarker.id));
+      }
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to buy item."));
+    }
+  }
+
+  async function sellToMarker(entry: InventoryItem) {
+    const marketItem = markerMarketItems.find((item) => item.item_id === entry.item_id);
+    const sellPrice = marketItem?.sell_price ?? entry.item.gold_value;
+
+    try {
+      await sellMarketInventoryItem(character, entry, sellPrice);
+      setMarkerPanelMessage("Item sold.");
+      await loadInventory();
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to sell item."));
+    }
+  }
+
+  async function claimSelectedMarkerReward() {
+    if (!selectedMarker) {
+      return;
+    }
+
+    try {
+      const result = await applyRewards(character, {
+        xp: selectedMarker.reward_xp,
+        gold: selectedMarker.reward_gold,
+        itemId: selectedMarker.reward_item_id,
+        itemQuantity: selectedMarker.reward_item_quantity,
+        repeatable: selectedMarker.repeatable,
+        rewardOncePerPlayer: selectedMarker.reward_once_per_player,
+        markerId: selectedMarker.id,
+      });
+      setMarkerPanelMessage(result.message);
+      await loadInventory();
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to claim marker reward."));
     }
   }
 
@@ -777,11 +946,19 @@ export function MapScreen({ character }: MapScreenProps) {
 
   async function finishEvent(event: MapEvent) {
     try {
+      const rewardResult = await applyRewards(character, {
+        xp: event.reward_xp,
+        gold: event.reward_gold,
+        itemId: event.reward_item_id,
+        itemQuantity: event.reward_item_quantity,
+        eventId: event.id,
+      });
       await completeMapEvent(event.id);
       setCompletedEventIds((current) => new Set([...current, event.id]));
       setActiveEvent(null);
       setActiveBattle(null);
-      setGpsMessage(`${event.title} completed.`);
+      setGpsMessage(`${event.title} completed. ${rewardResult.message}`);
+      await loadInventory();
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to complete event."));
     }
@@ -846,7 +1023,15 @@ export function MapScreen({ character }: MapScreenProps) {
     }
 
     if (choice.action === "give_reward") {
-      setDialogueLog((current) => [`Reward: ${choice.reward_xp} XP${choice.reward_item ? `, ${choice.reward_item}` : ""}`, ...current].slice(0, 4));
+      const rewardResult = await applyRewards(character, {
+        xp: choice.reward_xp,
+        gold: choice.reward_gold,
+        itemId: choice.reward_item_id,
+        itemQuantity: choice.reward_item_quantity,
+        choiceId: choice.id,
+      });
+      setDialogueLog((current) => [rewardResult.message, ...current].slice(0, 4));
+      await loadInventory();
       return;
     }
 
@@ -1047,7 +1232,10 @@ export function MapScreen({ character }: MapScreenProps) {
     setVictoryText(event.victory_text ?? "");
     setDefeatText(event.defeat_text ?? "");
     setRewardXp(String(event.reward_xp));
+    setRewardGold(String(event.reward_gold ?? 0));
     setRewardItem(event.reward_item ?? "");
+    setRewardItemId(event.reward_item_id ?? null);
+    setRewardItemQuantity(String(event.reward_item_quantity ?? 1));
   }
 
   function clearEventForm() {
@@ -1068,7 +1256,10 @@ export function MapScreen({ character }: MapScreenProps) {
     setVictoryText("");
     setDefeatText("");
     setRewardXp("0");
+    setRewardGold("0");
     setRewardItem("");
+    setRewardItemId(null);
+    setRewardItemQuantity("1");
   }
 
   async function saveMapEvent() {
@@ -1095,7 +1286,10 @@ export function MapScreen({ character }: MapScreenProps) {
       victory_text: victoryText.trim() || null,
       defeat_text: defeatText.trim() || null,
       reward_xp: Number(rewardXp) || 0,
+      reward_gold: Number(rewardGold) || 0,
       reward_item: rewardItem.trim() || null,
+      reward_item_id: rewardItemId,
+      reward_item_quantity: Math.max(1, Number(rewardItemQuantity) || 1),
       is_active: true,
     };
 
@@ -1220,7 +1414,10 @@ export function MapScreen({ character }: MapScreenProps) {
     setChoiceNextNodeId(choice.next_node_id);
     setChoiceBattleEventId(choice.battle_event_id);
     setChoiceRewardXp(String(choice.reward_xp));
+    setChoiceRewardGold(String(choice.reward_gold ?? 0));
     setChoiceRewardItem(choice.reward_item ?? "");
+    setChoiceRewardItemId(choice.reward_item_id ?? null);
+    setChoiceRewardItemQuantity(String(choice.reward_item_quantity ?? 1));
     setChoiceSortOrder(String(choice.sort_order));
   }
 
@@ -1239,7 +1436,10 @@ export function MapScreen({ character }: MapScreenProps) {
     setChoiceNextNodeId(null);
     setChoiceBattleEventId(null);
     setChoiceRewardXp("0");
+    setChoiceRewardGold("0");
     setChoiceRewardItem("");
+    setChoiceRewardItemId(null);
+    setChoiceRewardItemQuantity("1");
     setChoiceSortOrder(String(choiceNodeId ? getNextChoiceOrder(dialogueChoices, choiceNodeId) : 0));
   }
 
@@ -1257,7 +1457,10 @@ export function MapScreen({ character }: MapScreenProps) {
         next_node_id: choiceAction === "go_to_node" ? choiceNextNodeId : null,
         battle_event_id: choiceAction === "start_battle" ? choiceBattleEventId : null,
         reward_xp: Number(choiceRewardXp) || 0,
+        reward_gold: Number(choiceRewardGold) || 0,
         reward_item: choiceRewardItem.trim() || null,
+        reward_item_id: choiceRewardItemId,
+        reward_item_quantity: Math.max(1, Number(choiceRewardItemQuantity) || 1),
         sort_order: Number(choiceSortOrder) || 0,
       };
       const saved = editingChoice ? await updateDialogueChoice(editingChoice.id, input) : await createDialogueChoice({ ...input, node_id: choiceNodeId });
@@ -1419,7 +1622,7 @@ export function MapScreen({ character }: MapScreenProps) {
               style={[styles.marker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, { left: `${marker.x_percent}%`, top: `${marker.y_percent}%` }]}
               onPress={(event) => {
                 event.stopPropagation();
-                setSelectedMarker(marker);
+                void selectMarker(marker);
               }}
               {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
             >
@@ -1476,6 +1679,65 @@ export function MapScreen({ character }: MapScreenProps) {
         <Text style={styles.gpsMessage}>{gpsMessage}</Text>
       </Frame>
 
+      {selectedMarker && !isAdmin ? (
+        <Frame style={styles.panel}>
+          <View style={styles.panelHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>{selectedMarker.title}</Text>
+              <Text style={styles.copy}>{selectedMarker.type}</Text>
+            </View>
+            <Pressable style={styles.secondaryButtonFlex} onPress={() => setSelectedMarker(null)}>
+              <Text style={styles.secondaryText}>Close</Text>
+            </Pressable>
+          </View>
+          {selectedMarker.description ? <Text style={styles.copy}>{selectedMarker.description}</Text> : null}
+          {markerPanelMessage ? <Text style={styles.adminMessage}>{markerPanelMessage}</Text> : null}
+          {selectedMarker.type === "Market" ? (
+            <View style={styles.storyEditor}>
+              <Text style={styles.selectedTitle}>Buy</Text>
+              {markerMarketItems.length === 0 ? <Text style={styles.copy}>This market has no stock yet.</Text> : null}
+              {markerMarketItems.map((marketItem) => (
+                <View key={marketItem.id} style={styles.storyCard}>
+                  <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
+                  <Text style={styles.copy}>{marketItem.buy_price} gold / {marketItem.unlimited_stock ? "Unlimited stock" : `${marketItem.stock_quantity ?? 0} left`}</Text>
+                  <Pressable style={styles.primaryButton} onPress={() => void buyFromMarker(marketItem)}>
+                    <Text style={styles.primaryText}>Buy</Text>
+                  </Pressable>
+                </View>
+              ))}
+              <Text style={styles.selectedTitle}>Sell</Text>
+              {inventoryItems.filter((entry) => entry.item.sellable).length === 0 ? <Text style={styles.copy}>No sellable items.</Text> : null}
+              {inventoryItems.filter((entry) => entry.item.sellable).map((entry) => {
+                const marketItem = markerMarketItems.find((item) => item.item_id === entry.item_id);
+                const price = marketItem?.sell_price ?? entry.item.gold_value;
+                return (
+                  <View key={entry.id} style={styles.storyCard}>
+                    <Text style={styles.markerName}>{entry.item.name} x{entry.quantity}</Text>
+                    <Text style={styles.copy}>Sell for {price} gold</Text>
+                    <Pressable style={styles.secondaryButton} onPress={() => void sellToMarker(entry)}>
+                      <Text style={styles.secondaryText}>Sell One</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <View style={styles.storyEditor}>
+              {selectedMarker.quest_image_url ? <Image source={{ uri: selectedMarker.quest_image_url }} style={styles.eventImage} /> : null}
+              <Text style={styles.selectedTitle}>{selectedMarker.quest_title || selectedMarker.title}</Text>
+              {selectedMarker.quest_dialogue ? <Text style={styles.dialogueText}>{selectedMarker.quest_dialogue}</Text> : null}
+              <Text style={styles.copy}>
+                Rewards: {selectedMarker.reward_xp ?? 0} XP / {selectedMarker.reward_gold ?? 0} gold
+                {selectedMarker.reward_item_id ? ` / ${selectedMarker.reward_item_quantity ?? 1} ${getItemName(itemDefinitions, selectedMarker.reward_item_id)}` : ""}
+              </Text>
+              <Pressable style={styles.primaryButton} onPress={() => void claimSelectedMarkerReward()}>
+                <Text style={styles.primaryText}>Claim Reward</Text>
+              </Pressable>
+            </View>
+          )}
+        </Frame>
+      ) : null}
+
       {isAdmin ? (
         <Frame style={styles.panel}>
           <Text style={styles.sectionTitle}>Admin Map Editor</Text>
@@ -1516,9 +1778,59 @@ export function MapScreen({ character }: MapScreenProps) {
               </View>
               <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
+              {(draftType === "Side Quest" || draftType === "Story" || draftType === "Point of Interest") ? (
+                <View style={styles.storyEditor}>
+                  <Text style={styles.selectedTitle}>Marker Rewards / Quest Settings</Text>
+                  <TextInput value={markerQuestTitle} onChangeText={setMarkerQuestTitle} placeholder="Quest title optional" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Quest dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+                  <TextInput value={markerQuestImage} onChangeText={setMarkerQuestImage} placeholder="Quest image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={markerRewardXp} onChangeText={setMarkerRewardXp} placeholder="XP reward" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={markerRewardGold} onChangeText={setMarkerRewardGold} placeholder="Gold reward" placeholderTextColor={colors.muted} style={styles.input} />
+                  <ItemPicker label="Item reward" items={itemDefinitions} selectedId={markerRewardItemId} onSelect={setMarkerRewardItemId} />
+                  <TextInput value={markerRewardQuantity} onChangeText={setMarkerRewardQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
+                  <View style={styles.modeRow}>
+                    <Pressable style={[styles.secondaryButtonFlex, markerRepeatable && styles.typeSelected]} onPress={() => setMarkerRepeatable((value) => !value)}>
+                      <Text style={styles.secondaryText}>Repeatable: {markerRepeatable ? "Yes" : "No"}</Text>
+                    </Pressable>
+                    <Pressable style={[styles.secondaryButtonFlex, markerRewardOnce && styles.typeSelected]} onPress={() => setMarkerRewardOnce((value) => !value)}>
+                      <Text style={styles.secondaryText}>Reward Once: {markerRewardOnce ? "Yes" : "No"}</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+              {draftType === "Market" ? (
+                <View style={styles.storyEditor}>
+                  <Text style={styles.selectedTitle}>Market / Shop Settings</Text>
+                  <Text style={styles.copy}>{selectedMarker ? "Choose items from the admin item database for this market." : "Create or select a Market marker before adding shop stock."}</Text>
+                  <ItemPicker label="Market item" items={itemDefinitions} selectedId={marketItemId} onSelect={setMarketItemId} />
+                  <TextInput value={marketBuyPrice} onChangeText={setMarketBuyPrice} placeholder="Buy price" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={marketSellPrice} onChangeText={setMarketSellPrice} placeholder="Sell price" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={marketStock} onChangeText={setMarketStock} placeholder="Stock quantity" placeholderTextColor={colors.muted} style={styles.input} />
+                  <Pressable style={[styles.secondaryButton, marketUnlimited && styles.typeSelected]} onPress={() => setMarketUnlimited((value) => !value)}>
+                    <Text style={styles.secondaryText}>Unlimited Stock: {marketUnlimited ? "Yes" : "No"}</Text>
+                  </Pressable>
+                  <Pressable style={styles.primaryButton} onPress={() => void saveMarketItem()} disabled={!selectedMarker || !marketItemId}>
+                    <Text style={styles.primaryText}>Save Market Item</Text>
+                  </Pressable>
+                  {markerMarketItems.map((marketItem) => (
+                    <View key={marketItem.id} style={styles.storyCard}>
+                      <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
+                      <Text style={styles.copy}>Buy {marketItem.buy_price} / Sell {marketItem.sell_price} / {marketItem.unlimited_stock ? "Unlimited" : `Stock ${marketItem.stock_quantity ?? 0}`}</Text>
+                      <Pressable style={styles.secondaryButton} onPress={() => void removeMarketItem(marketItem.id)}>
+                        <Text style={styles.dangerText}>Remove Item</Text>
+                      </Pressable>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
               <Pressable style={styles.primaryButton} onPress={() => void addMarker()} disabled={!clickedPercent || !draftTitle.trim()}>
                 <Text style={styles.primaryText}>Create Marker</Text>
               </Pressable>
+              {selectedMarker ? (
+                <Pressable style={styles.secondaryButton} onPress={() => void saveSelectedMarkerSettings()}>
+                  <Text style={styles.secondaryText}>Save Selected Marker Settings</Text>
+                </Pressable>
+              ) : null}
             </>
           ) : (
             <View style={styles.pathEditor}>
@@ -1582,10 +1894,16 @@ export function MapScreen({ character }: MapScreenProps) {
                 <TextInput value={battleIntro} onChangeText={setBattleIntro} placeholder="Battle intro text" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={victoryText} onChangeText={setVictoryText} placeholder="Victory text" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={defeatText} onChangeText={setDefeatText} placeholder="Defeat text" placeholderTextColor={colors.muted} style={styles.input} />
-                <TextInput value={rewardXp} onChangeText={setRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
-                <TextInput value={rewardItem} onChangeText={setRewardItem} placeholder="Optional reward item" placeholderTextColor={colors.muted} style={styles.input} />
               </>
             )}
+            <View style={styles.storyEditor}>
+              <Text style={styles.selectedTitle}>Event Rewards</Text>
+              <TextInput value={rewardXp} onChangeText={setRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={rewardGold} onChangeText={setRewardGold} placeholder="Reward gold" placeholderTextColor={colors.muted} style={styles.input} />
+              <ItemPicker label="Reward item" items={itemDefinitions} selectedId={rewardItemId} onSelect={setRewardItemId} />
+              <TextInput value={rewardItemQuantity} onChangeText={setRewardItemQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={rewardItem} onChangeText={setRewardItem} placeholder="Legacy reward item text optional" placeholderTextColor={colors.muted} style={styles.input} />
+            </View>
             <Pressable style={styles.primaryButton} onPress={() => void saveMapEvent()} disabled={!eventTitle.trim()}>
               <Text style={styles.primaryText}>{editingEvent ? "Update Dialogue / Event" : "Create Dialogue / Event"}</Text>
             </Pressable>
@@ -1759,7 +2077,10 @@ export function MapScreen({ character }: MapScreenProps) {
               {choiceAction === "give_reward" ? (
                 <>
                   <TextInput value={choiceRewardXp} onChangeText={setChoiceRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
-                  <TextInput value={choiceRewardItem} onChangeText={setChoiceRewardItem} placeholder="Reward item optional" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={choiceRewardGold} onChangeText={setChoiceRewardGold} placeholder="Reward gold" placeholderTextColor={colors.muted} style={styles.input} />
+                  <ItemPicker label="Reward item" items={itemDefinitions} selectedId={choiceRewardItemId} onSelect={setChoiceRewardItemId} />
+                  <TextInput value={choiceRewardItemQuantity} onChangeText={setChoiceRewardItemQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={choiceRewardItem} onChangeText={setChoiceRewardItem} placeholder="Legacy reward item text optional" placeholderTextColor={colors.muted} style={styles.input} />
                 </>
               ) : null}
               <TextInput value={choiceSortOrder} onChangeText={setChoiceSortOrder} placeholder="Choice order" placeholderTextColor={colors.muted} style={styles.input} />
@@ -2290,6 +2611,28 @@ function Info({ label, value }: { label: string; value: string }) {
       <Text style={styles.infoValue}>{value}</Text>
     </View>
   );
+}
+
+function ItemPicker({ label, items, selectedId, onSelect }: { label: string; items: ItemDefinition[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>{label}</Text>
+      <View style={styles.storyRoutePicker}>
+        <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
+          <Text style={styles.routeChipText}>None</Text>
+        </Pressable>
+        {items.map((item) => (
+          <Pressable key={item.id} style={[styles.routeChip, selectedId === item.id && styles.routeChipActive]} onPress={() => onSelect(item.id)}>
+            <Text style={styles.routeChipText}>{item.name}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function getItemName(items: ItemDefinition[], itemId: string | null) {
+  return items.find((item) => item.id === itemId)?.name ?? "Unknown Item";
 }
 
 const styles = StyleSheet.create({
