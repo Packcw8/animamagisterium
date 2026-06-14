@@ -15,7 +15,7 @@ export const statusEffects: CombatAbility["status_effect"][] = ["none", "poison"
 export const linkedStats: CombatAbility["linked_stat"][] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit", "weapon", "item", "none"];
 export const requiredAttributes: NonNullable<CombatAbility["required_attribute"]>[] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"];
 export const learnMethods: CombatAbility["learn_method"][] = ["level", "weapon equipped", "armor equipped", "wearable equipped", "scroll", "quest", "admin"];
-export const enemyAssetBasePath = "/assets/enemies/";
+export const enemyAssetBasePath = "/assets/Enemies/";
 
 export function resolveEnemyImageUri(imagePath?: string | null) {
   const trimmed = imagePath?.trim();
@@ -34,7 +34,7 @@ export function resolveEnemyImageUri(imagePath?: string | null) {
     return normalized;
   }
 
-  if (normalized.startsWith("assets/enemies/")) {
+  if (normalized.startsWith("assets/Enemies/")) {
     return `/${normalized}`;
   }
 

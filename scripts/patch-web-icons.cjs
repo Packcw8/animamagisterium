@@ -16,7 +16,7 @@ for (const file of filesToCopy) {
   fs.copyFileSync(path.join(assets, file), path.join(dist, file));
 }
 
-const publicAssetFolders = ["InventoryItems", "Chapter1StoryImages"];
+const publicAssetFolders = ["InventoryItems", "Chapter1StoryImages", "Enemies", "Abilities"];
 
 for (const folder of publicAssetFolders) {
   const source = path.join(assets, folder);

@@ -551,7 +551,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                     </View>
                   </View>
                 ) : null}
-                <Text style={styles.muted}>Create database abilities for players, gear, scrolls, quests, and enemies. Images can use /assets/abilities/filename.png or a full URL.</Text>
+                <Text style={styles.muted}>Create database abilities for players, gear, scrolls, quests, and enemies. Images can use /assets/Abilities/filename.png, a simple filename, or a full URL.</Text>
                 <ItemText label="Name" value={abilityForm.name ?? ""} onChange={(value) => setAbilityForm((current) => ({ ...current, name: value }))} />
                 <ChoiceRow label="Type" options={combatAbilityTypes} value={abilityForm.type ?? "attack"} onSelect={(value) => setAbilityForm((current) => ({ ...current, type: value }))} />
                 <View style={styles.slotActions}>

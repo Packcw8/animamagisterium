@@ -36,7 +36,7 @@ export const buffTargets = ["max health", "max stamina", "max magika", "strength
 export const boostTargets = ["health", "stamina", "magika", "strength", "agility", "intelligence", "charisma", "defense", "damage", "gold gain", "xp gain"] as const;
 export const potionTargets = ["health", "stamina", "magika"] as const;
 export const inventoryAssetBasePath = "/assets/InventoryItems/";
-export const abilityAssetBasePath = "/assets/abilities/";
+export const abilityAssetBasePath = "/assets/Abilities/";
 export const defaultCarrySettings: CarrySettings = {
   baseCarryWeight: 50,
   carryWeightPerStrengthLevel: 10,
