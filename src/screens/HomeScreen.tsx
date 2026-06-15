@@ -64,7 +64,7 @@ type HomeScreenProps = {
   character: CharacterWithDetails;
 };
 
-const homeTabs = ["Overview", "Identity", "Attributes", "Abilities", "Inventory"] as const;
+const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Abilities", "Inventory"] as const;
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 const inventoryCategoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
@@ -121,6 +121,10 @@ export function HomeScreen({ character }: HomeScreenProps) {
   const filteredAdminItems = useMemo(() => itemDefinitions.filter((item) => itemMatchesCategory(item, inventoryCategory)), [itemDefinitions, inventoryCategory]);
   const filteredAdminAbilities = useMemo(() => adminAbilities.filter((ability) => ability.type === abilityTypeTab.toLowerCase()), [adminAbilities, abilityTypeTab]);
   const selectedAdminAbility = useMemo(() => adminAbilities.find((ability) => ability.id === selectedAdminAbilityId) ?? filteredAdminAbilities[0] ?? null, [adminAbilities, filteredAdminAbilities, selectedAdminAbilityId]);
+  const battleStats = useMemo(
+    () => getDerivedBattleStats(character, resources, inventoryBonuses, equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>, totalInventoryWeight, carryCapacity),
+    [character, resources, inventoryBonuses, equippedItems, totalInventoryWeight, carryCapacity],
+  );
 
   useEffect(() => {
     void loadAbilities();
@@ -435,6 +439,32 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <Text style={styles.attributeValue}>{character.attributes?.[key] ?? 0}</Text>
               </View>
             ))}
+          </View>
+        ) : activeTab === "Battle Stats" ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Battle Stats</Text>
+            <Text style={styles.muted}>These are derived from attributes and equipped gear. Training will keep feeding these numbers as the combat system grows.</Text>
+            <View style={styles.combatStatGrid}>
+              <CombatStat label="Health" value={battleStats.maxHp} note="Endurance, Strength, gear" />
+              <CombatStat label="Stamina" value={battleStats.maxStamina} note="Strength, Endurance, gear" />
+              <CombatStat label="Magika" value={battleStats.maxMagicka} note="Intelligence, Wisdom, Spirit" />
+              <CombatStat label="Defense" value={battleStats.defense} note="10 + Endurance + Agility + armor" />
+              <CombatStat label="Melee Attack" value={`+${battleStats.meleeAttackBonus}`} note="Strength + gear damage" />
+              <CombatStat label="Ranged / Dodge" value={`+${battleStats.agilityBonus}`} note="Agility accuracy and evasion" />
+              <CombatStat label="Spell Power" value={`+${battleStats.spellPower}`} note="Intelligence + Magika scaling" />
+              <CombatStat label="Healing Power" value={`+${battleStats.healingPower}`} note="Wisdom support scaling" />
+              <CombatStat label="Spirit Power" value={`+${battleStats.spiritPower}`} note="Spirit resistance and divine scaling" />
+              <CombatStat label="Crit Chance" value={`${battleStats.critChance}%`} note="Agility-based starter value" />
+              <CombatStat label="Armor" value={battleStats.armorValue} note="Equipped armor reduction" />
+              <CombatStat label="Carry Weight" value={`${battleStats.currentWeight} / ${battleStats.maxWeight}`} note="Strength capacity" />
+            </View>
+            <View style={styles.detailPanel}>
+              <Text style={styles.subTitle}>Equipped Battle Sources</Text>
+              <Info label="Weapon" value={battleStats.weaponName} />
+              <Info label="Armor" value={battleStats.armorName} />
+              <Info label="Gear Damage Bonus" value={`+${battleStats.gearDamageBonus}`} />
+              <Info label="Gear Defense Bonus" value={`+${battleStats.gearDefenseBonus}`} />
+            </View>
           </View>
         ) : activeTab === "Abilities" ? (
           <View style={styles.section}>
@@ -884,6 +914,16 @@ function Resource({ label, value, color }: { label: string; value: number; color
   );
 }
 
+function CombatStat({ label, value, note }: { label: string; value: string | number; note: string }) {
+  return (
+    <View style={styles.combatStatCard}>
+      <Text style={styles.combatStatLabel}>{label}</Text>
+      <Text style={styles.combatStatValue}>{value}</Text>
+      <Text style={styles.combatStatNote}>{note}</Text>
+    </View>
+  );
+}
+
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
@@ -1098,6 +1138,48 @@ function toAbilityTypeTab(type: CombatAbility["type"]): (typeof abilityTypeTabs)
   return type === "attack" ? "Attack" : type === "heal" ? "Heal" : type === "buff" ? "Buff" : type === "debuff" ? "Debuff" : type === "defense" ? "Defense" : "Passive";
 }
 
+function getDerivedBattleStats(
+  character: CharacterWithDetails,
+  resources: ReturnType<typeof getCharacterResources>,
+  inventoryBonuses: ReturnType<typeof getInventoryResourceBonuses>,
+  equipped: Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>,
+  totalInventoryWeight: number,
+  carryCapacity: number,
+) {
+  const attributes = character.attributes;
+  const strength = attributes?.strength ?? 0;
+  const endurance = attributes?.endurance ?? 0;
+  const agility = attributes?.agility ?? 0;
+  const intelligence = attributes?.intelligence ?? 0;
+  const wisdom = attributes?.wisdom ?? 0;
+  const spirit = attributes?.spirit ?? 0;
+  const weaponDamage = Number(equipped.weapon?.damage_amount ?? 0) + Number(equipped.weapon?.elemental_damage_amount ?? 0);
+  const armorValue = Object.values(equipped).reduce((sum, item) => sum + Number(item?.armor_value ?? 0), 0);
+  const meleeAttackBonus = Math.floor(strength / 2) + weaponDamage + inventoryBonuses.damage;
+  const agilityBonus = Math.floor(agility / 2);
+  const defense = 10 + Math.floor(endurance / 2) + Math.floor(agility / 2) + inventoryBonuses.defense;
+
+  return {
+    maxHp: resources.maxHp,
+    maxStamina: resources.maxStamina,
+    maxMagicka: resources.maxMagicka,
+    defense,
+    meleeAttackBonus,
+    agilityBonus,
+    spellPower: intelligence + Math.floor(wisdom / 2),
+    healingPower: wisdom + Math.floor(spirit / 2),
+    spiritPower: spirit,
+    critChance: Math.min(35, 5 + Math.floor(agility / 2)),
+    armorValue,
+    currentWeight: totalInventoryWeight.toFixed(1),
+    maxWeight: carryCapacity.toFixed(1),
+    weaponName: equipped.weapon?.name ?? "Unarmed",
+    armorName: equipped.armor?.name ?? "None",
+    gearDamageBonus: inventoryBonuses.damage,
+    gearDefenseBonus: inventoryBonuses.defense,
+  };
+}
+
 const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
@@ -1194,6 +1276,39 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "900",
     marginTop: 4,
+  },
+  combatStatGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  combatStatCard: {
+    flexGrow: 1,
+    flexBasis: 150,
+    minWidth: 145,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  combatStatLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  combatStatValue: {
+    color: colors.gold,
+    fontSize: 24,
+    fontWeight: "900",
+    marginTop: 5,
+  },
+  combatStatNote: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 6,
   },
   tabs: {
     flexDirection: "row",
