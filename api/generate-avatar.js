@@ -56,16 +56,19 @@ Preserve:
 - eye shape
 - facial structure
 - recognizable likeness
+- apparent age and youthful/aged cues from the uploaded photo
+- natural facial proportions, skin texture, and face fullness
 
 Apply:
 - front-facing head-and-shoulders character portrait composition
 - primary player avatar framing suitable for a game profile image
 - dark fantasy realism
-- bronze and gold ornamental detailing
-- deep blue magical crystal energy
+- subtle bronze and gold clothing or background detailing
+- deep blue magical energy only as faint ambient background light or small distant accents
 - cinematic lighting
 - premium RPG character portrait style
 - modern real life blended with epic fantasy
+- simple neckline and practical fantasy clothing without a necklace or amulet
 
 Character choices:
 - Gender: ${input.gender}
@@ -84,7 +87,14 @@ Avoid:
 - anime style
 - full-body image
 - side profile
+- necklace
+- amulet
+- pendant
+- glowing blue jewelry
+- glowing blue object on the neck or chest
 - distorted face
+- aging the person up
+- adding wrinkles, gray hair, gaunt cheeks, or age lines that are not in the photo
 - exaggerated horns
 - oversexualized clothing
 - unreadable background
