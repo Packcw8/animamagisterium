@@ -2152,6 +2152,14 @@ export function MapScreen({ character }: MapScreenProps) {
         onSell={(entry) => void sellToMarker(entry)}
         onClaimReward={() => void claimSelectedMarkerReward()}
         onAcceptQuest={() => void acceptSelectedMarkerQuest()}
+        onEnterArea={() => {
+          const miniMap = miniMaps.find((item) => item.id === selectedMarker.linked_mini_map_id);
+          if (miniMap) {
+            openMiniMap(miniMap);
+          } else {
+            setMarkerPanelMessage("No mini map is linked to this entrance yet.");
+          }
+        }}
       />
     );
   }
@@ -3927,6 +3935,7 @@ function MarkerSceneScreen({
   onSell,
   onClaimReward,
   onAcceptQuest,
+  onEnterArea,
 }: {
   marker: MapMarker;
   marketItems: MarkerMarketItem[];
@@ -3938,6 +3947,7 @@ function MarkerSceneScreen({
   onSell: (item: InventoryItem) => void;
   onClaimReward: () => void;
   onAcceptQuest: () => void;
+  onEnterArea: () => void;
 }) {
   const backgroundUri = resolveSceneImageUri(marker.scene_background_image_url || marker.shop_background_image_url);
   const npcUri = resolveSceneImageUri(marker.scene_npc_image_url || marker.shop_image_url || marker.quest_image_url);
@@ -3958,7 +3968,15 @@ function MarkerSceneScreen({
         {marker.description ? <Text style={styles.copy}>{marker.description}</Text> : null}
         {marker.quest_dialogue ? <Text style={styles.dialogueText}>{marker.quest_dialogue}</Text> : null}
         {message ? <Text style={styles.adminMessage}>{message}</Text> : null}
-        {marker.type === "Market" ? (
+        {marker.type === "Area/Town Entrance" ? (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
+            {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
+            <Pressable style={styles.primaryButton} onPress={onEnterArea}>
+              <Text style={styles.primaryText}>Enter Area</Text>
+            </Pressable>
+          </View>
+        ) : marker.type === "Market" ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Market</Text>
             {marketItems.length === 0 ? <Text style={styles.copy}>This market has no stock yet.</Text> : null}
