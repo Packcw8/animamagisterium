@@ -328,6 +328,23 @@ export type Tables = {
     parent_marker_id: string | null;
     linked_route_id: string | null;
     starts_route_on_accept: boolean;
+    icon_label: string | null;
+    icon_image_url: string | null;
+    icon_color: string | null;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  marker_legend_items: {
+    id: string;
+    marker_type: string;
+    title: string;
+    description: string | null;
+    icon_label: string | null;
+    icon_image_url: string | null;
+    icon_color: string | null;
+    sort_order: number;
+    is_active: boolean;
     created_by: string | null;
     created_at: string;
     updated_at: string;

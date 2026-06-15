@@ -23,6 +23,7 @@ import {
   deleteMiniMap,
   deleteDialogueChoice,
   deleteDialogueNode,
+  deleteMarkerLegendItem,
   deleteMapEvent,
   deleteMapMarker,
   deleteMapRoute,
@@ -33,6 +34,7 @@ import {
   getMapRoutes,
   getMapEvents,
   getMarkerMarketItems,
+  getMarkerLegendItems,
   getMiniMaps,
   getTutorialSteps,
   getDialogueChoices,
@@ -44,12 +46,14 @@ import {
   MapEvent,
   MapRoute,
   MarkerMarketItem,
+  MarkerLegendItem,
   MiniMap,
   Role,
   resetRouteProgress,
   StoryDialogueChoice,
   StoryDialogueNode,
   saveMarkerMarketItem,
+  saveMarkerLegendItem,
   saveMiniMap,
   saveRouteProgress,
   saveTutorialStep,
@@ -67,8 +71,9 @@ const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const mapSize = { width: 1800, height: 1400 };
 const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance"];
 const miniMapMarkerTypes = ["Market", "Quest", "Side Quest", "Point of Interest", "Battle", "Training", "Dungeon Room", "Exit/Leave"];
+const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const editorModes = ["Marker", "Walking Path"] as const;
-const adminSections = ["World Markers", "Area/Town Markers", "Mini Maps", "Walking Paths", "Tutorials", "Rewards/Interactions"] as const;
+const adminSections = ["World Markers", "Area/Town Markers", "Mini Maps", "Walking Paths", "Tutorials", "Rewards/Interactions", "Legend"] as const;
 const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
 const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle", "Complete Event"] as const;
@@ -115,6 +120,8 @@ export function MapScreen({ character }: MapScreenProps) {
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
   const [routes, setRoutes] = useState<MapRoute[]>([fallbackRoute]);
   const [markers, setMarkers] = useState<MapMarker[]>([]);
+  const [legendItems, setLegendItems] = useState<MarkerLegendItem[]>([]);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [mapEvents, setMapEvents] = useState<MapEvent[]>([]);
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
@@ -191,6 +198,9 @@ export function MapScreen({ character }: MapScreenProps) {
   const [markerShopBackground, setMarkerShopBackground] = useState("");
   const [markerSceneBackground, setMarkerSceneBackground] = useState("");
   const [markerNpcImage, setMarkerNpcImage] = useState("");
+  const [markerIconLabel, setMarkerIconLabel] = useState("");
+  const [markerIconImage, setMarkerIconImage] = useState("");
+  const [markerIconColor, setMarkerIconColor] = useState("");
   const [markerInteractionRadius, setMarkerInteractionRadius] = useState("4");
   const [markerInteractable, setMarkerInteractable] = useState(true);
   const [markerRewardXp, setMarkerRewardXp] = useState("0");
@@ -208,6 +218,15 @@ export function MapScreen({ character }: MapScreenProps) {
   const [marketStock, setMarketStock] = useState("0");
   const [marketUnlimited, setMarketUnlimited] = useState(true);
   const [markerPanelMessage, setMarkerPanelMessage] = useState<string | null>(null);
+  const [editingLegendItemId, setEditingLegendItemId] = useState<string | null>(null);
+  const [legendMarkerType, setLegendMarkerType] = useState("Market");
+  const [legendTitle, setLegendTitle] = useState("");
+  const [legendDescription, setLegendDescription] = useState("");
+  const [legendIconLabel, setLegendIconLabel] = useState("");
+  const [legendIconImage, setLegendIconImage] = useState("");
+  const [legendIconColor, setLegendIconColor] = useState("");
+  const [legendSortOrder, setLegendSortOrder] = useState("0");
+  const [legendActive, setLegendActive] = useState(true);
   const [previewMarkerScene, setPreviewMarkerScene] = useState(false);
   const [editorMode, setEditorMode] = useState<(typeof editorModes)[number]>("Marker");
   const [pathDraft, setPathDraft] = useState<Array<{ x: number; y: number }>>([]);
@@ -453,7 +472,14 @@ export function MapScreen({ character }: MapScreenProps) {
   }, [activeEvent]);
 
   async function loadMap() {
-    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedRole] = await Promise.all([getMapRoutes(), getMapMarkers(), getMiniMaps(), getTutorialSteps(), getCurrentRole()]);
+    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedRole] = await Promise.all([
+      getMapRoutes(),
+      getMapMarkers(),
+      getMiniMaps(),
+      getTutorialSteps(),
+      getMarkerLegendItems(),
+      getCurrentRole(),
+    ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const progressRows = await getRouteProgressForRoutes(nextRoutes.map((item) => item.id));
     const firstRoute = getFirstUnfinishedRoute(nextRoutes, progressRows) ?? nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
@@ -463,6 +489,7 @@ export function MapScreen({ character }: MapScreenProps) {
     setMarkers(loadedMarkers);
     setMiniMaps(loadedMiniMaps);
     setTutorialSteps(loadedTutorials);
+    setLegendItems(loadedLegendItems);
     setRole(loadedRole);
     await selectRoute(firstRoute, true);
   }
@@ -753,6 +780,9 @@ export function MapScreen({ character }: MapScreenProps) {
         parent_marker_id: adminSection === "Mini Maps" ? selectedMarker?.id ?? null : null,
         linked_route_id: isQuestMarkerType(draftType) ? markerLinkedRouteId : null,
         starts_route_on_accept: isQuestMarkerType(draftType) && markerStartsRouteOnAccept,
+        icon_label: markerIconLabel.trim() || null,
+        icon_image_url: markerIconImage.trim() || null,
+        icon_color: markerIconColor.trim() || null,
       });
       const configured = await updateMarkerSettings(created.id, getMarkerSettingsPayload());
       setMarkers((current) => [...current, configured]);
@@ -779,6 +809,9 @@ export function MapScreen({ character }: MapScreenProps) {
       shop_background_image_url: markerShopBackground.trim() || null,
       scene_background_image_url: markerSceneBackground.trim() || null,
       scene_npc_image_url: markerNpcImage.trim() || null,
+      icon_label: markerIconLabel.trim() || null,
+      icon_image_url: markerIconImage.trim() || null,
+      icon_color: markerIconColor.trim() || null,
       interaction_radius_percent: Math.max(0.5, Number(markerInteractionRadius) || 4),
       reward_xp: Number(markerRewardXp) || 0,
       reward_gold: Number(markerRewardGold) || 0,
@@ -812,6 +845,9 @@ export function MapScreen({ character }: MapScreenProps) {
     setMarkerShopBackground(marker.shop_background_image_url ?? "");
     setMarkerSceneBackground(marker.scene_background_image_url ?? "");
     setMarkerNpcImage(marker.scene_npc_image_url ?? "");
+    setMarkerIconLabel(marker.icon_label ?? "");
+    setMarkerIconImage(marker.icon_image_url ?? "");
+    setMarkerIconColor(marker.icon_color ?? "");
     setMarkerInteractionRadius(String(marker.interaction_radius_percent ?? 4));
     setMarkerInteractable(marker.is_interactable ?? true);
     setMarkerRewardXp(String(marker.reward_xp ?? 0));
@@ -894,6 +930,64 @@ export function MapScreen({ character }: MapScreenProps) {
       setAdminMessage("Market item removed.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to remove market item."));
+    }
+  }
+
+  function clearLegendForm() {
+    setEditingLegendItemId(null);
+    setLegendMarkerType("Market");
+    setLegendTitle("");
+    setLegendDescription("");
+    setLegendIconLabel("");
+    setLegendIconImage("");
+    setLegendIconColor("");
+    setLegendSortOrder("0");
+    setLegendActive(true);
+  }
+
+  function editLegendItem(item: MarkerLegendItem) {
+    setEditingLegendItemId(item.id);
+    setLegendMarkerType(item.marker_type);
+    setLegendTitle(item.title);
+    setLegendDescription(item.description ?? "");
+    setLegendIconLabel(item.icon_label ?? "");
+    setLegendIconImage(item.icon_image_url ?? "");
+    setLegendIconColor(item.icon_color ?? "");
+    setLegendSortOrder(String(item.sort_order ?? 0));
+    setLegendActive(item.is_active);
+  }
+
+  async function saveLegendItemForm() {
+    try {
+      const saved = await saveMarkerLegendItem({
+        id: editingLegendItemId ?? undefined,
+        marker_type: legendMarkerType,
+        title: legendTitle,
+        description: legendDescription,
+        icon_label: legendIconLabel,
+        icon_image_url: legendIconImage,
+        icon_color: legendIconColor,
+        sort_order: Number(legendSortOrder) || 0,
+        is_active: legendActive,
+      });
+      setLegendItems((current) => [saved, ...current.filter((item) => item.id !== saved.id)].sort((a, b) => a.sort_order - b.sort_order));
+      clearLegendForm();
+      setAdminMessage("Legend item saved.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save legend item. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function removeLegendItem(legendItemId: string) {
+    try {
+      await deleteMarkerLegendItem(legendItemId);
+      setLegendItems((current) => current.filter((item) => item.id !== legendItemId));
+      if (editingLegendItemId === legendItemId) {
+        clearLegendForm();
+      }
+      setAdminMessage("Legend item deleted.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to delete legend item."));
     }
   }
 
@@ -2218,7 +2312,7 @@ export function MapScreen({ character }: MapScreenProps) {
                 }}
                 {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
               >
-                <View style={styles.markerDot} />
+                <MarkerIcon marker={marker} />
                 <Text style={styles.markerType}>{marker.type}</Text>
                 <Text style={styles.markerName}>{marker.title}</Text>
               </Pressable>
@@ -2226,6 +2320,7 @@ export function MapScreen({ character }: MapScreenProps) {
           </View>
           <Text style={styles.copy}>Only interactable mini-map markers within proximity are shown to players. Admins can see all mini-map markers.</Text>
         </Frame>
+        <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
         {isAdmin ? (
           <Frame style={styles.panel}>
             <Text style={styles.sectionTitle}>Mini Map Admin Preview</Text>
@@ -2272,6 +2367,12 @@ export function MapScreen({ character }: MapScreenProps) {
               setMarkerSceneBackground={setMarkerSceneBackground}
               markerNpcImage={markerNpcImage}
               setMarkerNpcImage={setMarkerNpcImage}
+              markerIconLabel={markerIconLabel}
+              setMarkerIconLabel={setMarkerIconLabel}
+              markerIconImage={markerIconImage}
+              setMarkerIconImage={setMarkerIconImage}
+              markerIconColor={markerIconColor}
+              setMarkerIconColor={setMarkerIconColor}
               markerShopImage={markerShopImage}
               setMarkerShopImage={setMarkerShopImage}
               markerShopBackground={markerShopBackground}
@@ -2418,7 +2519,7 @@ export function MapScreen({ character }: MapScreenProps) {
               }}
               {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
             >
-              <View style={styles.markerDot} />
+              <MarkerIcon marker={marker} />
               <Text style={styles.markerType}>{marker.type}</Text>
               <Text style={styles.markerName}>{marker.title}</Text>
             </Pressable>
@@ -2437,6 +2538,8 @@ export function MapScreen({ character }: MapScreenProps) {
           </View>
         </View>
       </View>
+
+      <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
 
       <Frame style={styles.panel}>
         <View style={styles.panelHeader}>
@@ -2586,6 +2689,81 @@ export function MapScreen({ character }: MapScreenProps) {
             ))}
           </View>
           {adminMessage ? <Text style={styles.adminMessage}>{adminMessage}</Text> : null}
+          {adminSection === "Legend" ? (
+            <View style={styles.storyEditor}>
+              <Text style={styles.selectedTitle}>Map Legend Builder</Text>
+              <Text style={styles.copy}>Create the player-facing key for map emblems. Use short icon text like MKT, or paste an icon image URL/asset path.</Text>
+              <View style={styles.storyRoutePicker}>
+                {legendMarkerTypes.map((type) => (
+                  <Pressable key={type} style={[styles.routeChip, legendMarkerType === type && styles.routeChipActive]} onPress={() => setLegendMarkerType(type)}>
+                    <Text style={styles.routeChipText}>{type}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput value={legendTitle} onChangeText={setLegendTitle} placeholder="Legend title, example Market" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={legendDescription} onChangeText={setLegendDescription} placeholder="What this marker means to players" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+              <TextInput value={legendIconLabel} onChangeText={setLegendIconLabel} placeholder="Icon text, example MKT" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={legendIconImage} onChangeText={setLegendIconImage} placeholder="Icon image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={legendIconColor} onChangeText={setLegendIconColor} placeholder="Icon color, example #d9a441" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={legendSortOrder} onChangeText={setLegendSortOrder} placeholder="Sort order" placeholderTextColor={colors.muted} style={styles.input} />
+              <Pressable style={[styles.secondaryButton, legendActive && styles.typeSelected]} onPress={() => setLegendActive((value) => !value)}>
+                <Text style={styles.secondaryText}>Active: {legendActive ? "true" : "false"}</Text>
+              </Pressable>
+              <View style={styles.legendPreviewRow}>
+                <MarkerIcon
+                  marker={{
+                    type: legendMarkerType,
+                    icon_label: legendIconLabel,
+                    icon_image_url: legendIconImage,
+                    icon_color: legendIconColor,
+                  }}
+                  compact
+                />
+                <View style={styles.markerTableInfo}>
+                  <Text style={styles.markerName}>{legendTitle || "Legend preview"}</Text>
+                  <Text style={styles.copy}>{legendDescription || "Players will see this text in the collapsible legend."}</Text>
+                </View>
+              </View>
+              <Pressable style={styles.primaryButton} onPress={() => void saveLegendItemForm()} disabled={!legendTitle.trim()}>
+                <Text style={styles.primaryText}>{editingLegendItemId ? "Update Legend Item" : "Create Legend Item"}</Text>
+              </Pressable>
+              {editingLegendItemId ? (
+                <Pressable style={styles.secondaryButton} onPress={clearLegendForm}>
+                  <Text style={styles.secondaryText}>Cancel Legend Edit</Text>
+                </Pressable>
+              ) : null}
+              <Text style={styles.selectedTitle}>Existing Legend Items</Text>
+              {legendItems.length === 0 ? <Text style={styles.copy}>No legend items yet.</Text> : null}
+              {legendItems.map((item) => (
+                <View key={item.id} style={styles.storyCard}>
+                  <View style={styles.legendPreviewRow}>
+                    <MarkerIcon
+                      marker={{
+                        type: item.marker_type,
+                        icon_label: item.icon_label,
+                        icon_image_url: item.icon_image_url,
+                        icon_color: item.icon_color,
+                      }}
+                      compact
+                    />
+                    <View style={styles.markerTableInfo}>
+                      <Text style={styles.markerName}>{item.title}</Text>
+                      <Text style={styles.copy}>{item.marker_type} / Order {item.sort_order} / {item.is_active ? "Active" : "Hidden"}</Text>
+                      {item.description ? <Text style={styles.copy}>{item.description}</Text> : null}
+                    </View>
+                  </View>
+                  <View style={styles.modeRow}>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => editLegendItem(item)}>
+                      <Text style={styles.secondaryText}>Edit</Text>
+                    </Pressable>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeLegendItem(item.id)}>
+                      <Text style={styles.dangerText}>Delete</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
+          ) : null}
           {adminSection === "Walking Paths" ? <View style={styles.routeList}>
             <Text style={styles.selectedTitle}>Walking Path Order</Text>
             {orderedRoutes.map((item) => (
@@ -2694,6 +2872,9 @@ export function MapScreen({ character }: MapScreenProps) {
               <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={markerIconLabel} onChangeText={setMarkerIconLabel} placeholder="Marker icon text, example MKT" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={markerIconImage} onChangeText={setMarkerIconImage} placeholder="Marker icon image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={markerIconColor} onChangeText={setMarkerIconColor} placeholder="Marker icon color, example #d9a441" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
               {draftType === "Area/Town Entrance" ? <MiniMapPicker miniMaps={miniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} /> : null}
               <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
@@ -3713,6 +3894,59 @@ function BattleAbilityIcon({ ability }: { ability: AbilityDefinition }) {
   return <Image source={{ uri: imageUri }} style={styles.battleAbilityIcon} />;
 }
 
+type MarkerIconSource = Pick<MapMarker, "type" | "icon_label" | "icon_image_url" | "icon_color">;
+
+function MarkerIcon({ marker, compact = false }: { marker: MarkerIconSource; compact?: boolean }) {
+  const iconUri = resolveMapImageUri(marker.icon_image_url);
+  const iconText = (marker.icon_label?.trim() || getDefaultMarkerIconLabel(marker.type)).slice(0, 3).toUpperCase();
+  const iconColor = marker.icon_color?.trim() || getDefaultMarkerIconColor(marker.type);
+
+  return (
+    <View style={[compact ? styles.legendIcon : styles.markerIcon, { borderColor: iconColor } as object]}>
+      {iconUri ? (
+        <Image source={{ uri: iconUri }} style={compact ? styles.legendIconImage : styles.markerIconImage} />
+      ) : (
+        <Text style={[compact ? styles.legendIconText : styles.markerIconText, { color: iconColor } as object]}>{iconText}</Text>
+      )}
+    </View>
+  );
+}
+
+function MarkerLegend({ items, open, onToggle }: { items: MarkerLegendItem[]; open: boolean; onToggle: () => void }) {
+  const visibleItems = items.filter((item) => item.is_active).sort((a, b) => a.sort_order - b.sort_order);
+
+  return (
+    <Frame style={styles.legendPanel}>
+      <Pressable style={styles.legendHeader} onPress={onToggle}>
+        <Text style={styles.sectionTitle}>Map Legend</Text>
+        <Text style={styles.secondaryText}>{open ? "Hide" : "Show"}</Text>
+      </Pressable>
+      {open ? (
+        <View style={styles.legendList}>
+          {visibleItems.length === 0 ? <Text style={styles.copy}>No legend entries yet.</Text> : null}
+          {visibleItems.map((item) => (
+            <View key={item.id} style={styles.legendItem}>
+              <MarkerIcon
+                marker={{
+                  type: item.marker_type,
+                  icon_label: item.icon_label,
+                  icon_image_url: item.icon_image_url,
+                  icon_color: item.icon_color,
+                }}
+                compact
+              />
+              <View style={styles.markerTableInfo}>
+                <Text style={styles.markerName}>{item.title}</Text>
+                {item.description ? <Text style={styles.copy}>{item.description}</Text> : <Text style={styles.copy}>{item.marker_type}</Text>}
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : null}
+    </Frame>
+  );
+}
+
 function MiniMapMarkerAdminForm({
   activeSectionMarkerTypes,
   draftType,
@@ -3725,6 +3959,12 @@ function MiniMapMarkerAdminForm({
   setMarkerSceneBackground,
   markerNpcImage,
   setMarkerNpcImage,
+  markerIconLabel,
+  setMarkerIconLabel,
+  markerIconImage,
+  setMarkerIconImage,
+  markerIconColor,
+  setMarkerIconColor,
   markerShopImage,
   setMarkerShopImage,
   markerShopBackground,
@@ -3786,6 +4026,12 @@ function MiniMapMarkerAdminForm({
   setMarkerSceneBackground: (value: string) => void;
   markerNpcImage: string;
   setMarkerNpcImage: (value: string) => void;
+  markerIconLabel: string;
+  setMarkerIconLabel: (value: string) => void;
+  markerIconImage: string;
+  setMarkerIconImage: (value: string) => void;
+  markerIconColor: string;
+  setMarkerIconColor: (value: string) => void;
   markerShopImage: string;
   setMarkerShopImage: (value: string) => void;
   markerShopBackground: string;
@@ -3853,6 +4099,9 @@ function MiniMapMarkerAdminForm({
       <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+      <TextInput value={markerIconLabel} onChangeText={setMarkerIconLabel} placeholder="Marker icon text, example MKT" placeholderTextColor={colors.muted} style={styles.input} />
+      <TextInput value={markerIconImage} onChangeText={setMarkerIconImage} placeholder="Marker icon image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+      <TextInput value={markerIconColor} onChangeText={setMarkerIconColor} placeholder="Marker icon color, example #d9a441" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
       <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
         <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
@@ -4168,6 +4417,30 @@ function isQuestMarkerType(type: string) {
   return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
 }
 
+function getDefaultMarkerIconLabel(type: string) {
+  if (type === "Market") return "MKT";
+  if (type === "Area/Town Entrance") return "IN";
+  if (type === "Battle" || type === "Battle Zone") return "BTL";
+  if (type === "Quest" || type === "Side Quest" || type === "Story") return "!";
+  if (type === "Training" || type === "Training Spot") return "TRN";
+  if (type === "Dungeon Room") return "DGN";
+  if (type === "Exit/Leave") return "OUT";
+  if (type === "Point of Interest") return "POI";
+  return "*";
+}
+
+function getDefaultMarkerIconColor(type: string) {
+  if (type === "Market") return colors.gold;
+  if (type === "Area/Town Entrance") return colors.blue;
+  if (type === "Battle" || type === "Battle Zone") return "#e0574f";
+  if (type === "Quest" || type === "Side Quest" || type === "Story") return "#8fe8a1";
+  if (type === "Training" || type === "Training Spot") return "#7fe7ff";
+  if (type === "Dungeon Room") return "#b889ff";
+  if (type === "Exit/Leave") return colors.muted;
+  if (type === "Point of Interest") return "#f0d28a";
+  return colors.goldSoft;
+}
+
 const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
@@ -4359,6 +4632,30 @@ const styles = StyleSheet.create({
     borderColor: colors.gold,
     backgroundColor: colors.blue,
   },
+  markerIcon: {
+    position: "absolute",
+    left: 8,
+    top: -18,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 2,
+    backgroundColor: "rgba(4, 6, 6, 0.94)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    shadowColor: "#7fe7ff",
+    shadowOpacity: 0.55,
+    shadowRadius: 8,
+  },
+  markerIconImage: {
+    width: "100%",
+    height: "100%",
+  },
+  markerIconText: {
+    fontSize: 10,
+    fontWeight: "900",
+  },
   markerType: {
     color: colors.goldSoft,
     fontSize: 10,
@@ -4398,6 +4695,53 @@ const styles = StyleSheet.create({
     marginTop: 12,
     padding: 14,
     gap: 10,
+  },
+  legendPanel: {
+    marginHorizontal: 12,
+    marginTop: 12,
+    padding: 12,
+    gap: 10,
+  },
+  legendHeader: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  legendList: {
+    gap: 8,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderTopWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingTop: 8,
+  },
+  legendPreviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  legendIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 2,
+    backgroundColor: "rgba(4, 6, 6, 0.94)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  legendIconImage: {
+    width: "100%",
+    height: "100%",
+  },
+  legendIconText: {
+    fontSize: 11,
+    fontWeight: "900",
   },
   panelHeader: {
     flexDirection: "row",
