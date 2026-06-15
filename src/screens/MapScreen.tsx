@@ -2313,8 +2313,6 @@ export function MapScreen({ character }: MapScreenProps) {
                 {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
               >
                 <MarkerIcon marker={marker} />
-                <Text style={styles.markerType}>{marker.type}</Text>
-                <Text style={styles.markerName}>{marker.title}</Text>
               </Pressable>
             ))}
           </View>
@@ -2520,8 +2518,6 @@ export function MapScreen({ character }: MapScreenProps) {
               {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
             >
               <MarkerIcon marker={marker} />
-              <Text style={styles.markerType}>{marker.type}</Text>
-              <Text style={styles.markerName}>{marker.title}</Text>
             </Pressable>
           ))}
           <View
@@ -4608,14 +4604,11 @@ const styles = StyleSheet.create({
   },
   marker: {
     position: "absolute",
-    width: 136,
-    minHeight: 58,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(213, 164, 65, 0.82)",
-    backgroundColor: "rgba(4, 6, 6, 0.78)",
-    padding: 8,
-    transform: [{ translateX: -48 }, { translateY: -29 }],
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ translateX: -20 }, { translateY: -20 }],
   },
   markerHidden: {
     opacity: 0.46,
@@ -4633,9 +4626,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.blue,
   },
   markerIcon: {
-    position: "absolute",
-    left: 8,
-    top: -18,
     width: 30,
     height: 30,
     borderRadius: 15,
