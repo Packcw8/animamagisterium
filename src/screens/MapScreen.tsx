@@ -2305,7 +2305,7 @@ export function MapScreen({ character }: MapScreenProps) {
             {visibleMiniMapMarkers.map((marker) => (
               <Pressable
                 key={marker.id}
-                style={[styles.marker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, { left: `${marker.x_percent}%`, top: `${marker.y_percent}%` }]}
+                style={[styles.marker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, miniMapPlayerPosition)]}
                 onPress={(event) => {
                   event.stopPropagation();
                   void selectMarker(marker);
@@ -2510,7 +2510,7 @@ export function MapScreen({ character }: MapScreenProps) {
           {visibleMarkers.map((marker) => (
             <Pressable
               key={marker.id}
-              style={[styles.marker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, { left: `${marker.x_percent}%`, top: `${marker.y_percent}%` }]}
+              style={[styles.marker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, playerPosition)]}
               onPress={(event) => {
                 event.stopPropagation();
                 void selectMarker(marker);
@@ -3390,6 +3390,21 @@ function canPlayerSeeMarker(marker: MapMarker, playerPosition: { x: number; y: n
 
   const radius = Number(marker.interaction_radius_percent ?? 4) || 4;
   return getPercentDistance(playerPosition, { x: Number(marker.x_percent), y: Number(marker.y_percent) }) <= radius;
+}
+
+function getMarkerRenderStyle(marker: MapMarker, playerPosition: { x: number; y: number }) {
+  const markerPosition = { x: Number(marker.x_percent), y: Number(marker.y_percent) };
+  const radius = Math.max(1, Number(marker.interaction_radius_percent ?? 4) || 4);
+  const distance = getPercentDistance(playerPosition, markerPosition);
+  const scale = distance <= radius * 0.65 ? 1.48 : distance <= radius ? 1.34 : distance <= radius * 1.75 ? 1.16 : 1;
+  const zIndex = distance <= radius ? 45 : 15;
+
+  return {
+    left: `${markerPosition.x}%`,
+    top: `${markerPosition.y}%`,
+    zIndex,
+    transform: [{ translateX: -24 }, { translateY: -24 }, { scale }],
+  } as object;
 }
 
 function resolveSceneImageUri(imagePath?: string | null) {
@@ -4604,11 +4619,10 @@ const styles = StyleSheet.create({
   },
   marker: {
     position: "absolute",
-    width: 40,
-    height: 40,
+    width: 48,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
-    transform: [{ translateX: -20 }, { translateY: -20 }],
   },
   markerHidden: {
     opacity: 0.46,
@@ -4626,9 +4640,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.blue,
   },
   markerIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     borderWidth: 2,
     backgroundColor: "rgba(4, 6, 6, 0.94)",
     alignItems: "center",
@@ -4643,7 +4657,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   markerIconText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: "900",
   },
   markerType: {
@@ -4660,6 +4674,7 @@ const styles = StyleSheet.create({
   },
   playerPin: {
     position: "absolute",
+    zIndex: 20,
     width: 70,
     height: 70,
     borderRadius: 35,
