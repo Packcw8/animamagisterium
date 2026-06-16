@@ -6,6 +6,7 @@ export type MapRoute = Tables["map_routes"];
 export type RouteProgress = Tables["route_progress"];
 export type MapMarker = Tables["map_markers"];
 export type MarkerLegendItem = Tables["marker_legend_items"];
+export type MarkerRouteLink = Tables["marker_route_links"];
 export type MiniMap = Tables["mini_maps"];
 export type TutorialStep = Tables["tutorial_steps"];
 export type MarkerMarketItem = Tables["marker_market_items"];
@@ -301,7 +302,29 @@ export async function getRouteProgressForRoutes(routeIds: string[]) {
   return (data ?? []) as RouteProgress[];
 }
 
-export async function saveRouteProgress(routeId: string, values: Pick<RouteProgress, "distance_walked_meters" | "progress_percent" | "current_x_percent" | "current_y_percent" | "last_lat" | "last_lng">) {
+export async function setCurrentRoute(routeId: string) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to select a route.");
+  }
+
+  await supabase.from("route_progress").update({ is_current: false }).eq("user_id", user.id);
+  await supabase.from("route_progress").upsert(
+    {
+      user_id: user.id,
+      route_id: routeId,
+      is_current: true,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id,route_id" },
+  );
+}
+
+export async function saveRouteProgress(routeId: string, values: Pick<RouteProgress, "distance_walked_meters" | "progress_percent" | "current_x_percent" | "current_y_percent" | "last_lat" | "last_lng"> & Partial<Pick<RouteProgress, "travel_direction" | "is_current">>) {
   const {
     data: { user },
     error: userError,
@@ -323,6 +346,8 @@ export async function saveRouteProgress(routeId: string, values: Pick<RouteProgr
         current_y_percent: values.current_y_percent,
         last_lat: values.last_lat,
         last_lng: values.last_lng,
+        travel_direction: values.travel_direction ?? "forward",
+        is_current: values.is_current ?? true,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,route_id" },
@@ -346,7 +371,57 @@ export async function resetRouteProgress(routeId: string, startPoint: { x: numbe
     current_y_percent: startPoint.y,
     last_lat: null,
     last_lng: null,
+    travel_direction: "forward",
+    is_current: true,
   });
+}
+
+export async function getMarkerRouteLinks(markerId: string) {
+  const { data, error } = await supabase
+    .from("marker_route_links")
+    .select("*")
+    .eq("marker_id", markerId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("[map] marker route links unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as MarkerRouteLink[];
+}
+
+export async function saveMarkerRouteLinks(markerId: string, routeIds: string[]) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const uniqueRouteIds = Array.from(new Set(routeIds.filter(Boolean)));
+  const { error: deleteError } = await supabase.from("marker_route_links").delete().eq("marker_id", markerId);
+
+  if (deleteError) {
+    throw deleteError;
+  }
+
+  if (uniqueRouteIds.length === 0) {
+    return [];
+  }
+
+  const rows = uniqueRouteIds.map((routeId, index) => ({
+    marker_id: markerId,
+    route_id: routeId,
+    sort_order: index + 1,
+    starts_on_select: true,
+    created_by: user?.id ?? null,
+    updated_at: new Date().toISOString(),
+  }));
+  const { data, error } = await supabase.from("marker_route_links").insert(rows).select();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as MarkerRouteLink[];
 }
 
 export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key"> & Partial<Pick<MapMarker, "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color">>) {

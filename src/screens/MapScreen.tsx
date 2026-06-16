@@ -35,6 +35,7 @@ import {
   getMapEvents,
   getMarkerMarketItems,
   getMarkerLegendItems,
+  getMarkerRouteLinks,
   getMiniMaps,
   getTutorialSteps,
   getDialogueChoices,
@@ -47,6 +48,7 @@ import {
   MapRoute,
   MarkerMarketItem,
   MarkerLegendItem,
+  MarkerRouteLink,
   MiniMap,
   Role,
   resetRouteProgress,
@@ -54,9 +56,11 @@ import {
   StoryDialogueNode,
   saveMarkerMarketItem,
   saveMarkerLegendItem,
+  saveMarkerRouteLinks,
   saveMiniMap,
   saveRouteProgress,
   saveTutorialStep,
+  setCurrentRoute,
   sellMarketInventoryItem,
   TutorialStep,
   updateDialogueChoice,
@@ -69,7 +73,7 @@ import {
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const mapSize = { width: 1800, height: 1400 };
-const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance"];
+const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
 const miniMapMarkerTypes = ["Market", "Quest", "Side Quest", "Point of Interest", "Battle", "Training", "Dungeon Room", "Exit/Leave"];
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const editorModes = ["Marker", "Walking Path"] as const;
@@ -161,7 +165,8 @@ export function MapScreen({ character }: MapScreenProps) {
     countedMeters: 0,
     blockedReason: null,
   });
-  const [routeProgressRows, setRouteProgressRows] = useState<Array<{ route_id: string; progress_percent: number }>>([]);
+  const [routeProgressRows, setRouteProgressRows] = useState<Array<{ route_id: string; progress_percent: number; is_current?: boolean }>>([]);
+  const [routeDirection, setRouteDirection] = useState<"forward" | "reverse">("forward");
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
   const [activeMiniMap, setActiveMiniMap] = useState<MiniMap | null>(null);
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
@@ -212,6 +217,8 @@ export function MapScreen({ character }: MapScreenProps) {
   const [markerLinkedRouteId, setMarkerLinkedRouteId] = useState<string | null>(null);
   const [markerStartsRouteOnAccept, setMarkerStartsRouteOnAccept] = useState(false);
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
+  const [markerRouteLinks, setMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
+  const [selectedMarkerRouteIds, setSelectedMarkerRouteIds] = useState<string[]>([]);
   const [marketItemId, setMarketItemId] = useState<string | null>(null);
   const [marketBuyPrice, setMarketBuyPrice] = useState("0");
   const [marketSellPrice, setMarketSellPrice] = useState("0");
@@ -297,6 +304,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const watchId = useRef<number | null>(null);
   const distanceWalkedRef = useRef(0);
   const routeRef = useRef(fallbackRoute);
+  const routeDirectionRef = useRef<"forward" | "reverse">("forward");
   const movementStateRef = useRef<PlayerMovementState>("IDLE");
   const movementCandidateRef = useRef<{ state: PlayerMovementState; since: number } | null>(null);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
@@ -309,7 +317,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const playerPosition = savedPlayerPosition ?? routeProgressPosition;
   const miniMapPlayerPosition = { x: 50, y: 50 };
   const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
-  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(orderedRoutes, route.id), [orderedRoutes, route.id]);
+  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? orderedRoutes : [route], route.id), [isAdmin, orderedRoutes, route]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [pathDraft]);
   const worldMarkers = useMemo(() => markers.filter((marker) => !marker.mini_map_id), [markers]);
   const miniMapMarkers = useMemo(() => markers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [markers, activeMiniMap?.id]);
@@ -418,7 +426,11 @@ export function MapScreen({ character }: MapScreenProps) {
   }, [route]);
 
   useEffect(() => {
-    if (progressPercent < 100 || completedRouteId === route.id) {
+    routeDirectionRef.current = routeDirection;
+  }, [routeDirection]);
+
+  useEffect(() => {
+    if (routeDirection === "reverse" || progressPercent < 100 || completedRouteId === route.id) {
       return;
     }
 
@@ -432,7 +444,7 @@ export function MapScreen({ character }: MapScreenProps) {
 
     setGpsMessage(`${route.name} completed. Beginning ${nextRoute.name}.`);
     void selectRoute(nextRoute, true);
-  }, [completedRouteId, orderedRoutes, progressPercent, route]);
+  }, [completedRouteId, orderedRoutes, progressPercent, route, routeDirection]);
 
   useEffect(() => {
     if (activeEvent || activeBattle || playerMovementState !== "MOVING") {
@@ -482,7 +494,8 @@ export function MapScreen({ character }: MapScreenProps) {
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const progressRows = await getRouteProgressForRoutes(nextRoutes.map((item) => item.id));
-    const firstRoute = getFirstUnfinishedRoute(nextRoutes, progressRows) ?? nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
+    const currentProgressRow = progressRows.find((row) => row.is_current);
+    const firstRoute = nextRoutes.find((item) => item.id === currentProgressRow?.route_id) ?? getFirstUnfinishedRoute(nextRoutes, progressRows) ?? nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
     setRouteProgressRows(progressRows);
     setRoutes(nextRoutes);
     setPathDraft([]);
@@ -510,6 +523,7 @@ export function MapScreen({ character }: MapScreenProps) {
     distanceWalkedRef.current = 0;
     setSavedPlayerPosition(null);
     setDistanceWalked(0);
+    setRouteDirection("forward");
     setLastPosition(null);
 
     const [progress, events] = await Promise.all([getRouteProgress(nextRoute.id), getMapEvents(nextRoute.id)]);
@@ -521,6 +535,7 @@ export function MapScreen({ character }: MapScreenProps) {
       const savedDistance = Number(progress.distance_walked_meters);
       distanceWalkedRef.current = savedDistance;
       setDistanceWalked(savedDistance);
+      setRouteDirection(progress.travel_direction ?? "forward");
       if (progress.current_x_percent !== null && progress.current_y_percent !== null) {
         setSavedPlayerPosition({ x: Number(progress.current_x_percent), y: Number(progress.current_y_percent) });
       }
@@ -560,6 +575,8 @@ export function MapScreen({ character }: MapScreenProps) {
               current_y_percent: playerPosition.y,
               last_lat: next.latitude,
               last_lng: next.longitude,
+              travel_direction: routeDirectionRef.current,
+              is_current: true,
             });
             setMovementStatus({
               label: movementStateRef.current,
@@ -602,7 +619,10 @@ export function MapScreen({ character }: MapScreenProps) {
           }
 
           const cleanMeters = countedMeters;
-          const nextDistance = Math.min(activeRoute.distance_required_meters, distanceWalkedRef.current + cleanMeters);
+          const direction = routeDirectionRef.current;
+          const nextDistance = direction === "reverse"
+            ? Math.max(0, distanceWalkedRef.current - cleanMeters)
+            : Math.min(activeRoute.distance_required_meters, distanceWalkedRef.current + cleanMeters);
           const nextProgress = Math.min(100, (nextDistance / activeRoute.distance_required_meters) * 100);
           const nextMapPosition = getPointOnRoute(activeRoute.path_points, nextProgress);
 
@@ -617,8 +637,12 @@ export function MapScreen({ character }: MapScreenProps) {
             current_y_percent: nextMapPosition.y,
             last_lat: next.latitude,
             last_lng: next.longitude,
+            travel_direction: direction,
+            is_current: true,
           });
-          setGpsMessage(`State: MOVING. Counted +${Math.round(cleanMeters)}m at ${speedMph.toFixed(1)} mph.`);
+          setGpsMessage(direction === "reverse" && nextDistance <= 0
+            ? "You returned to the starting sign post."
+            : `State: MOVING. ${direction === "reverse" ? "Backtracked" : "Counted"} ${Math.round(cleanMeters)}m at ${speedMph.toFixed(1)} mph.`);
 
           return next;
         });
@@ -785,6 +809,10 @@ export function MapScreen({ character }: MapScreenProps) {
         icon_color: markerIconColor.trim() || null,
       });
       const configured = await updateMarkerSettings(created.id, getMarkerSettingsPayload());
+      if (draftType === "Sign Post") {
+        const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds);
+        setMarkerRouteLinks(links);
+      }
       setMarkers((current) => [...current, configured]);
       setSelectedMarker(configured);
       setDraftTitle("");
@@ -863,6 +891,14 @@ export function MapScreen({ character }: MapScreenProps) {
 
     try {
       setMarkerMarketItems(await getMarkerMarketItems(marker.id));
+      if (marker.type === "Sign Post") {
+        const links = await getMarkerRouteLinks(marker.id);
+        setMarkerRouteLinks(links);
+        setSelectedMarkerRouteIds(links.map((link) => link.route_id));
+      } else {
+        setMarkerRouteLinks([]);
+        setSelectedMarkerRouteIds([]);
+      }
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to load marker market."));
     }
@@ -892,6 +928,10 @@ export function MapScreen({ character }: MapScreenProps) {
           })
         : selectedMarker;
       const updated = await updateMarkerSettings(moved.id, getMarkerSettingsPayload());
+      if (updated.type === "Sign Post") {
+        const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds);
+        setMarkerRouteLinks(links);
+      }
       setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
       setSelectedMarker(updated);
       setClickedPercent(null);
@@ -1079,6 +1119,77 @@ export function MapScreen({ character }: MapScreenProps) {
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to start linked walking path."));
     }
+  }
+
+  function toggleSignPostRoute(routeId: string) {
+    setSelectedMarkerRouteIds((current) => current.includes(routeId) ? current.filter((id) => id !== routeId) : [...current, routeId]);
+  }
+
+  async function startPathFromSignPost(nextRoute: MapRoute) {
+    const progress = await getRouteProgress(nextRoute.id);
+    const existingDistance = Number(progress?.distance_walked_meters ?? 0);
+    const nextProgress = Math.min(100, Math.max(0, progress?.progress_percent ?? (existingDistance / nextRoute.distance_required_meters) * 100));
+    const nextPoint = getPointOnRoute(nextRoute.path_points, nextProgress);
+
+    await setCurrentRoute(nextRoute.id);
+    setRouteDirection("forward");
+    routeDirectionRef.current = "forward";
+    distanceWalkedRef.current = existingDistance;
+    setDistanceWalked(existingDistance);
+    setSavedPlayerPosition(nextPoint);
+    setRouteProgressRows((current) => current.map((row) => ({ ...row, is_current: row.route_id === nextRoute.id })));
+    await saveRouteProgress(nextRoute.id, {
+      distance_walked_meters: existingDistance,
+      progress_percent: nextProgress,
+      current_x_percent: nextPoint.x,
+      current_y_percent: nextPoint.y,
+      last_lat: null,
+      last_lng: null,
+      travel_direction: "forward",
+      is_current: true,
+    });
+    setSelectedMarker(null);
+    await selectRoute(nextRoute, true);
+    setGpsMessage(`${nextRoute.name} is now your active walking path.`);
+  }
+
+  async function turnBackOnCurrentPath() {
+    const nextPoint = getPointOnRoute(route.path_points, progressPercent);
+    setRouteDirection("reverse");
+    routeDirectionRef.current = "reverse";
+    setSavedPlayerPosition(nextPoint);
+    await saveRouteProgress(route.id, {
+      distance_walked_meters: distanceWalkedRef.current,
+      progress_percent: progressPercent,
+      current_x_percent: nextPoint.x,
+      current_y_percent: nextPoint.y,
+      last_lat: null,
+      last_lng: null,
+      travel_direction: "reverse",
+      is_current: true,
+    });
+    setGpsMessage(`Turning back on ${route.name}. Walking now returns you toward the starting sign post.`);
+  }
+
+  async function reduceCurrentRouteProgress(percent: number) {
+    const meters = route.distance_required_meters * (percent / 100);
+    const nextDistance = Math.max(0, distanceWalkedRef.current - meters);
+    const nextProgress = Math.max(0, (nextDistance / route.distance_required_meters) * 100);
+    const nextPoint = getPointOnRoute(route.path_points, nextProgress);
+    distanceWalkedRef.current = nextDistance;
+    setDistanceWalked(nextDistance);
+    setSavedPlayerPosition(nextPoint);
+    setRouteProgressRows((current) => upsertRouteProgressRow(current, route.id, nextProgress));
+    await saveRouteProgress(route.id, {
+      distance_walked_meters: nextDistance,
+      progress_percent: nextProgress,
+      current_x_percent: nextPoint.x,
+      current_y_percent: nextPoint.y,
+      last_lat: null,
+      last_lng: null,
+      travel_direction: routeDirectionRef.current,
+      is_current: true,
+    });
   }
 
   async function moveSelectedMarker() {
@@ -1691,6 +1802,23 @@ export function MapScreen({ character }: MapScreenProps) {
     setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
   }
 
+  async function fleeBattle() {
+    if (!activeBattle || battleFinished) {
+      return;
+    }
+
+    const fleeDamage = Math.max(1, Math.ceil((Number(activeEnemy?.health ?? activeBattle.enemy_hp ?? 30) || 30) * 0.12));
+    const nextHp = Math.max(1, battlePlayerHp - fleeDamage);
+    setBattlePlayerHp(nextHp);
+    pushCombatIndicator("player", `-${fleeDamage}`, "#ff5c5c");
+    await reduceCurrentRouteProgress(3);
+    setBattleLog((current) => ["You escaped, but took damage and lost ground.", ...current].slice(0, 8));
+    setActiveBattle(null);
+    setBattleFinished(null);
+    setRevivePromptOpen(false);
+    setGpsMessage("You escaped, but took damage and lost ground.");
+  }
+
   function resolveEnemyCounterAttack(extraPlayerDefense = 0) {
     const enemyName = activeEnemy?.name || activeBattle?.enemy_name || "Enemy";
     const ability = chooseWeightedEnemyAbility(activeEnemy, battleEnemyStamina, battleEnemyMagika);
@@ -2225,6 +2353,7 @@ export function MapScreen({ character }: MapScreenProps) {
         result={battleFinished}
         onAction={(ability) => void handleBattleAction(ability)}
         onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
+        onFlee={() => void fleeBattle()}
         onUseItem={(item) => void useBattleItem(item)}
         onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
         onDeclineRevive={() => void declineReviveAfterDefeat()}
@@ -2544,18 +2673,8 @@ export function MapScreen({ character }: MapScreenProps) {
             <Text style={styles.gpsText}>{isTracking ? "Pause GPS" : "Track Walk"}</Text>
           </Pressable>
         </View>
-        <View style={styles.routePicker}>
-          {orderedRoutes.map((item) => (
-            <Pressable
-              key={item.id}
-              style={[styles.routeChip, route.id === item.id && styles.routeChipActive, !isAdmin && !unlockedRouteIds.has(item.id) && styles.routeChipLocked]}
-              onPress={() => void selectRoute(item)}
-            >
-              <Text style={styles.routeChipText}>{item.sort_order}. {item.name}{!isAdmin && !unlockedRouteIds.has(item.id) ? " (Locked)" : ""}</Text>
-            </Pressable>
-          ))}
-        </View>
         <Info label="Current Route" value={route.name} />
+        <Info label="Direction" value={routeDirection === "reverse" ? "Returning to start" : "Traveling forward"} />
         <Info label="Distance Walked" value={`${metersToMiles(distanceWalked)} mi`} />
         <Info label="Distance Remaining" value={`${metersToMiles(Math.max(0, route.distance_required_meters - distanceWalked))} mi`} />
         <Info label="Progress" value={`${Math.round(progressPercent)}%`} />
@@ -2567,6 +2686,9 @@ export function MapScreen({ character }: MapScreenProps) {
         <Info label="Danger Level" value={route.danger_level} />
         <Info label="Estimated Encounters" value={String(route.estimated_encounters)} />
         <ProgressBar value={progressPercent} max={100} color={colors.blue} height={9} />
+        <Pressable style={styles.secondaryButton} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0 || routeDirection === "reverse"}>
+          <Text style={styles.secondaryText}>{routeDirection === "reverse" ? "Returning to Start" : "Turn Back"}</Text>
+        </Pressable>
         <Text style={styles.gpsMessage}>{gpsMessage}</Text>
       </Frame>
 
@@ -2593,6 +2715,31 @@ export function MapScreen({ character }: MapScreenProps) {
               <Pressable style={styles.primaryButton} onPress={isTracking ? undefined : startGpsTracking}>
                 <Text style={styles.primaryText}>{isTracking ? "Tracking Walk" : "Start Tracking Walk"}</Text>
               </Pressable>
+            </View>
+          ) : selectedMarker.type === "Sign Post" ? (
+            <View style={styles.storyEditor}>
+              <Text style={styles.selectedTitle}>{selectedMarker.quest_title || selectedMarker.title}</Text>
+              {selectedMarker.quest_dialogue || selectedMarker.description ? <Text style={styles.dialogueText}>{selectedMarker.quest_dialogue || selectedMarker.description}</Text> : null}
+              {markerRouteLinks.length === 0 ? <Text style={styles.copy}>No walking paths are linked to this sign post yet.</Text> : null}
+              {markerRouteLinks.map((link) => {
+                const linkedRoute = routes.find((item) => item.id === link.route_id);
+                const progress = routeProgressRows.find((row) => row.route_id === link.route_id)?.progress_percent ?? 0;
+
+                if (!linkedRoute) {
+                  return null;
+                }
+
+                return (
+                  <View key={link.id} style={styles.storyCard}>
+                    <Text style={styles.markerName}>{linkedRoute.name}</Text>
+                    <Text style={styles.copy}>{link.destination_label || linkedRoute.terrain}</Text>
+                    <Text style={styles.copy}>{metersToMiles(linkedRoute.distance_required_meters)} mi / Progress {Math.round(progress)}%</Text>
+                    <Pressable style={styles.primaryButton} onPress={() => void startPathFromSignPost(linkedRoute)}>
+                      <Text style={styles.primaryText}>Start Path</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
             </View>
           ) : selectedMarker.type === "Area/Town Entrance" ? (
             <View style={styles.storyEditor}>
@@ -2873,6 +3020,24 @@ export function MapScreen({ character }: MapScreenProps) {
               <TextInput value={markerIconColor} onChangeText={setMarkerIconColor} placeholder="Marker icon color, example #d9a441" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
               {draftType === "Area/Town Entrance" ? <MiniMapPicker miniMaps={miniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} /> : null}
+              {draftType === "Sign Post" ? (
+                <View style={styles.storyEditor}>
+                  <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
+                  <Text style={styles.copy}>Players choose from these paths when they interact with this Sign Post.</Text>
+                  <View style={styles.storyRoutePicker}>
+                    {orderedRoutes.map((item) => (
+                      <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
+                        <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {selectedMarker ? (
+                    <Text style={styles.debugLine}>Save Selected Marker Settings after changing linked paths.</Text>
+                  ) : (
+                    <Text style={styles.debugLine}>Selected paths will be linked when the Sign Post marker is created.</Text>
+                  )}
+                </View>
+              ) : null}
               <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
                 <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
               </Pressable>
@@ -3533,7 +3698,7 @@ function getUnlockedRouteIds(routes: MapRoute[], progressRows: Array<{ route_id:
   return unlocked;
 }
 
-function upsertRouteProgressRow(rows: Array<{ route_id: string; progress_percent: number }>, routeId: string, progressPercent: number) {
+function upsertRouteProgressRow(rows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>, routeId: string, progressPercent: number) {
   const existing = rows.some((row) => row.route_id === routeId);
 
   if (existing) {
@@ -3741,6 +3906,7 @@ function BattleEventScreen({
   result,
   onAction,
   onWeaponAction,
+  onFlee,
   onUseItem,
   onToggleInventory,
   onDeclineRevive,
@@ -3764,6 +3930,7 @@ function BattleEventScreen({
   result: "victory" | "defeat" | null;
   onAction: (ability: AbilityDefinition) => void;
   onWeaponAction: (weapon: ItemDefinition) => void;
+  onFlee: () => void;
   onUseItem: (item: InventoryItem) => void;
   onToggleInventory: () => void;
   onDeclineRevive: () => void;
@@ -3833,9 +4000,16 @@ function BattleEventScreen({
             </Pressable>
           )})}
         </View>
-        <Pressable style={styles.secondaryButton} onPress={onToggleInventory}>
-          <Text style={styles.secondaryText}>Inventory</Text>
-        </Pressable>
+        <View style={styles.modeRow}>
+          <Pressable style={styles.secondaryButtonFlex} onPress={onToggleInventory}>
+            <Text style={styles.secondaryText}>Inventory</Text>
+          </Pressable>
+          {!result ? (
+            <Pressable style={styles.secondaryButtonFlex} onPress={onFlee}>
+              <Text style={styles.dangerText}>Flee</Text>
+            </Pressable>
+          ) : null}
+        </View>
         {revivePromptOpen ? (
           <View style={styles.revivePrompt}>
             <Text style={styles.selectedTitle}>You have fallen</Text>
@@ -4430,6 +4604,7 @@ function isQuestMarkerType(type: string) {
 
 function getDefaultMarkerIconLabel(type: string) {
   if (type === "Market") return "MKT";
+  if (type === "Sign Post") return "SIG";
   if (type === "Area/Town Entrance") return "IN";
   if (type === "Battle" || type === "Battle Zone") return "BTL";
   if (type === "Quest" || type === "Side Quest" || type === "Story") return "!";
@@ -4442,6 +4617,7 @@ function getDefaultMarkerIconLabel(type: string) {
 
 function getDefaultMarkerIconColor(type: string) {
   if (type === "Market") return colors.gold;
+  if (type === "Sign Post") return "#f0d28a";
   if (type === "Area/Town Entrance") return colors.blue;
   if (type === "Battle" || type === "Battle Zone") return "#e0574f";
   if (type === "Quest" || type === "Side Quest" || type === "Story") return "#8fe8a1";

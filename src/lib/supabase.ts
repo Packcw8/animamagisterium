@@ -295,6 +295,8 @@ export type Tables = {
     current_y_percent: number | null;
     last_lat: number | null;
     last_lng: number | null;
+    travel_direction: "forward" | "reverse";
+    is_current: boolean;
     updated_at: string;
   };
   map_markers: {
@@ -345,6 +347,17 @@ export type Tables = {
     icon_color: string | null;
     sort_order: number;
     is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  marker_route_links: {
+    id: string;
+    marker_id: string;
+    route_id: string;
+    sort_order: number;
+    destination_label: string | null;
+    starts_on_select: boolean;
     created_by: string | null;
     created_at: string;
     updated_at: string;
