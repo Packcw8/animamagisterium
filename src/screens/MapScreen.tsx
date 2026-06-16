@@ -2367,6 +2367,9 @@ export function MapScreen({ character }: MapScreenProps) {
       <MarkerSceneScreen
         marker={selectedMarker}
         marketItems={markerMarketItems}
+        routeLinks={markerRouteLinks}
+        routes={routes}
+        routeProgressRows={routeProgressRows}
         inventoryItems={inventoryItems}
         itemDefinitions={itemDefinitions}
         message={markerPanelMessage}
@@ -2375,6 +2378,7 @@ export function MapScreen({ character }: MapScreenProps) {
         onSell={(entry) => void sellToMarker(entry)}
         onClaimReward={() => void claimSelectedMarkerReward()}
         onAcceptQuest={() => void acceptSelectedMarkerQuest()}
+        onStartPath={(nextRoute) => void startPathFromSignPost(nextRoute)}
         onEnterArea={() => {
           const miniMap = miniMaps.find((item) => item.id === selectedMarker.linked_mini_map_id);
           if (miniMap) {
@@ -4363,6 +4367,9 @@ function MiniMapMarkerAdminForm({
 function MarkerSceneScreen({
   marker,
   marketItems,
+  routeLinks,
+  routes,
+  routeProgressRows,
   inventoryItems,
   itemDefinitions,
   message,
@@ -4371,10 +4378,14 @@ function MarkerSceneScreen({
   onSell,
   onClaimReward,
   onAcceptQuest,
+  onStartPath,
   onEnterArea,
 }: {
   marker: MapMarker;
   marketItems: MarkerMarketItem[];
+  routeLinks: MarkerRouteLink[];
+  routes: MapRoute[];
+  routeProgressRows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>;
   inventoryItems: InventoryItem[];
   itemDefinitions: ItemDefinition[];
   message: string | null;
@@ -4383,6 +4394,7 @@ function MarkerSceneScreen({
   onSell: (item: InventoryItem) => void;
   onClaimReward: () => void;
   onAcceptQuest: () => void;
+  onStartPath: (route: MapRoute) => void;
   onEnterArea: () => void;
 }) {
   const backgroundUri = resolveSceneImageUri(marker.scene_background_image_url || marker.shop_background_image_url);
@@ -4411,6 +4423,30 @@ function MarkerSceneScreen({
             <Pressable style={styles.primaryButton} onPress={onEnterArea}>
               <Text style={styles.primaryText}>Enter Area</Text>
             </Pressable>
+          </View>
+        ) : marker.type === "Sign Post" ? (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Choose Your Path</Text>
+            {routeLinks.length === 0 ? <Text style={styles.copy}>No walking paths are linked to this sign post yet.</Text> : null}
+            {routeLinks.map((link) => {
+              const linkedRoute = routes.find((item) => item.id === link.route_id);
+              const progress = routeProgressRows.find((row) => row.route_id === link.route_id)?.progress_percent ?? 0;
+
+              if (!linkedRoute) {
+                return null;
+              }
+
+              return (
+                <View key={link.id} style={styles.storyCard}>
+                  <Text style={styles.markerName}>{linkedRoute.name}</Text>
+                  <Text style={styles.copy}>{link.destination_label || linkedRoute.terrain}</Text>
+                  <Text style={styles.copy}>{metersToMiles(linkedRoute.distance_required_meters)} mi / Progress {Math.round(progress)}%</Text>
+                  <Pressable style={styles.primaryButton} onPress={() => onStartPath(linkedRoute)}>
+                    <Text style={styles.primaryText}>Start Path</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
           </View>
         ) : marker.type === "Market" ? (
           <View style={styles.storyEditor}>
