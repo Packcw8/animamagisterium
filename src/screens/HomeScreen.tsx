@@ -5,6 +5,7 @@ import { Frame } from "../components/Frame";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
+import { pickAndUploadAdminImage } from "../services/adminImageService";
 import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
 import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getAbilityCostLabel, getAbilitySourceLabel, getCombatLoadout, getCharacterResources, getCurrentHealth } from "../services/abilityService";
 import {
@@ -679,6 +680,7 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                 <ChoiceRow label="Required Attribute" options={["", ...requiredAttributes]} value={abilityForm.required_attribute ?? ""} onSelect={(value) => setAbilityForm((current) => ({ ...current, required_attribute: value || null, linked_stat: value || current.linked_stat }))} />
                 <ItemText label="Required Attribute Level" value={String(abilityForm.required_attribute_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_attribute_level: Number(value) || 0, required_level: Number(value) || current.required_level || 0 }))} />
                 <ItemText label="Image URL/path" value={abilityForm.image_path ?? ""} onChange={(value) => setAbilityForm((current) => ({ ...current, image_path: value }))} />
+                <AdminImageUploadButton folder="abilities" onUploaded={(url) => setAbilityForm((current) => ({ ...current, image_path: url }))} onMessage={setAbilityMessage} />
                 <AssetPreview label="Ability image preview" uri={resolveAbilityImageUri(abilityForm.image_path)} />
                 <ToggleRow label="Active" value={abilityForm.is_active ?? true} onPress={() => setAbilityForm((current) => ({ ...current, is_active: !current.is_active }))} />
                 <Pressable style={styles.primaryAdminButton} onPress={() => void saveAdminAbility()}>
@@ -713,6 +715,7 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                 <ItemText label="Name" value={enemyForm.name ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, name: value }))} />
                 <ItemText label="Type" value={enemyForm.type ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, type: value }))} />
                 <ItemText label="Image URL/path" value={enemyForm.image_url ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, image_url: value }))} />
+                <AdminImageUploadButton folder="enemies" onUploaded={(url) => setEnemyForm((current) => ({ ...current, image_url: url }))} onMessage={setAbilityMessage} />
                 <AssetPreview label="Enemy image preview" uri={resolveEnemyImageUri(enemyForm.image_url)} />
                 <View style={styles.slotActions}>
                   <ItemText label="Health" value={String(enemyForm.health ?? 20)} onChange={(value) => setEnemyForm((current) => ({ ...current, health: Number(value) || 20 }))} />
@@ -888,6 +891,7 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                 <ChoiceRow label="Rarity" options={rarityOptions} value={itemForm.rarity ?? "common"} onSelect={(value) => setItemForm((current) => ({ ...current, rarity: value }))} />
                 <ItemText label="Description" value={itemForm.description ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, description: value }))} />
                 <ItemText label="Image path" value={itemForm.image_path ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, image_path: value }))} />
+                <AdminImageUploadButton folder="items" onUploaded={(url) => setItemForm((current) => ({ ...current, image_path: url }))} onMessage={setInventoryMessage} />
                 <AssetPreview label="Item image preview" uri={resolveInventoryImageUri(itemForm.image_path)} />
                 <ItemText label="Gold value" value={String(itemForm.gold_value ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, gold_value: Number(value) || 0 }))} />
                 <ItemText label="Weight" value={String(itemForm.weight ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, weight: Number(value) || 0 }))} />
@@ -1010,6 +1014,29 @@ function ToggleRow({ label, value, onPress }: { label: string; value: boolean; o
   return (
     <Pressable style={[styles.toggleButton, value && styles.toggleButtonActive]} onPress={onPress}>
       <Text style={styles.smallButtonText}>{label}: {value ? "true" : "false"}</Text>
+    </Pressable>
+  );
+}
+
+function AdminImageUploadButton({ folder, onUploaded, onMessage }: { folder: string; onUploaded: (url: string) => void; onMessage: (message: string) => void }) {
+  const [uploading, setUploading] = useState(false);
+
+  async function upload() {
+    setUploading(true);
+    try {
+      const url = await pickAndUploadAdminImage(folder);
+      onUploaded(url);
+      onMessage("Image uploaded and URL added.");
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Unable to upload image.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <Pressable style={[styles.smallButton, uploading && styles.disabledAction]} onPress={() => void upload()} disabled={uploading}>
+      <Text style={styles.smallButtonText}>{uploading ? "Uploading..." : "Upload Image"}</Text>
     </Pressable>
   );
 }

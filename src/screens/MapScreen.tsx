@@ -6,6 +6,7 @@ import { Frame } from "../components/Frame";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
+import { pickAndUploadAdminImage } from "../services/adminImageService";
 import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
 import { AbilityDefinition, CharacterResources, clampHealth, getAbilityCostLabel, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
@@ -2876,6 +2877,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <TextInput value={legendDescription} onChangeText={setLegendDescription} placeholder="What this marker means to players" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
               <TextInput value={legendIconLabel} onChangeText={setLegendIconLabel} placeholder="Icon text, example MKT" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={legendIconImage} onChangeText={setLegendIconImage} placeholder="Icon image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <AdminImageUploadButton folder="legend-icons" onUploaded={setLegendIconImage} onMessage={setAdminMessage} />
               <TextInput value={legendIconColor} onChangeText={setLegendIconColor} placeholder="Icon color, example #d9a441" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={legendSortOrder} onChangeText={setLegendSortOrder} placeholder="Sort order" placeholderTextColor={colors.muted} style={styles.input} />
               <Pressable style={[styles.secondaryButton, legendActive && styles.typeSelected]} onPress={() => setLegendActive((value) => !value)}>
@@ -3006,6 +3008,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 ))}
               </View>
               <TextInput value={miniMapBackground} onChangeText={setMiniMapBackground} placeholder="Background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <AdminImageUploadButton folder="mini-maps" onUploaded={setMiniMapBackground} onMessage={setAdminMessage} />
               <TextInput value={miniMapDescription} onChangeText={setMiniMapDescription} placeholder="Description" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
               <Pressable style={[styles.secondaryButton, miniMapActive && styles.typeSelected]} onPress={() => setMiniMapActive((value) => !value)}>
                 <Text style={styles.secondaryText}>Active: {miniMapActive ? "true" : "false"}</Text>
@@ -3043,9 +3046,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <AdminImageUploadButton folder="marker-backgrounds" onUploaded={setMarkerSceneBackground} onMessage={setAdminMessage} />
               <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <AdminImageUploadButton folder="marker-npcs" onUploaded={setMarkerNpcImage} onMessage={setAdminMessage} />
               <TextInput value={markerIconLabel} onChangeText={setMarkerIconLabel} placeholder="Marker icon text, example MKT" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={markerIconImage} onChangeText={setMarkerIconImage} placeholder="Marker icon image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <AdminImageUploadButton folder="marker-icons" onUploaded={setMarkerIconImage} onMessage={setAdminMessage} />
               <TextInput value={markerIconColor} onChangeText={setMarkerIconColor} placeholder="Marker icon color, example #d9a441" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
               {draftType === "Area/Town Entrance" ? <MiniMapPicker miniMaps={miniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} /> : null}
@@ -3076,6 +3082,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <TextInput value={markerQuestTitle} onChangeText={setMarkerQuestTitle} placeholder="Quest title optional" placeholderTextColor={colors.muted} style={styles.input} />
                   <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Quest dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
                   <TextInput value={markerQuestImage} onChangeText={setMarkerQuestImage} placeholder="Quest image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                  <AdminImageUploadButton folder="quest-images" onUploaded={setMarkerQuestImage} onMessage={setAdminMessage} />
                   <RoutePicker routes={routes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
                   <Pressable style={[styles.secondaryButton, markerStartsRouteOnAccept && styles.typeSelected]} onPress={() => setMarkerStartsRouteOnAccept((value) => !value)}>
                     <Text style={styles.secondaryText}>Start Path On Accept: {markerStartsRouteOnAccept ? "Yes" : "No"}</Text>
@@ -3101,7 +3108,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <TextInput value={markerQuestTitle} onChangeText={setMarkerQuestTitle} placeholder="Shop display name optional" placeholderTextColor={colors.muted} style={styles.input} />
                   <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Shop welcome text" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
                   <TextInput value={markerShopImage} onChangeText={setMarkerShopImage} placeholder="Shop image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                  <AdminImageUploadButton folder="shop-images" onUploaded={setMarkerShopImage} onMessage={setAdminMessage} />
                   <TextInput value={markerShopBackground} onChangeText={setMarkerShopBackground} placeholder="Shop background image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                  <AdminImageUploadButton folder="shop-backgrounds" onUploaded={setMarkerShopBackground} onMessage={setAdminMessage} />
                   <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
                   <ItemPicker label="Market item" items={itemDefinitions} selectedId={marketItemId} onSelect={setMarketItemId} />
                   <MarketListingModePicker value={marketListingMode} onSelect={setMarketListingMode} />
@@ -3167,6 +3176,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <TextInput value={tutorialTitle} onChangeText={setTutorialTitle} placeholder="Tutorial title" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={tutorialDescription} onChangeText={setTutorialDescription} placeholder="Description / dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
               <TextInput value={tutorialImage} onChangeText={setTutorialImage} placeholder="Image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <AdminImageUploadButton folder="tutorials" onUploaded={setTutorialImage} onMessage={setAdminMessage} />
               <MarkerPicker label="Linked marker optional" markers={worldMarkers} selectedId={tutorialMarkerId} onSelect={setTutorialMarkerId} />
               <MiniMapPicker miniMaps={miniMaps} selectedId={tutorialMiniMapId} onSelect={setTutorialMiniMapId} />
               <RoutePicker routes={orderedRoutes} selectedId={tutorialRouteId} onSelect={setTutorialRouteId} />
@@ -3216,8 +3226,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             {eventType !== "battle" ? (
               <>
                 <TextInput value={eventBackgroundImage} onChangeText={setEventBackgroundImage} placeholder="Background image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                <AdminImageUploadButton folder="event-backgrounds" onUploaded={setEventBackgroundImage} onMessage={setAdminMessage} />
                 <TextInput value={eventNpcName} onChangeText={setEventNpcName} placeholder="NPC name optional" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={eventNpcPortrait} onChangeText={setEventNpcPortrait} placeholder="NPC portrait URL optional" placeholderTextColor={colors.muted} style={styles.input} />
+                <AdminImageUploadButton folder="event-npcs" onUploaded={setEventNpcPortrait} onMessage={setAdminMessage} />
                 <TextInput value={eventDialogue} onChangeText={setEventDialogue} placeholder="Fallback dialogue text if no dialogue steps exist" placeholderTextColor={colors.muted} style={styles.input} />
               </>
             ) : (
@@ -3235,6 +3247,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                     <Text style={styles.copy}>Use these fields only when you have not created an enemy in Enemy Admin yet.</Text>
                     <TextInput value={enemyName} onChangeText={setEnemyName} placeholder="Enemy name" placeholderTextColor={colors.muted} style={styles.input} />
                     <TextInput value={enemyImage} onChangeText={setEnemyImage} placeholder="Enemy image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                    <AdminImageUploadButton folder="battle-enemies" onUploaded={setEnemyImage} onMessage={setAdminMessage} />
                     <TextInput value={enemyHp} onChangeText={setEnemyHp} placeholder="Enemy HP" placeholderTextColor={colors.muted} style={styles.input} />
                     <TextInput value={enemyAttack} onChangeText={setEnemyAttack} placeholder="Enemy attack damage" placeholderTextColor={colors.muted} style={styles.input} />
                   </View>
@@ -3339,7 +3352,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <TextInput value={nodeKey} onChangeText={setNodeKey} placeholder="Optional node key" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeNpcName} onChangeText={setNodeNpcName} placeholder="NPC name" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeNpcPortrait} onChangeText={setNodeNpcPortrait} placeholder="NPC portrait URL optional" placeholderTextColor={colors.muted} style={styles.input} />
+              <AdminImageUploadButton folder="dialogue-npcs" onUploaded={setNodeNpcPortrait} onMessage={setAdminMessage} />
               <TextInput value={nodeBackgroundImage} onChangeText={setNodeBackgroundImage} placeholder="Background image URL optional" placeholderTextColor={colors.muted} style={styles.input} />
+              <AdminImageUploadButton folder="dialogue-backgrounds" onUploaded={setNodeBackgroundImage} onMessage={setAdminMessage} />
               <TextInput value={nodeDialogue} onChangeText={setNodeDialogue} placeholder="NPC dialogue text" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
               <TextInput value={nodeSortOrder} onChangeText={setNodeSortOrder} placeholder="Dialogue step order" placeholderTextColor={colors.muted} style={styles.input} />
               <View style={styles.typeGrid}>
@@ -4317,9 +4332,12 @@ function MiniMapMarkerAdminForm({
       <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+      <AdminImageUploadButton folder="mini-marker-backgrounds" onUploaded={setMarkerSceneBackground} onMessage={() => undefined} />
       <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+      <AdminImageUploadButton folder="mini-marker-npcs" onUploaded={setMarkerNpcImage} onMessage={() => undefined} />
       <TextInput value={markerIconLabel} onChangeText={setMarkerIconLabel} placeholder="Marker icon text, example MKT" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={markerIconImage} onChangeText={setMarkerIconImage} placeholder="Marker icon image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+      <AdminImageUploadButton folder="mini-marker-icons" onUploaded={setMarkerIconImage} onMessage={() => undefined} />
       <TextInput value={markerIconColor} onChangeText={setMarkerIconColor} placeholder="Marker icon color, example #d9a441" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
       <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
@@ -4331,6 +4349,7 @@ function MiniMapMarkerAdminForm({
           <TextInput value={markerQuestTitle} onChangeText={setMarkerQuestTitle} placeholder="Quest title optional" placeholderTextColor={colors.muted} style={styles.input} />
           <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Quest dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
           <TextInput value={markerQuestImage} onChangeText={setMarkerQuestImage} placeholder="Quest image URL" placeholderTextColor={colors.muted} style={styles.input} />
+          <AdminImageUploadButton folder="mini-quest-images" onUploaded={setMarkerQuestImage} onMessage={() => undefined} />
           <RoutePicker routes={routes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
           <Pressable style={[styles.secondaryButton, markerStartsRouteOnAccept && styles.typeSelected]} onPress={() => setMarkerStartsRouteOnAccept((value) => !value)}>
             <Text style={styles.secondaryText}>Start Path On Accept: {markerStartsRouteOnAccept ? "Yes" : "No"}</Text>
@@ -4361,7 +4380,9 @@ function MiniMapMarkerAdminForm({
           <TextInput value={markerQuestTitle} onChangeText={setMarkerQuestTitle} placeholder="Shop display name optional" placeholderTextColor={colors.muted} style={styles.input} />
           <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Shop welcome text" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
           <TextInput value={markerShopImage} onChangeText={setMarkerShopImage} placeholder="Shop image URL" placeholderTextColor={colors.muted} style={styles.input} />
+          <AdminImageUploadButton folder="mini-shop-images" onUploaded={setMarkerShopImage} onMessage={() => undefined} />
           <TextInput value={markerShopBackground} onChangeText={setMarkerShopBackground} placeholder="Shop background image URL" placeholderTextColor={colors.muted} style={styles.input} />
+          <AdminImageUploadButton folder="mini-shop-backgrounds" onUploaded={setMarkerShopBackground} onMessage={() => undefined} />
           <ItemPicker label="Market item" items={itemDefinitions} selectedId={marketItemId} onSelect={setMarketItemId} />
           <MarketListingModePicker value={marketListingMode} onSelect={setMarketListingMode} />
           <TextInput value={marketBuyPrice} onChangeText={setMarketBuyPrice} placeholder="Buy price" placeholderTextColor={colors.muted} style={styles.input} />
@@ -4550,6 +4571,37 @@ function ItemPicker({ label, items, selectedId, onSelect }: { label: string; ite
           </Pressable>
         ))}
       </View>
+    </View>
+  );
+}
+
+function AdminImageUploadButton({ folder, onUploaded, onMessage }: { folder: string; onUploaded: (url: string) => void; onMessage?: (message: string) => void }) {
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function upload() {
+    setUploading(true);
+    setMessage(null);
+    try {
+      const url = await pickAndUploadAdminImage(folder);
+      onUploaded(url);
+      setMessage("Image uploaded.");
+      onMessage?.("Image uploaded and URL added.");
+    } catch (error) {
+      const nextMessage = error instanceof Error ? error.message : "Unable to upload image.";
+      setMessage(nextMessage);
+      onMessage?.(nextMessage);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <View style={styles.uploadControl}>
+      <Pressable style={[styles.secondaryButton, uploading && styles.disabledAction]} onPress={() => void upload()} disabled={uploading}>
+        <Text style={styles.secondaryText}>{uploading ? "Uploading..." : "Upload Image"}</Text>
+      </Pressable>
+      {message ? <Text style={styles.debugLine}>{message}</Text> : null}
     </View>
   );
 }
@@ -5203,6 +5255,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
+  },
+  uploadControl: {
+    gap: 6,
   },
   secondaryText: {
     color: colors.blue,
