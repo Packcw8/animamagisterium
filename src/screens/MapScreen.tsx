@@ -447,7 +447,7 @@ export function MapScreen({ character }: MapScreenProps) {
   }, [completedRouteId, orderedRoutes, progressPercent, route, routeDirection]);
 
   useEffect(() => {
-    if (activeEvent || activeBattle || playerMovementState !== "MOVING") {
+    if (activeEvent || activeBattle || routeDirection === "reverse" || playerMovementState !== "MOVING") {
       return;
     }
 
@@ -469,7 +469,7 @@ export function MapScreen({ character }: MapScreenProps) {
     }
 
     setActiveEvent(nextEvent);
-  }, [activeBattle, activeEvent, completedEventIds, mapEvents, playerMovementState, progressPercent, route.id]);
+  }, [activeBattle, activeEvent, completedEventIds, mapEvents, playerMovementState, progressPercent, route.id, routeDirection]);
 
   useEffect(() => {
     if (!activeEvent || activeEvent.event_type === "battle") {
@@ -2669,9 +2669,14 @@ export function MapScreen({ character }: MapScreenProps) {
       <Frame style={styles.panel}>
         <View style={styles.panelHeader}>
           <Text style={styles.sectionTitle}>Journey Panel</Text>
-          <Pressable style={[styles.gpsButton, isTracking && styles.gpsActive]} onPress={isTracking ? stopGpsTracking : startGpsTracking}>
-            <Text style={styles.gpsText}>{isTracking ? "Pause GPS" : "Track Walk"}</Text>
-          </Pressable>
+          <View style={styles.headerActions}>
+            <Pressable style={[styles.gpsButton, isTracking && styles.gpsActive]} onPress={isTracking ? stopGpsTracking : startGpsTracking}>
+              <Text style={styles.gpsText}>{isTracking ? "Pause GPS" : "Track Walk"}</Text>
+            </Pressable>
+            <Pressable style={[styles.gpsButton, routeDirection === "reverse" && styles.gpsActive]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0 || routeDirection === "reverse"}>
+              <Text style={styles.gpsText}>{routeDirection === "reverse" ? "Returning" : "Turn Back"}</Text>
+            </Pressable>
+          </View>
         </View>
         <Info label="Current Route" value={route.name} />
         <Info label="Direction" value={routeDirection === "reverse" ? "Returning to start" : "Traveling forward"} />
@@ -2686,9 +2691,6 @@ export function MapScreen({ character }: MapScreenProps) {
         <Info label="Danger Level" value={route.danger_level} />
         <Info label="Estimated Encounters" value={String(route.estimated_encounters)} />
         <ProgressBar value={progressPercent} max={100} color={colors.blue} height={9} />
-        <Pressable style={styles.secondaryButton} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0 || routeDirection === "reverse"}>
-          <Text style={styles.secondaryText}>{routeDirection === "reverse" ? "Returning to Start" : "Turn Back"}</Text>
-        </Pressable>
         <Text style={styles.gpsMessage}>{gpsMessage}</Text>
       </Frame>
 
@@ -4929,6 +4931,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
     alignItems: "center",
+  },
+  headerActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: 8,
+    flexShrink: 1,
   },
   sectionTitle: {
     color: colors.gold,
