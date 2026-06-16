@@ -93,9 +93,9 @@ export default function App() {
         ) : character ? (
           <AuthenticatedLayout activeScreen={activeScreen} onChangeScreen={setActiveScreen}>
             {activeScreen === "home" ? (
-              <HomeScreen character={character} />
+              <HomeScreen character={character} onCharacterUpdated={setCharacter} />
             ) : activeScreen === "map" ? (
-              <MapScreen character={character} />
+              <MapScreen character={character} onCharacterUpdated={setCharacter} />
             ) : activeScreen === "quests" ? (
               <QuestsScreen character={character} onCharacterUpdated={setCharacter} />
             ) : activeScreen === "social" ? (

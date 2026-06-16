@@ -15,6 +15,7 @@ export const statusEffects: CombatAbility["status_effect"][] = ["none", "poison"
 export const linkedStats: CombatAbility["linked_stat"][] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit", "weapon", "item", "none"];
 export const requiredAttributes: NonNullable<CombatAbility["required_attribute"]>[] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"];
 export const learnMethods: CombatAbility["learn_method"][] = ["level", "weapon equipped", "armor equipped", "wearable equipped", "scroll", "quest", "admin"];
+export const usageContexts: CombatAbility["usage_context"][] = ["battle_only", "outside_battle_only", "both"];
 export const enemyAssetBasePath = "/assets/Enemies/";
 
 export function resolveEnemyImageUri(imagePath?: string | null) {
@@ -69,6 +70,7 @@ export function blankCombatAbility(): Partial<CombatAbility> {
     required_attribute: null,
     required_attribute_level: 0,
     image_path: "/assets/abilities/",
+    usage_context: "battle_only",
     attack_bonus: 0,
     is_active: true,
   };
@@ -240,6 +242,7 @@ function normalizeCombatAbility(input: Partial<CombatAbility>, userId: string | 
     required_attribute: input.required_attribute ?? null,
     required_attribute_level: Number(input.required_attribute_level) || 0,
     image_path: input.image_path?.trim() || null,
+    usage_context: input.usage_context ?? "battle_only",
     attack_bonus: Number(input.attack_bonus) || 0,
     is_active: input.is_active ?? true,
     created_by: input.id ? input.created_by ?? userId : userId,

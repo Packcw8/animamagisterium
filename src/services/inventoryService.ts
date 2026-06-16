@@ -35,6 +35,7 @@ export const onHitEffects = ["restore health per hit", "restore stamina per hit"
 export const buffTargets = ["max health", "max stamina", "max magika", "strength", "agility", "intelligence", "charisma", "defense", "damage", "gold gain", "xp gain"] as const;
 export const boostTargets = ["health", "stamina", "magika", "strength", "agility", "intelligence", "charisma", "defense", "damage", "gold gain", "xp gain"] as const;
 export const potionTargets = ["health", "stamina", "magika"] as const;
+export const usageContexts: ItemDefinition["usage_context"][] = ["battle_only", "outside_battle_only", "both"];
 export const inventoryAssetBasePath = "/assets/InventoryItems/";
 export const abilityAssetBasePath = "/assets/Abilities/";
 export const defaultCarrySettings: CarrySettings = {
@@ -93,6 +94,7 @@ export function blankItemDefinition(): Partial<ItemDefinition> {
     sellable: true,
     usable_in_battle: false,
     usable_outside_battle: false,
+    usage_context: "battle_only",
     crafting_value: null,
     equipment_slot: null,
     damage_amount: 0,
@@ -381,12 +383,24 @@ export function getBattleUsableItems(items: InventoryItem[], isDefeated: boolean
       return isReviveBattleItem(entry.item);
     }
 
-    if (!entry.item.usable_in_battle) {
+    if (!canUseItemInContext(entry.item, "battle")) {
       return false;
     }
 
     return !isReviveBattleItem(entry.item) || entry.item.usable_in_battle;
   });
+}
+
+export function canUseItemInContext(item: ItemDefinition, context: "battle" | "outside") {
+  const usage = item.usage_context ?? (item.usable_in_battle && item.usable_outside_battle ? "both" : item.usable_outside_battle ? "outside_battle_only" : "battle_only");
+  if (usage === "both") {
+    return true;
+  }
+  return context === "battle" ? usage === "battle_only" : usage === "outside_battle_only";
+}
+
+export function isHealingConsumable(item: ItemDefinition) {
+  return ["potion", "revive potion", "consumable", "food"].includes(item.type) && (item.potion_target ?? "health") === "health";
 }
 
 export function isReviveBattleItem(item: ItemDefinition) {
@@ -424,6 +438,8 @@ async function ensureEquipmentSlots(characterId: string) {
 }
 
 function normalizeItemInput(input: Partial<ItemDefinition>, userId: string | null) {
+  const usageContext = input.usage_context ?? (input.usable_in_battle && input.usable_outside_battle ? "both" : input.usable_outside_battle ? "outside_battle_only" : "battle_only");
+
   return {
     name: input.name?.trim() || "Unnamed Item",
     type: input.type ?? "misc",
@@ -434,8 +450,9 @@ function normalizeItemInput(input: Partial<ItemDefinition>, userId: string | nul
     weight: Number(input.weight) || 0,
     stackable: Boolean(input.stackable),
     sellable: Boolean(input.sellable),
-    usable_in_battle: Boolean(input.usable_in_battle),
-    usable_outside_battle: Boolean(input.usable_outside_battle),
+    usable_in_battle: usageContext === "battle_only" || usageContext === "both",
+    usable_outside_battle: usageContext === "outside_battle_only" || usageContext === "both",
+    usage_context: usageContext,
     crafting_value: input.crafting_value === null || input.crafting_value === undefined ? null : Number(input.crafting_value) || 0,
     equipment_slot: input.equipment_slot ?? null,
     damage_amount: Number(input.damage_amount) || 0,

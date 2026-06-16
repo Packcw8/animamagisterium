@@ -6,8 +6,8 @@ import { Frame } from "../components/Frame";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
-import { CharacterWithDetails } from "../services/characterService";
-import { AbilityDefinition, CharacterResources, getAbilityCostLabel, getCharacterResources, getCombatLoadout } from "../services/abilityService";
+import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
+import { AbilityDefinition, CharacterResources, clampHealth, getAbilityCostLabel, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
 import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../services/inventoryService";
 import {
@@ -96,6 +96,7 @@ const minCountedGpsMeters = 0.5;
 
 type MapScreenProps = {
   character: CharacterWithDetails;
+  onCharacterUpdated: (character: CharacterWithDetails) => void;
 };
 
 type Coordinate = {
@@ -120,7 +121,7 @@ type CombatIndicator = {
   color: string;
 };
 
-export function MapScreen({ character }: MapScreenProps) {
+export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
   const [routes, setRoutes] = useState<MapRoute[]>([fallbackRoute]);
   const [markers, setMarkers] = useState<MapMarker[]>([]);
@@ -153,6 +154,7 @@ export function MapScreen({ character }: MapScreenProps) {
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
   const [battleInventoryOpen, setBattleInventoryOpen] = useState(false);
   const [role, setRole] = useState<Role>("player");
+  const currentHealth = getCurrentHealth(character, combatResources);
   const [distanceWalked, setDistanceWalked] = useState(0);
   const [savedPlayerPosition, setSavedPlayerPosition] = useState<{ x: number; y: number } | null>(null);
   const [lastPosition, setLastPosition] = useState<Coordinate | null>(null);
@@ -1487,7 +1489,7 @@ export function MapScreen({ character }: MapScreenProps) {
       setActiveBattle(event);
       setActiveEnemy(enemy);
       setCombatIndicators([]);
-      setBattlePlayerHp(combatResources.maxHp);
+      setBattlePlayerHp(currentHealth);
       setBattleStamina(combatResources.maxStamina);
       setBattleMagicka(combatResources.maxMagicka);
       setBattleEnemyHp(Number(enemy?.health ?? event.enemy_hp) || 30);
@@ -1541,6 +1543,14 @@ export function MapScreen({ character }: MapScreenProps) {
     setTimeout(() => {
       setCombatIndicators((current) => current.filter((indicator) => indicator.id !== id));
     }, 1150);
+  }
+
+  async function savePlayerHealth(nextHealth: number) {
+    const safeHealth = clampHealth(nextHealth, combatResources.maxHp);
+    setBattlePlayerHp(safeHealth);
+    await updateCharacterHealth(character.id, safeHealth);
+    onCharacterUpdated({ ...character, current_health: safeHealth });
+    return safeHealth;
   }
 
   function handleStoryChoice(action: MapEvent["choices"][number]["action"]) {
@@ -1648,18 +1658,17 @@ export function MapScreen({ character }: MapScreenProps) {
     } else if (ability.resource === "magicka") {
       setBattleMagicka((current) => Math.max(0, current - ability.cost));
     } else if (ability.resource === "health") {
-      setBattlePlayerHp((current) => Math.max(1, current - ability.cost));
+      await savePlayerHealth(Math.max(1, battlePlayerHp - ability.cost));
     }
 
     if (ability.adminAbility?.type === "heal") {
       const healing = Math.max(1, Number(ability.adminAbility.healing) || ability.baseDamage || 1);
-      setBattlePlayerHp((current) => Math.min(combatResources.maxHp, current + healing));
       pushCombatIndicator("player", `+${healing}`, "#42d77d");
       const nextLog = [`${ability.name} restores ${healing} Health.`];
       const counter = resolveEnemyCounterAttack();
       const nextPlayerHp = Math.max(0, Math.min(combatResources.maxHp, battlePlayerHp + healing) - counter.damage);
       nextLog.push(...counter.log);
-      setBattlePlayerHp(nextPlayerHp);
+      await savePlayerHealth(nextPlayerHp);
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog);
       }
@@ -1677,7 +1686,7 @@ export function MapScreen({ character }: MapScreenProps) {
       const counter = resolveEnemyCounterAttack();
       const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
       nextLog.push(...counter.log);
-      setBattlePlayerHp(nextPlayerHp);
+      await savePlayerHealth(nextPlayerHp);
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog);
       }
@@ -1705,7 +1714,7 @@ export function MapScreen({ character }: MapScreenProps) {
     nextLog.push(...counter.log);
 
     setBattleEnemyHp(nextEnemyHp);
-    setBattlePlayerHp(nextPlayerHp);
+    await savePlayerHealth(nextPlayerHp);
 
     if (nextPlayerHp <= 0) {
       await resolvePlayerDefeat(nextLog);
@@ -1736,7 +1745,7 @@ export function MapScreen({ character }: MapScreenProps) {
     }
 
     if (costType === "health") {
-      setBattlePlayerHp((current) => Math.max(1, current - cost));
+      await savePlayerHealth(Math.max(1, battlePlayerHp - cost));
     } else if (costType === "stamina") {
       setBattleStamina((current) => Math.max(0, current - cost));
     } else if (costType === "magika") {
@@ -1755,7 +1764,7 @@ export function MapScreen({ character }: MapScreenProps) {
       const counter = resolveEnemyCounterAttack(bonuses.defense);
       const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
       nextLog.push(...counter.log);
-      setBattlePlayerHp(nextPlayerHp);
+      await savePlayerHealth(nextPlayerHp);
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog);
       }
@@ -1770,7 +1779,7 @@ export function MapScreen({ character }: MapScreenProps) {
     nextLog.push(`${actionName} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} damage${weapon.elemental_damage_type !== "none" ? ` with ${weapon.elemental_damage_type}` : ""}.`);
 
     if (weapon.on_hit_effect === "restore health per hit") {
-      setBattlePlayerHp((current) => Math.min(combatResources.maxHp, current + Math.max(1, weapon.buff_amount || 2)));
+      await savePlayerHealth(Math.min(combatResources.maxHp, battlePlayerHp + Math.max(1, weapon.buff_amount || 2)));
       nextLog.push("On-hit effect restores Health.");
     } else if (weapon.on_hit_effect === "restore stamina per hit") {
       setBattleStamina((current) => Math.min(combatResources.maxStamina, current + Math.max(1, weapon.buff_amount || 2)));
@@ -1793,7 +1802,7 @@ export function MapScreen({ character }: MapScreenProps) {
     const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
     nextLog.push(...counter.log);
     setBattleEnemyHp(nextEnemyHp);
-    setBattlePlayerHp(nextPlayerHp);
+    await savePlayerHealth(nextPlayerHp);
 
     if (nextPlayerHp <= 0) {
       await resolvePlayerDefeat(nextLog);
@@ -1809,7 +1818,7 @@ export function MapScreen({ character }: MapScreenProps) {
 
     const fleeDamage = Math.max(1, Math.ceil((Number(activeEnemy?.health ?? activeBattle.enemy_hp ?? 30) || 30) * 0.12));
     const nextHp = Math.max(1, battlePlayerHp - fleeDamage);
-    setBattlePlayerHp(nextHp);
+    await savePlayerHealth(nextHp);
     pushCombatIndicator("player", `-${fleeDamage}`, "#ff5c5c");
     await reduceCurrentRouteProgress(3);
     setBattleLog((current) => ["You escaped, but took damage and lost ground.", ...current].slice(0, 8));
@@ -1939,7 +1948,7 @@ export function MapScreen({ character }: MapScreenProps) {
 
   async function resolvePlayerDefeat(log: string[]) {
     setBattleFinished("defeat");
-    setBattlePlayerHp(0);
+    await savePlayerHealth(1);
     log.push(activeBattle?.defeat_text || "Defeat.");
 
     const reviveItem = inventoryItems.find((entry) => entry.quantity > 0 && isReviveBattleItem(entry.item));
@@ -1981,7 +1990,7 @@ export function MapScreen({ character }: MapScreenProps) {
     const amount = Math.max(item.restore_amount, restoreFromPercent, defeated ? Math.ceil(combatResources.maxHp * 0.5) : 0);
 
     if (target === "health") {
-      setBattlePlayerHp((current) => Math.min(combatResources.maxHp, current + amount));
+      await savePlayerHealth(Math.min(combatResources.maxHp, battlePlayerHp + amount));
       pushCombatIndicator("player", `+${amount}`, "#42d77d");
       if (defeated) {
         setBattleFinished(null);
@@ -2687,6 +2696,7 @@ export function MapScreen({ character }: MapScreenProps) {
         <Info label="Distance Walked" value={`${metersToMiles(distanceWalked)} mi`} />
         <Info label="Distance Remaining" value={`${metersToMiles(Math.max(0, route.distance_required_meters - distanceWalked))} mi`} />
         <Info label="Progress" value={`${Math.round(progressPercent)}%`} />
+        <Info label="Health" value={`${currentHealth} / ${combatResources.maxHp}`} />
         <Info label="State" value={playerMovementState} />
         <Info label="Movement" value={movementStatus.label} />
         <Info label="Current Speed" value={`${movementStatus.speedMph.toFixed(1)} mph`} />

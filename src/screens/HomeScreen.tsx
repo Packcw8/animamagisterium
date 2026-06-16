@@ -5,8 +5,8 @@ import { Frame } from "../components/Frame";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
-import { CharacterWithDetails } from "../services/characterService";
-import { AbilityDefinition, equipAbility, getAbilityCostLabel, getAbilitySourceLabel, getCombatLoadout, getCharacterResources } from "../services/abilityService";
+import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
+import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getAbilityCostLabel, getAbilitySourceLabel, getCombatLoadout, getCharacterResources, getCurrentHealth } from "../services/abilityService";
 import {
   blankCombatAbility,
   blankEnemy,
@@ -31,12 +31,14 @@ import {
   saveEnemyAbility,
   saveEnemyDrop,
   statusEffects,
+  usageContexts as abilityUsageContexts,
 } from "../services/combatAdminService";
 import {
   blankItemDefinition,
   boostTargets,
   buffTargets,
   costTypes,
+  consumeInventoryItem,
   deleteItemDefinition,
   elementalTypes,
   equipmentSlots,
@@ -46,6 +48,8 @@ import {
   getInventoryState,
   grantItemToCharacter,
   InventoryItem,
+  canUseItemInContext,
+  isHealingConsumable,
   itemTypes,
   onHitEffects,
   potionTargets,
@@ -56,12 +60,14 @@ import {
   saveItemDefinition,
   sellInventoryItem,
   unequipInventorySlot,
+  usageContexts as itemUsageContexts,
   ItemDefinition,
 } from "../services/inventoryService";
 import { getCurrentRole, Role } from "../services/mapService";
 
 type HomeScreenProps = {
   character: CharacterWithDetails;
+  onCharacterUpdated: (character: CharacterWithDetails) => void;
 };
 
 const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Abilities", "Inventory"] as const;
@@ -70,7 +76,7 @@ const inventoryCategoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
 const adminToolTabs = ["Items", "Abilities", "Enemies"] as const;
 
-export function HomeScreen({ character }: HomeScreenProps) {
+export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
   const [activeTab, setActiveTab] = useState<(typeof homeTabs)[number]>("Overview");
   const [unlockedAbilities, setUnlockedAbilities] = useState<AbilityDefinition[]>([]);
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
@@ -113,6 +119,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
     maxStamina: inventoryBonuses.maxStamina,
     maxMagicka: inventoryBonuses.maxMagicka,
   });
+  const currentHealth = getCurrentHealth(character, resources);
   const isAdmin = role === "admin";
   const playerAbilityCounts = useMemo(() => getAbilityTypeCounts(unlockedAbilities), [unlockedAbilities]);
   const filteredPlayerAbilities = useMemo(() => unlockedAbilities.filter((ability) => getPlayerAbilityType(ability) === playerAbilityTab), [unlockedAbilities, playerAbilityTab]);
@@ -373,6 +380,55 @@ export function HomeScreen({ character }: HomeScreenProps) {
     }
   }
 
+  async function saveHealth(nextHealth: number) {
+    const safeHealth = clampHealth(nextHealth, resources.maxHp);
+    await updateCharacterHealth(character.id, safeHealth);
+    onCharacterUpdated({ ...character, current_health: safeHealth });
+    return safeHealth;
+  }
+
+  async function useOutsideBattleAbility(ability: AbilityDefinition) {
+    if (!ability.adminAbility || ability.adminAbility.type !== "heal" || !canUseAbilityInContext(ability, "outside")) {
+      setAbilityMessage("This ability cannot be used outside battle.");
+      return;
+    }
+
+    if (currentHealth >= resources.maxHp) {
+      setAbilityMessage("Health is already full.");
+      return;
+    }
+
+    try {
+      const amount = Math.max(1, Number(ability.adminAbility.healing) || 1);
+      const nextHealth = await saveHealth(currentHealth + amount);
+      setAbilityMessage(`${ability.name} restored Health to ${nextHealth} / ${resources.maxHp}.`);
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to use healing ability.");
+    }
+  }
+
+  async function useOutsideBattleItem(entry: InventoryItem) {
+    if (!canUseItemOutsideBattle(entry)) {
+      setInventoryMessage("This item cannot be used outside battle.");
+      return;
+    }
+
+    if (currentHealth >= resources.maxHp) {
+      setInventoryMessage("Health is already full.");
+      return;
+    }
+
+    try {
+      const amount = getItemRestoreAmount(entry.item, resources.maxHp);
+      const nextHealth = await saveHealth(currentHealth + amount);
+      await consumeInventoryItem(entry, 1);
+      await loadInventory();
+      setInventoryMessage(`Used ${entry.item.name}. Health is now ${nextHealth} / ${resources.maxHp}.`);
+    } catch (error) {
+      setInventoryMessage(error instanceof Error ? error.message : "Unable to use item.");
+    }
+  }
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -401,7 +457,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
           <Text style={styles.xpText}>{character.xp.toLocaleString()} XP</Text>
           <ProgressBar value={character.xp % 1000} max={1000} color={colors.blue} height={9} />
           <View style={styles.resourceGrid}>
-            <Resource label="HP" value={resources.maxHp} color={colors.red} />
+            <Resource label="HP" value={`${currentHealth} / ${resources.maxHp}`} color={colors.red} />
             <Resource label="Stamina" value={resources.maxStamina} color={colors.gold} />
             <Resource label="Magika" value={resources.maxMagicka} color={colors.blue} />
           </View>
@@ -445,7 +501,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
             <Text style={styles.sectionTitle}>Battle Stats</Text>
             <Text style={styles.muted}>These are derived from attributes and equipped gear. Training will keep feeding these numbers as the combat system grows.</Text>
             <View style={styles.combatStatGrid}>
-              <CombatStat label="Health" value={battleStats.maxHp} note="Endurance, Strength, gear" />
+              <CombatStat label="Health" value={`${currentHealth} / ${battleStats.maxHp}`} note="Persistent Health / max Health" />
               <CombatStat label="Stamina" value={battleStats.maxStamina} note="Strength, Endurance, gear" />
               <CombatStat label="Magika" value={battleStats.maxMagicka} note="Intelligence, Wisdom, Spirit" />
               <CombatStat label="Defense" value={battleStats.defense} note="10 + Endurance + Agility + armor" />
@@ -515,6 +571,11 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <Info label="Linked Attribute" value={selectedPlayerAbility.attribute ?? "None"} />
                 <Info label="Required Level" value={String(selectedPlayerAbility.unlockLevel ?? 0)} />
                 <Info label="Source" value={getAbilityDetailedSource(selectedPlayerAbility)} />
+                {selectedPlayerAbility.adminAbility?.type === "heal" && canUseAbilityInContext(selectedPlayerAbility, "outside") ? (
+                  <Pressable style={[styles.smallButton, currentHealth >= resources.maxHp && styles.disabledAction]} onPress={() => void useOutsideBattleAbility(selectedPlayerAbility)} disabled={currentHealth >= resources.maxHp}>
+                    <Text style={styles.smallButtonText}>Use Heal</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable style={styles.smallButton} onPress={() => setSelectedPlayerAbility(null)}>
                   <Text style={styles.smallButtonText}>Back to Ability Tabs</Text>
                 </Pressable>
@@ -584,6 +645,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <Text style={styles.muted}>Create database abilities for players, gear, scrolls, quests, and enemies. Images can use /assets/Abilities/filename.png, a simple filename, or a full URL.</Text>
                 <ItemText label="Name" value={abilityForm.name ?? ""} onChange={(value) => setAbilityForm((current) => ({ ...current, name: value }))} />
                 <ChoiceRow label="Type" options={combatAbilityTypes} value={abilityForm.type ?? "attack"} onSelect={(value) => setAbilityForm((current) => ({ ...current, type: value }))} />
+                <ChoiceRow label="Use context" options={abilityUsageContexts} value={abilityForm.usage_context ?? "battle_only"} onSelect={(value) => setAbilityForm((current) => ({ ...current, usage_context: value }))} />
                 <View style={styles.slotActions}>
                   <ItemText label="Damage" value={String(abilityForm.damage ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, damage: Number(value) || 0 }))} />
                   <ItemText label="Healing" value={String(abilityForm.healing ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, healing: Number(value) || 0 }))} />
@@ -759,6 +821,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <View style={styles.slotActions}>
                   {selectedInventoryItem.item.equipment_slot ? <Pressable style={styles.smallButton} onPress={() => void equipItem(selectedInventoryItem)}><Text style={styles.smallButtonText}>Equip</Text></Pressable> : null}
                   {selectedInventoryItem.equippedSlot ? <Pressable style={styles.smallButton} onPress={() => void unequipSlot(selectedInventoryItem.equippedSlot as "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic")}><Text style={styles.smallButtonText}>Unequip</Text></Pressable> : null}
+                  {canUseItemOutsideBattle(selectedInventoryItem) ? <Pressable style={[styles.smallButton, currentHealth >= resources.maxHp && styles.disabledAction]} onPress={() => void useOutsideBattleItem(selectedInventoryItem)} disabled={currentHealth >= resources.maxHp}><Text style={styles.smallButtonText}>Use</Text></Pressable> : null}
                   {selectedInventoryItem.item.sellable ? <Pressable style={styles.smallButton} onPress={() => void sellItem(selectedInventoryItem)}><Text style={styles.smallButtonText}>Sell</Text></Pressable> : null}
                 </View>
               </View>
@@ -832,6 +895,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
                 <ToggleRow label="Sellable" value={Boolean(itemForm.sellable)} onPress={() => setItemForm((current) => ({ ...current, sellable: !current.sellable }))} />
                 <ToggleRow label="Usable in battle" value={Boolean(itemForm.usable_in_battle)} onPress={() => setItemForm((current) => ({ ...current, usable_in_battle: !current.usable_in_battle }))} />
                 <ToggleRow label="Usable outside battle" value={Boolean(itemForm.usable_outside_battle)} onPress={() => setItemForm((current) => ({ ...current, usable_outside_battle: !current.usable_outside_battle }))} />
+                <ChoiceRow label="Use context" options={itemUsageContexts} value={itemForm.usage_context ?? "battle_only"} onSelect={(value) => setItemForm((current) => ({ ...current, usage_context: value, usable_in_battle: value === "battle_only" || value === "both", usable_outside_battle: value === "outside_battle_only" || value === "both" }))} />
                 <ItemText label="Crafting value" value={String(itemForm.crafting_value ?? "")} onChange={(value) => setItemForm((current) => ({ ...current, crafting_value: value ? Number(value) || 0 : null }))} />
                 <NamedChoiceRow label="Linked ability" options={[{ id: "", label: "None" }, ...adminAbilities.map((ability) => ({ id: ability.id, label: ability.name }))]} value={itemForm.linked_ability_id ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, linked_ability_id: value || null }))} />
                 <NamedChoiceRow label="Scroll teaches ability" options={[{ id: "", label: "None" }, ...adminAbilities.map((ability) => ({ id: ability.id, label: ability.name }))]} value={itemForm.teaches_ability_id ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, teaches_ability_id: value || null }))} />
@@ -905,7 +969,7 @@ export function HomeScreen({ character }: HomeScreenProps) {
   );
 }
 
-function Resource({ label, value, color }: { label: string; value: number; color: string }) {
+function Resource({ label, value, color }: { label: string; value: number | string; color: string }) {
   return (
     <View style={[styles.resourcePill, { borderColor: color }]}>
       <Text style={[styles.resourceLabel, { color }]}>{label}</Text>
@@ -1059,6 +1123,15 @@ function getAbilityTypeCounts(abilities: AbilityDefinition[]) {
     counts[tab] = abilities.filter((ability) => getPlayerAbilityType(ability) === tab).length;
     return counts;
   }, {} as Record<(typeof abilityTypeTabs)[number], number>);
+}
+
+function canUseItemOutsideBattle(entry: InventoryItem) {
+  return entry.quantity > 0 && isHealingConsumable(entry.item) && canUseItemInContext(entry.item, "outside");
+}
+
+function getItemRestoreAmount(item: ItemDefinition, maxHp: number) {
+  const percentAmount = item.restore_percent ? Math.ceil(maxHp * (item.restore_percent / 100)) : 0;
+  return Math.max(1, Number(item.restore_amount) || 0, percentAmount);
 }
 
 function getAbilityImageUri(ability: AbilityDefinition) {
@@ -1392,6 +1465,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderSoft,
     borderRadius: 8,
+  },
+  disabledAction: {
+    opacity: 0.45,
   },
   smallButtonText: {
     color: colors.blue,

@@ -30,6 +30,8 @@ export type CharacterResources = {
   maxMagicka: number;
 };
 
+export type UseContext = "battle_only" | "outside_battle_only" | "both";
+
 export type CombatLoadout = {
   unlocked: AbilityDefinition[];
   equipped: Array<AbilityDefinition | null>;
@@ -158,6 +160,22 @@ export function getCharacterResources(character: CharacterWithDetails, bonuses?:
     maxStamina: 12 + strength * 3 + endurance * 4 + (bonuses?.maxStamina ?? 0),
     maxMagicka: 10 + intelligence * 4 + wisdom * 3 + spirit * 4 + (bonuses?.maxMagicka ?? 0),
   };
+}
+
+export function clampHealth(value: number, maxHp: number) {
+  return Math.max(0, Math.min(maxHp, Math.floor(Number(value) || 0)));
+}
+
+export function getCurrentHealth(character: CharacterWithDetails, resources: CharacterResources) {
+  return clampHealth(character.current_health ?? resources.maxHp, resources.maxHp);
+}
+
+export function canUseAbilityInContext(ability: AbilityDefinition, context: "battle" | "outside") {
+  const usage = ability.adminAbility?.usage_context ?? "battle_only";
+  if (usage === "both") {
+    return true;
+  }
+  return context === "battle" ? usage === "battle_only" : usage === "outside_battle_only";
 }
 
 export function getAbilityDamage(ability: AbilityDefinition, character: CharacterWithDetails) {

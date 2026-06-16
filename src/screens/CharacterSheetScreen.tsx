@@ -6,6 +6,7 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { supabase } from "../lib/supabase";
 import { CharacterWithDetails } from "../services/characterService";
+import { getCharacterResources, getCurrentHealth } from "../services/abilityService";
 
 type CharacterSheetScreenProps = {
   character: CharacterWithDetails;
@@ -15,6 +16,9 @@ type CharacterSheetScreenProps = {
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 
 export function CharacterSheetScreen({ character, onRefresh }: CharacterSheetScreenProps) {
+  const resources = getCharacterResources(character);
+  const currentHealth = getCurrentHealth(character, resources);
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -47,6 +51,8 @@ export function CharacterSheetScreen({ character, onRefresh }: CharacterSheetScr
           </View>
           <Text style={styles.xp}>{character.xp.toLocaleString()} XP</Text>
           <ProgressBar value={character.xp % 1000} max={1000} color={colors.blue} height={9} />
+          <Text style={styles.health}>Health {currentHealth} / {resources.maxHp}</Text>
+          <ProgressBar value={currentHealth} max={resources.maxHp} color={colors.red} height={9} />
         </View>
       </Frame>
 
@@ -172,6 +178,10 @@ const styles = StyleSheet.create({
   },
   xp: {
     color: colors.muted,
+  },
+  health: {
+    color: colors.text,
+    fontWeight: "900",
   },
   section: {
     marginHorizontal: 12,

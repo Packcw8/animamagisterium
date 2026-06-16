@@ -49,6 +49,7 @@ export type Tables = {
     trait: string | null;
     portrait_url: string | null;
     original_photo_url: string | null;
+    current_health: number | null;
     level: number;
     xp: number;
     gold: number;
@@ -120,6 +121,7 @@ export type Tables = {
     sellable: boolean;
     usable_in_battle: boolean;
     usable_outside_battle: boolean;
+    usage_context: "battle_only" | "outside_battle_only" | "both";
     crafting_value: number | null;
     equipment_slot: "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic" | null;
     damage_amount: number;
@@ -435,6 +437,7 @@ export type Tables = {
     required_attribute: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | null;
     required_attribute_level: number;
     image_path: string | null;
+    usage_context: "battle_only" | "outside_battle_only" | "both";
     attack_bonus: number;
     is_active: boolean;
     created_by: string | null;

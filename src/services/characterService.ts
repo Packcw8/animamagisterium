@@ -192,6 +192,7 @@ export async function createCharacter(input: CharacterCreationInput) {
       trait: null,
       original_photo_url: input.original_photo_url,
       portrait_url: input.portrait_url,
+      current_health: 30,
     })
     .select()
     .single();
@@ -240,6 +241,7 @@ export async function updateCharacter(
       | "trait"
       | "portrait_url"
       | "original_photo_url"
+      | "current_health"
       | "xp"
       | "gold"
       | "level"
@@ -247,6 +249,22 @@ export async function updateCharacter(
   >,
 ) {
   const { data, error } = await supabase.from("characters").update(values).eq("id", characterId).select().single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Tables["characters"];
+}
+
+export async function updateCharacterHealth(characterId: string, currentHealth: number) {
+  const safeHealth = Math.max(0, Math.floor(Number(currentHealth) || 0));
+  const { data, error } = await supabase
+    .from("characters")
+    .update({ current_health: safeHealth })
+    .eq("id", characterId)
+    .select()
+    .single();
 
   if (error) {
     throw error;
