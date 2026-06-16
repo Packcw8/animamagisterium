@@ -14,6 +14,8 @@ import {
   completeMapEvent,
   applyRewards,
   buyMarketItem,
+  canMarketItemBeBought,
+  canMarketItemBeSoldTo,
   createDialogueChoice,
   createDialogueNode,
   createMapRoute,
@@ -47,6 +49,7 @@ import {
   MapEvent,
   MapRoute,
   MarkerMarketItem,
+  marketListingModes,
   MarkerLegendItem,
   MarkerRouteLink,
   MiniMap,
@@ -226,6 +229,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [marketSellPrice, setMarketSellPrice] = useState("0");
   const [marketStock, setMarketStock] = useState("0");
   const [marketUnlimited, setMarketUnlimited] = useState(true);
+  const [marketListingMode, setMarketListingMode] = useState<MarkerMarketItem["listing_mode"]>("buy_and_sell");
   const [markerPanelMessage, setMarkerPanelMessage] = useState<string | null>(null);
   const [editingLegendItemId, setEditingLegendItemId] = useState<string | null>(null);
   const [legendMarkerType, setLegendMarkerType] = useState("Market");
@@ -957,6 +961,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         sell_price: Number(marketSellPrice) || 0,
         stock_quantity: marketUnlimited ? null : Number(marketStock) || 0,
         unlimited_stock: marketUnlimited,
+        listing_mode: marketListingMode,
       });
       setMarkerMarketItems((current) => [saved, ...current.filter((item) => item.id !== saved.id && item.item_id !== saved.item_id)]);
       setAdminMessage("Market item saved.");
@@ -1047,8 +1052,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function sellToMarker(entry: InventoryItem) {
-    const marketItem = markerMarketItems.find((item) => item.item_id === entry.item_id);
-    const sellPrice = marketItem?.sell_price ?? entry.item.gold_value;
+    const marketItem = markerMarketItems.find((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item));
+
+    if (!marketItem) {
+      setMarkerPanelMessage("This market is not buying that item.");
+      return;
+    }
+
+    const sellPrice = marketItem.sell_price;
 
     try {
       await sellMarketInventoryItem(character, entry, sellPrice);
@@ -2556,6 +2567,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarketStock={setMarketStock}
               marketUnlimited={marketUnlimited}
               setMarketUnlimited={setMarketUnlimited}
+              marketListingMode={marketListingMode}
+              setMarketListingMode={setMarketListingMode}
               selectedMarker={selectedMarker}
               clickedPercent={clickedPercent}
               onAddMarker={() => void addMarker()}
@@ -2782,8 +2795,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <Text style={styles.selectedTitle}>{selectedMarker.quest_title || selectedMarker.title}</Text>
               {selectedMarker.quest_dialogue ? <Text style={styles.dialogueText}>{selectedMarker.quest_dialogue}</Text> : null}
               <Text style={styles.selectedTitle}>Buy</Text>
-              {markerMarketItems.length === 0 ? <Text style={styles.copy}>This market has no stock yet.</Text> : null}
-              {markerMarketItems.map((marketItem) => (
+              {markerMarketItems.filter(canMarketItemBeBought).length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
+              {markerMarketItems.filter(canMarketItemBeBought).map((marketItem) => (
                 <View key={marketItem.id} style={styles.storyCard}>
                   <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
                   <Text style={styles.copy}>{marketItem.buy_price} gold / {marketItem.unlimited_stock ? "Unlimited stock" : `${marketItem.stock_quantity ?? 0} left`}</Text>
@@ -2793,10 +2806,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 </View>
               ))}
               <Text style={styles.selectedTitle}>Sell</Text>
-              {inventoryItems.filter((entry) => entry.item.sellable).length === 0 ? <Text style={styles.copy}>No sellable items.</Text> : null}
-              {inventoryItems.filter((entry) => entry.item.sellable).map((entry) => {
-                const marketItem = markerMarketItems.find((item) => item.item_id === entry.item_id);
-                const price = marketItem?.sell_price ?? entry.item.gold_value;
+              {inventoryItems.filter((entry) => entry.item.sellable && markerMarketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item))).length === 0 ? <Text style={styles.copy}>This market is not buying anything in your inventory.</Text> : null}
+              {inventoryItems.filter((entry) => entry.item.sellable && markerMarketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item))).map((entry) => {
+                const marketItem = markerMarketItems.find((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item));
+                const price = marketItem?.sell_price ?? 0;
                 return (
                   <View key={entry.id} style={styles.storyCard}>
                     <Text style={styles.markerName}>{entry.item.name} x{entry.quantity}</Text>
@@ -3091,6 +3104,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <TextInput value={markerShopBackground} onChangeText={setMarkerShopBackground} placeholder="Shop background image URL" placeholderTextColor={colors.muted} style={styles.input} />
                   <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
                   <ItemPicker label="Market item" items={itemDefinitions} selectedId={marketItemId} onSelect={setMarketItemId} />
+                  <MarketListingModePicker value={marketListingMode} onSelect={setMarketListingMode} />
                   <TextInput value={marketBuyPrice} onChangeText={setMarketBuyPrice} placeholder="Buy price" placeholderTextColor={colors.muted} style={styles.input} />
                   <TextInput value={marketSellPrice} onChangeText={setMarketSellPrice} placeholder="Sell price" placeholderTextColor={colors.muted} style={styles.input} />
                   <TextInput value={marketStock} onChangeText={setMarketStock} placeholder="Stock quantity" placeholderTextColor={colors.muted} style={styles.input} />
@@ -3103,7 +3117,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   {markerMarketItems.map((marketItem) => (
                     <View key={marketItem.id} style={styles.storyCard}>
                       <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
-                      <Text style={styles.copy}>Buy {marketItem.buy_price} / Sell {marketItem.sell_price} / {marketItem.unlimited_stock ? "Unlimited" : `Stock ${marketItem.stock_quantity ?? 0}`}</Text>
+                      <Text style={styles.copy}>{formatMarketListingMode(marketItem.listing_mode)} / Buy {marketItem.buy_price} / Sell {marketItem.sell_price} / {marketItem.unlimited_stock ? "Unlimited" : `Stock ${marketItem.stock_quantity ?? 0}`}</Text>
                       <Pressable style={styles.secondaryButton} onPress={() => void removeMarketItem(marketItem.id)}>
                         <Text style={styles.dangerText}>Remove Item</Text>
                       </Pressable>
@@ -4209,6 +4223,8 @@ function MiniMapMarkerAdminForm({
   setMarketStock,
   marketUnlimited,
   setMarketUnlimited,
+  marketListingMode,
+  setMarketListingMode,
   selectedMarker,
   clickedPercent,
   onAddMarker,
@@ -4276,6 +4292,8 @@ function MiniMapMarkerAdminForm({
   setMarketStock: (value: string) => void;
   marketUnlimited: boolean;
   setMarketUnlimited: (value: boolean | ((current: boolean) => boolean)) => void;
+  marketListingMode: MarkerMarketItem["listing_mode"];
+  setMarketListingMode: (value: MarkerMarketItem["listing_mode"]) => void;
   selectedMarker: MapMarker | null;
   clickedPercent: { x: number; y: number } | null;
   onAddMarker: () => void;
@@ -4345,6 +4363,7 @@ function MiniMapMarkerAdminForm({
           <TextInput value={markerShopImage} onChangeText={setMarkerShopImage} placeholder="Shop image URL" placeholderTextColor={colors.muted} style={styles.input} />
           <TextInput value={markerShopBackground} onChangeText={setMarkerShopBackground} placeholder="Shop background image URL" placeholderTextColor={colors.muted} style={styles.input} />
           <ItemPicker label="Market item" items={itemDefinitions} selectedId={marketItemId} onSelect={setMarketItemId} />
+          <MarketListingModePicker value={marketListingMode} onSelect={setMarketListingMode} />
           <TextInput value={marketBuyPrice} onChangeText={setMarketBuyPrice} placeholder="Buy price" placeholderTextColor={colors.muted} style={styles.input} />
           <TextInput value={marketSellPrice} onChangeText={setMarketSellPrice} placeholder="Sell price" placeholderTextColor={colors.muted} style={styles.input} />
           <TextInput value={marketStock} onChangeText={setMarketStock} placeholder="Stock quantity" placeholderTextColor={colors.muted} style={styles.input} />
@@ -4359,7 +4378,7 @@ function MiniMapMarkerAdminForm({
           {markerMarketItems.map((marketItem) => (
             <View key={marketItem.id} style={styles.storyCard}>
               <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
-              <Text style={styles.copy}>Buy {marketItem.buy_price} / Sell {marketItem.sell_price} / {marketItem.unlimited_stock ? "Unlimited" : `Stock ${marketItem.stock_quantity ?? 0}`}</Text>
+              <Text style={styles.copy}>{formatMarketListingMode(marketItem.listing_mode)} / Buy {marketItem.buy_price} / Sell {marketItem.sell_price} / {marketItem.unlimited_stock ? "Unlimited" : `Stock ${marketItem.stock_quantity ?? 0}`}</Text>
               <Pressable style={styles.secondaryButton} onPress={() => onRemoveMarketItem(marketItem.id)}>
                 <Text style={styles.dangerText}>Remove Item</Text>
               </Pressable>
@@ -4461,8 +4480,8 @@ function MarkerSceneScreen({
         ) : marker.type === "Market" ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Market</Text>
-            {marketItems.length === 0 ? <Text style={styles.copy}>This market has no stock yet.</Text> : null}
-            {marketItems.map((marketItem) => (
+            {marketItems.filter(canMarketItemBeBought).length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
+            {marketItems.filter(canMarketItemBeBought).map((marketItem) => (
               <View key={marketItem.id} style={styles.storyCard}>
                 <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
                 <Text style={styles.copy}>{marketItem.buy_price} gold / {marketItem.unlimited_stock ? "Unlimited stock" : `${marketItem.stock_quantity ?? 0} left`}</Text>
@@ -4472,10 +4491,10 @@ function MarkerSceneScreen({
               </View>
             ))}
             <Text style={styles.selectedTitle}>Sell</Text>
-            {inventoryItems.filter((entry) => entry.item.sellable).length === 0 ? <Text style={styles.copy}>No sellable items.</Text> : null}
-            {inventoryItems.filter((entry) => entry.item.sellable).map((entry) => {
-              const marketItem = marketItems.find((item) => item.item_id === entry.item_id);
-              const price = marketItem?.sell_price ?? entry.item.gold_value;
+            {inventoryItems.filter((entry) => entry.item.sellable && marketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item))).length === 0 ? <Text style={styles.copy}>This market is not buying anything in your inventory.</Text> : null}
+            {inventoryItems.filter((entry) => entry.item.sellable && marketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item))).map((entry) => {
+              const marketItem = marketItems.find((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item));
+              const price = marketItem?.sell_price ?? 0;
               return (
                 <View key={entry.id} style={styles.storyCard}>
                   <Text style={styles.markerName}>{entry.item.name} x{entry.quantity}</Text>
@@ -4531,6 +4550,22 @@ function ItemPicker({ label, items, selectedId, onSelect }: { label: string; ite
           </Pressable>
         ))}
       </View>
+    </View>
+  );
+}
+
+function MarketListingModePicker({ value, onSelect }: { value: MarkerMarketItem["listing_mode"]; onSelect: (value: MarkerMarketItem["listing_mode"]) => void }) {
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Listing Mode</Text>
+      <View style={styles.storyRoutePicker}>
+        {marketListingModes.map((mode) => (
+          <Pressable key={mode} style={[styles.routeChip, value === mode && styles.routeChipActive]} onPress={() => onSelect(mode)}>
+            <Text style={styles.routeChipText}>{formatMarketListingMode(mode)}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={styles.copy}>Sell Only means this market buys the item from players but does not sell it as stock.</Text>
     </View>
   );
 }
@@ -4636,6 +4671,16 @@ function EnemyPicker({ enemies, selectedId, onSelect }: { enemies: EnemyDefiniti
 
 function getItemName(items: ItemDefinition[], itemId: string | null) {
   return items.find((item) => item.id === itemId)?.name ?? "Unknown Item";
+}
+
+function formatMarketListingMode(mode: MarkerMarketItem["listing_mode"] | null | undefined) {
+  if (mode === "buy_only") {
+    return "Buy Only";
+  }
+  if (mode === "sell_only") {
+    return "Sell Only";
+  }
+  return "Buy and Sell";
 }
 
 function getEnemyName(enemies: EnemyDefinition[], enemyId: string | null) {

@@ -372,6 +372,7 @@ export type Tables = {
     sell_price: number;
     stock_quantity: number | null;
     unlimited_stock: boolean;
+    listing_mode: "buy_and_sell" | "buy_only" | "sell_only";
     created_at: string;
     updated_at: string;
   };

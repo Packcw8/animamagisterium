@@ -10,6 +10,8 @@ export type MarkerRouteLink = Tables["marker_route_links"];
 export type MiniMap = Tables["mini_maps"];
 export type TutorialStep = Tables["tutorial_steps"];
 export type MarkerMarketItem = Tables["marker_market_items"];
+export type MarketListingMode = MarkerMarketItem["listing_mode"];
+export const marketListingModes: MarketListingMode[] = ["buy_and_sell", "buy_only", "sell_only"];
 export type MapStoryInstance = Tables["map_story_instances"];
 export type MapEvent = Tables["map_events"];
 export type MapEventCompletion = Tables["map_event_completions"];
@@ -467,6 +469,7 @@ export async function saveMarkerMarketItem(input: Omit<MarkerMarketItem, "id" | 
     sell_price: Number(input.sell_price) || 0,
     stock_quantity: input.unlimited_stock ? null : Math.max(0, Number(input.stock_quantity) || 0),
     unlimited_stock: Boolean(input.unlimited_stock),
+    listing_mode: input.listing_mode ?? "buy_and_sell",
     updated_at: new Date().toISOString(),
   };
 
@@ -863,6 +866,10 @@ export async function buyMarketItem(character: CharacterWithDetails, marketItem:
     throw userError ?? new Error("You must be signed in to buy items.");
   }
 
+  if (!canMarketItemBeBought(marketItem)) {
+    throw new Error("This market item is not for sale.");
+  }
+
   if (!marketItem.unlimited_stock && Number(marketItem.stock_quantity) <= 0) {
     throw new Error("This item is out of stock.");
   }
@@ -942,6 +949,14 @@ export async function sellMarketInventoryItem(character: CharacterWithDetails, i
   if (error) {
     throw error;
   }
+}
+
+export function canMarketItemBeBought(marketItem: MarkerMarketItem) {
+  return marketItem.listing_mode === "buy_and_sell" || marketItem.listing_mode === "buy_only";
+}
+
+export function canMarketItemBeSoldTo(marketItem: MarkerMarketItem) {
+  return marketItem.listing_mode === "buy_and_sell" || marketItem.listing_mode === "sell_only";
 }
 
 function formatRewardMessage(xp: number, gold: number, itemQuantity: number) {
