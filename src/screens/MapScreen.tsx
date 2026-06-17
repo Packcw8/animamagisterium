@@ -2778,6 +2778,58 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setAdminMessage(`Editing ${nextRoute.name}. Change the fields below, then Save Walking Path.`);
   }
 
+  function renderLinkedBattleBuilder() {
+    return (
+      <View style={styles.storyEditor}>
+        <Text style={styles.selectedTitle}>Linked Battle</Text>
+        <Text style={styles.copy}>Select an existing battle event, or create one here. The created battle can use an Enemy, a battle-capable NPC, or manual fallback stats.</Text>
+        <View style={styles.storyRoutePicker}>
+          {adminMapEvents.filter((event) => event.event_type === "battle").map((event) => (
+            <Pressable key={event.id} style={[styles.routeChip, choiceBattleEventId === event.id && styles.routeChipActive]} onPress={() => setChoiceBattleEventId(event.id)}>
+              <Text style={styles.routeChipText}>{event.title}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <TextInput value={choiceBattleTitle} onChangeText={setChoiceBattleTitle} placeholder="New linked battle title" placeholderTextColor={colors.muted} style={styles.input} />
+        <EnemyPicker enemies={enemyDefinitions} selectedId={eventEnemyId} onSelect={selectEventEnemy} />
+        <NpcPicker label="Or select a battle-capable NPC" npcs={npcDefinitions} selectedId={eventNpcId} onSelect={selectEventBattleNpc} battleOnly />
+        {eventNpcId ? (
+          <View style={styles.storyCard}>
+            <Text style={styles.markerName}>{getNpcName(npcDefinitions, eventNpcId)}</Text>
+            <Text style={styles.copy}>This linked battle will use the selected NPC's battle stats, abilities, rewards, and drops.</Text>
+          </View>
+        ) : eventEnemyId ? (
+          <View style={styles.storyCard}>
+            <Text style={styles.markerName}>{getEnemyName(enemyDefinitions, eventEnemyId)}</Text>
+            <Text style={styles.copy}>This linked battle will use the selected enemy's stats, abilities, rewards, and drops.</Text>
+          </View>
+        ) : (
+          <View style={styles.storyCard}>
+            <Text style={styles.markerName}>Manual Enemy Fallback</Text>
+            <TextInput value={enemyName} onChangeText={setEnemyName} placeholder="Enemy name" placeholderTextColor={colors.muted} style={styles.input} />
+            <TextInput value={enemyImage} onChangeText={setEnemyImage} placeholder="Enemy image URL" placeholderTextColor={colors.muted} style={styles.input} />
+            <AdminImageUploadButton folder="battle-enemies" onUploaded={setEnemyImage} onMessage={setAdminMessage} />
+            <TextInput value={enemyHp} onChangeText={setEnemyHp} placeholder="Enemy HP" placeholderTextColor={colors.muted} style={styles.input} />
+            <TextInput value={enemyAttack} onChangeText={setEnemyAttack} placeholder="Enemy attack damage" placeholderTextColor={colors.muted} style={styles.input} />
+          </View>
+        )}
+        <TextInput value={battleIntro} onChangeText={setBattleIntro} placeholder="Battle intro text" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={victoryText} onChangeText={setVictoryText} placeholder="Victory text" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={defeatText} onChangeText={setDefeatText} placeholder="Defeat text" placeholderTextColor={colors.muted} style={styles.input} />
+        <Text style={styles.selectedTitle}>Battle Rewards</Text>
+        <TextInput value={rewardXp} onChangeText={setRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={rewardGold} onChangeText={setRewardGold} placeholder="Reward gold" placeholderTextColor={colors.muted} style={styles.input} />
+        <ItemPicker label="Reward item" items={itemDefinitions} selectedId={rewardItemId} onSelect={setRewardItemId} />
+        <TextInput value={rewardItemQuantity} onChangeText={setRewardItemQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={rewardItem} onChangeText={setRewardItem} placeholder="Legacy reward item text optional" placeholderTextColor={colors.muted} style={styles.input} />
+        <Pressable style={styles.secondaryButton} onPress={() => void createLinkedBattleForChoice()}>
+          <Text style={styles.secondaryText}>Create Linked Battle Event</Text>
+        </Pressable>
+        <Text style={styles.debugLine}>After creating or selecting a battle, save the player choice to connect it.</Text>
+      </View>
+    );
+  }
+
   function renderBranchingDialogueEditor() {
     return (
       <View style={styles.storyEditor}>
@@ -2909,23 +2961,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             ))}
           </View>
         ) : null}
-        {choiceAction === "start_battle" ? (
-          <View style={styles.storyEditor}>
-            <Text style={styles.selectedTitle}>Linked Battle</Text>
-            <Text style={styles.copy}>Select an existing battle event, or create one here using the enemy/NPC and reward fields above.</Text>
-            <View style={styles.storyRoutePicker}>
-              {adminMapEvents.filter((event) => event.event_type === "battle").map((event) => (
-                <Pressable key={event.id} style={[styles.routeChip, choiceBattleEventId === event.id && styles.routeChipActive]} onPress={() => setChoiceBattleEventId(event.id)}>
-                  <Text style={styles.routeChipText}>{event.title}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <TextInput value={choiceBattleTitle} onChangeText={setChoiceBattleTitle} placeholder="New linked battle title" placeholderTextColor={colors.muted} style={styles.input} />
-            <Pressable style={styles.secondaryButton} onPress={() => void createLinkedBattleForChoice()}>
-              <Text style={styles.secondaryText}>Create Linked Battle Event</Text>
-            </Pressable>
-          </View>
-        ) : null}
+        {choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
         {choiceAction === "give_reward" ? (
           <>
             <TextInput value={choiceRewardXp} onChangeText={setChoiceRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
@@ -4374,23 +4410,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   ))}
                 </View>
               ) : null}
-              {choiceAction === "start_battle" ? (
-                <View style={styles.storyEditor}>
-                  <Text style={styles.selectedTitle}>Linked Battle</Text>
-                  <Text style={styles.copy}>Select an existing battle event, or create one here using the enemy/NPC and reward fields above.</Text>
-                  <View style={styles.storyRoutePicker}>
-                    {adminMapEvents.filter((event) => event.event_type === "battle").map((event) => (
-                      <Pressable key={event.id} style={[styles.routeChip, choiceBattleEventId === event.id && styles.routeChipActive]} onPress={() => setChoiceBattleEventId(event.id)}>
-                        <Text style={styles.routeChipText}>{event.title}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                  <TextInput value={choiceBattleTitle} onChangeText={setChoiceBattleTitle} placeholder="New linked battle title" placeholderTextColor={colors.muted} style={styles.input} />
-                  <Pressable style={styles.secondaryButton} onPress={() => void createLinkedBattleForChoice()}>
-                    <Text style={styles.secondaryText}>Create Linked Battle Event</Text>
-                  </Pressable>
-                </View>
-              ) : null}
+              {choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
               {choiceAction === "give_reward" ? (
                 <>
                   <TextInput value={choiceRewardXp} onChangeText={setChoiceRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
