@@ -2680,6 +2680,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         onClaimReward={() => void claimSelectedMarkerReward()}
         onAcceptQuest={() => void acceptSelectedMarkerQuest()}
         onStartPath={(nextRoute) => void startPathFromSignPost(nextRoute)}
+        onUseExit={() => openExitMarker(selectedMarker)}
         onEnterArea={() => {
           const miniMap = miniMaps.find((item) => item.id === selectedMarker.linked_mini_map_id);
           if (miniMap) {
@@ -5078,6 +5079,7 @@ function MarkerSceneScreen({
   onClaimReward,
   onAcceptQuest,
   onStartPath,
+  onUseExit,
   onEnterArea,
 }: {
   marker: MapMarker;
@@ -5094,6 +5096,7 @@ function MarkerSceneScreen({
   onClaimReward: () => void;
   onAcceptQuest: () => void;
   onStartPath: (route: MapRoute) => void;
+  onUseExit: () => void;
   onEnterArea: () => void;
 }) {
   const backgroundUri = resolveSceneImageUri(marker.scene_background_image_url || marker.shop_background_image_url);
@@ -5115,7 +5118,15 @@ function MarkerSceneScreen({
         {marker.description ? <Text style={styles.copy}>{marker.description}</Text> : null}
         {marker.quest_dialogue ? <Text style={styles.dialogueText}>{marker.quest_dialogue}</Text> : null}
         {message ? <Text style={styles.adminMessage}>{message}</Text> : null}
-        {marker.type === "Area/Town Entrance" ? (
+        {isExitMarker(marker) ? (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
+            {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
+            <Pressable style={styles.primaryButton} onPress={onUseExit}>
+              <Text style={styles.primaryText}>Exit / Leave</Text>
+            </Pressable>
+          </View>
+        ) : marker.type === "Area/Town Entrance" ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
             {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
