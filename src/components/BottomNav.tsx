@@ -9,11 +9,11 @@ type Item = {
 };
 
 const items: Item[] = [
-  { key: "home", label: "Home", icon: "HM" },
-  { key: "map", label: "Map", icon: "MP" },
-  { key: "quests", label: "Quests / Training", icon: "QT" },
-  { key: "social", label: "Social", icon: "SO" },
-  { key: "settings", label: "Settings", icon: "ST" },
+  { key: "home", label: "Home", icon: "⌂" },
+  { key: "quests", label: "Training", icon: "✦" },
+  { key: "map", label: "Map", icon: "⌖" },
+  { key: "social", label: "Social", icon: "♟" },
+  { key: "settings", label: "Settings", icon: "⚙" },
 ];
 
 type BottomNavProps = {
@@ -27,7 +27,7 @@ export function BottomNav({ active, onChange }: BottomNavProps) {
       {items.map((item) => {
         const selected = item.key === active;
         return (
-          <Pressable key={item.key} style={styles.item} onPress={() => onChange(item.key)}>
+          <Pressable key={item.key} style={[styles.item, item.key === "map" && styles.centerItem]} onPress={() => onChange(item.key)}>
             <Text style={[styles.icon, selected && styles.active]}>{item.icon}</Text>
             <Text style={[styles.label, selected && styles.active]}>{item.label}</Text>
           </Pressable>
@@ -52,10 +52,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 4,
   },
+  centerItem: {
+    marginTop: -18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 42,
+    backgroundColor: "#10100f",
+    height: 82,
+    shadowColor: colors.gold,
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+  },
   icon: {
     color: colors.goldSoft,
     fontWeight: "700",
-    fontSize: 12,
+    fontSize: 22,
   },
   label: {
     color: colors.goldSoft,

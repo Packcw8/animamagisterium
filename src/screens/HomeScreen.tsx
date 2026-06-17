@@ -545,15 +545,15 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
 
   return (
     <Screen>
-      <View style={styles.header}>
-        <BrandLogo size={54} />
-        <View style={styles.headerText}>
-          <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
-          <Text style={styles.subtitle}>Adventurer Ledger</Text>
+      <View style={styles.homeChrome}>
+        <Pressable style={styles.chromeButton}><Text style={styles.chromeIcon}>☰</Text></Pressable>
+        <View style={styles.chromeActions}>
+          <Pressable style={styles.chromeButton}><Text style={styles.chromeIcon}>✉</Text></Pressable>
+          <Pressable style={styles.chromeButton}><Text style={styles.chromeIcon}>⚙</Text></Pressable>
         </View>
       </View>
 
-      <Frame style={styles.hero}>
+      <View style={styles.hero}>
         {character.portrait_url ? (
           <Image source={{ uri: character.portrait_url }} style={styles.portrait} />
         ) : (
@@ -561,21 +561,34 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
             <Text style={styles.noPortraitText}>Portrait pending</Text>
           </View>
         )}
+        <View style={styles.heroShade} />
         <View style={styles.heroInfo}>
           <Text style={styles.name}>{character.name}</Text>
-          <Text style={styles.identity}>{character.ancestry ?? "Adventurer"} / {character.origin ?? "Unknown Origin"}</Text>
-          <View style={styles.statLine}>
-            <Text style={styles.statPill}>Level {character.level}</Text>
-            <Text style={styles.statPill}>{character.gold} Gold</Text>
-          </View>
-          <Text style={styles.xpText}>{character.xp.toLocaleString()} XP</Text>
-          <ProgressBar value={character.xp % 1000} max={1000} color={colors.blue} height={9} />
-          <View style={styles.resourceGrid}>
-            <Resource label="HP" value={`${currentHealth} / ${resources.maxHp}`} color={colors.red} />
-            <Resource label="Stamina" value={resources.maxStamina} color={colors.gold} />
-            <Resource label="Magika" value={resources.maxMagicka} color={colors.blue} />
+          <Text style={styles.identity}>{character.ancestry ?? "Adventurer"} · {character.origin ?? "Unknown Origin"}</Text>
+          <View style={styles.levelRow}>
+            <View style={styles.levelBadge}>
+              <Text style={styles.levelNumber}>{character.level}</Text>
+            </View>
+            <View style={styles.levelCopy}>
+              <Text style={styles.levelLabel}>Level {character.level}</Text>
+              <Text style={styles.xpText}>{character.xp.toLocaleString()} / {Math.max(400, Math.ceil((character.xp + 1) / 400) * 400).toLocaleString()} XP</Text>
+              <ProgressBar value={character.xp % 400} max={400} color={colors.gold} height={8} />
+            </View>
           </View>
         </View>
+      </View>
+
+      <Frame style={styles.summaryBand}>
+        <SummaryTile icon="◎" label="Gold" value={character.gold.toLocaleString()} />
+        <SummaryTile icon="✦" label="Seed" value="50" />
+        <SummaryTile icon="⌖" label="Steps Today" value="0" />
+        <SummaryTile icon="▧" label="Chapter" value="1" />
+      </Frame>
+
+      <Frame style={styles.resourcesPanel}>
+        <ResourceBar label="HP" value={currentHealth} max={resources.maxHp} color={colors.red} icon="♥" />
+        <ResourceBar label="Stamina" value={resources.maxStamina} max={resources.maxStamina} color={colors.gold} icon="ϟ" />
+        <ResourceBar label="Magika" value={resources.maxMagicka} max={resources.maxMagicka} color={colors.blue} icon="◉" />
       </Frame>
 
       <View style={styles.tabs}>
@@ -588,11 +601,36 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
 
       <Frame style={styles.card}>
         {activeTab === "Overview" ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Overview</Text>
-            <Info label="Race" value={character.ancestry ?? "Not set"} />
-            <Info label="Origin" value={character.origin ?? "Not set"} />
-            <Text style={styles.muted}>Progression comes from your actions after entering the world, not from onboarding choices.</Text>
+          <View style={styles.dashboardSection}>
+            <View style={styles.quickGrid}>
+              <QuickTile icon="▣" label="Inventory" selected onPress={() => setActiveTab("Inventory")} />
+              <QuickTile icon="⚔" label="Abilities" onPress={() => setActiveTab("Abilities")} />
+              <QuickTile icon="☷" label="Attributes" onPress={() => setActiveTab("Attributes")} />
+              <QuickTile icon="✎" label="Battle Stats" onPress={() => setActiveTab("Battle Stats")} />
+            </View>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Equipped</Text>
+              <Pressable style={styles.viewAllButton} onPress={() => setActiveTab("Inventory")}>
+                <Text style={styles.viewAllText}>View All</Text>
+              </Pressable>
+            </View>
+            <View style={styles.equippedList}>
+              {(["weapon", "armor", "necklace", "ring"] as const).map((slot) => (
+                <EquippedRow key={slot} slot={slot} item={equippedItems[slot] ?? null} />
+              ))}
+            </View>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>Inventory Items</Text>
+              <Pressable style={styles.viewAllButton} onPress={() => setActiveTab("Inventory")}>
+                <Text style={styles.viewAllText}>View All</Text>
+              </Pressable>
+            </View>
+            <View style={styles.inventoryStrip}>
+              {inventoryItems.slice(0, 6).map((entry) => (
+                <InventoryStripItem key={entry.id} entry={entry} />
+              ))}
+              {inventoryItems.length === 0 ? <Text style={styles.muted}>No inventory items yet.</Text> : null}
+            </View>
           </View>
         ) : activeTab === "Identity" ? (
           <View style={styles.section}>
@@ -1170,6 +1208,65 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
   );
 }
 
+function SummaryTile({ icon, label, value }: { icon: string; label: string; value: string }) {
+  return (
+    <View style={styles.summaryTile}>
+      <Text style={styles.summaryIcon}>{icon}</Text>
+      <View>
+        <Text style={styles.summaryValue}>{value}</Text>
+        <Text style={styles.summaryLabel}>{label}</Text>
+      </View>
+    </View>
+  );
+}
+
+function ResourceBar({ label, value, max, color, icon }: { label: string; value: number; max: number; color: string; icon: string }) {
+  return (
+    <View style={styles.resourceBarCard}>
+      <View style={styles.resourceBarHeader}>
+        <Text style={[styles.resourceBarIcon, { color }]}>{icon}</Text>
+        <Text style={[styles.resourceBarLabel, { color }]}>{label}</Text>
+      </View>
+      <Text style={styles.resourceBarValue}>{value} / {max}</Text>
+      <ProgressBar value={value} max={max || 1} color={color} height={8} />
+    </View>
+  );
+}
+
+function QuickTile({ icon, label, selected, onPress }: { icon: string; label: string; selected?: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={[styles.quickTile, selected && styles.quickTileSelected]} onPress={onPress}>
+      <Text style={styles.quickIcon}>{icon}</Text>
+      <Text style={styles.quickLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function EquippedRow({ slot, item }: { slot: string; item: ItemDefinition | null }) {
+  const uri = resolveInventoryImageUri(item?.image_path);
+  return (
+    <View style={styles.equippedRow}>
+      {uri ? <Image source={{ uri }} style={styles.equippedImage} /> : <View style={styles.equippedPlaceholder}><Text style={styles.equippedPlaceholderText}>{slot.slice(0, 1).toUpperCase()}</Text></View>}
+      <View style={styles.equippedBody}>
+        <Text style={styles.equippedName}>{item?.name ?? "Empty"}</Text>
+        <Text style={styles.equippedDescription}>{item?.description ?? `No ${slot} equipped.`}</Text>
+      </View>
+      <Text style={styles.equippedSlot}>{slot}</Text>
+      <Text style={styles.equippedChevron}>›</Text>
+    </View>
+  );
+}
+
+function InventoryStripItem({ entry }: { entry: InventoryItem }) {
+  const uri = resolveInventoryImageUri(entry.item.image_path);
+  return (
+    <View style={styles.stripItem}>
+      {uri ? <Image source={{ uri }} style={styles.stripImage} /> : <View style={styles.stripPlaceholder} />}
+      <Text style={styles.stripQuantity}>{entry.quantity}</Text>
+    </View>
+  );
+}
+
 function Resource({ label, value, color }: { label: string; value: number | string; color: string }) {
   return (
     <View style={[styles.resourcePill, { borderColor: color }]}>
@@ -1499,21 +1596,54 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginTop: 3,
   },
+  homeChrome: {
+    position: "absolute",
+    top: 18,
+    left: 18,
+    right: 18,
+    zIndex: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  chromeActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  chromeButton: {
+    width: 54,
+    height: 54,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "rgba(4, 6, 6, 0.62)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  chromeIcon: {
+    color: colors.goldSoft,
+    fontSize: 27,
+    fontWeight: "900",
+  },
   hero: {
-    margin: 12,
-    padding: 12,
-    gap: 12,
+    minHeight: 430,
+    overflow: "hidden",
+    backgroundColor: "#050807",
+    justifyContent: "flex-end",
   },
   portrait: {
+    ...StyleSheet.absoluteFillObject,
     width: "100%",
-    height: 330,
-    borderRadius: 8,
+    height: "100%",
     backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  heroShade: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(2,5,5,0.42)",
   },
   noPortrait: {
     width: "100%",
-    height: 220,
-    borderRadius: 8,
+    height: 430,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     alignItems: "center",
@@ -1523,16 +1653,52 @@ const styles = StyleSheet.create({
     color: colors.muted,
   },
   heroInfo: {
-    gap: 8,
+    gap: 14,
+    paddingHorizontal: 26,
+    paddingBottom: 30,
+    paddingTop: 110,
+    zIndex: 2,
   },
   name: {
     color: colors.text,
-    fontSize: 30,
+    fontFamily: fonts.title,
+    fontSize: 42,
     fontWeight: "900",
   },
   identity: {
     color: colors.gold,
     fontWeight: "700",
+    fontSize: 22,
+  },
+  levelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 18,
+    maxWidth: 360,
+  },
+  levelBadge: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
+    borderWidth: 2,
+    borderColor: colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.42)",
+  },
+  levelNumber: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 30,
+  },
+  levelCopy: {
+    flex: 1,
+    gap: 6,
+  },
+  levelLabel: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 20,
   },
   statLine: {
     flexDirection: "row",
@@ -1549,6 +1715,71 @@ const styles = StyleSheet.create({
   },
   xpText: {
     color: colors.muted,
+  },
+  summaryBand: {
+    margin: 12,
+    marginTop: -12,
+    padding: 14,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    backgroundColor: "rgba(5, 9, 10, 0.86)",
+  },
+  summaryTile: {
+    flex: 1,
+    minWidth: 135,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 8,
+  },
+  summaryIcon: {
+    color: colors.gold,
+    fontSize: 28,
+  },
+  summaryValue: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 22,
+  },
+  summaryLabel: {
+    color: colors.muted,
+    marginTop: 2,
+  },
+  resourcesPanel: {
+    marginHorizontal: 12,
+    marginBottom: 12,
+    padding: 14,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    backgroundColor: "rgba(5, 9, 10, 0.86)",
+  },
+  resourceBarCard: {
+    flex: 1,
+    minWidth: 160,
+    gap: 8,
+    padding: 10,
+  },
+  resourceBarHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  resourceBarIcon: {
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  resourceBarLabel: {
+    fontSize: 18,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  resourceBarValue: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 24,
+    textAlign: "center",
   },
   resourceGrid: {
     flexDirection: "row",
@@ -1637,6 +1868,153 @@ const styles = StyleSheet.create({
   card: {
     margin: 12,
     padding: 14,
+    backgroundColor: "rgba(5, 9, 10, 0.78)",
+  },
+  dashboardSection: {
+    gap: 18,
+  },
+  quickGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  quickTile: {
+    flex: 1,
+    minWidth: 136,
+    minHeight: 140,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.28)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  quickTileSelected: {
+    borderColor: colors.gold,
+    shadowColor: colors.gold,
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+  },
+  quickIcon: {
+    color: colors.goldSoft,
+    fontSize: 46,
+  },
+  quickLabel: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 18,
+    textTransform: "uppercase",
+  },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  viewAllButton: {
+    minHeight: 42,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    paddingHorizontal: 18,
+    justifyContent: "center",
+  },
+  viewAllText: {
+    color: colors.goldSoft,
+    fontWeight: "800",
+  },
+  equippedList: {
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  equippedRow: {
+    minHeight: 96,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderBottomWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  equippedImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 8,
+  },
+  equippedPlaceholder: {
+    width: 72,
+    height: 72,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  equippedPlaceholderText: {
+    color: colors.muted,
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  equippedBody: {
+    flex: 1,
+    gap: 4,
+  },
+  equippedName: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 20,
+  },
+  equippedDescription: {
+    color: colors.muted,
+    lineHeight: 19,
+  },
+  equippedSlot: {
+    color: colors.goldSoft,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    fontSize: 12,
+  },
+  equippedChevron: {
+    color: colors.muted,
+    fontSize: 34,
+  },
+  inventoryStrip: {
+    flexDirection: "row",
+    gap: 10,
+    overflow: "hidden",
+  },
+  stripItem: {
+    width: 88,
+    height: 88,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.28)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stripImage: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
+  },
+  stripPlaceholder: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  stripQuantity: {
+    position: "absolute",
+    right: 8,
+    bottom: 5,
+    color: colors.text,
+    fontWeight: "900",
   },
   section: {
     gap: 10,
