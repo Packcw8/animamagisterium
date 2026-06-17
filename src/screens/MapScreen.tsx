@@ -91,6 +91,7 @@ const editorModes = ["Marker", "Walking Path"] as const;
 const adminSections = ["World Markers", "Area/Town Markers", "Mini Maps", "Walking Paths", "Tutorials", "Rewards/Interactions", "Legend"] as const;
 const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
+const eventTriggerModes = ["fixed", "random"] as const;
 const lockTypes = ["public", "story_locked", "quest_locked"] as const;
 const lockTypeLabels: Record<(typeof lockTypes)[number], string> = {
   public: "Public",
@@ -108,6 +109,10 @@ const eventTypeLabels: Record<(typeof eventTypes)[number], string> = {
   battle: "Battle Event",
   clue: "Clue / Investigation Event",
   reward: "Reward Event",
+};
+const eventTriggerModeLabels: Record<(typeof eventTriggerModes)[number], string> = {
+  fixed: "Fixed Percent",
+  random: "Random Encounter",
 };
 const maxGpsAccuracyMeters = 50;
 const maxTrackingGapSeconds = 60;
@@ -285,6 +290,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [eventType, setEventType] = useState<(typeof eventTypes)[number]>("dialogue");
   const [eventTitle, setEventTitle] = useState("");
   const [eventDistance, setEventDistance] = useState("25");
+  const [eventTriggerMode, setEventTriggerMode] = useState<(typeof eventTriggerModes)[number]>("fixed");
+  const [eventRandomChance, setEventRandomChance] = useState("10");
   const [eventBackgroundImage, setEventBackgroundImage] = useState("");
   const [eventNpcName, setEventNpcName] = useState("");
   const [eventNpcPortrait, setEventNpcPortrait] = useState("");
@@ -549,13 +556,17 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
-    const nextEvent = mapEvents.find(
+    const eligibleEvents = mapEvents.filter(
       (event) =>
         event.is_active &&
         event.route_id === route.id &&
         !completedEventIds.has(event.id) &&
         Number(event.distance_marker_percent) <= progressPercent,
     );
+    const fixedEvent = eligibleEvents.find((event) => (event.trigger_mode ?? "fixed") !== "random");
+    const randomEvents = eligibleEvents.filter((event) => (event.trigger_mode ?? "fixed") === "random");
+    const randomEvent = randomEvents.find((event) => Math.random() * 100 < Number(event.random_chance_percent ?? 0));
+    const nextEvent = fixedEvent ?? randomEvent;
 
     if (!nextEvent) {
       return;
@@ -2333,6 +2344,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setEventType(event.event_type === "story" ? "dialogue" : event.event_type);
     setEventTitle(event.title);
     setEventDistance(String(event.distance_marker_percent));
+    setEventTriggerMode((event.trigger_mode ?? "fixed") === "random" ? "random" : "fixed");
+    setEventRandomChance(String(event.random_chance_percent ?? 10));
     setEventBackgroundImage(event.background_image_url ?? "");
     setEventNpcName(event.npc_name ?? "");
     setEventNpcPortrait(event.npc_portrait_url ?? "");
@@ -2380,6 +2393,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setEventType("dialogue");
     setEventTitle("");
     setEventDistance("25");
+    setEventTriggerMode("fixed");
+    setEventRandomChance("10");
     setEventBackgroundImage("");
     setEventNpcName("");
     setEventNpcPortrait("");
@@ -2411,6 +2426,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       title: eventTitle.trim(),
       route_id: route.id,
       distance_marker_percent: clamp(Number(eventDistance) || 0, 0, 100),
+      trigger_mode: eventTriggerMode,
+      random_chance_percent: eventTriggerMode === "random" ? clamp(Number(eventRandomChance) || 0, 0, 100) : 0,
       background_image_url: eventBackgroundImage.trim() || null,
       npc_name: eventNpcName.trim() || null,
       npc_portrait_url: eventNpcPortrait.trim() || null,
@@ -3032,6 +3049,108 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 </Pressable>
               </View>
             )}
+            <View style={styles.storyEditor}>
+              <Text style={styles.selectedTitle}>Mini Map Trail Events / Rewards</Text>
+              <Text style={styles.copy}>Select a mini-map walking path, then add story, battle, clue, reward, or random encounter events to that trail.</Text>
+              <View style={styles.storyRoutePicker}>
+                {adminMiniMapRoutes.map((item) => (
+                  <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item, true)}>
+                    <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {adminMiniMapRoutes.length === 0 ? <Text style={styles.copy}>Create a mini-map walking path before adding trail events.</Text> : null}
+              {route.mini_map_id === activeMiniMap.id ? (
+                <>
+                  <View style={styles.modeRow}>
+                    {eventTypes.map((type) => (
+                      <Pressable key={type} style={[styles.modeButton, eventType === type && styles.typeSelected]} onPress={() => setEventType(type)}>
+                        <Text style={styles.typeText}>{eventTypeLabels[type]}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <TextInput value={eventTitle} onChangeText={setEventTitle} placeholder="Event title" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={eventDistance} onChangeText={setEventDistance} placeholder="Distance marker on trail, 0-100" placeholderTextColor={colors.muted} style={styles.input} />
+                  <View style={styles.modeRow}>
+                    {eventTriggerModes.map((mode) => (
+                      <Pressable key={mode} style={[styles.secondaryButtonFlex, eventTriggerMode === mode && styles.typeSelected]} onPress={() => setEventTriggerMode(mode)}>
+                        <Text style={styles.secondaryText}>{eventTriggerModeLabels[mode]}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {eventTriggerMode === "random" ? (
+                    <>
+                      <TextInput value={eventRandomChance} onChangeText={setEventRandomChance} placeholder="Random chance percent while moving" placeholderTextColor={colors.muted} style={styles.input} />
+                      <Text style={styles.debugLine}>Random encounters can trigger after this mini-map trail reaches the distance marker.</Text>
+                    </>
+                  ) : null}
+                  {eventType !== "battle" ? (
+                    <>
+                      <TextInput value={eventBackgroundImage} onChangeText={setEventBackgroundImage} placeholder="Background image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                      <AdminImageUploadButton folder="event-backgrounds" onUploaded={setEventBackgroundImage} onMessage={setAdminMessage} />
+                      <TextInput value={eventNpcName} onChangeText={setEventNpcName} placeholder="NPC name optional" placeholderTextColor={colors.muted} style={styles.input} />
+                      <TextInput value={eventNpcPortrait} onChangeText={setEventNpcPortrait} placeholder="NPC portrait URL optional" placeholderTextColor={colors.muted} style={styles.input} />
+                      <AdminImageUploadButton folder="event-npcs" onUploaded={setEventNpcPortrait} onMessage={setAdminMessage} />
+                      <TextInput value={eventDialogue} onChangeText={setEventDialogue} placeholder="Fallback dialogue text if no dialogue steps exist" placeholderTextColor={colors.muted} style={styles.input} />
+                    </>
+                  ) : (
+                    <>
+                      <Text style={styles.selectedTitle}>Enemy From Admin</Text>
+                      <EnemyPicker enemies={enemyDefinitions} selectedId={eventEnemyId} onSelect={selectEventEnemy} />
+                      {eventEnemyId ? (
+                        <View style={styles.storyCard}>
+                          <Text style={styles.markerName}>{getEnemyName(enemyDefinitions, eventEnemyId)}</Text>
+                          <Text style={styles.copy}>This battle will use the selected admin enemy's stats, abilities, rewards, and drops.</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.storyCard}>
+                          <Text style={styles.markerName}>Manual Enemy Fallback</Text>
+                          <TextInput value={enemyName} onChangeText={setEnemyName} placeholder="Enemy name" placeholderTextColor={colors.muted} style={styles.input} />
+                          <TextInput value={enemyImage} onChangeText={setEnemyImage} placeholder="Enemy image URL" placeholderTextColor={colors.muted} style={styles.input} />
+                          <AdminImageUploadButton folder="battle-enemies" onUploaded={setEnemyImage} onMessage={setAdminMessage} />
+                          <TextInput value={enemyHp} onChangeText={setEnemyHp} placeholder="Enemy HP" placeholderTextColor={colors.muted} style={styles.input} />
+                          <TextInput value={enemyAttack} onChangeText={setEnemyAttack} placeholder="Enemy attack damage" placeholderTextColor={colors.muted} style={styles.input} />
+                        </View>
+                      )}
+                      <TextInput value={battleIntro} onChangeText={setBattleIntro} placeholder="Battle intro text" placeholderTextColor={colors.muted} style={styles.input} />
+                      <TextInput value={victoryText} onChangeText={setVictoryText} placeholder="Victory text" placeholderTextColor={colors.muted} style={styles.input} />
+                      <TextInput value={defeatText} onChangeText={setDefeatText} placeholder="Defeat text" placeholderTextColor={colors.muted} style={styles.input} />
+                    </>
+                  )}
+                  <Text style={styles.selectedTitle}>Event Rewards</Text>
+                  <TextInput value={rewardXp} onChangeText={setRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={rewardGold} onChangeText={setRewardGold} placeholder="Reward gold" placeholderTextColor={colors.muted} style={styles.input} />
+                  <ItemPicker label="Reward item" items={itemDefinitions} selectedId={rewardItemId} onSelect={setRewardItemId} />
+                  <TextInput value={rewardItemQuantity} onChangeText={setRewardItemQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={rewardItem} onChangeText={setRewardItem} placeholder="Legacy reward item text optional" placeholderTextColor={colors.muted} style={styles.input} />
+                  <Pressable style={styles.primaryButton} onPress={() => void saveMapEvent()} disabled={!eventTitle.trim()}>
+                    <Text style={styles.primaryText}>{editingEvent ? "Update Trail Event" : "Create Trail Event"}</Text>
+                  </Pressable>
+                  {editingEvent ? (
+                    <Pressable style={styles.secondaryButton} onPress={clearEventForm}>
+                      <Text style={styles.secondaryText}>Cancel Event Edit</Text>
+                    </Pressable>
+                  ) : null}
+                  {adminMapEvents.length === 0 ? <Text style={styles.copy}>No events saved for the selected mini-map path yet.</Text> : null}
+                  {adminMapEvents.map((event) => (
+                    <View key={event.id} style={styles.storyCard}>
+                      <Text style={styles.markerName}>{event.distance_marker_percent}% - {event.title}</Text>
+                      <Text style={styles.copy}>{eventTriggerModeName(event)} / {eventTypeName(event.event_type)}</Text>
+                      <View style={styles.modeRow}>
+                        <Pressable style={styles.secondaryButtonFlex} onPress={() => editMapEvent(event)}>
+                          <Text style={styles.secondaryText}>Edit</Text>
+                        </Pressable>
+                        <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeMapEvent(event.id)}>
+                          <Text style={styles.dangerText}>Delete</Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <Text style={styles.debugLine}>Select a mini-map walking path above to create or edit its events.</Text>
+              )}
+            </View>
           </Frame>
         ) : null}
       </Screen>
@@ -3725,6 +3844,19 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             </View>
             <TextInput value={eventTitle} onChangeText={setEventTitle} placeholder="Event title" placeholderTextColor={colors.muted} style={styles.input} />
             <TextInput value={eventDistance} onChangeText={setEventDistance} placeholder="Distance marker on trail, 0-100" placeholderTextColor={colors.muted} style={styles.input} />
+            <View style={styles.modeRow}>
+              {eventTriggerModes.map((mode) => (
+                <Pressable key={mode} style={[styles.secondaryButtonFlex, eventTriggerMode === mode && styles.typeSelected]} onPress={() => setEventTriggerMode(mode)}>
+                  <Text style={styles.secondaryText}>{eventTriggerModeLabels[mode]}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {eventTriggerMode === "random" ? (
+              <>
+                <TextInput value={eventRandomChance} onChangeText={setEventRandomChance} placeholder="Random chance percent while moving" placeholderTextColor={colors.muted} style={styles.input} />
+                <Text style={styles.debugLine}>Random encounters can trigger after the route reaches the distance marker above.</Text>
+              </>
+            ) : null}
             {eventType !== "battle" ? (
               <>
                 <TextInput value={eventBackgroundImage} onChangeText={setEventBackgroundImage} placeholder="Background image URL" placeholderTextColor={colors.muted} style={styles.input} />
@@ -3778,6 +3910,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             {adminMapEvents.map((event) => (
               <View key={event.id} style={styles.storyCard}>
                 <Text style={styles.markerName}>{event.distance_marker_percent}% - {event.title}</Text>
+                <Text style={styles.debugLine}>{eventTriggerModeName(event)}</Text>
                 <Text style={styles.copy}>
                   {event.event_type === "battle"
                     ? `${event.enemy_id ? getEnemyName(enemyDefinitions, event.enemy_id) : event.enemy_name || "Enemy"} - ${event.enemy_id ? "Admin Enemy" : `HP ${event.enemy_hp}`}`
@@ -4412,6 +4545,14 @@ function eventTypeName(type: MapEvent["event_type"]) {
   }
 
   return "Dialogue Event";
+}
+
+function eventTriggerModeName(event: MapEvent) {
+  if ((event.trigger_mode ?? "fixed") === "random") {
+    return `Random ${Number(event.random_chance_percent ?? 0)}% after ${event.distance_marker_percent}%`;
+  }
+
+  return `Fixed at ${event.distance_marker_percent}%`;
 }
 
 function choiceActionLabel(action: StoryDialogueChoice["action"]) {

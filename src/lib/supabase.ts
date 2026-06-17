@@ -267,6 +267,8 @@ export type Tables = {
     reward_item: string | null;
     reward_item_id: string | null;
     reward_item_quantity: number;
+    trigger_mode: "fixed" | "random";
+    random_chance_percent: number;
     season_number: number;
     chapter_number: number;
     is_active: boolean;
