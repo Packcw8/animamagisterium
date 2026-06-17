@@ -825,16 +825,23 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   function handleMapPointer(event: {
     clientX?: number;
     clientY?: number;
-    currentTarget?: { getBoundingClientRect?: () => { left: number; top: number; width: number; height: number } };
+    currentTarget?: {
+      getBoundingClientRect?: () => { left: number; top: number; width: number; height: number };
+      clientWidth?: number;
+      clientHeight?: number;
+    };
     nativeEvent?: {
       clientX?: number;
       clientY?: number;
+      offsetX?: number;
+      offsetY?: number;
       locationX?: number;
       locationY?: number;
       changedTouches?: Array<{ clientX?: number; clientY?: number }>;
       touches?: Array<{ clientX?: number; clientY?: number }>;
+      target?: { clientWidth?: number; clientHeight?: number };
     };
-  }) {
+  }, scope: "world" | "mini" = "world") {
     if (!isAdmin) {
       return;
     }
@@ -852,9 +859,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    if (scope === "mini" && nativeEvent.offsetX !== undefined && nativeEvent.offsetY !== undefined) {
+      const width = event.currentTarget?.clientWidth ?? nativeEvent.target?.clientWidth ?? 1;
+      const height = event.currentTarget?.clientHeight ?? nativeEvent.target?.clientHeight ?? 1;
+      const x = clamp((nativeEvent.offsetX / width) * 100, 0, 100);
+      const y = clamp((nativeEvent.offsetY / height) * 100, 0, 100);
+      captureMapPercent(x, y);
+      return;
+    }
+
     if (nativeEvent.locationX !== undefined && nativeEvent.locationY !== undefined) {
-      const x = clamp((nativeEvent.locationX / scaledMapSize.width) * 100, 0, 100);
-      const y = clamp((nativeEvent.locationY / scaledMapSize.height) * 100, 0, 100);
+      const width = scope === "mini" ? event.currentTarget?.clientWidth ?? nativeEvent.target?.clientWidth ?? scaledMapSize.width : scaledMapSize.width;
+      const height = scope === "mini" ? event.currentTarget?.clientHeight ?? nativeEvent.target?.clientHeight ?? scaledMapSize.height : scaledMapSize.height;
+      const x = clamp((nativeEvent.locationX / width) * 100, 0, 100);
+      const y = clamp((nativeEvent.locationY / height) * 100, 0, 100);
       captureMapPercent(x, y);
     }
   }
@@ -891,12 +909,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
-    if (adminSection === "Mini Maps" && !selectedMiniMapId) {
+    const activeMiniMapId = activeMiniMap?.id ?? (adminSection === "Mini Maps" ? selectedMiniMapId : null);
+    const isMiniMapMarker = Boolean(activeMiniMapId);
+
+    if (adminSection === "Mini Maps" && !activeMiniMapId) {
       setAdminMessage("Select a mini map before creating mini-map markers.");
       return;
     }
 
-    if (adminSection === "Mini Maps" && draftType === "Player Spawn" && markers.some((marker) => marker.mini_map_id === selectedMiniMapId && marker.type === "Player Spawn")) {
+    if (isMiniMapMarker && draftType === "Player Spawn" && markers.some((marker) => marker.mini_map_id === activeMiniMapId && marker.type === "Player Spawn")) {
       setAdminMessage("This mini map already has a Player Spawn marker. Edit or move the existing spawn instead.");
       return;
     }
@@ -910,11 +931,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         y_percent: clickedPercent.y,
         is_active: true,
         is_unlocked: true,
-        route_id: adminSection === "Mini Maps" ? null : route.id,
+        route_id: isMiniMapMarker ? null : route.id,
         quest_key: null,
         linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : (draftType === "Exit" || draftType === "Exit/Leave") && markerExitTargetType === "mini_map" ? markerExitTargetMiniMapId : null,
-        mini_map_id: adminSection === "Mini Maps" ? selectedMiniMapId : null,
-        parent_marker_id: adminSection === "Mini Maps" ? selectedMarker?.id ?? null : null,
+        mini_map_id: activeMiniMapId,
+        parent_marker_id: isMiniMapMarker ? selectedMarker?.id ?? null : null,
         exit_target_type: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetType : null,
         exit_target_marker_id: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetMarkerId : null,
         linked_route_id: isQuestMarkerType(draftType) ? markerLinkedRouteId : null,
@@ -944,6 +965,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   function getMarkerSettingsPayload() {
+    const activeMiniMapId = activeMiniMap?.id ?? (adminSection === "Mini Maps" ? selectedMiniMapId : null);
+
     return {
       type: draftType,
       title: draftTitle.trim() || selectedMarker?.title || "Untitled Marker",
@@ -970,7 +993,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       repeatable: markerRepeatable,
       reward_once_per_player: markerRewardOnce,
       linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : (draftType === "Exit" || draftType === "Exit/Leave") && markerExitTargetType === "mini_map" ? markerExitTargetMiniMapId : null,
-      mini_map_id: selectedMarker?.mini_map_id ?? (adminSection === "Mini Maps" ? selectedMiniMapId : null),
+      mini_map_id: selectedMarker?.mini_map_id ?? activeMiniMapId,
       parent_marker_id: selectedMarker?.parent_marker_id ?? null,
       exit_target_type: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetType : null,
       exit_target_marker_id: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetMarkerId : null,
@@ -2672,11 +2695,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             style={styles.miniMapSurface}
             {...(isAdmin
               ? ({
-                  onMouseDown: handleMapPointer,
-                  onTouchEnd: handleMapPointer,
-                  onClick: handleMapPointer,
+                  onMouseDown: (event: unknown) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini"),
+                  onTouchEnd: (event: unknown) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini"),
+                  onClick: (event: unknown) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini"),
                   onStartShouldSetResponder: () => true,
-                  onResponderRelease: handleMapPointer,
+                  onResponderRelease: (event: unknown) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini"),
                 } as object)
               : {})}
           >
