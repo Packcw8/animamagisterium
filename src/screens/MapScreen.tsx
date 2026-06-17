@@ -90,6 +90,11 @@ const lockTypeLabels: Record<(typeof lockTypes)[number], string> = {
   story_locked: "Story Locked",
   quest_locked: "Quest Locked",
 };
+const rewardTimings = ["on_interact", "on_path_complete"] as const;
+const rewardTimingLabels: Record<(typeof rewardTimings)[number], string> = {
+  on_interact: "When Interacted",
+  on_path_complete: "After Linked Path Completion",
+};
 const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle", "Complete Event"] as const;
 const eventTypeLabels: Record<(typeof eventTypes)[number], string> = {
   dialogue: "Dialogue Event",
@@ -224,6 +229,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerRewardGold, setMarkerRewardGold] = useState("0");
   const [markerRewardItemId, setMarkerRewardItemId] = useState<string | null>(null);
   const [markerRewardQuantity, setMarkerRewardQuantity] = useState("1");
+  const [markerRewardTiming, setMarkerRewardTiming] = useState<MapMarker["reward_timing"]>("on_interact");
   const [markerRepeatable, setMarkerRepeatable] = useState(false);
   const [markerRewardOnce, setMarkerRewardOnce] = useState(true);
   const [markerLinkedRouteId, setMarkerLinkedRouteId] = useState<string | null>(null);
@@ -453,6 +459,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     setCompletedRouteId(route.id);
     setGpsMessage(`${route.name} completed. Return to a Sign Post to choose your next path.`);
+    void grantPathCompletionMarkerReward(route.id);
   }, [completedRouteId, progressPercent, route, routeDirection]);
 
   useEffect(() => {
@@ -864,6 +871,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       reward_gold: Number(markerRewardGold) || 0,
       reward_item_id: markerRewardItemId,
       reward_item_quantity: Math.max(1, Number(markerRewardQuantity) || 1),
+      reward_timing: markerRewardTiming,
       repeatable: markerRepeatable,
       reward_once_per_player: markerRewardOnce,
       linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : null,
@@ -903,6 +911,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerRewardGold(String(marker.reward_gold ?? 0));
     setMarkerRewardItemId(marker.reward_item_id ?? null);
     setMarkerRewardQuantity(String(marker.reward_item_quantity ?? 1));
+    setMarkerRewardTiming(marker.reward_timing ?? "on_interact");
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
@@ -1090,6 +1099,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    if (selectedMarker.reward_timing === "on_path_complete") {
+      setMarkerPanelMessage("This reward is granted after completing the linked walking path.");
+      return;
+    }
+
     try {
       const result = await applyRewards(character, {
         xp: selectedMarker.reward_xp,
@@ -1138,6 +1152,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         current_y_percent: startPoint.y,
         last_lat: null,
         last_lng: null,
+        source_marker_id: selectedMarker.id,
       });
       await selectRoute(linkedRoute, true);
       setSavedPlayerPosition(startPoint);
@@ -1146,6 +1161,35 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setGpsMessage(`${selectedMarker.quest_title || selectedMarker.title} accepted. ${linkedRoute.name} is now the active walking path.`);
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to start linked walking path."));
+    }
+  }
+
+  async function grantPathCompletionMarkerReward(routeId: string) {
+    try {
+      const progress = await getRouteProgress(routeId);
+      if (!progress?.source_marker_id) {
+        return;
+      }
+
+      const sourceMarker = markers.find((marker) => marker.id === progress.source_marker_id);
+      if (!sourceMarker || sourceMarker.reward_timing !== "on_path_complete") {
+        return;
+      }
+
+      const result = await applyRewards(character, {
+        xp: sourceMarker.reward_xp,
+        gold: sourceMarker.reward_gold,
+        itemId: sourceMarker.reward_item_id,
+        itemQuantity: sourceMarker.reward_item_quantity,
+        repeatable: sourceMarker.repeatable,
+        rewardOncePerPlayer: sourceMarker.reward_once_per_player,
+        markerId: sourceMarker.id,
+      });
+
+      setGpsMessage(result.claimed ? `${route.name} completed. ${result.message}` : `${route.name} completed. ${result.message}`);
+      await loadInventory();
+    } catch (error) {
+      setGpsMessage(getErrorMessage(error, "Path completed, but the linked quest reward could not be granted."));
     }
   }
 
@@ -1180,6 +1224,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       last_lng: null,
       travel_direction: "forward",
       is_current: true,
+      source_marker_id: null,
     });
     setSelectedMarker(null);
     await selectRoute(nextRoute, true);
@@ -3128,6 +3173,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <TextInput value={markerRewardGold} onChangeText={setMarkerRewardGold} placeholder="Gold reward" placeholderTextColor={colors.muted} style={styles.input} />
                   <ItemPicker label="Item reward" items={itemDefinitions} selectedId={markerRewardItemId} onSelect={setMarkerRewardItemId} />
                   <TextInput value={markerRewardQuantity} onChangeText={setMarkerRewardQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
+                  <RewardTimingPicker value={markerRewardTiming} onSelect={setMarkerRewardTiming} />
                   <View style={styles.modeRow}>
                     <Pressable style={[styles.secondaryButtonFlex, markerRepeatable && styles.typeSelected]} onPress={() => setMarkerRepeatable((value) => !value)}>
                       <Text style={styles.secondaryText}>Repeatable: {markerRepeatable ? "Yes" : "No"}</Text>
@@ -4661,6 +4707,21 @@ function LockPicker({ label, value, onSelect }: { label: string; value: (typeof 
         {lockTypes.map((type) => (
           <Pressable key={type} style={[styles.routeChip, value === type && styles.routeChipActive]} onPress={() => onSelect(type)}>
             <Text style={styles.routeChipText}>{lockTypeLabels[type]}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function RewardTimingPicker({ value, onSelect }: { value: (typeof rewardTimings)[number]; onSelect: (value: (typeof rewardTimings)[number]) => void }) {
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Reward Timing</Text>
+      <View style={styles.storyRoutePicker}>
+        {rewardTimings.map((timing) => (
+          <Pressable key={timing} style={[styles.routeChip, value === timing && styles.routeChipActive]} onPress={() => onSelect(timing)}>
+            <Text style={styles.routeChipText}>{rewardTimingLabels[timing]}</Text>
           </Pressable>
         ))}
       </View>

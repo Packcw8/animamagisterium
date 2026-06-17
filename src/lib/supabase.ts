@@ -301,6 +301,7 @@ export type Tables = {
     last_lng: number | null;
     travel_direction: "forward" | "reverse";
     is_current: boolean;
+    source_marker_id: string | null;
     updated_at: string;
   };
   map_markers: {
@@ -327,6 +328,7 @@ export type Tables = {
     reward_gold: number;
     reward_item_id: string | null;
     reward_item_quantity: number;
+    reward_timing: "on_interact" | "on_path_complete";
     repeatable: boolean;
     reward_once_per_player: boolean;
     linked_mini_map_id: string | null;
