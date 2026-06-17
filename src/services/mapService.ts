@@ -36,6 +36,7 @@ export const fallbackRoute: MapRoute = {
     { x: 56, y: 41 },
     { x: 68, y: 38 },
   ],
+  image_url: null,
   mini_map_id: null,
   parent_marker_id: null,
   lock_type: "public",
@@ -585,7 +586,7 @@ export async function deleteMarkerMarketItem(marketItemId: string) {
   }
 }
 
-export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number"> & Partial<Pick<MapRoute, "mini_map_id">>) {
+export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number"> & Partial<Pick<MapRoute, "mini_map_id" | "image_url">>) {
   const { data, error } = await supabase
     .from("map_routes")
     .insert({
@@ -602,7 +603,7 @@ export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order"
   return data as MapRoute;
 }
 
-export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number" | "mini_map_id">>) {
+export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number" | "mini_map_id" | "image_url">>) {
   const { data, error } = await supabase
     .from("map_routes")
     .update({

@@ -10,7 +10,7 @@ import { pickAndUploadAdminImage } from "../services/adminImageService";
 import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
 import { AbilityDefinition, CharacterResources, clampHealth, getAbilityCostLabel, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, getNpcLoadout, getNpcs, NpcDefinition, NpcWithLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
-import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../services/inventoryService";
+import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../services/inventoryService";
 import {
   completeMapEvent,
   applyRewards,
@@ -181,6 +181,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
   const [battleInventoryOpen, setBattleInventoryOpen] = useState(false);
+  const [mapInventoryOpen, setMapInventoryOpen] = useState(false);
+  const [mapItemMessage, setMapItemMessage] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("player");
   const currentHealth = getCurrentHealth(character, combatResources);
   const [distanceWalked, setDistanceWalked] = useState(0);
@@ -285,6 +287,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [routeTerrain, setRouteTerrain] = useState("");
   const [routeDanger, setRouteDanger] = useState("");
   const [routeDistance, setRouteDistance] = useState("");
+  const [routeImage, setRouteImage] = useState("");
   const [routeLockType, setRouteLockType] = useState<MapRoute["lock_type"]>("public");
   const [routeLockMessage, setRouteLockMessage] = useState("");
   const [editingEvent, setEditingEvent] = useState<MapEvent | null>(null);
@@ -410,6 +413,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const selectedMarkerLocked = !isAdmin && Boolean(selectedMarker && isMarkerLocked(selectedMarker));
   const selectedMiniMap = useMemo(() => miniMaps.find((miniMap) => miniMap.id === selectedMiniMapId) ?? null, [miniMaps, selectedMiniMapId]);
   const activeSectionMarkerTypes = adminSection === "Area/Town Markers" ? ["Area/Town Entrance"] : markerTypes;
+  const routeEvents = useMemo(() => mapEvents.filter((event) => event.route_id === route.id), [mapEvents, route.id]);
+  const completedRouteEvents = useMemo(() => routeEvents.filter((event) => completedEventIds.has(event.id)).length, [completedEventIds, routeEvents]);
+  const routePotentialXp = useMemo(() => routeEvents.reduce((total, event) => total + Number(event.reward_xp ?? 0), 0), [routeEvents]);
+  const routePotentialGold = useMemo(() => routeEvents.reduce((total, event) => total + Number(event.reward_gold ?? 0), 0), [routeEvents]);
+  const mapConsumables = useMemo(
+    () =>
+      inventoryItems.filter(
+        (entry) =>
+          entry.quantity > 0 &&
+          ["potion", "revive potion", "consumable", "food"].includes(entry.item.type) &&
+          canUseItemInContext(entry.item, "outside"),
+      ),
+    [inventoryItems],
+  );
 
   useEffect(() => {
     void loadMap();
@@ -643,6 +660,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setRouteTerrain(nextRoute.terrain);
     setRouteDanger(nextRoute.danger_level);
     setRouteDistance(String(Math.round(nextRoute.distance_required_meters)));
+    setRouteImage(nextRoute.image_url ?? "");
     setRouteLockType(nextRoute.lock_type ?? "public");
     setRouteLockMessage(nextRoute.lock_message ?? "");
     setPathDraft([]);
@@ -1418,6 +1436,43 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     );
   }
 
+  async function useMapConsumable(entry: InventoryItem) {
+    const item = entry.item;
+
+    if (!canUseItemInContext(item, "outside")) {
+      setMapItemMessage("This item cannot be used while traveling.");
+      return;
+    }
+
+    if (!["potion", "revive potion", "consumable", "food"].includes(item.type)) {
+      setMapItemMessage(`${item.name} is not a quick-use consumable.`);
+      return;
+    }
+
+    const target = item.potion_target ?? "health";
+    if (target !== "health") {
+      setMapItemMessage("Only health consumables can be used from the map for now.");
+      return;
+    }
+
+    if (currentHealth >= combatResources.maxHp) {
+      setMapItemMessage("Health is already full.");
+      return;
+    }
+
+    try {
+      const restoreFromPercent = item.restore_percent ? Math.ceil(combatResources.maxHp * (item.restore_percent / 100)) : 0;
+      const amount = Math.max(Number(item.restore_amount ?? 0), restoreFromPercent, 1);
+      const nextHealth = clampHealth(currentHealth + amount, combatResources.maxHp);
+      await savePlayerHealth(nextHealth);
+      await consumeInventoryItem(entry, 1);
+      await loadInventory();
+      setMapItemMessage(`Used ${item.name}. Health ${nextHealth} / ${combatResources.maxHp}.`);
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to use item."));
+    }
+  }
+
   async function reduceCurrentRouteProgress(percent: number) {
     const meters = route.distance_required_meters * (percent / 100);
     const nextDistance = Math.max(0, distanceWalkedRef.current - meters);
@@ -1710,6 +1765,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         danger_level: routeDanger.trim() || route.danger_level,
         distance_required_meters: Number(routeDistance) || route.distance_required_meters,
         path_points: pathDraft,
+        image_url: routeImage.trim() || null,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
         mini_map_id: activeMiniMap?.id ?? route.mini_map_id ?? null,
@@ -1739,6 +1795,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         distance_required_meters: Number(routeDistance) || 1000,
         estimated_encounters: route.estimated_encounters,
         path_points: pathDraft,
+        image_url: routeImage.trim() || null,
         is_active: true,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
@@ -3066,6 +3123,107 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     );
   }
 
+  function renderJourneyPanel() {
+    const remainingMeters = Math.max(0, route.distance_required_meters - distanceWalked);
+    const routeImageUri = route.image_url ? resolveMapImageUri(route.image_url) : null;
+    const travelTitle = routeDirection === "reverse" ? "Returning" : "To Destination";
+    const primaryLabel = isTracking ? "Pause GPS" : "Continue Walking";
+    const turnLabel = routeDirection === "reverse" ? "Travel Forward" : "Turn Back";
+
+    return (
+      <Frame style={[styles.panel, styles.journeyHud]}>
+        <View style={styles.journeyTop}>
+          <View style={styles.journeyTitleBlock}>
+            <Text style={styles.journeyOverline}>{travelTitle}</Text>
+            <Text style={styles.journeyTitle}>{route.name}</Text>
+            <Text style={styles.journeySub}>{metersToMiles(remainingMeters)} miles remaining</Text>
+          </View>
+          <View style={styles.journeyRouteImage}>
+            {routeImageUri ? <Image source={{ uri: routeImageUri }} style={styles.journeyRoutePhoto} /> : <Text style={styles.journeyRouteInitial}>{route.name.slice(0, 1).toUpperCase()}</Text>}
+          </View>
+        </View>
+
+        <View style={styles.journeyProgressRow}>
+          <ProgressBar value={progressPercent} max={100} color={colors.gold} height={8} />
+          <Text style={styles.journeyPercent}>{Math.round(progressPercent)}%</Text>
+        </View>
+
+        <View style={styles.journeyStats}>
+          <View style={styles.journeyStat}>
+            <Text style={styles.journeyStatValue}>{route.estimated_encounters}</Text>
+            <Text style={styles.journeyStatLabel}>Encounters</Text>
+          </View>
+          <View style={styles.journeyStat}>
+            <Text style={styles.journeyStatValue}>{routePotentialXp}</Text>
+            <Text style={styles.journeyStatLabel}>XP Potential</Text>
+          </View>
+          <View style={styles.journeyStat}>
+            <Text style={styles.journeyStatValue}>{routePotentialGold}</Text>
+            <Text style={styles.journeyStatLabel}>Gold Potential</Text>
+          </View>
+          <View style={styles.journeyStat}>
+            <Text style={styles.journeyStatValue}>{completedRouteEvents}/{routeEvents.length}</Text>
+            <Text style={styles.journeyStatLabel}>Events Done</Text>
+          </View>
+        </View>
+
+        <View style={styles.journeyActions}>
+          <Pressable style={[styles.journeyPrimary, isTracking && styles.gpsActive]} onPress={isTracking ? stopGpsTracking : startGpsTracking}>
+            <Text style={styles.journeyPrimaryText}>{primaryLabel}</Text>
+          </Pressable>
+          <Pressable style={[styles.journeySecondary, routeDirection === "reverse" && styles.gpsActive, progressPercent <= 0 && styles.disabledAction]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0}>
+            <Text style={styles.journeySecondaryText}>{turnLabel}</Text>
+          </Pressable>
+          <Pressable style={[styles.journeySecondary, mapInventoryOpen && styles.gpsActive]} onPress={() => setMapInventoryOpen((value) => !value)}>
+            <Text style={styles.journeySecondaryText}>{mapInventoryOpen ? "Hide Items" : `Inventory (${mapConsumables.length})`}</Text>
+          </Pressable>
+        </View>
+
+        <View style={styles.journeyDebugGrid}>
+          <Text style={styles.journeyDebug}>Health {currentHealth} / {combatResources.maxHp}</Text>
+          <Text style={styles.journeyDebug}>State {playerMovementState}</Text>
+          <Text style={styles.journeyDebug}>Speed {movementStatus.speedMph.toFixed(1)} mph</Text>
+          <Text style={styles.journeyDebug}>{route.terrain}</Text>
+        </View>
+        <Text style={styles.gpsMessage}>{gpsMessage}</Text>
+
+        {mapInventoryOpen ? (
+          <View style={styles.mapInventoryDrawer}>
+            <View style={styles.panelHeader}>
+              <View>
+                <Text style={styles.selectedTitle}>Inventory</Text>
+                <Text style={styles.copy}>Consumables</Text>
+              </View>
+              <Pressable style={styles.closeCircleButton} onPress={() => setMapInventoryOpen(false)}>
+                <Text style={styles.closeCircleText}>X</Text>
+              </Pressable>
+            </View>
+            {mapItemMessage ? <Text style={styles.adminMessage}>{mapItemMessage}</Text> : null}
+            {mapConsumables.length === 0 ? <Text style={styles.copy}>No usable consumables.</Text> : null}
+            <View style={styles.consumableGrid}>
+              {mapConsumables.map((entry) => {
+                const imageUri = resolveInventoryImageUri(entry.item.image_path);
+                return (
+                  <View key={entry.id} style={styles.consumableCard}>
+                    <View style={styles.consumableImageWrap}>
+                      {imageUri ? <Image source={{ uri: imageUri }} style={styles.consumableImage} /> : <Text style={styles.consumablePlaceholder}>{entry.item.name.slice(0, 1).toUpperCase()}</Text>}
+                      <Text style={styles.consumableQty}>{entry.quantity}</Text>
+                    </View>
+                    <Text style={styles.consumableName} numberOfLines={2}>{entry.item.name}</Text>
+                    <Text style={styles.consumableMeta}>{getConsumableSummary(entry.item)}</Text>
+                    <Pressable style={styles.consumableUseButton} onPress={() => void useMapConsumable(entry)}>
+                      <Text style={styles.consumableUseText}>Use</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        ) : null}
+      </Frame>
+    );
+  }
+
   if (activeMiniMap) {
     const miniMapImage = resolveMapImageUri(activeMiniMap.background_image_url);
 
@@ -3160,34 +3318,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </View>
         </Frame>
         <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
-        {route.mini_map_id === activeMiniMap.id ? (
-          <Frame style={styles.panel}>
-            <View style={styles.panelHeader}>
-              <Text style={styles.sectionTitle}>Journey Panel</Text>
-              <View style={styles.headerActions}>
-                <Pressable style={[styles.gpsButton, isTracking && styles.gpsActive]} onPress={isTracking ? stopGpsTracking : startGpsTracking}>
-                  <Text style={styles.gpsText}>{isTracking ? "Pause GPS" : "Track Walk"}</Text>
-                </Pressable>
-                <Pressable style={[styles.gpsButton, routeDirection === "reverse" && styles.gpsActive]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0}>
-                  <Text style={styles.gpsText}>{routeDirection === "reverse" ? "Travel Forward" : "Turn Back"}</Text>
-                </Pressable>
-              </View>
-            </View>
-            <Info label="Current Route" value={route.name} />
-            <Info label="Direction" value={routeDirection === "reverse" ? "Returning to start" : "Traveling forward"} />
-            <Info label="Distance Walked" value={`${metersToMiles(distanceWalked)} mi`} />
-            <Info label="Distance Remaining" value={`${metersToMiles(Math.max(0, route.distance_required_meters - distanceWalked))} mi`} />
-            <Info label="Progress" value={`${Math.round(progressPercent)}%`} />
-            <Info label="Health" value={`${currentHealth} / ${combatResources.maxHp}`} />
-            <Info label="State" value={playerMovementState} />
-            <Info label="Movement" value={movementStatus.label} />
-            <Info label="Current Speed" value={`${movementStatus.speedMph.toFixed(1)} mph`} />
-            <Info label="Terrain" value={route.terrain} />
-            <Info label="Danger Level" value={route.danger_level} />
-            <ProgressBar value={progressPercent} max={100} color={colors.blue} height={9} />
-            <Text style={styles.gpsMessage}>{gpsMessage}</Text>
-          </Frame>
-        ) : null}
+        {route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
         {isAdmin ? (
           <Frame style={styles.panel}>
             <Text style={styles.sectionTitle}>Mini Map Admin Preview</Text>
@@ -3358,6 +3489,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <TextInput value={routeTerrain} onChangeText={setRouteTerrain} placeholder="Terrain" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={routeDanger} onChangeText={setRouteDanger} placeholder="Danger level" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={routeImage} onChangeText={setRouteImage} placeholder="Route image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+                <AdminImageUploadButton folder="route-images" onUploaded={setRouteImage} onMessage={setAdminMessage} />
                 <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
                 {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
                 <Info label="Path Points" value={String(pathDraft.length)} />
@@ -3603,34 +3736,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
       <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
 
-      <Frame style={styles.panel}>
-        <View style={styles.panelHeader}>
-          <Text style={styles.sectionTitle}>Journey Panel</Text>
-          <View style={styles.headerActions}>
-            <Pressable style={[styles.gpsButton, isTracking && styles.gpsActive]} onPress={isTracking ? stopGpsTracking : startGpsTracking}>
-              <Text style={styles.gpsText}>{isTracking ? "Pause GPS" : "Track Walk"}</Text>
-            </Pressable>
-            <Pressable style={[styles.gpsButton, routeDirection === "reverse" && styles.gpsActive]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0}>
-              <Text style={styles.gpsText}>{routeDirection === "reverse" ? "Travel Forward" : "Turn Back"}</Text>
-            </Pressable>
-          </View>
-        </View>
-        <Info label="Current Route" value={route.name} />
-        <Info label="Direction" value={routeDirection === "reverse" ? "Returning to start" : "Traveling forward"} />
-        <Info label="Distance Walked" value={`${metersToMiles(distanceWalked)} mi`} />
-        <Info label="Distance Remaining" value={`${metersToMiles(Math.max(0, route.distance_required_meters - distanceWalked))} mi`} />
-        <Info label="Progress" value={`${Math.round(progressPercent)}%`} />
-        <Info label="Health" value={`${currentHealth} / ${combatResources.maxHp}`} />
-        <Info label="State" value={playerMovementState} />
-        <Info label="Movement" value={movementStatus.label} />
-        <Info label="Current Speed" value={`${movementStatus.speedMph.toFixed(1)} mph`} />
-        <Info label="Last Counted" value={`${Math.round(movementStatus.countedMeters)} m`} />
-        <Info label="Terrain" value={route.terrain} />
-        <Info label="Danger Level" value={route.danger_level} />
-        <Info label="Estimated Encounters" value={String(route.estimated_encounters)} />
-        <ProgressBar value={progressPercent} max={100} color={colors.blue} height={9} />
-        <Text style={styles.gpsMessage}>{gpsMessage}</Text>
-      </Frame>
+      {renderJourneyPanel()}
 
       {selectedMarker && !isAdmin ? (
         <Frame style={styles.panel}>
@@ -4108,6 +4214,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <TextInput value={routeTerrain} onChangeText={setRouteTerrain} placeholder="Terrain" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeDanger} onChangeText={setRouteDanger} placeholder="Danger level" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={routeImage} onChangeText={setRouteImage} placeholder="Route image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <AdminImageUploadButton folder="route-images" onUploaded={setRouteImage} onMessage={setAdminMessage} />
               <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
               {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
               <Info label="Path Points" value={String(pathDraft.length)} />
@@ -4614,6 +4722,26 @@ function resolveSceneImageUri(imagePath?: string | null) {
 
 function metersToMiles(meters: number) {
   return (meters / 1609.344).toFixed(2);
+}
+
+function getConsumableSummary(item: ItemDefinition) {
+  const target = item.potion_target ?? "health";
+  const flat = Number(item.restore_amount ?? 0);
+  const percent = Number(item.restore_percent ?? 0);
+
+  if (flat > 0 && percent > 0) {
+    return `Restores ${flat} + ${percent}% ${target}`;
+  }
+
+  if (percent > 0) {
+    return `Restores ${percent}% ${target}`;
+  }
+
+  if (flat > 0) {
+    return `Restores ${flat} ${target}`;
+  }
+
+  return item.description || "Quick use item";
 }
 
 function metersPerSecondToMph(metersPerSecond: number) {
@@ -6452,6 +6580,234 @@ const styles = StyleSheet.create({
   gpsMessage: {
     color: colors.muted,
     lineHeight: 20,
+  },
+  journeyHud: {
+    borderColor: "rgba(218, 164, 65, 0.42)",
+    backgroundColor: "rgba(5, 8, 9, 0.94)",
+  },
+  journeyTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 14,
+  },
+  journeyTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  journeyOverline: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 13,
+    textTransform: "uppercase",
+  },
+  journeyTitle: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 20,
+    marginTop: 2,
+  },
+  journeySub: {
+    color: colors.goldSoft,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  journeyRouteImage: {
+    width: 86,
+    height: 86,
+    borderRadius: 43,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    backgroundColor: "rgba(13, 19, 21, 0.88)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  journeyRoutePhoto: {
+    width: "100%",
+    height: "100%",
+  },
+  journeyRouteInitial: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 32,
+  },
+  journeyProgressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  journeyPercent: {
+    color: colors.gold,
+    minWidth: 38,
+    textAlign: "right",
+    fontWeight: "900",
+  },
+  journeyStats: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  journeyStat: {
+    flex: 1,
+    minWidth: 86,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.22)",
+    backgroundColor: "rgba(255,255,255,0.035)",
+    paddingVertical: 9,
+    paddingHorizontal: 8,
+  },
+  journeyStatValue: {
+    color: colors.text,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  journeyStatLabel: {
+    color: colors.muted,
+    fontSize: 10,
+    marginTop: 2,
+    textAlign: "center",
+  },
+  journeyActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  journeyPrimary: {
+    flex: 1,
+    minWidth: 170,
+    minHeight: 46,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.gold,
+  },
+  journeyPrimaryText: {
+    color: "#110e08",
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  journeySecondary: {
+    minHeight: 46,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingHorizontal: 13,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  journeySecondaryText: {
+    color: colors.blue,
+    fontWeight: "900",
+  },
+  journeyDebugGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  journeyDebug: {
+    color: colors.muted,
+    fontSize: 11,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  mapInventoryDrawer: {
+    marginTop: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.28)",
+    padding: 10,
+    gap: 10,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  closeCircleButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  closeCircleText: {
+    color: colors.gold,
+    fontWeight: "900",
+  },
+  consumableGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  consumableCard: {
+    width: 104,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 8,
+    gap: 6,
+    backgroundColor: "rgba(8, 12, 13, 0.92)",
+  },
+  consumableImageWrap: {
+    height: 56,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  consumableImage: {
+    width: "100%",
+    height: "100%",
+  },
+  consumablePlaceholder: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 22,
+  },
+  consumableQty: {
+    position: "absolute",
+    right: 4,
+    top: 4,
+    minWidth: 20,
+    borderRadius: 10,
+    overflow: "hidden",
+    backgroundColor: "rgba(0,0,0,0.72)",
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: "900",
+    textAlign: "center",
+    paddingHorizontal: 4,
+  },
+  consumableName: {
+    color: colors.text,
+    fontWeight: "800",
+    fontSize: 12,
+    minHeight: 30,
+  },
+  consumableMeta: {
+    color: colors.muted,
+    fontSize: 10,
+    minHeight: 24,
+  },
+  consumableUseButton: {
+    minHeight: 32,
+    borderRadius: 7,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.gold,
+  },
+  consumableUseText: {
+    color: "#110e08",
+    fontWeight: "900",
+    fontSize: 12,
   },
   infoRow: {
     flexDirection: "row",

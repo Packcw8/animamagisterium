@@ -199,6 +199,7 @@ export type Tables = {
     distance_required_meters: number;
     estimated_encounters: number;
     path_points: Array<{ x: number; y: number }>;
+    image_url: string | null;
     mini_map_id: string | null;
     parent_marker_id: string | null;
     lock_type: "public" | "story_locked" | "quest_locked";
