@@ -2611,6 +2611,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setAdminMessage(`Loaded ${route.name} into the walking path editor.`);
   }
 
+  async function editWalkingPath(nextRoute: MapRoute) {
+    setEditorMode("Walking Path");
+    await selectRoute(nextRoute, true);
+    setPathDraft(nextRoute.path_points);
+    setAdminMessage(`Editing ${nextRoute.name}. Change the fields below, then Save Walking Path.`);
+  }
+
   if (activeEvent) {
     return (
       <StoryInstanceScreen
@@ -2879,6 +2886,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                     <Pressable style={styles.routeRowText} onPress={() => void selectRoute(item, true)}>
                       <Text style={styles.markerName}>{item.name}</Text>
                       <Text style={styles.copy}>{item.is_active ? "Active" : "Hidden"} / {metersToMiles(item.distance_required_meters)} mi / {item.terrain}</Text>
+                    </Pressable>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void editWalkingPath(item)}>
+                      <Text style={styles.secondaryText}>Edit</Text>
                     </Pressable>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeWalkingPath(item.id)}>
                       <Text style={styles.dangerText}>Delete</Text>
@@ -3397,6 +3407,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <Pressable style={styles.routeRowText} onPress={() => void selectRoute(item, true)}>
                   <Text style={styles.markerName}>{item.name}</Text>
                   <Text style={styles.copy}>{item.is_active ? "Active" : "Hidden"} · {metersToMiles(item.distance_required_meters)} mi · {item.terrain}</Text>
+                </Pressable>
+                <Pressable style={styles.secondaryButtonFlex} onPress={() => void editWalkingPath(item)}>
+                  <Text style={styles.secondaryText}>Edit</Text>
                 </Pressable>
                 <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeWalkingPath(item.id)}>
                   <Text style={styles.dangerText}>Delete</Text>
