@@ -360,7 +360,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const activeRouteScopeRoutes = activeMiniMap ? adminMiniMapRoutes : adminWorldRoutes;
   const routeProgressPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
   const playerPosition = savedPlayerPosition ?? routeProgressPosition;
-  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminWorldRoutes : [route], route.id), [adminWorldRoutes, isAdmin, route]);
+  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminWorldRoutes : route.mini_map_id ? [] : [route], route.id), [adminWorldRoutes, isAdmin, route]);
   const miniMapRouteSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminMiniMapRoutes : route.mini_map_id === activeMiniMap?.id ? [route] : [], route.id), [activeMiniMap?.id, adminMiniMapRoutes, isAdmin, route]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [pathDraft]);
   const worldMarkers = useMemo(() => markers.filter((marker) => !marker.mini_map_id), [markers]);
@@ -1551,6 +1551,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setMarkerPanelMessage(null);
+    setClickedPercent(null);
+    setPathDraft([]);
   }
 
   function openExitMarker(marker: MapMarker) {
@@ -3053,7 +3055,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               ]}
             />
           ))}
-          {draftSegments.map((segment, index) => (
+          {isAdmin && adminSection === "Walking Paths" && editorMode === "Walking Path" ? draftSegments.map((segment, index) => (
             <View
               key={`${segment.id}-${index}`}
               pointerEvents="none"
@@ -3068,12 +3070,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 },
               ]}
             />
-          ))}
-          {pathDraft.map((point, index) => (
+          )) : null}
+          {isAdmin && adminSection === "Walking Paths" && editorMode === "Walking Path" ? pathDraft.map((point, index) => (
             <View key={`${point.x}-${point.y}-${index}`} pointerEvents="none" style={[styles.pathPoint, { left: `${point.x}%`, top: `${point.y}%` }]}>
               <Text style={styles.pathPointText}>{index + 1}</Text>
             </View>
-          ))}
+          )) : null}
           {editorMode === "Marker" && clickedPercent ? (
             <View pointerEvents="none" style={[styles.tempMarker, { left: `${clickedPercent.x}%`, top: `${clickedPercent.y}%` }]}>
               <View style={styles.tempPulse} />
