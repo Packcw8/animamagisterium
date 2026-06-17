@@ -455,6 +455,69 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
   }
 }
 
+export async function learnAbilityFromScroll(characterId: string, abilityId: string) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    console.error("[abilities] ability scroll auth failed", userError);
+    throw userError;
+  }
+
+  if (!user) {
+    throw new Error("You must be signed in to learn abilities.");
+  }
+
+  const abilityKey = getAdminAbilityKey(abilityId);
+  const { data: existing, error: existingError } = await supabase
+    .from("player_abilities")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("character_id", characterId)
+    .eq("ability_key", abilityKey)
+    .maybeSingle();
+
+  if (existingError) {
+    console.error("[abilities] ability scroll lookup failed", existingError);
+    throw existingError;
+  }
+
+  if (existing) {
+    return { learned: false, message: "You already know that ability." };
+  }
+
+  const { data: ability, error: abilityError } = await supabase
+    .from("combat_abilities")
+    .select("name")
+    .eq("id", abilityId)
+    .maybeSingle();
+
+  if (abilityError) {
+    console.error("[abilities] ability scroll target lookup failed", abilityError);
+    throw abilityError;
+  }
+
+  if (!ability) {
+    throw new Error("This scroll is linked to an ability that no longer exists.");
+  }
+
+  const { error } = await supabase.from("player_abilities").insert({
+    user_id: user.id,
+    character_id: characterId,
+    ability_key: abilityKey,
+    unlocked_by_attribute: null,
+  });
+
+  if (error) {
+    console.error("[abilities] ability scroll insert failed", error);
+    throw error;
+  }
+
+  return { learned: true, message: `Learned ${ability.name}.` };
+}
+
 function getAdminAbilityKey(abilityId: string) {
   return `admin:${abilityId}`;
 }

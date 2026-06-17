@@ -84,6 +84,12 @@ const editorModes = ["Marker", "Walking Path"] as const;
 const adminSections = ["World Markers", "Area/Town Markers", "Mini Maps", "Walking Paths", "Tutorials", "Rewards/Interactions", "Legend"] as const;
 const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
+const lockTypes = ["public", "story_locked", "quest_locked"] as const;
+const lockTypeLabels: Record<(typeof lockTypes)[number], string> = {
+  public: "Public",
+  story_locked: "Story Locked",
+  quest_locked: "Quest Locked",
+};
 const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle", "Complete Event"] as const;
 const eventTypeLabels: Record<(typeof eventTypes)[number], string> = {
   dialogue: "Dialogue Event",
@@ -222,6 +228,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerRewardOnce, setMarkerRewardOnce] = useState(true);
   const [markerLinkedRouteId, setMarkerLinkedRouteId] = useState<string | null>(null);
   const [markerStartsRouteOnAccept, setMarkerStartsRouteOnAccept] = useState(false);
+  const [markerLockType, setMarkerLockType] = useState<MapMarker["lock_type"]>("public");
+  const [markerLockMessage, setMarkerLockMessage] = useState("");
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
   const [markerRouteLinks, setMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [selectedMarkerRouteIds, setSelectedMarkerRouteIds] = useState<string[]>([]);
@@ -249,6 +257,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [routeTerrain, setRouteTerrain] = useState("");
   const [routeDanger, setRouteDanger] = useState("");
   const [routeDistance, setRouteDistance] = useState("");
+  const [routeLockType, setRouteLockType] = useState<MapRoute["lock_type"]>("public");
+  const [routeLockMessage, setRouteLockMessage] = useState("");
   const [editingEvent, setEditingEvent] = useState<MapEvent | null>(null);
   const [eventType, setEventType] = useState<(typeof eventTypes)[number]>("dialogue");
   const [eventTitle, setEventTitle] = useState("");
@@ -330,7 +340,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const miniMapMarkers = useMemo(() => markers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [markers, activeMiniMap?.id]);
   const visibleMarkers = isAdmin ? worldMarkers : worldMarkers.filter((marker) => canPlayerSeeMarker(marker, playerPosition));
   const visibleMiniMapMarkers = isAdmin ? miniMapMarkers : miniMapMarkers.filter((marker) => canPlayerSeeMarker(marker, miniMapPlayerPosition));
-  const unlockedRouteIds = useMemo(() => getUnlockedRouteIds(orderedRoutes, routeProgressRows), [orderedRoutes, routeProgressRows]);
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedNodeChoices = useMemo(
@@ -340,6 +349,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const selectedMarkerDistance = selectedMarker ? getPercentDistance(currentInteractionPosition, { x: Number(selectedMarker.x_percent), y: Number(selectedMarker.y_percent) }) : 0;
   const selectedMarkerRadius = Number(selectedMarker?.interaction_radius_percent ?? 4) || 4;
   const canUseSelectedMarker = isAdmin || Boolean(selectedMarker && canPlayerSeeMarker(selectedMarker, currentInteractionPosition));
+  const selectedMarkerLocked = !isAdmin && Boolean(selectedMarker && isMarkerLocked(selectedMarker));
   const selectedMiniMap = useMemo(() => miniMaps.find((miniMap) => miniMap.id === selectedMiniMapId) ?? null, [miniMaps, selectedMiniMapId]);
   const activeSectionMarkerTypes = adminSection === "Area/Town Markers" ? ["Area/Town Entrance"] : adminSection === "Mini Maps" ? miniMapMarkerTypes : markerTypes;
 
@@ -442,16 +452,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     setCompletedRouteId(route.id);
-    const nextRoute = getNextRoute(orderedRoutes, route);
-
-    if (!nextRoute) {
-      setGpsMessage(`${route.name} completed. No next walking path is active yet.`);
-      return;
-    }
-
-    setGpsMessage(`${route.name} completed. Beginning ${nextRoute.name}.`);
-    void selectRoute(nextRoute, true);
-  }, [completedRouteId, orderedRoutes, progressPercent, route, routeDirection]);
+    setGpsMessage(`${route.name} completed. Return to a Sign Post to choose your next path.`);
+  }, [completedRouteId, progressPercent, route, routeDirection]);
 
   useEffect(() => {
     if (activeEvent || activeBattle || routeDirection === "reverse" || playerMovementState !== "MOVING") {
@@ -502,7 +504,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const progressRows = await getRouteProgressForRoutes(nextRoutes.map((item) => item.id));
     const currentProgressRow = progressRows.find((row) => row.is_current);
-    const firstRoute = nextRoutes.find((item) => item.id === currentProgressRow?.route_id) ?? getFirstUnfinishedRoute(nextRoutes, progressRows) ?? nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
+    const currentRoute = nextRoutes.find((item) => item.id === currentProgressRow?.route_id) ?? null;
+    const firstRoute = currentRoute ?? nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
     setRouteProgressRows(progressRows);
     setRoutes(nextRoutes);
     setPathDraft([]);
@@ -512,11 +515,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setLegendItems(loadedLegendItems);
     setRole(loadedRole);
     await selectRoute(firstRoute, true);
+    if (!currentRoute) {
+      setGpsMessage("Choose a path from a Sign Post to begin travel.");
+    }
   }
 
   async function selectRoute(nextRoute: MapRoute, force = false) {
-    if (!force && !isAdmin && !unlockedRouteIds.has(nextRoute.id)) {
-      setGpsMessage("That trail is locked. Complete earlier trails first.");
+    if (!force && !isAdmin && isRouteLocked(nextRoute)) {
+      setGpsMessage(getRouteLockMessage(nextRoute));
       return;
     }
 
@@ -526,6 +532,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setRouteTerrain(nextRoute.terrain);
     setRouteDanger(nextRoute.danger_level);
     setRouteDistance(String(Math.round(nextRoute.distance_required_meters)));
+    setRouteLockType(nextRoute.lock_type ?? "public");
+    setRouteLockMessage(nextRoute.lock_message ?? "");
     setPathDraft([]);
     distanceWalkedRef.current = 0;
     setSavedPlayerPosition(null);
@@ -814,6 +822,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         icon_label: markerIconLabel.trim() || null,
         icon_image_url: markerIconImage.trim() || null,
         icon_color: markerIconColor.trim() || null,
+        lock_type: markerLockType,
+        lock_message: markerLockMessage.trim() || null,
       });
       const configured = await updateMarkerSettings(created.id, getMarkerSettingsPayload());
       if (draftType === "Sign Post") {
@@ -847,6 +857,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       icon_label: markerIconLabel.trim() || null,
       icon_image_url: markerIconImage.trim() || null,
       icon_color: markerIconColor.trim() || null,
+      lock_type: markerLockType,
+      lock_message: markerLockMessage.trim() || null,
       interaction_radius_percent: Math.max(0.5, Number(markerInteractionRadius) || 4),
       reward_xp: Number(markerRewardXp) || 0,
       reward_gold: Number(markerRewardGold) || 0,
@@ -883,6 +895,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerIconLabel(marker.icon_label ?? "");
     setMarkerIconImage(marker.icon_image_url ?? "");
     setMarkerIconColor(marker.icon_color ?? "");
+    setMarkerLockType(marker.lock_type ?? "public");
+    setMarkerLockMessage(marker.lock_message ?? "");
     setMarkerInteractionRadius(String(marker.interaction_radius_percent ?? 4));
     setMarkerInteractable(marker.is_interactable ?? true);
     setMarkerRewardXp(String(marker.reward_xp ?? 0));
@@ -1140,6 +1154,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function startPathFromSignPost(nextRoute: MapRoute) {
+    if (!isAdmin && isRouteLocked(nextRoute)) {
+      setMarkerPanelMessage(getRouteLockMessage(nextRoute));
+      return;
+    }
+
     const progress = await getRouteProgress(nextRoute.id);
     const existingDistance = Number(progress?.distance_walked_meters ?? 0);
     const nextProgress = Math.min(100, Math.max(0, progress?.progress_percent ?? (existingDistance / nextRoute.distance_required_meters) * 100));
@@ -1151,7 +1170,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     distanceWalkedRef.current = existingDistance;
     setDistanceWalked(existingDistance);
     setSavedPlayerPosition(nextPoint);
-    setRouteProgressRows((current) => current.map((row) => ({ ...row, is_current: row.route_id === nextRoute.id })));
+    setRouteProgressRows((current) => upsertRouteProgressRow(current, nextRoute.id, nextProgress).map((row) => ({ ...row, is_current: row.route_id === nextRoute.id })));
     await saveRouteProgress(nextRoute.id, {
       distance_walked_meters: existingDistance,
       progress_percent: nextProgress,
@@ -1169,8 +1188,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function turnBackOnCurrentPath() {
     const nextPoint = getPointOnRoute(route.path_points, progressPercent);
-    setRouteDirection("reverse");
-    routeDirectionRef.current = "reverse";
+    const nextDirection = routeDirection === "reverse" ? "forward" : "reverse";
+    setRouteDirection(nextDirection);
+    routeDirectionRef.current = nextDirection;
     setSavedPlayerPosition(nextPoint);
     await saveRouteProgress(route.id, {
       distance_walked_meters: distanceWalkedRef.current,
@@ -1179,10 +1199,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       current_y_percent: nextPoint.y,
       last_lat: null,
       last_lng: null,
-      travel_direction: "reverse",
+      travel_direction: nextDirection,
       is_current: true,
     });
-    setGpsMessage(`Turning back on ${route.name}. Walking now returns you toward the starting sign post.`);
+    setGpsMessage(
+      nextDirection === "reverse"
+        ? `Turning back on ${route.name}. Walking now returns you toward the starting sign post.`
+        : `Continuing forward on ${route.name}. Walking now heads toward the destination sign post.`,
+    );
   }
 
   async function reduceCurrentRouteProgress(percent: number) {
@@ -1406,6 +1430,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         danger_level: routeDanger.trim() || route.danger_level,
         distance_required_meters: Number(routeDistance) || route.distance_required_meters,
         path_points: pathDraft,
+        lock_type: routeLockType,
+        lock_message: routeLockMessage.trim() || null,
       });
       setRoute(updated);
       setRoutes((current) => current.map((item) => (item.id === updated.id ? updated : item)).sort(compareRoutes));
@@ -1431,6 +1457,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         estimated_encounters: route.estimated_encounters,
         path_points: pathDraft,
         is_active: true,
+        lock_type: routeLockType,
+        lock_message: routeLockMessage.trim() || null,
       });
       setRoutes((current) => [...current, created].sort(compareRoutes));
       await selectRoute(created, true);
@@ -2383,7 +2411,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     );
   }
 
-  if (selectedMarker && (previewMarkerScene || (!isAdmin && canUseSelectedMarker))) {
+  if (selectedMarker && (previewMarkerScene || (!isAdmin && canUseSelectedMarker && !selectedMarkerLocked))) {
     return (
       <MarkerSceneScreen
         marker={selectedMarker}
@@ -2700,8 +2728,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <Pressable style={[styles.gpsButton, isTracking && styles.gpsActive]} onPress={isTracking ? stopGpsTracking : startGpsTracking}>
               <Text style={styles.gpsText}>{isTracking ? "Pause GPS" : "Track Walk"}</Text>
             </Pressable>
-            <Pressable style={[styles.gpsButton, routeDirection === "reverse" && styles.gpsActive]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0 || routeDirection === "reverse"}>
-              <Text style={styles.gpsText}>{routeDirection === "reverse" ? "Returning" : "Turn Back"}</Text>
+            <Pressable style={[styles.gpsButton, routeDirection === "reverse" && styles.gpsActive]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0}>
+              <Text style={styles.gpsText}>{routeDirection === "reverse" ? "Travel Forward" : "Turn Back"}</Text>
             </Pressable>
           </View>
         </View>
@@ -2735,7 +2763,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </View>
           {selectedMarker.description ? <Text style={styles.copy}>{selectedMarker.description}</Text> : null}
           {markerPanelMessage ? <Text style={styles.adminMessage}>{markerPanelMessage}</Text> : null}
-          {!canUseSelectedMarker ? (
+          {selectedMarkerLocked ? (
+            <View style={styles.storyEditor}>
+              <Text style={styles.selectedTitle}>Locked</Text>
+              <Text style={styles.dialogueText}>{selectedMarker ? getMarkerLockMessage(selectedMarker) : "This marker is locked."}</Text>
+            </View>
+          ) : !canUseSelectedMarker ? (
             <View style={styles.storyEditor}>
               {selectedMarker.quest_image_url || selectedMarker.shop_image_url ? <Image source={{ uri: selectedMarker.shop_image_url || selectedMarker.quest_image_url || "" }} style={styles.eventImage} /> : null}
               <Text style={styles.selectedTitle}>Travel Required</Text>
@@ -2758,14 +2791,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 if (!linkedRoute) {
                   return null;
                 }
+                const locked = isRouteLocked(linkedRoute);
 
                 return (
-                  <View key={link.id} style={styles.storyCard}>
+                  <View key={link.id} style={[styles.storyCard, locked && styles.lockedCard]}>
                     <Text style={styles.markerName}>{linkedRoute.name}</Text>
-                    <Text style={styles.copy}>{link.destination_label || linkedRoute.terrain}</Text>
+                    <Text style={styles.copy}>Destination: {link.destination_label || linkedRoute.terrain}</Text>
                     <Text style={styles.copy}>{metersToMiles(linkedRoute.distance_required_meters)} mi / Progress {Math.round(progress)}%</Text>
-                    <Pressable style={styles.primaryButton} onPress={() => void startPathFromSignPost(linkedRoute)}>
-                      <Text style={styles.primaryText}>Start Path</Text>
+                    <Text style={locked ? styles.lockText : styles.unlockText}>{locked ? getRouteLockMessage(linkedRoute) : "Available"}</Text>
+                    <Pressable style={[styles.primaryButton, locked && styles.disabledAction]} onPress={() => void startPathFromSignPost(linkedRoute)} disabled={locked}>
+                      <Text style={styles.primaryText}>{locked ? getRouteLockLabel(linkedRoute) : "Start Path"}</Text>
                     </Pressable>
                   </View>
                 );
@@ -3054,6 +3089,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <AdminImageUploadButton folder="marker-icons" onUploaded={setMarkerIconImage} onMessage={setAdminMessage} />
               <TextInput value={markerIconColor} onChangeText={setMarkerIconColor} placeholder="Marker icon color, example #d9a441" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
+              <LockPicker label="Marker lock" value={markerLockType} onSelect={setMarkerLockType} />
+              {markerLockType !== "public" ? <TextInput value={markerLockMessage} onChangeText={setMarkerLockMessage} placeholder="Lock message shown to players" placeholderTextColor={colors.muted} style={styles.input} /> : null}
               {draftType === "Area/Town Entrance" ? <MiniMapPicker miniMaps={miniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} /> : null}
               {draftType === "Sign Post" ? (
                 <View style={styles.storyEditor}>
@@ -3150,6 +3187,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <TextInput value={routeTerrain} onChangeText={setRouteTerrain} placeholder="Terrain" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeDanger} onChangeText={setRouteDanger} placeholder="Danger level" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
+              <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
+              {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
               <Info label="Path Points" value={String(pathDraft.length)} />
               <View style={styles.modeRow}>
                 <Pressable style={styles.secondaryButtonFlex} onPress={loadSelectedPathIntoDraft}>
@@ -3741,6 +3780,43 @@ function getUnlockedRouteIds(routes: MapRoute[], progressRows: Array<{ route_id:
   }
 
   return unlocked;
+}
+
+function isRouteLocked(route: MapRoute) {
+  return (route.lock_type ?? "public") !== "public";
+}
+
+function getRouteLockLabel(route: MapRoute) {
+  const lockType = route.lock_type ?? "public";
+  return lockType === "quest_locked" ? "Quest Locked" : lockType === "story_locked" ? "Story Locked" : "Locked";
+}
+
+function getRouteLockMessage(route: MapRoute) {
+  if (!isRouteLocked(route)) {
+    return "Available";
+  }
+
+  if (route.lock_message?.trim()) {
+    return route.lock_message;
+  }
+
+  return route.lock_type === "quest_locked" ? "Continue the required quest to unlock this path." : "Progress further in the story to unlock this path.";
+}
+
+function isMarkerLocked(marker: MapMarker) {
+  return (marker.lock_type ?? "public") !== "public";
+}
+
+function getMarkerLockMessage(marker: MapMarker) {
+  if (!isMarkerLocked(marker)) {
+    return "Available";
+  }
+
+  if (marker.lock_message?.trim()) {
+    return marker.lock_message;
+  }
+
+  return marker.lock_type === "quest_locked" ? "Continue the required quest to unlock this." : "Progress further in the story to unlock this.";
 }
 
 function upsertRouteProgressRow(rows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>, routeId: string, progressPercent: number) {
@@ -4485,14 +4561,16 @@ function MarkerSceneScreen({
               if (!linkedRoute) {
                 return null;
               }
+              const locked = isRouteLocked(linkedRoute);
 
               return (
-                <View key={link.id} style={styles.storyCard}>
+                <View key={link.id} style={[styles.storyCard, locked && styles.lockedCard]}>
                   <Text style={styles.markerName}>{linkedRoute.name}</Text>
-                  <Text style={styles.copy}>{link.destination_label || linkedRoute.terrain}</Text>
+                  <Text style={styles.copy}>Destination: {link.destination_label || linkedRoute.terrain}</Text>
                   <Text style={styles.copy}>{metersToMiles(linkedRoute.distance_required_meters)} mi / Progress {Math.round(progress)}%</Text>
-                  <Pressable style={styles.primaryButton} onPress={() => onStartPath(linkedRoute)}>
-                    <Text style={styles.primaryText}>Start Path</Text>
+                  <Text style={locked ? styles.lockText : styles.unlockText}>{locked ? getRouteLockMessage(linkedRoute) : "Available"}</Text>
+                  <Pressable style={[styles.primaryButton, locked && styles.disabledAction]} onPress={() => onStartPath(linkedRoute)} disabled={locked}>
+                    <Text style={styles.primaryText}>{locked ? getRouteLockLabel(linkedRoute) : "Start Path"}</Text>
                   </Pressable>
                 </View>
               );
@@ -4568,6 +4646,21 @@ function ItemPicker({ label, items, selectedId, onSelect }: { label: string; ite
         {items.map((item) => (
           <Pressable key={item.id} style={[styles.routeChip, selectedId === item.id && styles.routeChipActive]} onPress={() => onSelect(item.id)}>
             <Text style={styles.routeChipText}>{item.name}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function LockPicker({ label, value, onSelect }: { label: string; value: (typeof lockTypes)[number]; onSelect: (value: (typeof lockTypes)[number]) => void }) {
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>{label}</Text>
+      <View style={styles.storyRoutePicker}>
+        {lockTypes.map((type) => (
+          <Pressable key={type} style={[styles.routeChip, value === type && styles.routeChipActive]} onPress={() => onSelect(type)}>
+            <Text style={styles.routeChipText}>{lockTypeLabels[type]}</Text>
           </Pressable>
         ))}
       </View>
@@ -5387,6 +5480,19 @@ const styles = StyleSheet.create({
   storyCardActive: {
     borderColor: colors.blue,
     backgroundColor: "rgba(20, 61, 86, 0.35)",
+  },
+  lockedCard: {
+    borderStyle: "dashed",
+    opacity: 0.68,
+  },
+  lockText: {
+    color: "#f0a0a0",
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  unlockText: {
+    color: colors.blue,
+    fontWeight: "800",
   },
   builderStatus: {
     gap: 4,

@@ -97,7 +97,7 @@ export type Tables = {
     user_id: string;
     character_id: string;
     ability_key: string;
-    unlocked_by_attribute: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit";
+    unlocked_by_attribute: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | null;
     unlocked_at: string;
   };
   equipped_abilities: {
@@ -201,6 +201,8 @@ export type Tables = {
     path_points: Array<{ x: number; y: number }>;
     mini_map_id: string | null;
     parent_marker_id: string | null;
+    lock_type: "public" | "story_locked" | "quest_locked";
+    lock_message: string | null;
     is_active: boolean;
     created_at: string;
     updated_at: string;
@@ -335,6 +337,8 @@ export type Tables = {
     icon_label: string | null;
     icon_image_url: string | null;
     icon_color: string | null;
+    lock_type: "public" | "story_locked" | "quest_locked";
+    lock_message: string | null;
     created_by: string | null;
     created_at: string;
     updated_at: string;

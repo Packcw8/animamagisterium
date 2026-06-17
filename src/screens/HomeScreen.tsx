@@ -7,7 +7,7 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { pickAndUploadAdminImage } from "../services/adminImageService";
 import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
-import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getAbilityCostLabel, getAbilitySourceLabel, getCombatLoadout, getCharacterResources, getCurrentHealth } from "../services/abilityService";
+import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getAbilityCostLabel, getAbilitySourceLabel, getCombatLoadout, getCharacterResources, getCurrentHealth, learnAbilityFromScroll } from "../services/abilityService";
 import {
   blankCombatAbility,
   blankEnemy,
@@ -430,6 +430,29 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
     }
   }
 
+  async function useAbilityScroll(entry: InventoryItem) {
+    if (entry.item.type !== "scroll" || !entry.item.teaches_ability_id) {
+      setInventoryMessage("This scroll is not linked to an ability.");
+      return;
+    }
+
+    try {
+      const result = await learnAbilityFromScroll(character.id, entry.item.teaches_ability_id);
+      if (!result.learned) {
+        setInventoryMessage(result.message);
+        return;
+      }
+
+      await consumeInventoryItem(entry, 1);
+      await loadInventory();
+      await loadAbilities();
+      setInventoryMessage(result.message);
+    } catch (error) {
+      console.error("[inventory] ability scroll use failed", error);
+      setInventoryMessage(error instanceof Error ? error.message : "Unable to learn ability from scroll.");
+    }
+  }
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -824,6 +847,7 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                 <View style={styles.slotActions}>
                   {selectedInventoryItem.item.equipment_slot ? <Pressable style={styles.smallButton} onPress={() => void equipItem(selectedInventoryItem)}><Text style={styles.smallButtonText}>Equip</Text></Pressable> : null}
                   {selectedInventoryItem.equippedSlot ? <Pressable style={styles.smallButton} onPress={() => void unequipSlot(selectedInventoryItem.equippedSlot as "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic")}><Text style={styles.smallButtonText}>Unequip</Text></Pressable> : null}
+                  {selectedInventoryItem.item.type === "scroll" && selectedInventoryItem.item.teaches_ability_id ? <Pressable style={styles.smallButton} onPress={() => void useAbilityScroll(selectedInventoryItem)}><Text style={styles.smallButtonText}>Use Scroll</Text></Pressable> : null}
                   {canUseItemOutsideBattle(selectedInventoryItem) ? <Pressable style={[styles.smallButton, currentHealth >= resources.maxHp && styles.disabledAction]} onPress={() => void useOutsideBattleItem(selectedInventoryItem)} disabled={currentHealth >= resources.maxHp}><Text style={styles.smallButtonText}>Use</Text></Pressable> : null}
                   {selectedInventoryItem.item.sellable ? <Pressable style={styles.smallButton} onPress={() => void sellItem(selectedInventoryItem)}><Text style={styles.smallButtonText}>Sell</Text></Pressable> : null}
                 </View>
@@ -849,8 +873,13 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                           <Text style={styles.smallButtonText}>Unequip</Text>
                         </Pressable>
                       ) : null}
-                      {entry.item.usable_outside_battle ? (
-                        <Pressable style={styles.smallButton}>
+                      {entry.item.type === "scroll" && entry.item.teaches_ability_id ? (
+                        <Pressable style={styles.smallButton} onPress={() => void useAbilityScroll(entry)}>
+                          <Text style={styles.smallButtonText}>Use Scroll</Text>
+                        </Pressable>
+                      ) : null}
+                      {canUseItemOutsideBattle(entry) ? (
+                        <Pressable style={[styles.smallButton, currentHealth >= resources.maxHp && styles.disabledAction]} onPress={() => void useOutsideBattleItem(entry)} disabled={currentHealth >= resources.maxHp}>
                           <Text style={styles.smallButtonText}>Use</Text>
                         </Pressable>
                       ) : null}

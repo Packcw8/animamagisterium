@@ -36,6 +36,8 @@ export const fallbackRoute: MapRoute = {
   ],
   mini_map_id: null,
   parent_marker_id: null,
+  lock_type: "public",
+  lock_message: null,
   is_active: true,
   created_at: new Date(0).toISOString(),
   updated_at: new Date(0).toISOString(),
@@ -426,7 +428,7 @@ export async function saveMarkerRouteLinks(markerId: string, routeIds: string[])
   return (data ?? []) as MarkerRouteLink[];
 }
 
-export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key"> & Partial<Pick<MapMarker, "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color">>) {
+export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key"> & Partial<Pick<MapMarker, "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message">>) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -493,7 +495,7 @@ export async function deleteMarkerMarketItem(marketItemId: string) {
   }
 }
 
-export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active">) {
+export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message">) {
   const { data, error } = await supabase
     .from("map_routes")
     .insert({
@@ -510,7 +512,7 @@ export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order"
   return data as MapRoute;
 }
 
-export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active">>) {
+export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message">>) {
   const { data, error } = await supabase
     .from("map_routes")
     .update({
@@ -536,7 +538,7 @@ export async function deleteMapRoute(routeId: string) {
   }
 }
 
-export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color">>) {
+export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({
@@ -554,7 +556,7 @@ export async function updateMapMarker(markerId: string, values: Partial<Pick<Map
   return data as MapMarker;
 }
 
-export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color">>) {
+export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({
