@@ -2667,7 +2667,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               : {})}
           >
             {miniMapImage ? <Image source={{ uri: miniMapImage }} style={styles.miniMapImage} /> : <View style={styles.miniMapFallback}><Text style={styles.copy}>No mini map image set.</Text></View>}
-            <View style={[styles.playerPin, { left: "50%", top: "50%" }]}>
+            <View style={[styles.playerPin, { left: `${miniMapPlayerPosition.x}%`, top: `${miniMapPlayerPosition.y}%` }]}>
               {character.portrait_url ? <Image source={{ uri: character.portrait_url }} style={styles.playerPortrait} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
             </View>
             {isAdmin && clickedPercent ? (
