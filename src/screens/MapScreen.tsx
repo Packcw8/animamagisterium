@@ -5778,14 +5778,14 @@ const styles = StyleSheet.create({
   playerPin: {
     position: "absolute",
     zIndex: 20,
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     borderWidth: 3,
     borderColor: colors.blue,
     backgroundColor: "#061118",
     overflow: "hidden",
-    transform: [{ translateX: -35 }, { translateY: -35 }],
+    transform: [{ translateX: -28 }, { translateY: -28 }],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -5803,7 +5803,7 @@ const styles = StyleSheet.create({
   playerInitial: {
     color: colors.gold,
     fontFamily: fonts.title,
-    fontSize: 28,
+    fontSize: 22,
   },
   miniMapPlayerInitial: {
     fontSize: 14,
