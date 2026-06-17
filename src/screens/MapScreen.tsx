@@ -84,7 +84,7 @@ import {
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const mapSize = { width: 1800, height: 1400 };
 const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post", "Player Spawn"];
-const miniMapMarkerTypes = ["Player Spawn", "Market", "Quest", "Side Quest", "Point of Interest", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
+const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Market", "Quest", "Side Quest", "Point of Interest", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const exitTargetTypes = ["world_marker", "mini_map"] as const;
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const editorModes = ["Marker", "Walking Path"] as const;
@@ -1337,6 +1337,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       source_marker_id: null,
     });
     setSelectedMarker(null);
+    setPreviewMarkerScene(false);
+    setMarkerPanelMessage(null);
+    setActiveMiniMap(null);
     await selectRoute(nextRoute, true);
     setGpsMessage(`${nextRoute.name} is now your active walking path.`);
   }
@@ -2772,7 +2775,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerLinkedRouteId={setMarkerLinkedRouteId}
               markerStartsRouteOnAccept={markerStartsRouteOnAccept}
               setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
-              routes={routes}
+              routes={adminRoutes}
+              selectedMarkerRouteIds={selectedMarkerRouteIds}
+              toggleSignPostRoute={toggleSignPostRoute}
               worldMarkers={adminWorldMarkers}
               miniMaps={adminMiniMaps}
               markerExitTargetType={markerExitTargetType}
@@ -3871,6 +3876,10 @@ function rollD20Attack(statBonus: number, abilityBonus: number, defense: number,
 }
 
 function canPlayerSeeMarker(marker: MapMarker, playerPosition: { x: number; y: number }) {
+  if (marker.type === "Player Spawn") {
+    return false;
+  }
+
   if (!marker.is_active || !marker.is_unlocked || marker.is_interactable === false) {
     return false;
   }
@@ -4616,6 +4625,8 @@ function MiniMapMarkerAdminForm({
   markerStartsRouteOnAccept,
   setMarkerStartsRouteOnAccept,
   routes,
+  selectedMarkerRouteIds,
+  toggleSignPostRoute,
   worldMarkers,
   miniMaps,
   markerExitTargetType,
@@ -4693,6 +4704,8 @@ function MiniMapMarkerAdminForm({
   markerStartsRouteOnAccept: boolean;
   setMarkerStartsRouteOnAccept: (value: boolean | ((current: boolean) => boolean)) => void;
   routes: MapRoute[];
+  selectedMarkerRouteIds: string[];
+  toggleSignPostRoute: (routeId: string) => void;
   worldMarkers: MapMarker[];
   miniMaps: MiniMap[];
   markerExitTargetType: MapMarker["exit_target_type"];
@@ -4725,6 +4738,7 @@ function MiniMapMarkerAdminForm({
   const supportsQuest = isQuestMarkerType(draftType);
   const supportsMarket = draftType === "Market" || selectedMarker?.type === "Market";
   const supportsExit = isExitMarkerType(draftType);
+  const supportsSignPost = draftType === "Sign Post";
 
   return (
     <View style={styles.storyEditor}>
@@ -4750,6 +4764,25 @@ function MiniMapMarkerAdminForm({
       <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
         <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
       </Pressable>
+      {supportsSignPost ? (
+        <View style={styles.storyEditor}>
+          <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
+          <Text style={styles.copy}>Players choose from these existing paths when they interact with this Sign Post inside the mini map.</Text>
+          <View style={styles.storyRoutePicker}>
+            {routes.map((item) => (
+              <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
+                <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {routes.length === 0 ? <Text style={styles.copy}>No walking paths exist in this season/chapter yet.</Text> : null}
+          {selectedMarker ? (
+            <Text style={styles.debugLine}>Save Marker Details after changing linked paths.</Text>
+          ) : (
+            <Text style={styles.debugLine}>Selected paths will be linked when the Sign Post marker is created.</Text>
+          )}
+        </View>
+      ) : null}
       {supportsExit ? (
         <ExitTargetEditor
           targetType={markerExitTargetType}
