@@ -209,6 +209,27 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  map_seasons: {
+    id: string;
+    season_number: number;
+    name: string;
+    description: string | null;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  map_chapters: {
+    id: string;
+    season_number: number;
+    chapter_number: number;
+    name: string;
+    description: string | null;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
   map_story_instances: {
     id: string;
     route_id: string | null;

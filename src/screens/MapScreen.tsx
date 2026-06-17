@@ -35,6 +35,8 @@ import {
   getCurrentRole,
   getMapMarkers,
   getMapRoutes,
+  getMapChapters,
+  getMapSeasons,
   getMapEvents,
   getMarkerMarketItems,
   getMarkerLegendItems,
@@ -49,6 +51,8 @@ import {
   MapMarker,
   MapEvent,
   MapRoute,
+  MapChapter,
+  MapSeason,
   MarkerMarketItem,
   marketListingModes,
   MarkerLegendItem,
@@ -62,6 +66,8 @@ import {
   saveMarkerLegendItem,
   saveMarkerRouteLinks,
   saveMiniMap,
+  saveMapChapter,
+  saveMapSeason,
   saveRouteProgress,
   saveTutorialStep,
   setCurrentRoute,
@@ -189,6 +195,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
   const [adminSection, setAdminSection] = useState<(typeof adminSections)[number]>("World Markers");
   const [miniMaps, setMiniMaps] = useState<MiniMap[]>([]);
+  const [mapSeasons, setMapSeasons] = useState<MapSeason[]>([]);
+  const [mapChapters, setMapChapters] = useState<MapChapter[]>([]);
+  const [newSeasonName, setNewSeasonName] = useState("");
+  const [newSeasonDescription, setNewSeasonDescription] = useState("");
+  const [newChapterName, setNewChapterName] = useState("");
+  const [newChapterDescription, setNewChapterDescription] = useState("");
   const [selectedMiniMapId, setSelectedMiniMapId] = useState<string | null>(null);
   const [editingMiniMapId, setEditingMiniMapId] = useState<string | null>(null);
   const [miniMapName, setMiniMapName] = useState("");
@@ -353,10 +365,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
   const adminMapEvents = useMemo(() => mapEvents.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [mapEvents, selectedChapter, selectedSeason]);
-  const availableSeasons = useMemo(() => getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents].flat(), "season_number"), [legendItems, mapEvents, markers, miniMaps, routes, tutorialSteps]);
+  const availableSeasons = useMemo(() => mergeSeasonRecords(mapSeasons, getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents].flat(), "season_number")), [legendItems, mapEvents, mapSeasons, markers, miniMaps, routes, tutorialSteps]);
   const availableChapters = useMemo(
-    () => getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents].flat().filter((item) => Number(item.season_number ?? 1) === selectedSeason), "chapter_number"),
-    [legendItems, mapEvents, markers, miniMaps, routes, selectedSeason, tutorialSteps],
+    () => mergeChapterRecords(
+      mapChapters.filter((chapter) => Number(chapter.season_number) === selectedSeason),
+      getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents].flat().filter((item) => Number(item.season_number ?? 1) === selectedSeason), "chapter_number"),
+      selectedSeason,
+    ),
+    [legendItems, mapChapters, mapEvents, markers, miniMaps, routes, selectedSeason, tutorialSteps],
   );
   const visibleMarkers = isAdmin ? worldMarkers : worldMarkers.filter((marker) => canPlayerSeeMarker(marker, playerPosition));
   const visibleMiniMapMarkers = isAdmin ? adminMiniMapMarkers : miniMapMarkers.filter((marker) => canPlayerSeeMarker(marker, miniMapPlayerPosition));
@@ -448,6 +464,48 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     return { state: desired, changed: true };
   }
 
+  async function createSeasonFromAdmin() {
+    const nextNumber = Math.max(0, ...availableSeasons.map((season) => season.season_number)) + 1;
+    try {
+      const saved = await saveMapSeason({
+        season_number: nextNumber,
+        name: newSeasonName.trim() || `Season ${nextNumber}`,
+        description: newSeasonDescription.trim() || null,
+        is_active: true,
+      });
+      setMapSeasons((current) => [...current.filter((season) => season.id !== saved.id), saved].sort((a, b) => a.season_number - b.season_number));
+      setSelectedSeason(saved.season_number);
+      setSelectedChapter(1);
+      setNewSeasonName("");
+      setNewSeasonDescription("");
+      setAdminMessage(`${saved.name} created.`);
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to create season. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function createChapterFromAdmin() {
+    const nextNumber = Math.max(0, ...availableChapters.map((chapter) => chapter.chapter_number)) + 1;
+    try {
+      const saved = await saveMapChapter({
+        season_number: selectedSeason,
+        chapter_number: nextNumber,
+        name: newChapterName.trim() || `Chapter ${nextNumber}`,
+        description: newChapterDescription.trim() || null,
+        is_active: true,
+      });
+      setMapChapters((current) =>
+        [...current.filter((chapter) => chapter.id !== saved.id), saved].sort((a, b) => a.season_number - b.season_number || a.chapter_number - b.chapter_number),
+      );
+      setSelectedChapter(saved.chapter_number);
+      setNewChapterName("");
+      setNewChapterDescription("");
+      setAdminMessage(`${saved.name} created under ${getSeasonLabel(mapSeasons, selectedSeason)}.`);
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to create chapter. Confirm the Supabase migration has run."));
+    }
+  }
+
   useEffect(() => {
     if (followPlayer) {
       centerOn(playerPosition.x, playerPosition.y);
@@ -514,12 +572,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }, [activeEvent]);
 
   async function loadMap() {
-    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedRole] = await Promise.all([
+    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedSeasons, loadedChapters, loadedRole] = await Promise.all([
       getMapRoutes(),
       getMapMarkers(),
       getMiniMaps(),
       getTutorialSteps(),
       getMarkerLegendItems(),
+      getMapSeasons(),
+      getMapChapters(),
       getCurrentRole(),
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
@@ -534,6 +594,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMiniMaps(loadedMiniMaps);
     setTutorialSteps(loadedTutorials);
     setLegendItems(loadedLegendItems);
+    setMapSeasons(loadedSeasons);
+    setMapChapters(loadedChapters);
     setRole(loadedRole);
     await selectRoute(firstRoute, true);
     if (!currentRoute) {
@@ -2959,17 +3021,29 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <Text style={styles.selectedTitle}>Season / Chapter</Text>
             <View style={styles.modeRow}>
               {availableSeasons.map((season) => (
-                <Pressable key={season} style={[styles.routeChip, selectedSeason === season && styles.routeChipActive]} onPress={() => setSelectedSeason(season)}>
-                  <Text style={styles.routeChipText}>Season {season}</Text>
+                <Pressable key={season.season_number} style={[styles.routeChip, selectedSeason === season.season_number && styles.routeChipActive]} onPress={() => { setSelectedSeason(season.season_number); setSelectedChapter(1); }}>
+                  <Text style={styles.routeChipText}>{season.name}</Text>
                 </Pressable>
               ))}
-              {availableChapters.map((chapter) => (
-                <Pressable key={chapter} style={[styles.routeChip, selectedChapter === chapter && styles.routeChipActive]} onPress={() => setSelectedChapter(chapter)}>
-                  <Text style={styles.routeChipText}>Chapter {chapter}</Text>
-                </Pressable>
-              ))}
+              <TextInput value={newSeasonName} onChangeText={setNewSeasonName} placeholder="New season name" placeholderTextColor={colors.muted} style={[styles.input, styles.inlineInput]} />
+              <TextInput value={newSeasonDescription} onChangeText={setNewSeasonDescription} placeholder="Season note optional" placeholderTextColor={colors.muted} style={[styles.input, styles.inlineInput]} />
+              <Pressable style={styles.secondaryButtonFlex} onPress={() => void createSeasonFromAdmin()}>
+                <Text style={styles.secondaryText}>Add Season</Text>
+              </Pressable>
             </View>
-            <Text style={styles.debugLine}>Showing records linked to Season {selectedSeason} / Chapter {selectedChapter}. Existing records default here.</Text>
+            <View style={styles.modeRow}>
+              {availableChapters.map((chapter) => (
+                <Pressable key={`${chapter.season_number}-${chapter.chapter_number}`} style={[styles.routeChip, selectedChapter === chapter.chapter_number && styles.routeChipActive]} onPress={() => setSelectedChapter(chapter.chapter_number)}>
+                  <Text style={styles.routeChipText}>{chapter.name}</Text>
+                </Pressable>
+              ))}
+              <TextInput value={newChapterName} onChangeText={setNewChapterName} placeholder="New chapter/area name" placeholderTextColor={colors.muted} style={[styles.input, styles.inlineInput]} />
+              <TextInput value={newChapterDescription} onChangeText={setNewChapterDescription} placeholder="Chapter note optional" placeholderTextColor={colors.muted} style={[styles.input, styles.inlineInput]} />
+              <Pressable style={styles.secondaryButtonFlex} onPress={() => void createChapterFromAdmin()}>
+                <Text style={styles.secondaryText}>Add Chapter</Text>
+              </Pressable>
+            </View>
+            <Text style={styles.debugLine}>Working in {getSeasonLabel(mapSeasons, selectedSeason)} / {getChapterLabel(mapChapters, selectedSeason, selectedChapter)}. New map content is automatically assigned here.</Text>
           </View>
           <View style={styles.adminSectionTabs}>
             {adminSections.map((section) => (
@@ -3926,6 +4000,59 @@ function getAvailableNumbers(items: Array<{ season_number?: number | null; chapt
     }
   }
   return Array.from(values).sort((a, b) => a - b);
+}
+
+function mergeSeasonRecords(seasons: MapSeason[], inferredNumbers: number[]) {
+  const byNumber = new Map<number, MapSeason>();
+  for (const season of seasons) {
+    byNumber.set(Number(season.season_number), season);
+  }
+  for (const number of inferredNumbers) {
+    if (!byNumber.has(number)) {
+      byNumber.set(number, {
+        id: `inferred-season-${number}`,
+        season_number: number,
+        name: `Season ${number}`,
+        description: null,
+        is_active: true,
+        created_by: null,
+        created_at: new Date(0).toISOString(),
+        updated_at: new Date(0).toISOString(),
+      });
+    }
+  }
+  return Array.from(byNumber.values()).sort((a, b) => a.season_number - b.season_number);
+}
+
+function mergeChapterRecords(chapters: MapChapter[], inferredNumbers: number[], seasonNumber: number) {
+  const byNumber = new Map<number, MapChapter>();
+  for (const chapter of chapters) {
+    byNumber.set(Number(chapter.chapter_number), chapter);
+  }
+  for (const number of inferredNumbers) {
+    if (!byNumber.has(number)) {
+      byNumber.set(number, {
+        id: `inferred-chapter-${seasonNumber}-${number}`,
+        season_number: seasonNumber,
+        chapter_number: number,
+        name: `Chapter ${number}`,
+        description: null,
+        is_active: true,
+        created_by: null,
+        created_at: new Date(0).toISOString(),
+        updated_at: new Date(0).toISOString(),
+      });
+    }
+  }
+  return Array.from(byNumber.values()).sort((a, b) => a.chapter_number - b.chapter_number);
+}
+
+function getSeasonLabel(seasons: MapSeason[], seasonNumber: number) {
+  return seasons.find((season) => season.season_number === seasonNumber)?.name ?? `Season ${seasonNumber}`;
+}
+
+function getChapterLabel(chapters: MapChapter[], seasonNumber: number, chapterNumber: number) {
+  return chapters.find((chapter) => chapter.season_number === seasonNumber && chapter.chapter_number === chapterNumber)?.name ?? `Chapter ${chapterNumber}`;
 }
 
 function upsertRouteProgressRow(rows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>, routeId: string, progressPercent: number) {
@@ -5553,6 +5680,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     paddingHorizontal: 12,
     backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  inlineInput: {
+    minWidth: 190,
+    flex: 1,
   },
   multiInput: {
     minHeight: 96,

@@ -3,6 +3,8 @@ import type { CharacterWithDetails } from "./characterService";
 import { consumeInventoryItem, grantItemToCharacter, type InventoryItem } from "./inventoryService";
 
 export type MapRoute = Tables["map_routes"];
+export type MapSeason = Tables["map_seasons"];
+export type MapChapter = Tables["map_chapters"];
 export type RouteProgress = Tables["route_progress"];
 export type MapMarker = Tables["map_markers"];
 export type MarkerLegendItem = Tables["marker_legend_items"];
@@ -115,6 +117,79 @@ export async function getMapMarkers() {
   }
 
   return ((data ?? []) as MapMarker[]).filter((marker) => !isSeededMarker(marker));
+}
+
+export async function getMapSeasons() {
+  const { data, error } = await supabase.from("map_seasons").select("*").order("season_number", { ascending: true });
+
+  if (error) {
+    console.warn("[map] seasons unavailable", error.message);
+    return [{ id: "local-season-1", season_number: 1, name: "Season 1", description: null, is_active: true, created_by: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }] as MapSeason[];
+  }
+
+  const seasons = (data ?? []) as MapSeason[];
+  return seasons.length > 0 ? seasons : [{ id: "local-season-1", season_number: 1, name: "Season 1", description: null, is_active: true, created_by: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }];
+}
+
+export async function getMapChapters() {
+  const { data, error } = await supabase.from("map_chapters").select("*").order("season_number", { ascending: true }).order("chapter_number", { ascending: true });
+
+  if (error) {
+    console.warn("[map] chapters unavailable", error.message);
+    return [{ id: "local-chapter-1-1", season_number: 1, chapter_number: 1, name: "Chapter 1", description: null, is_active: true, created_by: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }] as MapChapter[];
+  }
+
+  const chapters = (data ?? []) as MapChapter[];
+  return chapters.length > 0 ? chapters : [{ id: "local-chapter-1-1", season_number: 1, chapter_number: 1, name: "Chapter 1", description: null, is_active: true, created_by: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }];
+}
+
+export async function saveMapSeason(input: Partial<MapSeason>) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const values = {
+    season_number: Number(input.season_number) || 1,
+    name: input.name?.trim() || `Season ${Number(input.season_number) || 1}`,
+    description: input.description?.trim() || null,
+    is_active: input.is_active ?? true,
+    created_by: input.id ? input.created_by ?? user?.id ?? null : user?.id ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  const request = input.id
+    ? supabase.from("map_seasons").update(values).eq("id", input.id).select().single()
+    : supabase.from("map_seasons").insert(values).select().single();
+  const { data, error } = await request;
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MapSeason;
+}
+
+export async function saveMapChapter(input: Partial<MapChapter>) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const values = {
+    season_number: Number(input.season_number) || 1,
+    chapter_number: Number(input.chapter_number) || 1,
+    name: input.name?.trim() || `Chapter ${Number(input.chapter_number) || 1}`,
+    description: input.description?.trim() || null,
+    is_active: input.is_active ?? true,
+    created_by: input.id ? input.created_by ?? user?.id ?? null : user?.id ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  const request = input.id
+    ? supabase.from("map_chapters").update(values).eq("id", input.id).select().single()
+    : supabase.from("map_chapters").insert(values).select().single();
+  const { data, error } = await request;
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MapChapter;
 }
 
 export async function getMiniMaps() {
