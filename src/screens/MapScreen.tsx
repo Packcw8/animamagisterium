@@ -2695,8 +2695,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             style={styles.miniMapSurface}
             {...(isAdmin
               ? ({
-                  onMouseDown: (event: unknown) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini"),
-                  onTouchEnd: (event: unknown) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini"),
                   onClick: (event: unknown) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini"),
                   onStartShouldSetResponder: () => true,
                   onResponderRelease: (event: unknown) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini"),
@@ -2744,7 +2742,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <View style={[styles.playerPin, { left: `${miniMapPlayerPosition.x}%`, top: `${miniMapPlayerPosition.y}%` }]}>
               {character.portrait_url ? <Image source={{ uri: character.portrait_url }} style={styles.playerPortrait} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
             </View>
-            {isAdmin && clickedPercent ? (
+            {isAdmin && editorMode === "Marker" && clickedPercent ? (
               <View pointerEvents="none" style={[styles.tempMarker, { left: `${clickedPercent.x}%`, top: `${clickedPercent.y}%` }]}>
                 <View style={styles.tempPulse} />
                 <Text style={styles.tempMarkerText}>New Marker</Text>
@@ -2999,8 +2997,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             },
           ]}
           {...({
-            onMouseDown: handleMapPointer,
-            onTouchEnd: handleMapPointer,
             onClick: handleMapPointer,
             onStartShouldSetResponder: () => isAdmin,
             onResponderRelease: handleMapPointer,
@@ -3044,7 +3040,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <Text style={styles.pathPointText}>{index + 1}</Text>
             </View>
           ))}
-          {clickedPercent ? (
+          {editorMode === "Marker" && clickedPercent ? (
             <View pointerEvents="none" style={[styles.tempMarker, { left: `${clickedPercent.x}%`, top: `${clickedPercent.y}%` }]}>
               <View style={styles.tempPulse} />
               <Text style={styles.tempMarkerText}>New Marker</Text>
