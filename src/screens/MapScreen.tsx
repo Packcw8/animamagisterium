@@ -334,6 +334,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [choiceAction, setChoiceAction] = useState<StoryDialogueChoice["action"]>("go_to_node");
   const [choiceNextNodeId, setChoiceNextNodeId] = useState<string | null>(null);
   const [choiceBattleEventId, setChoiceBattleEventId] = useState<string | null>(null);
+  const [choiceBattleTitle, setChoiceBattleTitle] = useState("");
   const [choiceRewardXp, setChoiceRewardXp] = useState("0");
   const [choiceRewardGold, setChoiceRewardGold] = useState("0");
   const [choiceRewardItem, setChoiceRewardItem] = useState("");
@@ -2658,6 +2659,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceAction("go_to_node");
     setChoiceNextNodeId(null);
     setChoiceBattleEventId(null);
+    setChoiceBattleTitle("");
     setChoiceRewardXp("0");
     setChoiceRewardGold("0");
     setChoiceRewardItem("");
@@ -2699,6 +2701,57 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
+  async function createLinkedBattleForChoice() {
+    if (!selectedDialogueEvent) {
+      setAdminMessage("Select a dialogue event before creating a linked battle.");
+      return;
+    }
+
+    const title = choiceBattleTitle.trim() || `${selectedDialogueEvent.title} Battle`;
+    const values = {
+      event_type: "battle" as const,
+      title,
+      route_id: selectedDialogueEvent.route_id,
+      distance_marker_percent: Number(selectedDialogueEvent.distance_marker_percent) || 0,
+      trigger_mode: "fixed" as const,
+      random_chance_percent: 0,
+      background_image_url: null,
+      npc_name: null,
+      npc_portrait_url: null,
+      dialogue_npc_id: null,
+      npc_id: eventNpcId,
+      dialogue_text: null,
+      choices: [],
+      enemy_name: enemyName.trim() || null,
+      enemy_id: eventEnemyId,
+      enemy_image_url: enemyImage.trim() || null,
+      enemy_hp: Number(enemyHp) || 30,
+      enemy_attack_damage: Number(enemyAttack) || 5,
+      battle_intro_text: battleIntro.trim() || null,
+      victory_text: victoryText.trim() || null,
+      defeat_text: defeatText.trim() || null,
+      reward_xp: Number(rewardXp) || 0,
+      reward_gold: Number(rewardGold) || 0,
+      reward_item: rewardItem.trim() || null,
+      reward_item_id: rewardItemId,
+      reward_item_quantity: Math.max(1, Number(rewardItemQuantity) || 1),
+      season_number: selectedSeason,
+      chapter_number: selectedChapter,
+      is_active: true,
+    };
+
+    try {
+      const saved = await createMapEvent(values);
+      setMapEvents((current) => [...current, saved].sort((a, b) => Number(a.distance_marker_percent) - Number(b.distance_marker_percent)));
+      setChoiceBattleEventId(saved.id);
+      setChoiceAction("start_battle");
+      setChoiceBattleTitle("");
+      setAdminMessage(`Linked battle "${saved.title}" created. Save the player choice to connect it.`);
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to create linked battle event."));
+    }
+  }
+
   async function removeDialogueChoice(choiceId: string) {
     try {
       await deleteDialogueChoice(choiceId);
@@ -2723,6 +2776,182 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     await selectRoute(nextRoute, true);
     setPathDraft(nextRoute.path_points);
     setAdminMessage(`Editing ${nextRoute.name}. Change the fields below, then Save Walking Path.`);
+  }
+
+  function renderBranchingDialogueEditor() {
+    return (
+      <View style={styles.storyEditor}>
+        <Text style={styles.selectedTitle}>Branching Dialogue Editor</Text>
+        <Text style={styles.copy}>Select a dialogue, clue, or reward event, then add dialogue steps and player choices. Start Battle choices can create or link a battle event from here.</Text>
+        <View style={styles.storyRoutePicker}>
+          {adminMapEvents.filter((event) => event.event_type !== "battle").map((event) => (
+            <Pressable
+              key={event.id}
+              style={[styles.routeChip, selectedDialogueEventId === event.id && styles.routeChipActive]}
+              onPress={() => void loadDialogueEditor(event.id)}
+            >
+              <Text style={styles.routeChipText}>{event.title}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {selectedDialogueEvent ? (
+          <View style={styles.builderStatus}>
+            <Text style={styles.selectedTitle}>Editing: {selectedDialogueEvent.title}</Text>
+            <Text style={styles.copy}>{dialogueNodes.length} dialogue steps - {dialogueChoices.length} player choices</Text>
+          </View>
+        ) : (
+          <Text style={styles.adminMessage}>Select a dialogue, clue, or reward event before adding steps.</Text>
+        )}
+        <Pressable style={styles.secondaryButton} onPress={startNewDialogueStep} disabled={!selectedDialogueEventId}>
+          <Text style={styles.secondaryText}>New Dialogue Step</Text>
+        </Pressable>
+        {selectedDialogueEvent ? (
+          <View style={styles.flowPreview}>
+            <Text style={styles.selectedTitle}>Dialogue Link Preview</Text>
+            {dialogueNodes.length === 0 ? (
+              <Text style={styles.copy}>No dialogue steps yet. Add a start step first.</Text>
+            ) : (
+              dialogueNodes.map((node) => {
+                const nodeChoices = dialogueChoices.filter((choice) => choice.node_id === node.id).sort((a, b) => a.sort_order - b.sort_order);
+                return (
+                  <View key={`preview-${node.id}`} style={styles.flowStep}>
+                    <Text style={styles.flowStepTitle}>{node.sort_order}. {node.title}{node.is_start ? " - Start" : ""}{node.is_ending ? " - Ending" : ""}</Text>
+                    <Text style={styles.flowDialogue}>{node.npc_name ? `${node.npc_name}: ` : ""}{node.dialogue_text || "No NPC dialogue entered."}</Text>
+                    {nodeChoices.length === 0 ? (
+                      <Text style={styles.flowWarning}>No choices connected to this step.</Text>
+                    ) : (
+                      nodeChoices.map((choice) => {
+                        const target = getChoiceTargetSummary(choice, dialogueNodes, mapEvents);
+                        return (
+                          <Pressable key={`preview-choice-${choice.id}`} style={styles.flowChoice} onPress={() => editDialogueChoice(choice)}>
+                            <Text style={styles.flowChoiceText}>If player chooses: {choice.button_text}</Text>
+                            {choice.player_dialogue_text ? <Text style={styles.flowDialogue}>Player says: {choice.player_dialogue_text}</Text> : null}
+                            <Text style={[styles.flowTarget, target.isBroken && styles.flowWarning]}>{target.label}</Text>
+                          </Pressable>
+                        );
+                      })
+                    )}
+                  </View>
+                );
+              })
+            )}
+          </View>
+        ) : null}
+        <TextInput value={nodeTitle} onChangeText={setNodeTitle} placeholder="Dialogue step title / internal label" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={nodeKey} onChangeText={setNodeKey} placeholder="Optional node key" placeholderTextColor={colors.muted} style={styles.input} />
+        <NpcPicker label="Reuse NPC for this dialogue step" npcs={npcDefinitions} selectedId={nodeNpcId} onSelect={selectNodeDialogueNpc} />
+        <TextInput value={nodeNpcName} onChangeText={setNodeNpcName} placeholder="NPC name" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={nodeNpcPortrait} onChangeText={setNodeNpcPortrait} placeholder="NPC portrait URL optional" placeholderTextColor={colors.muted} style={styles.input} />
+        <AdminImageUploadButton folder="dialogue-npcs" onUploaded={setNodeNpcPortrait} onMessage={setAdminMessage} />
+        <TextInput value={nodeBackgroundImage} onChangeText={setNodeBackgroundImage} placeholder="Background image URL optional" placeholderTextColor={colors.muted} style={styles.input} />
+        <AdminImageUploadButton folder="dialogue-backgrounds" onUploaded={setNodeBackgroundImage} onMessage={setAdminMessage} />
+        <TextInput value={nodeDialogue} onChangeText={setNodeDialogue} placeholder="NPC dialogue text" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+        <TextInput value={nodeSortOrder} onChangeText={setNodeSortOrder} placeholder="Dialogue step order" placeholderTextColor={colors.muted} style={styles.input} />
+        <View style={styles.typeGrid}>
+          <Pressable style={[styles.typeButton, nodeIsStart && styles.typeSelected]} onPress={() => setNodeIsStart((value) => !value)}><Text style={styles.typeText}>Start Step</Text></Pressable>
+          <Pressable style={[styles.typeButton, nodeIsEnding && styles.typeSelected]} onPress={() => setNodeIsEnding((value) => !value)}><Text style={styles.typeText}>Ending Step</Text></Pressable>
+          <Pressable style={[styles.typeButton, nodeAllowEndChat && styles.typeSelected]} onPress={() => setNodeAllowEndChat((value) => !value)}><Text style={styles.typeText}>Allow End Chat</Text></Pressable>
+          <Pressable style={[styles.typeButton, nodeEndCompletesEvent && styles.typeSelected]} onPress={() => setNodeEndCompletesEvent((value) => !value)}><Text style={styles.typeText}>End Completes</Text></Pressable>
+        </View>
+        <Pressable style={styles.primaryButton} onPress={() => void saveDialogueNode()} disabled={!selectedDialogueEventId || !nodeTitle.trim()}>
+          <Text style={styles.primaryText}>{editingNode ? "Update Dialogue Step" : "Add Dialogue Step"}</Text>
+        </Pressable>
+        {editingNode ? <Pressable style={styles.secondaryButton} onPress={clearDialogueNodeForm}><Text style={styles.secondaryText}>Cancel Step Edit</Text></Pressable> : null}
+        {dialogueNodes.map((node) => {
+          const nodeChoices = dialogueChoices.filter((choice) => choice.node_id === node.id).sort((a, b) => a.sort_order - b.sort_order);
+          return (
+            <View key={node.id} style={[styles.storyCard, choiceNodeId === node.id && styles.storyCardActive]}>
+              <Text style={styles.markerName}>{node.sort_order}. {node.title}{node.is_start ? " - Start" : ""}{node.is_ending ? " - Ending" : ""}</Text>
+              <Text style={styles.copy}>{node.dialogue_text || "No dialogue yet."}</Text>
+              {nodeChoices.length > 0 ? (
+                <View style={styles.choicePreviewList}>
+                  {nodeChoices.map((choice) => (
+                    <Pressable key={choice.id} style={styles.choicePreview} onPress={() => editDialogueChoice(choice)}>
+                      <Text style={styles.choicePreviewTitle}>{choice.sort_order}. {choice.button_text}</Text>
+                      <Text style={styles.choicePreviewAction}>{choiceActionLabel(choice.action)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : <Text style={styles.debugLine}>No player choices yet.</Text>}
+              <View style={styles.modeRow}>
+                <Pressable style={styles.secondaryButtonFlex} onPress={() => selectDialogueNode(node.id)}><Text style={styles.secondaryText}>Select Step</Text></Pressable>
+                <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueNode(node)}><Text style={styles.secondaryText}>Edit Step</Text></Pressable>
+                <Pressable style={styles.secondaryButtonFlex} onPress={() => startChoiceForNode(node)}><Text style={styles.secondaryText}>Add Choice</Text></Pressable>
+                <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueNode(node.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
+              </View>
+            </View>
+          );
+        })}
+        <Text style={styles.selectedTitle}>Player Choices{selectedChoiceNode ? ` for ${selectedChoiceNode.title}` : ""}</Text>
+        <Text style={styles.copy}>{selectedChoiceNode ? "Create choices for the selected dialogue step. Choices can move the conversation, start battle, reward the player, or return to the map." : "Select a dialogue step first."}</Text>
+        <View style={styles.storyRoutePicker}>
+          {dialogueNodes.map((node) => (
+            <Pressable key={node.id} style={[styles.routeChip, choiceNodeId === node.id && styles.routeChipActive]} onPress={() => selectDialogueNode(node.id)}>
+              <Text style={styles.routeChipText}>{node.sort_order}. {node.title}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <TextInput value={choiceButtonText} onChangeText={setChoiceButtonText} placeholder="Player button text" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={choicePlayerText} onChangeText={setChoicePlayerText} placeholder="Optional player dialogue text" placeholderTextColor={colors.muted} style={styles.input} />
+        <View style={styles.typeGrid}>
+          {(["go_to_node", "start_battle", "complete_event", "unlock_next_event", "give_reward", "end_conversation", "return_to_map"] as const).map((action) => (
+            <Pressable key={action} style={[styles.typeButton, choiceAction === action && styles.typeSelected]} onPress={() => setChoiceAction(action)}>
+              <Text style={styles.typeText}>{choiceActionLabel(action)}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {choiceAction === "go_to_node" ? (
+          <View style={styles.storyRoutePicker}>
+            {dialogueNodes.map((node) => (
+              <Pressable key={node.id} style={[styles.routeChip, choiceNextNodeId === node.id && styles.routeChipActive]} onPress={() => setChoiceNextNodeId(node.id)}>
+                <Text style={styles.routeChipText}>Next: {node.title}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {choiceAction === "start_battle" ? (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Linked Battle</Text>
+            <Text style={styles.copy}>Select an existing battle event, or create one here using the enemy/NPC and reward fields above.</Text>
+            <View style={styles.storyRoutePicker}>
+              {adminMapEvents.filter((event) => event.event_type === "battle").map((event) => (
+                <Pressable key={event.id} style={[styles.routeChip, choiceBattleEventId === event.id && styles.routeChipActive]} onPress={() => setChoiceBattleEventId(event.id)}>
+                  <Text style={styles.routeChipText}>{event.title}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput value={choiceBattleTitle} onChangeText={setChoiceBattleTitle} placeholder="New linked battle title" placeholderTextColor={colors.muted} style={styles.input} />
+            <Pressable style={styles.secondaryButton} onPress={() => void createLinkedBattleForChoice()}>
+              <Text style={styles.secondaryText}>Create Linked Battle Event</Text>
+            </Pressable>
+          </View>
+        ) : null}
+        {choiceAction === "give_reward" ? (
+          <>
+            <TextInput value={choiceRewardXp} onChangeText={setChoiceRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
+            <TextInput value={choiceRewardGold} onChangeText={setChoiceRewardGold} placeholder="Reward gold" placeholderTextColor={colors.muted} style={styles.input} />
+            <ItemPicker label="Reward item" items={itemDefinitions} selectedId={choiceRewardItemId} onSelect={setChoiceRewardItemId} />
+            <TextInput value={choiceRewardItemQuantity} onChangeText={setChoiceRewardItemQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
+            <TextInput value={choiceRewardItem} onChangeText={setChoiceRewardItem} placeholder="Legacy reward item text optional" placeholderTextColor={colors.muted} style={styles.input} />
+          </>
+        ) : null}
+        <TextInput value={choiceSortOrder} onChangeText={setChoiceSortOrder} placeholder="Choice order" placeholderTextColor={colors.muted} style={styles.input} />
+        <Pressable style={styles.primaryButton} onPress={() => void saveDialogueChoice()} disabled={!choiceNodeId || !choiceButtonText.trim()}>
+          <Text style={styles.primaryText}>{editingChoice ? "Update Player Choice" : "Add Player Choice"}</Text>
+        </Pressable>
+        {editingChoice ? <Pressable style={styles.secondaryButton} onPress={clearDialogueChoiceForm}><Text style={styles.secondaryText}>Cancel Choice Edit</Text></Pressable> : null}
+        {selectedNodeChoices.map((choice) => (
+          <View key={choice.id} style={styles.storyCard}>
+            <Text style={styles.markerName}>{choice.button_text}</Text>
+            <Text style={styles.copy}>{choiceActionLabel(choice.action)}{choice.player_dialogue_text ? ` - "${choice.player_dialogue_text}"` : ""}</Text>
+            <View style={styles.modeRow}>
+              <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueChoice(choice)}><Text style={styles.secondaryText}>Edit Choice</Text></Pressable>
+              <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueChoice(choice.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
+            </View>
+          </View>
+        ))}
+      </View>
+    );
   }
 
   if (activeEvent) {
@@ -3219,6 +3448,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                       </View>
                     </View>
                   ))}
+                  {renderBranchingDialogueEditor()}
                 </>
               ) : (
                 <Text style={styles.debugLine}>Select a mini-map walking path above to create or edit its events.</Text>
@@ -4145,12 +4375,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 </View>
               ) : null}
               {choiceAction === "start_battle" ? (
-                <View style={styles.storyRoutePicker}>
-                  {adminMapEvents.filter((event) => event.event_type === "battle").map((event) => (
-                    <Pressable key={event.id} style={[styles.routeChip, choiceBattleEventId === event.id && styles.routeChipActive]} onPress={() => setChoiceBattleEventId(event.id)}>
-                      <Text style={styles.routeChipText}>{event.title}</Text>
-                    </Pressable>
-                  ))}
+                <View style={styles.storyEditor}>
+                  <Text style={styles.selectedTitle}>Linked Battle</Text>
+                  <Text style={styles.copy}>Select an existing battle event, or create one here using the enemy/NPC and reward fields above.</Text>
+                  <View style={styles.storyRoutePicker}>
+                    {adminMapEvents.filter((event) => event.event_type === "battle").map((event) => (
+                      <Pressable key={event.id} style={[styles.routeChip, choiceBattleEventId === event.id && styles.routeChipActive]} onPress={() => setChoiceBattleEventId(event.id)}>
+                        <Text style={styles.routeChipText}>{event.title}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <TextInput value={choiceBattleTitle} onChangeText={setChoiceBattleTitle} placeholder="New linked battle title" placeholderTextColor={colors.muted} style={styles.input} />
+                  <Pressable style={styles.secondaryButton} onPress={() => void createLinkedBattleForChoice()}>
+                    <Text style={styles.secondaryText}>Create Linked Battle Event</Text>
+                  </Pressable>
                 </View>
               ) : null}
               {choiceAction === "give_reward" ? (
