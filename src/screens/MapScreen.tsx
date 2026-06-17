@@ -397,7 +397,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const canUseSelectedMarker = isAdmin || Boolean(selectedMarker && canPlayerSeeMarker(selectedMarker, currentInteractionPosition));
   const selectedMarkerLocked = !isAdmin && Boolean(selectedMarker && isMarkerLocked(selectedMarker));
   const selectedMiniMap = useMemo(() => miniMaps.find((miniMap) => miniMap.id === selectedMiniMapId) ?? null, [miniMaps, selectedMiniMapId]);
-  const activeSectionMarkerTypes = adminSection === "Area/Town Markers" ? ["Area/Town Entrance"] : adminSection === "Mini Maps" ? miniMapMarkerTypes : markerTypes;
+  const activeSectionMarkerTypes = adminSection === "Area/Town Markers" ? ["Area/Town Entrance"] : markerTypes;
 
   useEffect(() => {
     void loadMap();
@@ -909,11 +909,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
-    const activeMiniMapId = activeMiniMap?.id ?? (adminSection === "Mini Maps" ? selectedMiniMapId : null);
+    const activeMiniMapId = activeMiniMap?.id ?? null;
     const isMiniMapMarker = Boolean(activeMiniMapId);
 
     if (adminSection === "Mini Maps" && !activeMiniMapId) {
-      setAdminMessage("Select a mini map before creating mini-map markers.");
+      setAdminMessage("Open a mini map before creating mini-map markers.");
       return;
     }
 
@@ -965,7 +965,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   function getMarkerSettingsPayload() {
-    const activeMiniMapId = activeMiniMap?.id ?? (adminSection === "Mini Maps" ? selectedMiniMapId : null);
+    const activeMiniMapId = activeMiniMap?.id ?? null;
 
     return {
       type: draftType,
@@ -1488,11 +1488,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       });
       setMiniMaps((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
       setSelectedMiniMapId(saved.id);
-      setEditingMiniMapId(null);
-      setMiniMapName("");
-      setMiniMapBackground("");
-      setMiniMapDescription("");
-      setMiniMapActive(true);
+      if (activeMiniMap?.id === saved.id) {
+        setActiveMiniMap(saved);
+        setEditingMiniMapId(saved.id);
+      } else {
+        setEditingMiniMapId(null);
+        setMiniMapName("");
+        setMiniMapBackground("");
+        setMiniMapDescription("");
+        setMiniMapActive(true);
+      }
       setAdminMessage("Mini map saved.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to save mini map. Confirm the Supabase migration has run."));
@@ -1525,6 +1530,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   function openMiniMap(miniMap: MiniMap) {
     setActiveMiniMap(miniMap);
     setSelectedMiniMapId(miniMap.id);
+    editMiniMap(miniMap);
     setAdminSection("Mini Maps");
     setEditorMode("Marker");
     setSelectedMarker(null);
@@ -1534,6 +1540,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   function leaveMiniMap() {
     setActiveMiniMap(null);
+    setEditingMiniMapId(null);
+    setMiniMapName("");
+    setMiniMapBackground("");
+    setMiniMapDescription("");
+    setMiniMapActive(true);
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setMarkerPanelMessage(null);
@@ -2798,6 +2809,26 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <Text style={styles.sectionTitle}>Mini Map Admin Preview</Text>
             <Text style={styles.copy}>Click this mini map image to capture percentage coordinates, then create or edit markers inside {activeMiniMap.name}.</Text>
             {adminMessage ? <Text style={styles.adminMessage}>{adminMessage}</Text> : null}
+            <View style={styles.storyEditor}>
+              <Text style={styles.selectedTitle}>Mini Map Details</Text>
+              <TextInput value={miniMapName} onChangeText={setMiniMapName} placeholder="Mini map name" placeholderTextColor={colors.muted} style={styles.input} />
+              <View style={styles.storyRoutePicker}>
+                {miniMapTypes.map((type) => (
+                  <Pressable key={type} style={[styles.routeChip, miniMapType === type && styles.routeChipActive]} onPress={() => setMiniMapType(type)}>
+                    <Text style={styles.routeChipText}>{type}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput value={miniMapBackground} onChangeText={setMiniMapBackground} placeholder="Background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+              <AdminImageUploadButton folder="mini-maps" onUploaded={setMiniMapBackground} onMessage={setAdminMessage} />
+              <TextInput value={miniMapDescription} onChangeText={setMiniMapDescription} placeholder="Description" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+              <Pressable style={[styles.secondaryButton, miniMapActive && styles.typeSelected]} onPress={() => setMiniMapActive((value) => !value)}>
+                <Text style={styles.secondaryText}>Active: {miniMapActive ? "true" : "false"}</Text>
+              </Pressable>
+              <Pressable style={styles.primaryButton} onPress={() => void saveMiniMapForm()} disabled={!miniMapName.trim()}>
+                <Text style={styles.primaryText}>Update Open Mini Map</Text>
+              </Pressable>
+            </View>
             <Info label="Clicked Coordinates" value={clickedPercent ? `X ${clickedPercent.x}% / Y ${clickedPercent.y}%` : "Tap the mini map"} />
             <Text style={styles.debugLine}>Last click: x: {clickedPercent ? `${clickedPercent.x}%` : "--"}, y: {clickedPercent ? `${clickedPercent.y}%` : "--"}</Text>
             <Pressable style={styles.secondaryButton} onPress={() => void copyCoordinates()} disabled={!clickedPercent}>
@@ -3270,7 +3301,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   setAdminSection(section);
                   if (section === "Area/Town Markers") setDraftType("Area/Town Entrance");
                   if (section === "World Markers") setDraftType("Story");
-                  if (section === "Mini Maps") setDraftType("Point of Interest");
                   if (section === "Walking Paths") setEditorMode("Walking Path");
                   if (section !== "Walking Paths") setEditorMode("Marker");
                 }}
@@ -3378,7 +3408,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               </Pressable>
             ))}
           </View> : null}
-          {["World Markers", "Area/Town Markers", "Mini Maps"].includes(adminSection) ? <View style={styles.routeList}>
+          {["World Markers", "Area/Town Markers"].includes(adminSection) ? <View style={styles.routeList}>
             <Text style={styles.selectedTitle}>Existing Markers</Text>
             {getAdminSectionMarkers(adminSection, adminWorldMarkers, adminMiniMapMarkers).length === 0 ? <Text style={styles.copy}>No markers created yet.</Text> : null}
             {getAdminSectionMarkers(adminSection, adminWorldMarkers, adminMiniMapMarkers).map((marker) => (
@@ -3406,7 +3436,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               </View>
             ))}
           </View> : null}
-          {["World Markers", "Area/Town Markers", "Mini Maps", "Walking Paths"].includes(adminSection) ? <>
+          {["World Markers", "Area/Town Markers", "Walking Paths"].includes(adminSection) ? <>
           <Info label="Clicked Coordinates" value={clickedPercent ? `X ${clickedPercent.x}% / Y ${clickedPercent.y}%` : "Tap the map"} />
           <Text style={styles.debugLine}>Last click: x: {clickedPercent ? `${clickedPercent.x}%` : "--"}, y: {clickedPercent ? `${clickedPercent.y}%` : "--"}</Text>
           <Pressable style={styles.secondaryButton} onPress={() => void copyCoordinates()} disabled={!clickedPercent}>
@@ -3432,27 +3462,23 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <Text style={styles.secondaryText}>Active: {miniMapActive ? "true" : "false"}</Text>
               </Pressable>
               <Pressable style={styles.primaryButton} onPress={() => void saveMiniMapForm()} disabled={!miniMapName.trim()}>
-                <Text style={styles.primaryText}>{editingMiniMapId ? "Update Mini Map" : "Create Mini Map"}</Text>
+                <Text style={styles.primaryText}>Create Mini Map</Text>
               </Pressable>
-              {editingMiniMapId ? <Pressable style={styles.secondaryButton} onPress={() => { setEditingMiniMapId(null); setMiniMapName(""); setMiniMapBackground(""); setMiniMapDescription(""); }}><Text style={styles.secondaryText}>Cancel Mini Map Edit</Text></Pressable> : null}
               <Text style={styles.selectedTitle}>Existing Mini Maps</Text>
               {adminMiniMaps.map((miniMap) => (
                 <View key={miniMap.id} style={styles.storyCard}>
                   <Text style={styles.markerName}>{miniMap.name}</Text>
                   <Text style={styles.copy}>{miniMap.type} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
                   <View style={styles.modeRow}>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => { setSelectedMiniMapId(miniMap.id); editMiniMap(miniMap); }}><Text style={styles.secondaryText}>Edit</Text></Pressable>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => { setSelectedMiniMapId(miniMap.id); openMiniMap(miniMap); }}><Text style={styles.secondaryText}>Open</Text></Pressable>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeMiniMap(miniMap.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
                   </View>
                 </View>
               ))}
-              <Text style={styles.selectedTitle}>Mini Map Marker Editor</Text>
-              <Text style={styles.copy}>Select a mini map, click the map image above, then create markers inside that mini map.</Text>
-              <MiniMapPicker miniMaps={adminMiniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} />
+              <Text style={styles.debugLine}>Open a mini map to place spawn markers, sign posts, shops, encounters, and mini-map walking paths.</Text>
             </View>
           ) : null}
-          {editorMode === "Marker" && ["World Markers", "Area/Town Markers", "Mini Maps"].includes(adminSection) ? (
+          {editorMode === "Marker" && ["World Markers", "Area/Town Markers"].includes(adminSection) ? (
             <>
               <View style={styles.typeGrid}>
                 {activeSectionMarkerTypes.map((type) => (
