@@ -2713,7 +2713,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               ? ({
                   onClick: (event: unknown) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini"),
                   onStartShouldSetResponder: () => true,
-                  onResponderRelease: (event: unknown) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini"),
                 } as object)
               : {})}
           >
@@ -2728,7 +2727,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   {
                     left: `${segment.left}%`,
                     top: `${segment.top}%`,
-                    width: segment.length,
+                    width: `${segment.length}%`,
                     transform: [{ rotate: `${segment.angle}deg` }],
                   },
                 ]}
@@ -2744,7 +2743,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   {
                     left: `${segment.left}%`,
                     top: `${segment.top}%`,
-                    width: segment.length,
+                    width: `${segment.length}%`,
                     transform: [{ rotate: `${segment.angle}deg` }],
                   },
                 ]}
@@ -2755,8 +2754,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <Text style={styles.pathPointText}>{index + 1}</Text>
               </View>
             )) : null}
-            <View style={[styles.playerPin, { left: `${miniMapPlayerPosition.x}%`, top: `${miniMapPlayerPosition.y}%` }]}>
-              {character.portrait_url ? <Image source={{ uri: character.portrait_url }} style={styles.playerPortrait} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
+            <View style={[styles.playerPin, styles.miniMapPlayerPin, { left: `${miniMapPlayerPosition.x}%`, top: `${miniMapPlayerPosition.y}%` }]}>
+              {character.portrait_url ? <Image source={{ uri: character.portrait_url }} style={styles.playerPortrait} /> : <Text style={[styles.playerInitial, styles.miniMapPlayerInitial]}>{character.name.slice(0, 1).toUpperCase()}</Text>}
             </View>
             {isAdmin && editorMode === "Marker" && clickedPercent ? (
               <View pointerEvents="none" style={[styles.tempMarker, { left: `${clickedPercent.x}%`, top: `${clickedPercent.y}%` }]}>
@@ -3035,7 +3034,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           {...({
             onClick: handleMapPointer,
             onStartShouldSetResponder: () => isAdmin,
-            onResponderRelease: handleMapPointer,
           } as object)}
         >
           <Image source={forgottenMarches} style={styles.mapImage} {...({ pointerEvents: "none" } as object)} />
@@ -3049,7 +3047,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 {
                   left: `${segment.left}%`,
                   top: `${segment.top}%`,
-                  width: segment.length,
+                  width: `${segment.length}%`,
                   transform: [{ rotate: `${segment.angle}deg` }],
                 },
               ]}
@@ -3065,7 +3063,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 {
                   left: `${segment.left}%`,
                   top: `${segment.top}%`,
-                  width: segment.length,
+                  width: `${segment.length}%`,
                   transform: [{ rotate: `${segment.angle}deg` }],
                 },
               ]}
@@ -3987,6 +3985,8 @@ function getPointOnRoute(points: Array<{ x: number; y: number }>, progressPercen
 }
 
 function getRouteSegments(points: Array<{ x: number; y: number }>) {
+  const mapAspectRatio = mapSize.height / mapSize.width;
+
   return points.slice(1).map((point, index) => {
     const previous = points[index];
     const dx = point.x - previous.x;
@@ -3995,7 +3995,7 @@ function getRouteSegments(points: Array<{ x: number; y: number }>) {
     return {
       left: previous.x,
       top: previous.y,
-      length: (Math.hypot(dx, dy) / 100) * mapSize.width,
+      length: Math.hypot(dx, dy * mapAspectRatio),
       angle: Math.atan2(dy * mapSize.height, dx * mapSize.width) * (180 / Math.PI),
     };
   });
@@ -5731,6 +5731,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  miniMapPlayerPin: {
+    width: 35,
+    height: 35,
+    borderRadius: 18,
+    borderWidth: 2,
+    transform: [{ translateX: -18 }, { translateY: -18 }],
+  },
   playerPortrait: {
     width: "100%",
     height: "100%",
@@ -5739,6 +5746,9 @@ const styles = StyleSheet.create({
     color: colors.gold,
     fontFamily: fonts.title,
     fontSize: 28,
+  },
+  miniMapPlayerInitial: {
+    fontSize: 14,
   },
   panel: {
     marginHorizontal: 12,
