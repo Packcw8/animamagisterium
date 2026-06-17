@@ -949,6 +949,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         chapter_number: selectedChapter,
       });
       const configured = await updateMarkerSettings(created.id, getMarkerSettingsPayload());
+      if (activeMiniMapId && configured.mini_map_id !== activeMiniMapId) {
+        throw new Error("Mini-map marker was saved without the open mini map id. Try again after reopening the mini map.");
+      }
       if (draftType === "Sign Post") {
         const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter);
         setMarkerRouteLinks(links);
@@ -993,8 +996,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       repeatable: markerRepeatable,
       reward_once_per_player: markerRewardOnce,
       linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : (draftType === "Exit" || draftType === "Exit/Leave") && markerExitTargetType === "mini_map" ? markerExitTargetMiniMapId : null,
-      mini_map_id: selectedMarker?.mini_map_id ?? activeMiniMapId,
-      parent_marker_id: selectedMarker?.parent_marker_id ?? null,
+      mini_map_id: activeMiniMapId ?? selectedMarker?.mini_map_id ?? null,
+      parent_marker_id: activeMiniMapId ? null : selectedMarker?.parent_marker_id ?? null,
       exit_target_type: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetType : null,
       exit_target_marker_id: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetMarkerId : null,
       linked_route_id: isQuestMarkerType(draftType) ? markerLinkedRouteId : null,
