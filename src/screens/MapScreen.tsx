@@ -1558,10 +1558,28 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setPathDraft([]);
 
     if (shouldRestoreWorldRoute) {
+      await setCurrentRoute(nextWorldRoute.id);
       await selectRoute(nextWorldRoute, true);
     }
 
     if (targetPosition) {
+      const existingProgress = await getRouteProgress(nextWorldRoute.id);
+      const nextDistance = Number(existingProgress?.distance_walked_meters ?? 0);
+      const nextProgress = Number(existingProgress?.progress_percent ?? 0);
+      await saveRouteProgress(nextWorldRoute.id, {
+        distance_walked_meters: nextDistance,
+        progress_percent: nextProgress,
+        current_x_percent: targetPosition.x,
+        current_y_percent: targetPosition.y,
+        last_lat: null,
+        last_lng: null,
+        travel_direction: existingProgress?.travel_direction ?? "forward",
+        is_current: true,
+        source_marker_id: null,
+      });
+      distanceWalkedRef.current = nextDistance;
+      setDistanceWalked(nextDistance);
+      setRouteProgressRows((current) => upsertRouteProgressRow(current, nextWorldRoute.id, nextProgress).map((row) => ({ ...row, is_current: row.route_id === nextWorldRoute.id })));
       setSavedPlayerPosition(targetPosition);
     }
   }
