@@ -1009,7 +1009,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function selectMarker(marker: MapMarker) {
     if (activeMiniMap && !isAdmin && isExitMarker(marker)) {
-      openExitMarker(marker);
+      void openExitMarker(marker);
       return;
     }
 
@@ -1541,7 +1541,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setClickedPercent(null);
   }
 
-  function leaveMiniMap() {
+  async function leaveMiniMap(targetPosition?: { x: number; y: number }) {
+    const shouldRestoreWorldRoute = Boolean(route.mini_map_id);
+    const nextWorldRoute = orderedRoutes.find((item) => !item.mini_map_id && item.is_active) ?? orderedRoutes.find((item) => !item.mini_map_id) ?? fallbackRoute;
+
     setActiveMiniMap(null);
     setEditingMiniMapId(null);
     setMiniMapName("");
@@ -1553,9 +1556,17 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerPanelMessage(null);
     setClickedPercent(null);
     setPathDraft([]);
+
+    if (shouldRestoreWorldRoute) {
+      await selectRoute(nextWorldRoute, true);
+    }
+
+    if (targetPosition) {
+      setSavedPlayerPosition(targetPosition);
+    }
   }
 
-  function openExitMarker(marker: MapMarker) {
+  async function openExitMarker(marker: MapMarker) {
     if (marker.exit_target_type === "mini_map" && marker.linked_mini_map_id) {
       const nextMiniMap = miniMaps.find((item) => item.id === marker.linked_mini_map_id);
       if (nextMiniMap) {
@@ -1567,16 +1578,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (marker.exit_target_type === "world_marker" && marker.exit_target_marker_id) {
       const worldMarker = markers.find((item) => item.id === marker.exit_target_marker_id);
       if (worldMarker) {
-        setActiveMiniMap(null);
-        setSelectedMarker(null);
-        setPreviewMarkerScene(false);
-        setMarkerPanelMessage(null);
-        setSavedPlayerPosition({ x: Number(worldMarker.x_percent), y: Number(worldMarker.y_percent) });
+        await leaveMiniMap({ x: Number(worldMarker.x_percent), y: Number(worldMarker.y_percent) });
         return;
       }
     }
 
-    leaveMiniMap();
+    await leaveMiniMap();
   }
 
   async function saveTutorialForm() {
@@ -2680,7 +2687,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         onClaimReward={() => void claimSelectedMarkerReward()}
         onAcceptQuest={() => void acceptSelectedMarkerQuest()}
         onStartPath={(nextRoute) => void startPathFromSignPost(nextRoute)}
-        onUseExit={() => openExitMarker(selectedMarker)}
+        onUseExit={() => void openExitMarker(selectedMarker)}
         onEnterArea={() => {
           const miniMap = miniMaps.find((item) => item.id === selectedMarker.linked_mini_map_id);
           if (miniMap) {
@@ -2711,7 +2718,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <Text style={styles.sectionTitle}>{activeMiniMap.name}</Text>
               {activeMiniMap.description ? <Text style={styles.copy}>{activeMiniMap.description}</Text> : null}
             </View>
-            <Pressable style={styles.secondaryButtonFlex} onPress={leaveMiniMap}>
+            <Pressable style={styles.secondaryButtonFlex} onPress={() => void leaveMiniMap()}>
               <Text style={styles.secondaryText}>Exit / Leave</Text>
             </Pressable>
           </View>
@@ -2774,18 +2781,17 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             {visibleMiniMapMarkers.map((marker) => (
               <Pressable
                 key={marker.id}
-                style={[styles.marker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, miniMapPlayerPosition)]}
+                style={[styles.marker, styles.miniMapMarker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, miniMapPlayerPosition, 36)]}
                 onPress={(event) => {
                   event.stopPropagation();
                   void selectMarker(marker);
                 }}
                 {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
               >
-                <MarkerIcon marker={marker} />
+                <MarkerIcon marker={marker} mini />
               </Pressable>
             ))}
           </View>
-          <Text style={styles.copy}>Only interactable mini-map markers within proximity are shown to players. Admins can see all mini-map markers.</Text>
         </Frame>
         <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
         {route.mini_map_id === activeMiniMap.id ? (
@@ -4086,7 +4092,7 @@ function canPlayerSeeMarker(marker: MapMarker, playerPosition: { x: number; y: n
   return getPercentDistance(playerPosition, { x: Number(marker.x_percent), y: Number(marker.y_percent) }) <= radius;
 }
 
-function getMarkerRenderStyle(marker: MapMarker, playerPosition: { x: number; y: number }) {
+function getMarkerRenderStyle(marker: MapMarker, playerPosition: { x: number; y: number }, markerSize = 48) {
   const markerPosition = { x: Number(marker.x_percent), y: Number(marker.y_percent) };
   const radius = Math.max(1, Number(marker.interaction_radius_percent ?? 4) || 4);
   const distance = getPercentDistance(playerPosition, markerPosition);
@@ -4097,7 +4103,7 @@ function getMarkerRenderStyle(marker: MapMarker, playerPosition: { x: number; y:
     left: `${markerPosition.x}%`,
     top: `${markerPosition.y}%`,
     zIndex,
-    transform: [{ translateX: -24 }, { translateY: -24 }, { scale }],
+    transform: [{ translateX: -(markerSize / 2) }, { translateY: -(markerSize / 2) }, { scale }],
   } as object;
 }
 
@@ -4723,17 +4729,20 @@ function BattleAbilityIcon({ ability }: { ability: AbilityDefinition }) {
 
 type MarkerIconSource = Pick<MapMarker, "type" | "icon_label" | "icon_image_url" | "icon_color">;
 
-function MarkerIcon({ marker, compact = false }: { marker: MarkerIconSource; compact?: boolean }) {
+function MarkerIcon({ marker, compact = false, mini = false }: { marker: MarkerIconSource; compact?: boolean; mini?: boolean }) {
   const iconUri = resolveMapImageUri(marker.icon_image_url);
   const iconText = (marker.icon_label?.trim() || getDefaultMarkerIconLabel(marker.type)).slice(0, 3).toUpperCase();
   const iconColor = marker.icon_color?.trim() || getDefaultMarkerIconColor(marker.type);
+  const iconStyle = mini ? styles.miniMapMarkerIcon : compact ? styles.legendIcon : styles.markerIcon;
+  const imageStyle = mini ? styles.miniMapMarkerIconImage : compact ? styles.legendIconImage : styles.markerIconImage;
+  const textStyle = mini ? styles.miniMapMarkerIconText : compact ? styles.legendIconText : styles.markerIconText;
 
   return (
-    <View style={[compact ? styles.legendIcon : styles.markerIcon, { borderColor: iconColor } as object]}>
+    <View style={[iconStyle, { borderColor: iconColor } as object]}>
       {iconUri ? (
-        <Image source={{ uri: iconUri }} style={compact ? styles.legendIconImage : styles.markerIconImage} />
+        <Image source={{ uri: iconUri }} style={imageStyle} />
       ) : (
-        <Text style={[compact ? styles.legendIconText : styles.markerIconText, { color: iconColor } as object]}>{iconText}</Text>
+        <Text style={[textStyle, { color: iconColor } as object]}>{iconText}</Text>
       )}
     </View>
   );
@@ -5693,6 +5702,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  miniMapMarker: {
+    width: 36,
+    height: 36,
+  },
   markerHidden: {
     opacity: 0.46,
     borderStyle: "dashed",
@@ -5727,6 +5740,27 @@ const styles = StyleSheet.create({
   },
   markerIconText: {
     fontSize: 11,
+    fontWeight: "900",
+  },
+  miniMapMarkerIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    backgroundColor: "rgba(4, 6, 6, 0.94)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    shadowColor: "#7fe7ff",
+    shadowOpacity: 0.42,
+    shadowRadius: 5,
+  },
+  miniMapMarkerIconImage: {
+    width: "100%",
+    height: "100%",
+  },
+  miniMapMarkerIconText: {
+    fontSize: 8,
     fontWeight: "900",
   },
   markerType: {
