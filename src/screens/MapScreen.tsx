@@ -314,6 +314,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [choiceRewardItemQuantity, setChoiceRewardItemQuantity] = useState("1");
   const [choiceSortOrder, setChoiceSortOrder] = useState("0");
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
+  const [selectedSeason, setSelectedSeason] = useState(1);
+  const [selectedChapter, setSelectedChapter] = useState(1);
   const [scale, setScale] = useState(0.86);
   const [followPlayer, setFollowPlayer] = useState(true);
   const [completedRouteId, setCompletedRouteId] = useState<string | null>(null);
@@ -336,16 +338,28 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   const progressPercent = Math.min(100, Math.max(0, (distanceWalked / route.distance_required_meters) * 100));
   const orderedRoutes = useMemo(() => [...routes].sort(compareRoutes), [routes]);
+  const adminRoutes = useMemo(() => orderedRoutes.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [orderedRoutes, selectedChapter, selectedSeason]);
   const routeProgressPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
   const playerPosition = savedPlayerPosition ?? routeProgressPosition;
   const miniMapPlayerPosition = { x: 50, y: 50 };
   const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
-  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? orderedRoutes : [route], route.id), [isAdmin, orderedRoutes, route]);
+  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminRoutes : [route], route.id), [adminRoutes, isAdmin, route]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [pathDraft]);
   const worldMarkers = useMemo(() => markers.filter((marker) => !marker.mini_map_id), [markers]);
   const miniMapMarkers = useMemo(() => markers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [markers, activeMiniMap?.id]);
+  const adminWorldMarkers = useMemo(() => worldMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, worldMarkers]);
+  const adminMiniMapMarkers = useMemo(() => miniMapMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMapMarkers, selectedChapter, selectedSeason]);
+  const adminMiniMaps = useMemo(() => miniMaps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMaps, selectedChapter, selectedSeason]);
+  const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
+  const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
+  const adminMapEvents = useMemo(() => mapEvents.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [mapEvents, selectedChapter, selectedSeason]);
+  const availableSeasons = useMemo(() => getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents].flat(), "season_number"), [legendItems, mapEvents, markers, miniMaps, routes, tutorialSteps]);
+  const availableChapters = useMemo(
+    () => getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents].flat().filter((item) => Number(item.season_number ?? 1) === selectedSeason), "chapter_number"),
+    [legendItems, mapEvents, markers, miniMaps, routes, selectedSeason, tutorialSteps],
+  );
   const visibleMarkers = isAdmin ? worldMarkers : worldMarkers.filter((marker) => canPlayerSeeMarker(marker, playerPosition));
-  const visibleMiniMapMarkers = isAdmin ? miniMapMarkers : miniMapMarkers.filter((marker) => canPlayerSeeMarker(marker, miniMapPlayerPosition));
+  const visibleMiniMapMarkers = isAdmin ? adminMiniMapMarkers : miniMapMarkers.filter((marker) => canPlayerSeeMarker(marker, miniMapPlayerPosition));
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedNodeChoices = useMemo(
@@ -831,10 +845,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         icon_color: markerIconColor.trim() || null,
         lock_type: markerLockType,
         lock_message: markerLockMessage.trim() || null,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
       });
       const configured = await updateMarkerSettings(created.id, getMarkerSettingsPayload());
       if (draftType === "Sign Post") {
-        const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds);
+        const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter);
         setMarkerRouteLinks(links);
       }
       setMarkers((current) => [...current, configured]);
@@ -879,6 +895,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       parent_marker_id: selectedMarker?.parent_marker_id ?? null,
       linked_route_id: isQuestMarkerType(draftType) ? markerLinkedRouteId : null,
       starts_route_on_accept: isQuestMarkerType(draftType) && markerStartsRouteOnAccept,
+      season_number: selectedSeason,
+      chapter_number: selectedChapter,
     };
   }
 
@@ -959,7 +977,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         : selectedMarker;
       const updated = await updateMarkerSettings(moved.id, getMarkerSettingsPayload());
       if (updated.type === "Sign Post") {
-        const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds);
+        const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter);
         setMarkerRouteLinks(links);
       }
       setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
@@ -986,6 +1004,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         stock_quantity: marketUnlimited ? null : Number(marketStock) || 0,
         unlimited_stock: marketUnlimited,
         listing_mode: marketListingMode,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
       });
       setMarkerMarketItems((current) => [saved, ...current.filter((item) => item.id !== saved.id && item.item_id !== saved.item_id)]);
       setAdminMessage("Market item saved.");
@@ -1040,6 +1060,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         icon_color: legendIconColor,
         sort_order: Number(legendSortOrder) || 0,
         is_active: legendActive,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
       });
       setLegendItems((current) => [saved, ...current.filter((item) => item.id !== saved.id)].sort((a, b) => a.sort_order - b.sort_order));
       clearLegendForm();
@@ -1340,6 +1362,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         background_image_url: miniMapBackground,
         description: miniMapDescription,
         is_active: miniMapActive,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
       });
       setMiniMaps((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
       setSelectedMiniMapId(saved.id);
@@ -1410,6 +1434,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         reward_item_quantity: Math.max(1, Number(tutorialRewardQuantity) || 1),
         sort_order: Number(tutorialSortOrder) || 0,
         is_active: tutorialActive,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
       });
       setTutorialSteps((current) => [saved, ...current.filter((item) => item.id !== saved.id)].sort((a, b) => a.sort_order - b.sort_order));
       clearTutorialForm();
@@ -1477,6 +1503,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         path_points: pathDraft,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
       });
       setRoute(updated);
       setRoutes((current) => current.map((item) => (item.id === updated.id ? updated : item)).sort(compareRoutes));
@@ -1504,6 +1532,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         is_active: true,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
       });
       setRoutes((current) => [...current, created].sort(compareRoutes));
       await selectRoute(created, true);
@@ -2206,6 +2236,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       reward_item: rewardItem.trim() || null,
       reward_item_id: rewardItemId,
       reward_item_quantity: Math.max(1, Number(rewardItemQuantity) || 1),
+      season_number: selectedSeason,
+      chapter_number: selectedChapter,
       is_active: true,
     };
 
@@ -2558,8 +2590,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             </Pressable>
             <View style={styles.routeList}>
               <Text style={styles.selectedTitle}>Mini Map Markers</Text>
-              {miniMapMarkers.length === 0 ? <Text style={styles.copy}>No markers created in this mini map yet.</Text> : null}
-              {miniMapMarkers.map((marker) => (
+              {adminMiniMapMarkers.length === 0 ? <Text style={styles.copy}>No markers created in this mini map yet.</Text> : null}
+              {adminMiniMapMarkers.map((marker) => (
                 <View key={marker.id} style={styles.markerTableRow}>
                   <View style={styles.markerTableInfo}>
                     <Text style={styles.markerName}>{marker.title}</Text>
@@ -2923,6 +2955,22 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         <Frame style={styles.panel}>
           <Text style={styles.sectionTitle}>Admin Map Editor</Text>
           <Text style={styles.copy}>Choose a mode, then click the map. All map content uses percentage coordinates, never pixels or GPS coordinates.</Text>
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Season / Chapter</Text>
+            <View style={styles.modeRow}>
+              {availableSeasons.map((season) => (
+                <Pressable key={season} style={[styles.routeChip, selectedSeason === season && styles.routeChipActive]} onPress={() => setSelectedSeason(season)}>
+                  <Text style={styles.routeChipText}>Season {season}</Text>
+                </Pressable>
+              ))}
+              {availableChapters.map((chapter) => (
+                <Pressable key={chapter} style={[styles.routeChip, selectedChapter === chapter && styles.routeChipActive]} onPress={() => setSelectedChapter(chapter)}>
+                  <Text style={styles.routeChipText}>Chapter {chapter}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.debugLine}>Showing records linked to Season {selectedSeason} / Chapter {selectedChapter}. Existing records default here.</Text>
+          </View>
           <View style={styles.adminSectionTabs}>
             {adminSections.map((section) => (
               <Pressable
@@ -2987,8 +3035,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 </Pressable>
               ) : null}
               <Text style={styles.selectedTitle}>Existing Legend Items</Text>
-              {legendItems.length === 0 ? <Text style={styles.copy}>No legend items yet.</Text> : null}
-              {legendItems.map((item) => (
+            {adminLegendItems.length === 0 ? <Text style={styles.copy}>No legend items yet.</Text> : null}
+              {adminLegendItems.map((item) => (
                 <View key={item.id} style={styles.storyCard}>
                   <View style={styles.legendPreviewRow}>
                     <MarkerIcon
@@ -3020,7 +3068,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           ) : null}
           {adminSection === "Walking Paths" ? <View style={styles.routeList}>
             <Text style={styles.selectedTitle}>Walking Path Order</Text>
-            {orderedRoutes.map((item) => (
+            {adminRoutes.map((item) => (
               <View key={item.id} style={[styles.routeRow, route.id === item.id && styles.routeRowActive]}>
                 <Text style={styles.routeNumber}>{item.sort_order}</Text>
                 <Pressable style={styles.routeRowText} onPress={() => void selectRoute(item, true)}>
@@ -3042,8 +3090,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </View> : null}
           {["World Markers", "Area/Town Markers", "Mini Maps"].includes(adminSection) ? <View style={styles.routeList}>
             <Text style={styles.selectedTitle}>Existing Markers</Text>
-            {getAdminSectionMarkers(adminSection, worldMarkers, miniMapMarkers).length === 0 ? <Text style={styles.copy}>No markers created yet.</Text> : null}
-            {getAdminSectionMarkers(adminSection, worldMarkers, miniMapMarkers).map((marker) => (
+            {getAdminSectionMarkers(adminSection, adminWorldMarkers, adminMiniMapMarkers).length === 0 ? <Text style={styles.copy}>No markers created yet.</Text> : null}
+            {getAdminSectionMarkers(adminSection, adminWorldMarkers, adminMiniMapMarkers).map((marker) => (
               <View key={marker.id} style={styles.markerTableRow}>
                 <View style={styles.markerTableInfo}>
                   <Text style={styles.markerName}>{marker.title}</Text>
@@ -3098,7 +3146,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               </Pressable>
               {editingMiniMapId ? <Pressable style={styles.secondaryButton} onPress={() => { setEditingMiniMapId(null); setMiniMapName(""); setMiniMapBackground(""); setMiniMapDescription(""); }}><Text style={styles.secondaryText}>Cancel Mini Map Edit</Text></Pressable> : null}
               <Text style={styles.selectedTitle}>Existing Mini Maps</Text>
-              {miniMaps.map((miniMap) => (
+              {adminMiniMaps.map((miniMap) => (
                 <View key={miniMap.id} style={styles.storyCard}>
                   <Text style={styles.markerName}>{miniMap.name}</Text>
                   <Text style={styles.copy}>{miniMap.type} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
@@ -3111,7 +3159,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               ))}
               <Text style={styles.selectedTitle}>Mini Map Marker Editor</Text>
               <Text style={styles.copy}>Select a mini map, click the map image above, then create markers inside that mini map.</Text>
-              <MiniMapPicker miniMaps={miniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} />
+              <MiniMapPicker miniMaps={adminMiniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} />
             </View>
           ) : null}
           {editorMode === "Marker" && ["World Markers", "Area/Town Markers", "Mini Maps"].includes(adminSection) ? (
@@ -3136,13 +3184,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
               <LockPicker label="Marker lock" value={markerLockType} onSelect={setMarkerLockType} />
               {markerLockType !== "public" ? <TextInput value={markerLockMessage} onChangeText={setMarkerLockMessage} placeholder="Lock message shown to players" placeholderTextColor={colors.muted} style={styles.input} /> : null}
-              {draftType === "Area/Town Entrance" ? <MiniMapPicker miniMaps={miniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} /> : null}
+              {draftType === "Area/Town Entrance" ? <MiniMapPicker miniMaps={adminMiniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} /> : null}
               {draftType === "Sign Post" ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
                   <Text style={styles.copy}>Players choose from these paths when they interact with this Sign Post.</Text>
                   <View style={styles.storyRoutePicker}>
-                    {orderedRoutes.map((item) => (
+                    {adminRoutes.map((item) => (
                       <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
                         <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
                       </Pressable>
@@ -3165,7 +3213,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Quest dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
                   <TextInput value={markerQuestImage} onChangeText={setMarkerQuestImage} placeholder="Quest image URL" placeholderTextColor={colors.muted} style={styles.input} />
                   <AdminImageUploadButton folder="quest-images" onUploaded={setMarkerQuestImage} onMessage={setAdminMessage} />
-                  <RoutePicker routes={routes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
+                  <RoutePicker routes={adminRoutes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
                   <Pressable style={[styles.secondaryButton, markerStartsRouteOnAccept && styles.typeSelected]} onPress={() => setMarkerStartsRouteOnAccept((value) => !value)}>
                     <Text style={styles.secondaryText}>Start Path On Accept: {markerStartsRouteOnAccept ? "Yes" : "No"}</Text>
                   </Pressable>
@@ -3262,9 +3310,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <TextInput value={tutorialDescription} onChangeText={setTutorialDescription} placeholder="Description / dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
               <TextInput value={tutorialImage} onChangeText={setTutorialImage} placeholder="Image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
               <AdminImageUploadButton folder="tutorials" onUploaded={setTutorialImage} onMessage={setAdminMessage} />
-              <MarkerPicker label="Linked marker optional" markers={worldMarkers} selectedId={tutorialMarkerId} onSelect={setTutorialMarkerId} />
-              <MiniMapPicker miniMaps={miniMaps} selectedId={tutorialMiniMapId} onSelect={setTutorialMiniMapId} />
-              <RoutePicker routes={orderedRoutes} selectedId={tutorialRouteId} onSelect={setTutorialRouteId} />
+              <MarkerPicker label="Linked marker optional" markers={adminWorldMarkers} selectedId={tutorialMarkerId} onSelect={setTutorialMarkerId} />
+              <MiniMapPicker miniMaps={adminMiniMaps} selectedId={tutorialMiniMapId} onSelect={setTutorialMiniMapId} />
+              <RoutePicker routes={adminRoutes} selectedId={tutorialRouteId} onSelect={setTutorialRouteId} />
               <TextInput value={tutorialRewardXp} onChangeText={setTutorialRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={tutorialRewardGold} onChangeText={setTutorialRewardGold} placeholder="Reward gold" placeholderTextColor={colors.muted} style={styles.input} />
               <ItemPicker label="Reward item" items={itemDefinitions} selectedId={tutorialRewardItemId} onSelect={setTutorialRewardItemId} />
@@ -3277,7 +3325,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <Text style={styles.primaryText}>{editingTutorialId ? "Update Tutorial Step" : "Create Tutorial Step"}</Text>
               </Pressable>
               {editingTutorialId ? <Pressable style={styles.secondaryButton} onPress={clearTutorialForm}><Text style={styles.secondaryText}>Cancel Tutorial Edit</Text></Pressable> : null}
-              {tutorialSteps.map((step) => (
+              {adminTutorialSteps.map((step) => (
                 <View key={step.id} style={styles.storyCard}>
                   <Text style={styles.markerName}>{step.sort_order}. {step.title}</Text>
                   <Text style={styles.copy}>{step.description || "No description."}</Text>
@@ -3293,7 +3341,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <Text style={styles.selectedTitle}>Dialogue / Event Builder on {route.name}</Text>
             <Text style={styles.copy}>Create dialogue, investigation, reward, or battle events for the selected trail. The distance marker is the route progress percent where the event opens for players.</Text>
             <View style={styles.storyRoutePicker}>
-              {orderedRoutes.map((item) => (
+              {adminRoutes.map((item) => (
                 <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item, true)}>
                   <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
                 </Pressable>
@@ -3358,7 +3406,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <Text style={styles.secondaryText}>Cancel Edit</Text>
               </Pressable>
             ) : null}
-            {mapEvents.map((event) => (
+            {adminMapEvents.map((event) => (
               <View key={event.id} style={styles.storyCard}>
                 <Text style={styles.markerName}>{event.distance_marker_percent}% - {event.title}</Text>
                 <Text style={styles.copy}>
@@ -3380,7 +3428,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <Text style={styles.selectedTitle}>Branching Dialogue Editor</Text>
               <Text style={styles.copy}>1. Select an event. 2. Add dialogue steps. 3. Select a step and add player choices under it.</Text>
               <View style={styles.storyRoutePicker}>
-                {mapEvents.filter((event) => event.event_type !== "battle").map((event) => (
+                {adminMapEvents.filter((event) => event.event_type !== "battle").map((event) => (
                   <Pressable
                     key={event.id}
                     style={[styles.routeChip, selectedDialogueEventId === event.id && styles.routeChipActive]}
@@ -3515,7 +3563,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               ) : null}
               {choiceAction === "start_battle" ? (
                 <View style={styles.storyRoutePicker}>
-                  {mapEvents.filter((event) => event.event_type === "battle").map((event) => (
+                  {adminMapEvents.filter((event) => event.event_type === "battle").map((event) => (
                     <Pressable key={event.id} style={[styles.routeChip, choiceBattleEventId === event.id && styles.routeChipActive]} onPress={() => setChoiceBattleEventId(event.id)}>
                       <Text style={styles.routeChipText}>{event.title}</Text>
                     </Pressable>
@@ -3863,6 +3911,21 @@ function getMarkerLockMessage(marker: MapMarker) {
   }
 
   return marker.lock_type === "quest_locked" ? "Continue the required quest to unlock this." : "Progress further in the story to unlock this.";
+}
+
+function isInSelectedChapter(item: { season_number?: number | null; chapter_number?: number | null }, seasonNumber: number, chapterNumber: number) {
+  return Number(item.season_number ?? 1) === seasonNumber && Number(item.chapter_number ?? 1) === chapterNumber;
+}
+
+function getAvailableNumbers(items: Array<{ season_number?: number | null; chapter_number?: number | null }>, key: "season_number" | "chapter_number") {
+  const values = new Set<number>([1]);
+  for (const item of items) {
+    const value = Number(item[key] ?? 1);
+    if (Number.isFinite(value) && value > 0) {
+      values.add(value);
+    }
+  }
+  return Array.from(values).sort((a, b) => a - b);
 }
 
 function upsertRouteProgressRow(rows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>, routeId: string, progressPercent: number) {

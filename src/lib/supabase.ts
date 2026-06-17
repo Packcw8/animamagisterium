@@ -203,6 +203,8 @@ export type Tables = {
     parent_marker_id: string | null;
     lock_type: "public" | "story_locked" | "quest_locked";
     lock_message: string | null;
+    season_number: number;
+    chapter_number: number;
     is_active: boolean;
     created_at: string;
     updated_at: string;
@@ -244,6 +246,8 @@ export type Tables = {
     reward_item: string | null;
     reward_item_id: string | null;
     reward_item_quantity: number;
+    season_number: number;
+    chapter_number: number;
     is_active: boolean;
     created_by: string | null;
     created_at: string;
@@ -341,6 +345,8 @@ export type Tables = {
     icon_color: string | null;
     lock_type: "public" | "story_locked" | "quest_locked";
     lock_message: string | null;
+    season_number: number;
+    chapter_number: number;
     created_by: string | null;
     created_at: string;
     updated_at: string;
@@ -355,6 +361,8 @@ export type Tables = {
     icon_color: string | null;
     sort_order: number;
     is_active: boolean;
+    season_number: number;
+    chapter_number: number;
     created_by: string | null;
     created_at: string;
     updated_at: string;
@@ -366,6 +374,8 @@ export type Tables = {
     sort_order: number;
     destination_label: string | null;
     starts_on_select: boolean;
+    season_number: number;
+    chapter_number: number;
     created_by: string | null;
     created_at: string;
     updated_at: string;
@@ -379,6 +389,8 @@ export type Tables = {
     stock_quantity: number | null;
     unlimited_stock: boolean;
     listing_mode: "buy_and_sell" | "buy_only" | "sell_only";
+    season_number: number;
+    chapter_number: number;
     created_at: string;
     updated_at: string;
   };
@@ -398,6 +410,8 @@ export type Tables = {
     background_image_url: string | null;
     description: string | null;
     is_active: boolean;
+    season_number: number;
+    chapter_number: number;
     created_by: string | null;
     created_at: string;
     updated_at: string;
@@ -416,6 +430,8 @@ export type Tables = {
     reward_item_quantity: number;
     sort_order: number;
     is_active: boolean;
+    season_number: number;
+    chapter_number: number;
     created_by: string | null;
     created_at: string;
     updated_at: string;

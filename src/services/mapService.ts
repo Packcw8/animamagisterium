@@ -38,6 +38,8 @@ export const fallbackRoute: MapRoute = {
   parent_marker_id: null,
   lock_type: "public",
   lock_message: null,
+  season_number: 1,
+  chapter_number: 1,
   is_active: true,
   created_at: new Date(0).toISOString(),
   updated_at: new Date(0).toISOString(),
@@ -150,6 +152,8 @@ export async function saveMarkerLegendItem(input: Partial<MarkerLegendItem>) {
     icon_color: input.icon_color?.trim() || null,
     sort_order: Number(input.sort_order) || 0,
     is_active: input.is_active ?? true,
+    season_number: Number(input.season_number) || 1,
+    chapter_number: Number(input.chapter_number) || 1,
     created_by: input.id ? input.created_by ?? user?.id ?? null : user?.id ?? null,
     updated_at: new Date().toISOString(),
   };
@@ -183,6 +187,8 @@ export async function saveMiniMap(input: Partial<MiniMap>) {
     background_image_url: input.background_image_url?.trim() || null,
     description: input.description?.trim() || null,
     is_active: input.is_active ?? true,
+    season_number: Number(input.season_number) || 1,
+    chapter_number: Number(input.chapter_number) || 1,
     created_by: input.id ? input.created_by ?? user?.id ?? null : user?.id ?? null,
     updated_at: new Date().toISOString(),
   };
@@ -234,6 +240,8 @@ export async function saveTutorialStep(input: Partial<TutorialStep>) {
     reward_item_quantity: Math.max(1, Number(input.reward_item_quantity) || 1),
     sort_order: Number(input.sort_order) || 0,
     is_active: input.is_active ?? true,
+    season_number: Number(input.season_number) || 1,
+    chapter_number: Number(input.chapter_number) || 1,
     created_by: input.id ? input.created_by ?? user?.id ?? null : user?.id ?? null,
     updated_at: new Date().toISOString(),
   };
@@ -397,7 +405,7 @@ export async function getMarkerRouteLinks(markerId: string) {
   return (data ?? []) as MarkerRouteLink[];
 }
 
-export async function saveMarkerRouteLinks(markerId: string, routeIds: string[]) {
+export async function saveMarkerRouteLinks(markerId: string, routeIds: string[], seasonNumber = 1, chapterNumber = 1) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -417,6 +425,8 @@ export async function saveMarkerRouteLinks(markerId: string, routeIds: string[])
     route_id: routeId,
     sort_order: index + 1,
     starts_on_select: true,
+    season_number: Number(seasonNumber) || 1,
+    chapter_number: Number(chapterNumber) || 1,
     created_by: user?.id ?? null,
     updated_at: new Date().toISOString(),
   }));
@@ -429,7 +439,7 @@ export async function saveMarkerRouteLinks(markerId: string, routeIds: string[])
   return (data ?? []) as MarkerRouteLink[];
 }
 
-export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key"> & Partial<Pick<MapMarker, "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "reward_timing">>) {
+export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key"> & Partial<Pick<MapMarker, "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "reward_timing" | "season_number" | "chapter_number">>) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -437,6 +447,8 @@ export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | 
     .from("map_markers")
     .insert({
       ...input,
+      season_number: Number(input.season_number) || 1,
+      chapter_number: Number(input.chapter_number) || 1,
       created_by: user?.id ?? null,
     })
     .select()
@@ -473,6 +485,8 @@ export async function saveMarkerMarketItem(input: Omit<MarkerMarketItem, "id" | 
     stock_quantity: input.unlimited_stock ? null : Math.max(0, Number(input.stock_quantity) || 0),
     unlimited_stock: Boolean(input.unlimited_stock),
     listing_mode: input.listing_mode ?? "buy_and_sell",
+    season_number: Number(input.season_number) || 1,
+    chapter_number: Number(input.chapter_number) || 1,
     updated_at: new Date().toISOString(),
   };
 
@@ -496,7 +510,7 @@ export async function deleteMarkerMarketItem(marketItemId: string) {
   }
 }
 
-export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message">) {
+export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number">) {
   const { data, error } = await supabase
     .from("map_routes")
     .insert({
@@ -513,7 +527,7 @@ export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order"
   return data as MapRoute;
 }
 
-export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message">>) {
+export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number">>) {
   const { data, error } = await supabase
     .from("map_routes")
     .update({
@@ -539,7 +553,7 @@ export async function deleteMapRoute(routeId: string) {
   }
 }
 
-export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "reward_timing">>) {
+export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "reward_timing" | "season_number" | "chapter_number">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({
@@ -557,7 +571,7 @@ export async function updateMapMarker(markerId: string, values: Partial<Pick<Map
   return data as MapMarker;
 }
 
-export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "reward_timing" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message">>) {
+export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "reward_timing" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "season_number" | "chapter_number">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({
