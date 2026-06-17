@@ -9,7 +9,7 @@ import { colors, fonts } from "../components/theme";
 import { pickAndUploadAdminImage } from "../services/adminImageService";
 import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
 import { AbilityDefinition, CharacterResources, clampHealth, getAbilityCostLabel, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
-import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
+import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, getNpcLoadout, getNpcs, NpcDefinition, NpcWithLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
 import { consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../services/inventoryService";
 import {
   completeMapEvent,
@@ -171,11 +171,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [battleLog, setBattleLog] = useState<string[]>([]);
   const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | null>(null);
   const [revivePromptOpen, setRevivePromptOpen] = useState(false);
-  const [activeEnemy, setActiveEnemy] = useState<EnemyWithLoadout | null>(null);
+  const [activeEnemy, setActiveEnemy] = useState<EnemyWithLoadout | NpcWithLoadout | null>(null);
   const [combatIndicators, setCombatIndicators] = useState<CombatIndicator[]>([]);
   const [combatResources, setCombatResources] = useState<CharacterResources>(() => getCharacterResources(character));
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
   const [enemyDefinitions, setEnemyDefinitions] = useState<EnemyDefinition[]>([]);
+  const [npcDefinitions, setNpcDefinitions] = useState<NpcDefinition[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
@@ -295,6 +296,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [eventBackgroundImage, setEventBackgroundImage] = useState("");
   const [eventNpcName, setEventNpcName] = useState("");
   const [eventNpcPortrait, setEventNpcPortrait] = useState("");
+  const [eventDialogueNpcId, setEventDialogueNpcId] = useState<string | null>(null);
   const [eventDialogue, setEventDialogue] = useState("");
   const [eventChoices, setEventChoices] = useState("Continue|Continue\nInvestigate|Investigate\nStart Battle|Start Battle");
   const [enemyName, setEnemyName] = useState("");
@@ -302,6 +304,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [enemyHp, setEnemyHp] = useState("30");
   const [enemyAttack, setEnemyAttack] = useState("5");
   const [eventEnemyId, setEventEnemyId] = useState<string | null>(null);
+  const [eventNpcId, setEventNpcId] = useState<string | null>(null);
   const [battleIntro, setBattleIntro] = useState("");
   const [victoryText, setVictoryText] = useState("");
   const [defeatText, setDefeatText] = useState("");
@@ -316,6 +319,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [nodeTitle, setNodeTitle] = useState("");
   const [nodeKey, setNodeKey] = useState("");
   const [nodeNpcName, setNodeNpcName] = useState("");
+  const [nodeNpcId, setNodeNpcId] = useState<string | null>(null);
   const [nodeNpcPortrait, setNodeNpcPortrait] = useState("");
   const [nodeBackgroundImage, setNodeBackgroundImage] = useState("");
   const [nodeDialogue, setNodeDialogue] = useState("");
@@ -452,9 +456,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function loadEnemies() {
     try {
-      setEnemyDefinitions(await getEnemies());
+      const [enemies, npcs] = await Promise.all([getEnemies(), getNpcs()]);
+      setEnemyDefinitions(enemies);
+      setNpcDefinitions(npcs);
     } catch (error) {
-      setAdminMessage(getErrorMessage(error, "Unable to load enemies."));
+      setAdminMessage(getErrorMessage(error, "Unable to load enemies and NPCs."));
     }
   }
 
@@ -1796,6 +1802,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   async function startBattle(event: MapEvent) {
     try {
       const enemy = event.enemy_id ? await getEnemyLoadout(event.enemy_id) : null;
+      const npcEnemy = !enemy && event.npc_id ? await getNpcLoadout(event.npc_id) : null;
+      const opponent = enemy ?? npcEnemy;
 
       if (event.enemy_id && !enemy) {
         setAdminMessage("Battle enemy could not be loaded from Enemy Admin. Check the selected enemy.");
@@ -1803,22 +1811,28 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         return;
       }
 
-      const enemyImage = resolveEnemyImageUri(enemy?.image_url ?? event.enemy_image_url);
+      if (event.npc_id && !npcEnemy) {
+        setAdminMessage("Battle NPC could not be loaded from NPC Admin. Check the selected NPC.");
+        setBattleLog(["Battle NPC could not be loaded from NPC Admin. Check the selected NPC."]);
+        return;
+      }
+
+      const enemyImage = resolveEnemyImageUri(opponent?.image_url ?? event.enemy_image_url);
       setActiveEvent(null);
       setActiveBattle(event);
-      setActiveEnemy(enemy);
+      setActiveEnemy(opponent);
       setCombatIndicators([]);
       setBattlePlayerHp(currentHealth);
       setBattleStamina(combatResources.maxStamina);
       setBattleMagicka(combatResources.maxMagicka);
-      setBattleEnemyHp(Number(enemy?.health ?? event.enemy_hp) || 30);
-      setBattleEnemyStamina(Number(enemy?.stamina ?? 0) || 0);
-      setBattleEnemyMagika(Number(enemy?.magika ?? 0) || 0);
+      setBattleEnemyHp(Number(opponent?.health ?? event.enemy_hp) || 30);
+      setBattleEnemyStamina(Number(opponent?.stamina ?? 0) || 0);
+      setBattleEnemyMagika(Number(opponent?.magika ?? 0) || 0);
       setBattleFinished(null);
       setRevivePromptOpen(false);
       setBattleLog([
-        event.battle_intro_text || `${enemy?.name || event.enemy_name || "An enemy"} blocks the trail.`,
-        enemy?.id ? `Loaded ${enemy.abilities.length} enemy abilities and ${enemy.drops.length} drop entries from Enemy Admin.` : "Using manual battle enemy data.",
+        event.battle_intro_text || `${opponent?.name || event.enemy_name || "An enemy"} blocks the trail.`,
+        opponent?.id ? `Loaded ${opponent.abilities.length} abilities and ${opponent.drops.length} drop entries from Admin.` : "Using manual battle enemy data.",
         enemyImage ? "Enemy image ready." : "Enemy image missing. A placeholder will be shown.",
       ]);
     } catch (error) {
@@ -2349,6 +2363,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setEventBackgroundImage(event.background_image_url ?? "");
     setEventNpcName(event.npc_name ?? "");
     setEventNpcPortrait(event.npc_portrait_url ?? "");
+    setEventDialogueNpcId(event.dialogue_npc_id ?? null);
     setEventDialogue(event.dialogue_text ?? "");
     setEventChoices(event.choices.map((choice) => `${choice.label}|${choice.action}`).join("\n"));
     setEnemyName(event.enemy_name ?? "");
@@ -2356,6 +2371,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setEnemyHp(String(event.enemy_hp));
     setEnemyAttack(String(event.enemy_attack_damage));
     setEventEnemyId(event.enemy_id ?? null);
+    setEventNpcId(event.npc_id ?? null);
     setBattleIntro(event.battle_intro_text ?? "");
     setVictoryText(event.victory_text ?? "");
     setDefeatText(event.defeat_text ?? "");
@@ -2368,6 +2384,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   function selectEventEnemy(enemyId: string | null) {
     setEventEnemyId(enemyId);
+    if (enemyId) {
+      setEventNpcId(null);
+    }
 
     if (!enemyId) {
       return;
@@ -2388,6 +2407,45 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setRewardGold((current) => current === "0" ? String(enemy.gold_reward ?? 0) : current);
   }
 
+  function selectEventBattleNpc(npcId: string | null) {
+    setEventNpcId(npcId);
+    if (npcId) {
+      setEventEnemyId(null);
+    }
+
+    if (!npcId) {
+      return;
+    }
+
+    const npc = npcDefinitions.find((entry) => entry.id === npcId);
+
+    if (!npc) {
+      return;
+    }
+
+    setEnemyName(npc.name);
+    setEnemyImage(npc.image_url ?? "");
+    setEnemyHp(String(npc.health));
+    setEnemyAttack("0");
+    setBattleIntro((current) => current || `${npc.name} blocks the trail.`);
+    setRewardXp((current) => current === "0" ? String(npc.xp_reward ?? 0) : current);
+    setRewardGold((current) => current === "0" ? String(npc.gold_reward ?? 0) : current);
+  }
+
+  function selectEventDialogueNpc(npcId: string | null) {
+    setEventDialogueNpcId(npcId);
+    const npc = npcDefinitions.find((entry) => entry.id === npcId);
+    setEventNpcName(npc?.name ?? "");
+    setEventNpcPortrait(npc?.image_url ?? "");
+  }
+
+  function selectNodeDialogueNpc(npcId: string | null) {
+    setNodeNpcId(npcId);
+    const npc = npcDefinitions.find((entry) => entry.id === npcId);
+    setNodeNpcName(npc?.name ?? "");
+    setNodeNpcPortrait(npc?.image_url ?? "");
+  }
+
   function clearEventForm() {
     setEditingEvent(null);
     setEventType("dialogue");
@@ -2398,6 +2456,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setEventBackgroundImage("");
     setEventNpcName("");
     setEventNpcPortrait("");
+    setEventDialogueNpcId(null);
     setEventDialogue("");
     setEventChoices("Continue|Continue\nInvestigate|Investigate\nStart Battle|Start Battle");
     setEnemyName("");
@@ -2405,6 +2464,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setEnemyHp("30");
     setEnemyAttack("5");
     setEventEnemyId(null);
+    setEventNpcId(null);
     setBattleIntro("");
     setVictoryText("");
     setDefeatText("");
@@ -2431,6 +2491,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       background_image_url: eventBackgroundImage.trim() || null,
       npc_name: eventNpcName.trim() || null,
       npc_portrait_url: eventNpcPortrait.trim() || null,
+      dialogue_npc_id: eventDialogueNpcId,
+      npc_id: eventNpcId,
       dialogue_text: eventDialogue.trim() || null,
       choices: parseChoices(eventChoices),
       enemy_name: enemyName.trim() || null,
@@ -2482,6 +2544,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setNodeTitle(node.title);
     setNodeKey(node.node_key);
     setNodeNpcName(node.npc_name ?? "");
+    setNodeNpcId(node.npc_id ?? null);
     setNodeNpcPortrait(node.npc_portrait_url ?? "");
     setNodeBackgroundImage(node.background_image_url ?? "");
     setNodeDialogue(node.dialogue_text);
@@ -2503,6 +2566,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setNodeTitle("");
     setNodeKey("");
     setNodeNpcName("");
+    setNodeNpcId(null);
     setNodeNpcPortrait("");
     setNodeBackgroundImage("");
     setNodeDialogue("");
@@ -2524,6 +2588,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         node_key: nodeKey.trim() || nodeTitle.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-"),
         title: nodeTitle.trim(),
         npc_name: nodeNpcName.trim() || null,
+        npc_id: nodeNpcId,
         npc_portrait_url: nodeNpcPortrait.trim() || null,
         background_image_url: nodeBackgroundImage.trim() || null,
         dialogue_text: nodeDialogue.trim(),
@@ -2666,6 +2731,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         event={activeEvent}
         nodes={dialogueNodes}
         choices={dialogueChoices}
+        npcs={npcDefinitions}
         activeNodeId={activeNodeId}
         dialogueLog={dialogueLog}
         onLegacyChoice={handleStoryChoice}
@@ -3086,6 +3152,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   ) : null}
                   {eventType !== "battle" ? (
                     <>
+                      <NpcPicker label="Reuse NPC for this dialogue/event" npcs={npcDefinitions} selectedId={eventDialogueNpcId} onSelect={selectEventDialogueNpc} />
                       <TextInput value={eventBackgroundImage} onChangeText={setEventBackgroundImage} placeholder="Background image URL" placeholderTextColor={colors.muted} style={styles.input} />
                       <AdminImageUploadButton folder="event-backgrounds" onUploaded={setEventBackgroundImage} onMessage={setAdminMessage} />
                       <TextInput value={eventNpcName} onChangeText={setEventNpcName} placeholder="NPC name optional" placeholderTextColor={colors.muted} style={styles.input} />
@@ -3097,7 +3164,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                     <>
                       <Text style={styles.selectedTitle}>Enemy From Admin</Text>
                       <EnemyPicker enemies={enemyDefinitions} selectedId={eventEnemyId} onSelect={selectEventEnemy} />
-                      {eventEnemyId ? (
+                      <NpcPicker label="Or select a battle-capable NPC" npcs={npcDefinitions} selectedId={eventNpcId} onSelect={selectEventBattleNpc} battleOnly />
+                      {eventNpcId ? (
+                        <View style={styles.storyCard}>
+                          <Text style={styles.markerName}>{getNpcName(npcDefinitions, eventNpcId)}</Text>
+                          <Text style={styles.copy}>This battle will use the selected NPC's battle stats, abilities, rewards, and drops.</Text>
+                        </View>
+                      ) : eventEnemyId ? (
                         <View style={styles.storyCard}>
                           <Text style={styles.markerName}>{getEnemyName(enemyDefinitions, eventEnemyId)}</Text>
                           <Text style={styles.copy}>This battle will use the selected admin enemy's stats, abilities, rewards, and drops.</Text>
@@ -3135,7 +3208,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   {adminMapEvents.map((event) => (
                     <View key={event.id} style={styles.storyCard}>
                       <Text style={styles.markerName}>{event.distance_marker_percent}% - {event.title}</Text>
-                      <Text style={styles.copy}>{eventTriggerModeName(event)} / {eventTypeName(event.event_type)}</Text>
+                      <Text style={styles.copy}>{eventTriggerModeName(event)} / {event.event_type === "battle" && event.npc_id ? getNpcName(npcDefinitions, event.npc_id) : eventTypeName(event.event_type)}</Text>
                       <View style={styles.modeRow}>
                         <Pressable style={styles.secondaryButtonFlex} onPress={() => editMapEvent(event)}>
                           <Text style={styles.secondaryText}>Edit</Text>
@@ -3859,6 +3932,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             ) : null}
             {eventType !== "battle" ? (
               <>
+                <NpcPicker label="Reuse NPC for this dialogue/event" npcs={npcDefinitions} selectedId={eventDialogueNpcId} onSelect={selectEventDialogueNpc} />
                 <TextInput value={eventBackgroundImage} onChangeText={setEventBackgroundImage} placeholder="Background image URL" placeholderTextColor={colors.muted} style={styles.input} />
                 <AdminImageUploadButton folder="event-backgrounds" onUploaded={setEventBackgroundImage} onMessage={setAdminMessage} />
                 <TextInput value={eventNpcName} onChangeText={setEventNpcName} placeholder="NPC name optional" placeholderTextColor={colors.muted} style={styles.input} />
@@ -3870,7 +3944,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <>
                 <Text style={styles.selectedTitle}>Enemy From Admin</Text>
                 <EnemyPicker enemies={enemyDefinitions} selectedId={eventEnemyId} onSelect={selectEventEnemy} />
-                {eventEnemyId ? (
+                <NpcPicker label="Or select a battle-capable NPC" npcs={npcDefinitions} selectedId={eventNpcId} onSelect={selectEventBattleNpc} battleOnly />
+                {eventNpcId ? (
+                  <View style={styles.storyCard}>
+                    <Text style={styles.markerName}>{getNpcName(npcDefinitions, eventNpcId)}</Text>
+                    <Text style={styles.copy}>This battle will use the selected NPC's battle stats, abilities, rewards, and drops.</Text>
+                  </View>
+                ) : eventEnemyId ? (
                   <View style={styles.storyCard}>
                     <Text style={styles.markerName}>{getEnemyName(enemyDefinitions, eventEnemyId)}</Text>
                     <Text style={styles.copy}>This battle will use the selected admin enemy's stats, resources, abilities, rewards, and drops.</Text>
@@ -3913,7 +3993,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <Text style={styles.debugLine}>{eventTriggerModeName(event)}</Text>
                 <Text style={styles.copy}>
                   {event.event_type === "battle"
-                    ? `${event.enemy_id ? getEnemyName(enemyDefinitions, event.enemy_id) : event.enemy_name || "Enemy"} - ${event.enemy_id ? "Admin Enemy" : `HP ${event.enemy_hp}`}`
+                    ? `${event.npc_id ? getNpcName(npcDefinitions, event.npc_id) : event.enemy_id ? getEnemyName(enemyDefinitions, event.enemy_id) : event.enemy_name || "Enemy"} - ${event.npc_id ? "Admin NPC" : event.enemy_id ? "Admin Enemy" : `HP ${event.enemy_hp}`}`
                     : `${eventTypeName(event.event_type)} - ${event.dialogue_text || "Add dialogue steps below."}`}
                 </Text>
                 <View style={styles.modeRow}>
@@ -3985,6 +4065,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               ) : null}
               <TextInput value={nodeTitle} onChangeText={setNodeTitle} placeholder="Dialogue step title / internal label" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeKey} onChangeText={setNodeKey} placeholder="Optional node key" placeholderTextColor={colors.muted} style={styles.input} />
+              <NpcPicker label="Reuse NPC for this dialogue step" npcs={npcDefinitions} selectedId={nodeNpcId} onSelect={selectNodeDialogueNpc} />
               <TextInput value={nodeNpcName} onChangeText={setNodeNpcName} placeholder="NPC name" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={nodeNpcPortrait} onChangeText={setNodeNpcPortrait} placeholder="NPC portrait URL optional" placeholderTextColor={colors.muted} style={styles.input} />
               <AdminImageUploadButton folder="dialogue-npcs" onUploaded={setNodeNpcPortrait} onMessage={setAdminMessage} />
@@ -4195,7 +4276,7 @@ function getPercentDistance(a: { x: number; y: number }, b: { x: number; y: numb
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
-function chooseWeightedEnemyAbility(enemy: EnemyWithLoadout | null, stamina: number, magika: number) {
+function chooseWeightedEnemyAbility(enemy: EnemyWithLoadout | NpcWithLoadout | null, stamina: number, magika: number) {
   const valid = (enemy?.abilities ?? []).filter((row) => row.ability && row.ability.is_active && row.ability.stamina_cost <= stamina && row.ability.magika_cost <= magika);
   const totalWeight = valid.reduce((sum, row) => sum + Math.max(1, Number(row.use_weight) || 1), 0);
 
@@ -4634,6 +4715,7 @@ function StoryInstanceScreen({
   event,
   nodes,
   choices,
+  npcs,
   activeNodeId,
   dialogueLog,
   onLegacyChoice,
@@ -4643,6 +4725,7 @@ function StoryInstanceScreen({
   event: MapEvent;
   nodes: StoryDialogueNode[];
   choices: StoryDialogueChoice[];
+  npcs: NpcDefinition[];
   activeNodeId: string | null;
   dialogueLog: string[];
   onLegacyChoice: (action: MapEvent["choices"][number]["action"]) => void;
@@ -4652,14 +4735,18 @@ function StoryInstanceScreen({
   const activeNode = nodes.find((node) => node.id === activeNodeId) ?? nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
   const nodeChoices = activeNode ? choices.filter((choice) => choice.node_id === activeNode.id) : [];
   const legacyChoices = event.choices.length > 0 ? event.choices : [{ label: "Return to Map", action: "Continue" as const }];
+  const nodeNpc = npcs.find((npc) => npc.id === activeNode?.npc_id);
+  const eventNpc = npcs.find((npc) => npc.id === event.dialogue_npc_id);
+  const npcName = nodeNpc?.name ?? activeNode?.npc_name ?? eventNpc?.name ?? event.npc_name;
+  const npcPortrait = nodeNpc?.image_url ?? activeNode?.npc_portrait_url ?? eventNpc?.image_url ?? event.npc_portrait_url;
 
   return (
     <Screen>
       <Frame style={styles.eventScreen}>
         {(activeNode?.background_image_url ?? event.background_image_url) ? <Image source={{ uri: activeNode?.background_image_url ?? event.background_image_url ?? "" }} style={styles.eventImage} /> : <View style={styles.eventImagePlaceholder} />}
-        {(activeNode?.npc_portrait_url ?? event.npc_portrait_url) ? <Image source={{ uri: activeNode?.npc_portrait_url ?? event.npc_portrait_url ?? "" }} style={styles.npcPortrait} /> : null}
+        {npcPortrait ? <Image source={{ uri: resolveEnemyImageUri(npcPortrait) ?? npcPortrait }} style={styles.npcPortrait} /> : null}
         <Text style={styles.sectionTitle}>{event.title}</Text>
-        {(activeNode?.npc_name ?? event.npc_name) ? <Text style={styles.selectedTitle}>{activeNode?.npc_name ?? event.npc_name}</Text> : null}
+        {npcName ? <Text style={styles.selectedTitle}>{npcName}</Text> : null}
         <Text style={styles.dialogueText}>{activeNode?.dialogue_text || event.dialogue_text || "The trail grows quiet."}</Text>
         {dialogueLog.map((line, index) => (
           <Text key={`${line}-${index}`} style={styles.copy}>{line}</Text>
@@ -4726,7 +4813,7 @@ function BattleEventScreen({
   magicka: number;
   resources: CharacterResources;
   enemyHp: number;
-  activeEnemy: EnemyWithLoadout | null;
+  activeEnemy: EnemyWithLoadout | NpcWithLoadout | null;
   equippedAbilities: Array<AbilityDefinition | null>;
   weapon: ItemDefinition | null;
   battleItems: InventoryItem[];
@@ -5633,6 +5720,25 @@ function EnemyPicker({ enemies, selectedId, onSelect }: { enemies: EnemyDefiniti
   );
 }
 
+function NpcPicker({ label, npcs, selectedId, onSelect, battleOnly = false }: { label: string; npcs: NpcDefinition[]; selectedId: string | null; onSelect: (id: string | null) => void; battleOnly?: boolean }) {
+  const options = battleOnly ? npcs.filter((npc) => npc.can_battle) : npcs;
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.copy}>{label}</Text>
+      <View style={styles.storyRoutePicker}>
+        <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
+          <Text style={styles.routeChipText}>None</Text>
+        </Pressable>
+        {options.map((npc) => (
+          <Pressable key={npc.id} style={[styles.routeChip, selectedId === npc.id && styles.routeChipActive]} onPress={() => onSelect(npc.id)}>
+            <Text style={styles.routeChipText}>{npc.name}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function getItemName(items: ItemDefinition[], itemId: string | null) {
   return items.find((item) => item.id === itemId)?.name ?? "Unknown Item";
 }
@@ -5649,6 +5755,10 @@ function formatMarketListingMode(mode: MarkerMarketItem["listing_mode"] | null |
 
 function getEnemyName(enemies: EnemyDefinition[], enemyId: string | null) {
   return enemies.find((enemy) => enemy.id === enemyId)?.name ?? "Unknown Enemy";
+}
+
+function getNpcName(npcs: NpcDefinition[], npcId: string | null) {
+  return npcs.find((npc) => npc.id === npcId)?.name ?? "Unknown NPC";
 }
 
 function getRouteName(routes: MapRoute[], routeId: string) {

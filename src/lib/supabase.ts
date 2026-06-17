@@ -252,6 +252,8 @@ export type Tables = {
     background_image_url: string | null;
     npc_name: string | null;
     npc_portrait_url: string | null;
+    dialogue_npc_id: string | null;
+    npc_id: string | null;
     dialogue_text: string | null;
     choices: Array<{ label: string; action: "Continue" | "Investigate" | "Ask Questions" | "Start Battle" | "Complete Event"; battle_event_id?: string | null }>;
     enemy_name: string | null;
@@ -288,6 +290,7 @@ export type Tables = {
     node_key: string;
     title: string;
     npc_name: string | null;
+    npc_id: string | null;
     npc_portrait_url: string | null;
     background_image_url: string | null;
     dialogue_text: string;
@@ -527,6 +530,49 @@ export type Tables = {
   enemy_item_drops: {
     id: string;
     enemy_id: string;
+    item_id: string;
+    quantity: number;
+    drop_chance: number;
+    created_at: string;
+    updated_at: string;
+  };
+  npc_definitions: {
+    id: string;
+    name: string;
+    type: string | null;
+    description: string | null;
+    image_url: string | null;
+    can_battle: boolean;
+    health: number;
+    stamina: number;
+    magika: number;
+    strength: number;
+    endurance: number;
+    agility: number;
+    intelligence: number;
+    wisdom: number;
+    charisma: number;
+    spirit: number;
+    defense: number;
+    armor_rating: number;
+    xp_reward: number;
+    gold_reward: number;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  npc_abilities: {
+    id: string;
+    npc_id: string;
+    ability_id: string;
+    use_weight: number;
+    created_at: string;
+    updated_at: string;
+  };
+  npc_item_drops: {
+    id: string;
+    npc_id: string;
     item_id: string;
     quantity: number;
     drop_chance: number;

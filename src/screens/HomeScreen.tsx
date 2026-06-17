@@ -11,18 +11,27 @@ import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, g
 import {
   blankCombatAbility,
   blankEnemy,
+  blankNpc,
   combatAbilityTypes,
   CombatAbility,
   deleteCombatAbility,
   deleteEnemy,
   deleteEnemyAbility,
   deleteEnemyDrop,
+  deleteNpc,
+  deleteNpcAbility,
+  deleteNpcDrop,
   EnemyAbility,
   EnemyDefinition,
   EnemyItemDrop,
+  NpcAbility,
+  NpcDefinition,
+  NpcItemDrop,
   getCombatAbilities,
   getEnemyLoadout,
   getEnemies,
+  getNpcLoadout,
+  getNpcs,
   learnMethods,
   linkedStats,
   requiredAttributes,
@@ -31,6 +40,9 @@ import {
   saveEnemy,
   saveEnemyAbility,
   saveEnemyDrop,
+  saveNpc,
+  saveNpcAbility,
+  saveNpcDrop,
   statusEffects,
   usageContexts as abilityUsageContexts,
 } from "../services/combatAdminService";
@@ -75,7 +87,7 @@ const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Abiliti
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 const inventoryCategoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
-const adminToolTabs = ["Items", "Abilities", "Enemies"] as const;
+const adminToolTabs = ["Items", "Abilities", "Enemies", "NPCs"] as const;
 
 export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
   const [activeTab, setActiveTab] = useState<(typeof homeTabs)[number]>("Overview");
@@ -95,11 +107,21 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
   const [editingEnemyId, setEditingEnemyId] = useState<string | null>(null);
   const [enemyAbilities, setEnemyAbilities] = useState<EnemyAbility[]>([]);
   const [enemyDrops, setEnemyDrops] = useState<EnemyItemDrop[]>([]);
+  const [npcs, setNpcs] = useState<NpcDefinition[]>([]);
+  const [npcForm, setNpcForm] = useState<Partial<NpcDefinition>>(blankNpc());
+  const [editingNpcId, setEditingNpcId] = useState<string | null>(null);
+  const [npcAbilities, setNpcAbilities] = useState<NpcAbility[]>([]);
+  const [npcDrops, setNpcDrops] = useState<NpcItemDrop[]>([]);
   const [selectedEnemyAbilityId, setSelectedEnemyAbilityId] = useState<string | null>(null);
   const [enemyAbilityWeight, setEnemyAbilityWeight] = useState("1");
   const [selectedDropItemId, setSelectedDropItemId] = useState<string | null>(null);
   const [dropQuantity, setDropQuantity] = useState("1");
   const [dropChance, setDropChance] = useState("100");
+  const [selectedNpcAbilityId, setSelectedNpcAbilityId] = useState<string | null>(null);
+  const [npcAbilityWeight, setNpcAbilityWeight] = useState("1");
+  const [selectedNpcDropItemId, setSelectedNpcDropItemId] = useState<string | null>(null);
+  const [npcDropQuantity, setNpcDropQuantity] = useState("1");
+  const [npcDropChance, setNpcDropChance] = useState("100");
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [inventoryCategory, setInventoryCategory] = useState<(typeof inventoryCategoryTabs)[number]>("Weapons");
@@ -153,9 +175,10 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
 
   async function loadAdminCombat() {
     try {
-      const [abilities, enemyRows] = await Promise.all([getCombatAbilities(), getEnemies()]);
+      const [abilities, enemyRows, npcRows] = await Promise.all([getCombatAbilities(), getEnemies(), getNpcs()]);
       setAdminAbilities(abilities);
       setEnemies(enemyRows);
+      setNpcs(npcRows);
     } catch (error) {
       setAbilityMessage(error instanceof Error ? error.message : "Unable to load admin combat data.");
     }
@@ -165,6 +188,12 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
     const loadout = await getEnemyLoadout(enemyId);
     setEnemyAbilities(loadout?.abilities ?? []);
     setEnemyDrops(loadout?.drops ?? []);
+  }
+
+  async function loadNpcDetails(npcId: string) {
+    const loadout = await getNpcLoadout(npcId);
+    setNpcAbilities(loadout?.abilities ?? []);
+    setNpcDrops(loadout?.drops ?? []);
   }
 
   async function saveAdminAbility() {
@@ -254,6 +283,67 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
       setAbilityMessage("Enemy drop saved.");
     } catch (error) {
       setAbilityMessage(error instanceof Error ? error.message : "Unable to save enemy drop.");
+    }
+  }
+
+  async function saveNpcDefinition() {
+    try {
+      const saved = await saveNpc({ ...npcForm, id: editingNpcId ?? undefined });
+      setAbilityMessage(`${saved.name} saved.`);
+      setNpcForm(saved);
+      setEditingNpcId(saved.id);
+      await loadAdminCombat();
+      await loadNpcDetails(saved.id);
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to save NPC.");
+    }
+  }
+
+  async function editNpc(npc: NpcDefinition) {
+    setEditingNpcId(npc.id);
+    setNpcForm(npc);
+    await loadNpcDetails(npc.id);
+  }
+
+  async function removeNpc(id: string) {
+    try {
+      await deleteNpc(id);
+      setAbilityMessage("NPC deleted.");
+      setEditingNpcId(null);
+      setNpcForm(blankNpc());
+      setNpcAbilities([]);
+      setNpcDrops([]);
+      await loadAdminCombat();
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to delete NPC.");
+    }
+  }
+
+  async function addNpcAbility() {
+    if (!editingNpcId || !selectedNpcAbilityId) {
+      setAbilityMessage("Save/select an NPC and ability first.");
+      return;
+    }
+    try {
+      await saveNpcAbility(editingNpcId, selectedNpcAbilityId, Number(npcAbilityWeight) || 1);
+      await loadNpcDetails(editingNpcId);
+      setAbilityMessage("NPC ability saved.");
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to save NPC ability.");
+    }
+  }
+
+  async function addNpcDrop() {
+    if (!editingNpcId || !selectedNpcDropItemId) {
+      setAbilityMessage("Save/select an NPC and item first.");
+      return;
+    }
+    try {
+      await saveNpcDrop(editingNpcId, selectedNpcDropItemId, Number(npcDropQuantity) || 1, Number(npcDropChance) || 0);
+      await loadNpcDetails(editingNpcId);
+      setAbilityMessage("NPC drop saved.");
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to save NPC drop.");
     }
   }
 
@@ -801,6 +891,84 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                     <View style={styles.slotActions}>
                       <Pressable style={styles.smallButton} onPress={() => void editEnemy(enemy)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
                       <Pressable style={styles.smallButton} onPress={() => void removeEnemy(enemy.id)}><Text style={styles.smallButtonText}>Delete</Text></Pressable>
+                    </View>
+                  </View>
+                ))}
+                  </>
+                ) : null}
+                {adminToolTab === "NPCs" ? (
+                  <>
+                <Text style={styles.sectionTitle}>NPC Admin</Text>
+                <Text style={styles.muted}>Create reusable characters for dialogue. Turn on Battle Capable when this NPC can also be selected for battles.</Text>
+                <ItemText label="Name" value={npcForm.name ?? ""} onChange={(value) => setNpcForm((current) => ({ ...current, name: value }))} />
+                <ItemText label="Type / Role" value={npcForm.type ?? ""} onChange={(value) => setNpcForm((current) => ({ ...current, type: value }))} />
+                <ItemText label="Description" value={npcForm.description ?? ""} onChange={(value) => setNpcForm((current) => ({ ...current, description: value }))} />
+                <ItemText label="Image URL/path" value={npcForm.image_url ?? ""} onChange={(value) => setNpcForm((current) => ({ ...current, image_url: value }))} />
+                <AdminImageUploadButton folder="npcs" onUploaded={(url) => setNpcForm((current) => ({ ...current, image_url: url }))} onMessage={setAbilityMessage} />
+                <AssetPreview label="NPC image preview" uri={resolveEnemyImageUri(npcForm.image_url)} />
+                <ToggleRow label="Battle Capable" value={npcForm.can_battle ?? false} onPress={() => setNpcForm((current) => ({ ...current, can_battle: !current.can_battle }))} />
+                <View style={styles.slotActions}>
+                  <ItemText label="Health" value={String(npcForm.health ?? 20)} onChange={(value) => setNpcForm((current) => ({ ...current, health: Number(value) || 20 }))} />
+                  <ItemText label="Stamina" value={String(npcForm.stamina ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, stamina: Number(value) || 0 }))} />
+                  <ItemText label="Magika" value={String(npcForm.magika ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, magika: Number(value) || 0 }))} />
+                </View>
+                {attributeKeys.map((key) => (
+                  <ItemText key={key} label={key} value={String(npcForm[key] ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, [key]: Number(value) || 0 }))} />
+                ))}
+                <View style={styles.slotActions}>
+                  <ItemText label="Defense" value={String(npcForm.defense ?? 10)} onChange={(value) => setNpcForm((current) => ({ ...current, defense: Number(value) || 10 }))} />
+                  <ItemText label="Armor Rating" value={String(npcForm.armor_rating ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, armor_rating: Number(value) || 0 }))} />
+                </View>
+                <View style={styles.slotActions}>
+                  <ItemText label="XP Reward" value={String(npcForm.xp_reward ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, xp_reward: Number(value) || 0 }))} />
+                  <ItemText label="Gold Reward" value={String(npcForm.gold_reward ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, gold_reward: Number(value) || 0 }))} />
+                </View>
+                <ToggleRow label="NPC Active" value={npcForm.is_active ?? true} onPress={() => setNpcForm((current) => ({ ...current, is_active: !current.is_active }))} />
+                <Pressable style={styles.primaryAdminButton} onPress={() => void saveNpcDefinition()}>
+                  <Text style={styles.primaryAdminText}>{editingNpcId ? "Update NPC" : "Add NPC"}</Text>
+                </Pressable>
+                {editingNpcId ? (
+                  <View style={styles.adminBuilder}>
+                    <Text style={styles.subTitle}>NPC Abilities</Text>
+                    <NamedChoiceRow label="Ability" options={adminAbilities.map((ability) => ({ id: ability.id, label: ability.name }))} value={selectedNpcAbilityId ?? ""} onSelect={setSelectedNpcAbilityId} />
+                    <ItemText label="Use chance / weight" value={npcAbilityWeight} onChange={setNpcAbilityWeight} />
+                    <Pressable style={styles.smallButton} onPress={() => void addNpcAbility()}><Text style={styles.smallButtonText}>Add NPC Ability</Text></Pressable>
+                    {npcAbilities.map((row) => (
+                      <View key={row.id} style={styles.slotCard}>
+                        <Text style={styles.slotName}>{adminAbilities.find((ability) => ability.id === row.ability_id)?.name ?? "Unknown Ability"}</Text>
+                        <Text style={styles.muted}>Weight {row.use_weight}</Text>
+                        <Pressable style={styles.smallButton} onPress={() => void deleteNpcAbility(row.id).then(() => editingNpcId ? loadNpcDetails(editingNpcId) : undefined)}><Text style={styles.smallButtonText}>Remove</Text></Pressable>
+                      </View>
+                    ))}
+                    <Text style={styles.subTitle}>Item Drops</Text>
+                    <NamedChoiceRow label="Item Drop" options={itemDefinitions.map((item) => ({ id: item.id, label: item.name }))} value={selectedNpcDropItemId ?? ""} onSelect={setSelectedNpcDropItemId} />
+                    <View style={styles.slotActions}>
+                      <ItemText label="Quantity" value={npcDropQuantity} onChange={setNpcDropQuantity} />
+                      <ItemText label="Drop chance %" value={npcDropChance} onChange={setNpcDropChance} />
+                    </View>
+                    <Pressable style={styles.smallButton} onPress={() => void addNpcDrop()}><Text style={styles.smallButtonText}>Add Drop</Text></Pressable>
+                    {npcDrops.map((drop) => (
+                      <View key={drop.id} style={styles.slotCard}>
+                        <Text style={styles.slotName}>{itemDefinitions.find((item) => item.id === drop.item_id)?.name ?? "Unknown Item"}</Text>
+                        <Text style={styles.muted}>Qty {drop.quantity} / Chance {drop.drop_chance}%</Text>
+                        <Pressable style={styles.smallButton} onPress={() => void deleteNpcDrop(drop.id).then(() => editingNpcId ? loadNpcDetails(editingNpcId) : undefined)}><Text style={styles.smallButtonText}>Remove</Text></Pressable>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+                {npcs.map((npc) => (
+                  <View key={npc.id} style={styles.abilityCard}>
+                    <View style={styles.itemCardHeader}>
+                      {resolveEnemyImageUri(npc.image_url) ? <Image source={{ uri: resolveEnemyImageUri(npc.image_url) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
+                      <View style={styles.itemBody}>
+                    <Text style={styles.abilityName}>{npc.name}</Text>
+                    <Text style={styles.muted}>{npc.type || "NPC"} / {npc.can_battle ? `Battle Capable / HP ${npc.health}` : "Dialogue NPC"}</Text>
+                    {npc.description ? <Text style={styles.muted}>{npc.description}</Text> : null}
+                      </View>
+                    </View>
+                    <View style={styles.slotActions}>
+                      <Pressable style={styles.smallButton} onPress={() => void editNpc(npc)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
+                      <Pressable style={styles.smallButton} onPress={() => void removeNpc(npc.id)}><Text style={styles.smallButtonText}>Delete</Text></Pressable>
                     </View>
                   </View>
                 ))}

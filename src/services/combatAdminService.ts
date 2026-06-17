@@ -4,10 +4,18 @@ export type CombatAbility = Tables["combat_abilities"];
 export type EnemyDefinition = Tables["enemy_definitions"];
 export type EnemyAbility = Tables["enemy_abilities"];
 export type EnemyItemDrop = Tables["enemy_item_drops"];
+export type NpcDefinition = Tables["npc_definitions"];
+export type NpcAbility = Tables["npc_abilities"];
+export type NpcItemDrop = Tables["npc_item_drops"];
 
 export type EnemyWithLoadout = EnemyDefinition & {
   abilities: Array<EnemyAbility & { ability?: CombatAbility }>;
   drops: EnemyItemDrop[];
+};
+
+export type NpcWithLoadout = NpcDefinition & {
+  abilities: Array<NpcAbility & { ability?: CombatAbility }>;
+  drops: NpcItemDrop[];
 };
 
 export const combatAbilityTypes: CombatAbility["type"][] = ["attack", "heal", "buff", "debuff", "defense", "passive"];
@@ -99,6 +107,31 @@ export function blankEnemy(): Partial<EnemyDefinition> {
   };
 }
 
+export function blankNpc(): Partial<NpcDefinition> {
+  return {
+    name: "",
+    type: "",
+    description: "",
+    image_url: "",
+    can_battle: false,
+    health: 20,
+    stamina: 10,
+    magika: 0,
+    strength: 0,
+    endurance: 0,
+    agility: 0,
+    intelligence: 0,
+    wisdom: 0,
+    charisma: 0,
+    spirit: 0,
+    defense: 10,
+    armor_rating: 0,
+    xp_reward: 0,
+    gold_reward: 0,
+    is_active: true,
+  };
+}
+
 export async function getCombatAbilities() {
   const { data, error } = await supabase.from("combat_abilities").select("*").order("created_at", { ascending: false });
   if (error) {
@@ -137,6 +170,14 @@ export async function getEnemies() {
   return (data ?? []) as EnemyDefinition[];
 }
 
+export async function getNpcs() {
+  const { data, error } = await supabase.from("npc_definitions").select("*").order("created_at", { ascending: false });
+  if (error) {
+    throw error;
+  }
+  return (data ?? []) as NpcDefinition[];
+}
+
 export async function getEnemyLoadout(enemyId: string): Promise<EnemyWithLoadout | null> {
   const [enemyResult, abilityRowsResult, abilitiesResult, dropsResult] = await Promise.all([
     supabase.from("enemy_definitions").select("*").eq("id", enemyId).maybeSingle(),
@@ -162,6 +203,31 @@ export async function getEnemyLoadout(enemyId: string): Promise<EnemyWithLoadout
   };
 }
 
+export async function getNpcLoadout(npcId: string): Promise<NpcWithLoadout | null> {
+  const [npcResult, abilityRowsResult, abilitiesResult, dropsResult] = await Promise.all([
+    supabase.from("npc_definitions").select("*").eq("id", npcId).maybeSingle(),
+    supabase.from("npc_abilities").select("*").eq("npc_id", npcId),
+    supabase.from("combat_abilities").select("*"),
+    supabase.from("npc_item_drops").select("*").eq("npc_id", npcId),
+  ]);
+
+  if (npcResult.error) throw npcResult.error;
+  if (abilityRowsResult.error) throw abilityRowsResult.error;
+  if (abilitiesResult.error) throw abilitiesResult.error;
+  if (dropsResult.error) throw dropsResult.error;
+  if (!npcResult.data) return null;
+
+  const abilities = (abilitiesResult.data ?? []) as CombatAbility[];
+  return {
+    ...(npcResult.data as NpcDefinition),
+    abilities: ((abilityRowsResult.data ?? []) as NpcAbility[]).map((row) => ({
+      ...row,
+      ability: abilities.find((ability) => ability.id === row.ability_id),
+    })),
+    drops: (dropsResult.data ?? []) as NpcItemDrop[],
+  };
+}
+
 export async function saveEnemy(input: Partial<EnemyDefinition>) {
   const {
     data: { user },
@@ -177,8 +243,30 @@ export async function saveEnemy(input: Partial<EnemyDefinition>) {
   return data as EnemyDefinition;
 }
 
+export async function saveNpc(input: Partial<NpcDefinition>) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const values = normalizeNpc(input, user?.id ?? null);
+  const request = input.id
+    ? supabase.from("npc_definitions").update(values).eq("id", input.id).select().single()
+    : supabase.from("npc_definitions").insert(values).select().single();
+  const { data, error } = await request;
+  if (error) {
+    throw error;
+  }
+  return data as NpcDefinition;
+}
+
 export async function deleteEnemy(id: string) {
   const { error } = await supabase.from("enemy_definitions").delete().eq("id", id);
+  if (error) {
+    throw error;
+  }
+}
+
+export async function deleteNpc(id: string) {
+  const { error } = await supabase.from("npc_definitions").delete().eq("id", id);
   if (error) {
     throw error;
   }
@@ -196,8 +284,25 @@ export async function saveEnemyAbility(enemyId: string, abilityId: string, useWe
   return data as EnemyAbility;
 }
 
+export async function saveNpcAbility(npcId: string, abilityId: string, useWeight: number) {
+  const { data, error } = await supabase
+    .from("npc_abilities")
+    .upsert({ npc_id: npcId, ability_id: abilityId, use_weight: Math.max(1, Number(useWeight) || 1), updated_at: new Date().toISOString() }, { onConflict: "npc_id,ability_id" })
+    .select()
+    .single();
+  if (error) {
+    throw error;
+  }
+  return data as NpcAbility;
+}
+
 export async function deleteEnemyAbility(id: string) {
   const { error } = await supabase.from("enemy_abilities").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteNpcAbility(id: string) {
+  const { error } = await supabase.from("npc_abilities").delete().eq("id", id);
   if (error) throw error;
 }
 
@@ -213,8 +318,25 @@ export async function saveEnemyDrop(enemyId: string, itemId: string, quantity: n
   return data as EnemyItemDrop;
 }
 
+export async function saveNpcDrop(npcId: string, itemId: string, quantity: number, dropChance: number) {
+  const { data, error } = await supabase
+    .from("npc_item_drops")
+    .upsert({ npc_id: npcId, item_id: itemId, quantity: Math.max(1, Number(quantity) || 1), drop_chance: Math.max(0, Math.min(100, Number(dropChance) || 0)), updated_at: new Date().toISOString() }, { onConflict: "npc_id,item_id" })
+    .select()
+    .single();
+  if (error) {
+    throw error;
+  }
+  return data as NpcItemDrop;
+}
+
 export async function deleteEnemyDrop(id: string) {
   const { error } = await supabase.from("enemy_item_drops").delete().eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteNpcDrop(id: string) {
+  const { error } = await supabase.from("npc_item_drops").delete().eq("id", id);
   if (error) throw error;
 }
 
@@ -255,6 +377,33 @@ function normalizeEnemy(input: Partial<EnemyDefinition>, userId: string | null) 
     name: input.name?.trim() || "Unnamed Enemy",
     type: input.type?.trim() || null,
     image_url: input.image_url?.trim() || null,
+    health: Number(input.health) || 20,
+    stamina: Number(input.stamina) || 0,
+    magika: Number(input.magika) || 0,
+    strength: Number(input.strength) || 0,
+    endurance: Number(input.endurance) || 0,
+    agility: Number(input.agility) || 0,
+    intelligence: Number(input.intelligence) || 0,
+    wisdom: Number(input.wisdom) || 0,
+    charisma: Number(input.charisma) || 0,
+    spirit: Number(input.spirit) || 0,
+    defense: Number(input.defense) || 10,
+    armor_rating: Number(input.armor_rating) || 0,
+    xp_reward: Number(input.xp_reward) || 0,
+    gold_reward: Number(input.gold_reward) || 0,
+    is_active: input.is_active ?? true,
+    created_by: input.id ? input.created_by ?? userId : userId,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function normalizeNpc(input: Partial<NpcDefinition>, userId: string | null) {
+  return {
+    name: input.name?.trim() || "Unnamed NPC",
+    type: input.type?.trim() || null,
+    description: input.description?.trim() || null,
+    image_url: input.image_url?.trim() || null,
+    can_battle: input.can_battle ?? false,
     health: Number(input.health) || 20,
     stamina: Number(input.stamina) || 0,
     magika: Number(input.magika) || 0,
