@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
@@ -136,6 +136,8 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [inventoryMessage, setInventoryMessage] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("player");
+  const knownAbilityKeysRef = useRef<Set<string> | null>(null);
+  const knownInventoryRef = useRef<Map<string, number> | null>(null);
   const inventoryBonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
   const resources = getCharacterResources(character, {
     maxHp: inventoryBonuses.maxHp,
@@ -165,7 +167,30 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
 
   async function loadAbilities() {
     try {
-      const loadout = await getCombatLoadout(character);
+      let loadout = await getCombatLoadout(character);
+      const equippedKeys = new Set(loadout.equipped.filter(Boolean).map((ability) => ability?.key));
+      const emptySlots = loadout.equipped
+        .map((ability, index) => ({ ability, slot: index + 1 }))
+        .filter((entry) => !entry.ability)
+        .map((entry) => entry.slot);
+      const autoEquipCandidates = loadout.unlocked.filter((ability) => !equippedKeys.has(ability.key)).slice(0, emptySlots.length);
+
+      if (autoEquipCandidates.length > 0) {
+        await Promise.all(autoEquipCandidates.map((ability, index) => equipAbility(character.id, emptySlots[index], ability.key)));
+        loadout = await getCombatLoadout(character);
+        setAbilityMessage(`${autoEquipCandidates.map((ability) => ability.name).join(", ")} added to empty ability slot${autoEquipCandidates.length > 1 ? "s" : ""}.`);
+      }
+
+      const currentKeys = new Set(loadout.unlocked.map((ability) => ability.key));
+      const previousKeys = knownAbilityKeysRef.current;
+      if (previousKeys) {
+        const learned = loadout.unlocked.filter((ability) => !previousKeys.has(ability.key));
+        if (learned.length > 0) {
+          setAbilityMessage(`New ability learned: ${learned.map((ability) => ability.name).join(", ")}.`);
+        }
+      }
+      knownAbilityKeysRef.current = currentKeys;
+
       setUnlockedAbilities(loadout.unlocked);
       setEquippedAbilities(loadout.equipped);
     } catch (error) {
@@ -358,6 +383,15 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
       const settings = await getCarrySettings();
       setBaseCarryWeight(String(settings.baseCarryWeight));
       setCarryWeightPerStrength(String(settings.carryWeightPerStrengthLevel));
+      const currentInventory = new Map(state.items.map((entry) => [entry.item_id, entry.quantity]));
+      const previousInventory = knownInventoryRef.current;
+      if (previousInventory) {
+        const gained = state.items.filter((entry) => entry.quantity > (previousInventory.get(entry.item_id) ?? 0));
+        if (gained.length > 0) {
+          setInventoryMessage(`Added to inventory: ${gained.map((entry) => `${entry.item.name} x${entry.quantity - (previousInventory.get(entry.item_id) ?? 0)}`).join(", ")}.`);
+        }
+      }
+      knownInventoryRef.current = currentInventory;
     } catch (error) {
       setInventoryMessage(error instanceof Error ? error.message : "Unable to load inventory.");
     }
@@ -680,20 +714,16 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
             <Text style={styles.muted}>Punch is always available. Training and equipped weapons add more abilities. Equip up to four before combat.</Text>
             {abilityMessage ? <Text style={styles.abilityMessage}>{abilityMessage}</Text> : null}
             <Text style={styles.subTitle}>Equipped Slots</Text>
-            <View style={styles.slotGrid}>
+            <View style={styles.equippedAbilityGrid}>
               {equippedAbilities.map((ability, index) => (
-                <View key={`slot-${index + 1}`} style={styles.slotCard}>
-                  <Text style={styles.slotTitle}>Slot {index + 1}</Text>
-                  <Text style={styles.slotName}>{ability?.name ?? "Empty"}</Text>
-                  <View style={styles.slotActions}>
-                    <Pressable style={styles.smallButton} onPress={() => void equipSelectedAbility(index + 1)}>
-                      <Text style={styles.smallButtonText}>Equip Here</Text>
-                    </Pressable>
-                    <Pressable style={styles.smallButton} onPress={() => void clearSlot(index + 1)}>
-                      <Text style={styles.smallButtonText}>Clear</Text>
-                    </Pressable>
-                  </View>
-                </View>
+                <AbilitySlotCard
+                  key={`slot-${index + 1}`}
+                  slot={index + 1}
+                  ability={ability}
+                  selectedAbility={selectedPlayerAbility}
+                  onEquip={() => void equipSelectedAbility(index + 1)}
+                  onClear={() => void clearSlot(index + 1)}
+                />
               ))}
             </View>
             <Text style={styles.subTitle}>Unlocked Abilities</Text>
@@ -723,6 +753,14 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                 <Info label="Linked Attribute" value={selectedPlayerAbility.attribute ?? "None"} />
                 <Info label="Required Level" value={String(selectedPlayerAbility.unlockLevel ?? 0)} />
                 <Info label="Source" value={getAbilityDetailedSource(selectedPlayerAbility)} />
+                <Text style={styles.subTitle}>Equip to Slot</Text>
+                <View style={styles.slotActions}>
+                  {[1, 2, 3, 4].map((slot) => (
+                    <Pressable key={slot} style={styles.smallButton} onPress={() => void equipSelectedAbility(slot)}>
+                      <Text style={styles.smallButtonText}>Slot {slot}</Text>
+                    </Pressable>
+                  ))}
+                </View>
                 {selectedPlayerAbility.adminAbility?.type === "heal" && canUseAbilityInContext(selectedPlayerAbility, "outside") ? (
                   <Pressable style={[styles.smallButton, currentHealth >= resources.maxHp && styles.disabledAction]} onPress={() => void useOutsideBattleAbility(selectedPlayerAbility)} disabled={currentHealth >= resources.maxHp}>
                     <Text style={styles.smallButtonText}>Use Heal</Text>
@@ -735,29 +773,23 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
             ) : filteredPlayerAbilities.length === 0 ? (
               <Text style={styles.muted}>No abilities learned yet.</Text>
             ) : (
-              <View style={styles.abilityList}>
+              <View style={styles.abilityGrid}>
                 {filteredPlayerAbilities.map((ability) => (
                   <Pressable
                     key={ability.key}
-                    style={[styles.abilityCard, selectedAbilityKey === ability.key && styles.abilityCardActive]}
+                    style={[styles.abilityGridCard, selectedAbilityKey === ability.key && styles.abilityCardActive]}
                     onPress={() => {
                       setSelectedAbilityKey(ability.key);
                       setSelectedPlayerAbility(ability);
                     }}
                   >
-                    <View style={styles.abilityHeader}>
+                    <View style={styles.gridIconWrap}>
                       <AbilityIcon ability={ability} />
-                      <View style={styles.itemBody}>
-                        <Text style={styles.abilityName}>{ability.name}</Text>
-                        <Text style={styles.muted}>{getShortAbilityDescription(ability)}</Text>
-                      </View>
                     </View>
-                    <View style={styles.abilityMetaRow}>
-                      <Text style={styles.abilityCost}>{getAbilityCostLabel(ability)}</Text>
-                      <Text style={styles.abilityMeta}>Cooldown {ability.adminAbility?.cooldown_turns ?? 0}</Text>
-                      <Text style={styles.abilityMeta}>{getAbilityUnlockLabel(ability)}</Text>
-                    </View>
-                    {selectedAbilityKey === ability.key ? <Text style={styles.selectedHint}>Selected - choose a slot above</Text> : null}
+                    <Text style={styles.gridCardName}>{ability.name}</Text>
+                    <Text style={styles.gridCardMeta}>{getAbilityCostLabel(ability)}</Text>
+                    <Text style={styles.gridCardMeta}>CD {ability.adminAbility?.cooldown_turns ?? 0}</Text>
+                    {selectedAbilityKey === ability.key ? <Text style={styles.selectedHint}>Tap slot to equip</Text> : null}
                   </Pressable>
                 ))}
               </View>
@@ -1021,17 +1053,9 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
             <Text style={styles.sectionTitle}>Inventory</Text>
             {inventoryMessage ? <Text style={styles.abilityMessage}>{inventoryMessage}</Text> : null}
             <Text style={styles.subTitle}>Equipped</Text>
-            <View style={styles.slotGrid}>
+            <View style={styles.equipmentGrid}>
               {equipmentSlots.map((slot) => (
-                <View key={slot} style={styles.slotCard}>
-                  <Text style={styles.slotTitle}>{slot}</Text>
-                  <Text style={styles.slotName}>{equippedItems[slot]?.name ?? "Empty"}</Text>
-                  {equippedItems[slot] ? (
-                    <Pressable style={styles.smallButton} onPress={() => void unequipSlot(slot)}>
-                      <Text style={styles.smallButtonText}>Unequip</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
+                <EquipmentSlotCard key={slot} slot={slot} item={equippedItems[slot] ?? null} onUnequip={() => void unequipSlot(slot)} />
               ))}
             </View>
             <Text style={styles.subTitle}>Inventory</Text>
@@ -1046,7 +1070,13 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
             </View>
             {selectedInventoryItem ? (
               <View style={styles.detailPanel}>
-                <Text style={styles.abilityName}>{selectedInventoryItem.item.name}</Text>
+                <View style={styles.itemCardHeader}>
+                  {resolveInventoryImageUri(selectedInventoryItem.item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(selectedInventoryItem.item.image_path) ?? "" }} style={styles.detailItemImage} /> : <View style={styles.detailItemPlaceholder} />}
+                  <View style={styles.itemBody}>
+                    <Text style={styles.abilityName}>{selectedInventoryItem.item.name}</Text>
+                    <Text style={styles.abilityTag}>{selectedInventoryItem.equippedSlot ? `Equipped: ${selectedInventoryItem.equippedSlot}` : selectedInventoryItem.item.rarity}</Text>
+                  </View>
+                </View>
                 <Text style={styles.muted}>{selectedInventoryItem.item.type} / {selectedInventoryItem.item.rarity} / Qty {selectedInventoryItem.quantity}</Text>
                 <Text style={styles.muted}>{selectedInventoryItem.item.description ?? "No description."}</Text>
                 <Text style={styles.muted}>Value {selectedInventoryItem.item.gold_value} gold / Weight {(Number(selectedInventoryItem.item.weight ?? 0) * selectedInventoryItem.quantity).toFixed(1)}</Text>
@@ -1059,43 +1089,15 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                 </View>
               </View>
             ) : null}
-            <View style={styles.abilityList}>
+            <View style={styles.inventoryGrid}>
               {filteredInventoryItems.length === 0 ? <Text style={styles.muted}>No items in this category yet.</Text> : null}
               {filteredInventoryItems.map((entry) => (
-                <Pressable key={entry.id} style={[styles.itemCard, selectedInventoryItemId === entry.id && styles.abilityCardActive]} onPress={() => setSelectedInventoryItemId(entry.id)}>
-                  {resolveInventoryImageUri(entry.item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(entry.item.image_path) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
-                  <View style={styles.itemBody}>
-                    <Text style={styles.abilityName}>{entry.item.name}{entry.equippedSlot ? " - Equipped" : ""}</Text>
-                    <Text style={styles.muted}>{entry.item.type} / {entry.item.rarity} / Qty {entry.quantity} / {entry.item.gold_value} gold / {Number(entry.item.weight ?? 0).toFixed(1)} wt</Text>
-                    <Text style={styles.muted}>{entry.item.description ?? "No description."}</Text>
-                    <View style={styles.slotActions}>
-                      {entry.item.equipment_slot ? (
-                        <Pressable style={styles.smallButton} onPress={() => void equipItem(entry)}>
-                          <Text style={styles.smallButtonText}>Equip</Text>
-                        </Pressable>
-                      ) : null}
-                      {entry.equippedSlot ? (
-                        <Pressable style={styles.smallButton} onPress={() => void unequipSlot(entry.equippedSlot as "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic")}>
-                          <Text style={styles.smallButtonText}>Unequip</Text>
-                        </Pressable>
-                      ) : null}
-                      {entry.item.type === "scroll" && entry.item.teaches_ability_id ? (
-                        <Pressable style={styles.smallButton} onPress={() => void useAbilityScroll(entry)}>
-                          <Text style={styles.smallButtonText}>Use Scroll</Text>
-                        </Pressable>
-                      ) : null}
-                      {canUseItemOutsideBattle(entry) ? (
-                        <Pressable style={[styles.smallButton, currentHealth >= resources.maxHp && styles.disabledAction]} onPress={() => void useOutsideBattleItem(entry)} disabled={currentHealth >= resources.maxHp}>
-                          <Text style={styles.smallButtonText}>Use</Text>
-                        </Pressable>
-                      ) : null}
-                      {entry.item.sellable ? (
-                        <Pressable style={styles.smallButton} onPress={() => void sellItem(entry)}>
-                          <Text style={styles.smallButtonText}>Sell</Text>
-                        </Pressable>
-                      ) : null}
-                    </View>
-                  </View>
+                <Pressable key={entry.id} style={[styles.inventoryGridCard, selectedInventoryItem?.id === entry.id && styles.abilityCardActive]} onPress={() => setSelectedInventoryItemId(entry.id)}>
+                  {resolveInventoryImageUri(entry.item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(entry.item.image_path) ?? "" }} style={styles.inventoryGridImage} /> : <View style={styles.inventoryGridPlaceholder} />}
+                  {entry.equippedSlot ? <Text style={styles.equippedBadge}>E</Text> : null}
+                  <Text style={styles.itemQtyBadge}>{entry.quantity}</Text>
+                  <Text style={styles.gridCardName}>{entry.item.name}</Text>
+                  <Text style={styles.gridCardMeta}>{entry.item.rarity}</Text>
                 </Pressable>
               ))}
             </View>
@@ -1239,6 +1241,38 @@ function QuickTile({ icon, label, selected, onPress }: { icon: string; label: st
       <Text style={styles.quickIcon}>{icon}</Text>
       <Text style={styles.quickLabel}>{label}</Text>
     </Pressable>
+  );
+}
+
+function AbilitySlotCard({ slot, ability, selectedAbility, onEquip, onClear }: { slot: number; ability: AbilityDefinition | null; selectedAbility: AbilityDefinition | null; onEquip: () => void; onClear: () => void }) {
+  return (
+    <View style={[styles.monitoredSlot, ability && styles.monitoredSlotFilled]}>
+      <Text style={styles.monitoredSlotLabel}>Slot {slot}</Text>
+      <View style={styles.monitoredSlotIcon}>
+        {ability ? <AbilityIcon ability={ability} /> : <Text style={styles.monitoredSlotEmpty}>+</Text>}
+      </View>
+      <Text style={styles.monitoredSlotName}>{ability?.name ?? "Empty"}</Text>
+      <View style={styles.slotActions}>
+        <Pressable style={[styles.smallButton, !selectedAbility && styles.disabledAction]} onPress={onEquip} disabled={!selectedAbility}>
+          <Text style={styles.smallButtonText}>{ability ? "Replace" : "Equip"}</Text>
+        </Pressable>
+        {ability ? <Pressable style={styles.smallButton} onPress={onClear}><Text style={styles.smallButtonText}>Clear</Text></Pressable> : null}
+      </View>
+    </View>
+  );
+}
+
+function EquipmentSlotCard({ slot, item, onUnequip }: { slot: "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic"; item: ItemDefinition | null; onUnequip: () => void }) {
+  const uri = resolveInventoryImageUri(item?.image_path);
+  return (
+    <View style={[styles.monitoredSlot, item && styles.monitoredSlotFilled]}>
+      <Text style={styles.monitoredSlotLabel}>{slot}</Text>
+      <View style={styles.monitoredSlotIcon}>
+        {uri ? <Image source={{ uri }} style={styles.monitoredItemImage} /> : <Text style={styles.monitoredSlotEmpty}>{slot.slice(0, 1).toUpperCase()}</Text>}
+      </View>
+      <Text style={styles.monitoredSlotName}>{item?.name ?? "Empty"}</Text>
+      {item ? <Pressable style={styles.smallButton} onPress={onUnequip}><Text style={styles.smallButtonText}>Unequip</Text></Pressable> : null}
+    </View>
   );
 }
 
@@ -2038,6 +2072,66 @@ const styles = StyleSheet.create({
   slotGrid: {
     gap: 8,
   },
+  equippedAbilityGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  equipmentGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  monitoredSlot: {
+    flexGrow: 1,
+    flexBasis: 145,
+    minWidth: 135,
+    minHeight: 168,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  monitoredSlotFilled: {
+    borderColor: colors.gold,
+    backgroundColor: "rgba(217, 164, 65, 0.08)",
+  },
+  monitoredSlotLabel: {
+    color: colors.goldSoft,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    fontSize: 12,
+  },
+  monitoredSlotIcon: {
+    width: 58,
+    height: 58,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(5,9,10,0.68)",
+    overflow: "hidden",
+  },
+  monitoredItemImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 9,
+  },
+  monitoredSlotEmpty: {
+    color: colors.muted,
+    fontSize: 24,
+    fontWeight: "900",
+  },
+  monitoredSlotName: {
+    color: colors.text,
+    fontWeight: "900",
+    textAlign: "center",
+    minHeight: 36,
+  },
   slotCard: {
     gap: 8,
     borderWidth: 1,
@@ -2078,6 +2172,44 @@ const styles = StyleSheet.create({
   },
   abilityList: {
     gap: 8,
+  },
+  abilityGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  abilityGridCard: {
+    flexGrow: 1,
+    flexBasis: 140,
+    minWidth: 132,
+    minHeight: 166,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  gridIconWrap: {
+    width: 58,
+    height: 58,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gridCardName: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 14,
+    textAlign: "center",
+  },
+  gridCardMeta: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    textAlign: "center",
+    textTransform: "capitalize",
   },
   detailPanel: {
     gap: 8,
@@ -2198,6 +2330,73 @@ const styles = StyleSheet.create({
   itemBody: {
     flex: 1,
     gap: 6,
+  },
+  detailItemImage: {
+    width: 86,
+    height: 86,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  detailItemPlaceholder: {
+    width: 86,
+    height: 86,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  inventoryGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  inventoryGridCard: {
+    flexGrow: 1,
+    flexBasis: 118,
+    minWidth: 108,
+    minHeight: 142,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    padding: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  inventoryGridImage: {
+    width: 62,
+    height: 62,
+    borderRadius: 9,
+  },
+  inventoryGridPlaceholder: {
+    width: 62,
+    height: 62,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  equippedBadge: {
+    position: "absolute",
+    top: 7,
+    left: 7,
+    minWidth: 22,
+    minHeight: 22,
+    borderRadius: 11,
+    overflow: "hidden",
+    backgroundColor: colors.blue,
+    color: "#001018",
+    textAlign: "center",
+    fontWeight: "900",
+    lineHeight: 22,
+  },
+  itemQtyBadge: {
+    position: "absolute",
+    top: 7,
+    right: 8,
+    color: colors.text,
+    fontWeight: "900",
   },
   adminBuilder: {
     gap: 10,
