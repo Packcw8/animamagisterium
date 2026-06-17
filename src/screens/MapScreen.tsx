@@ -355,14 +355,19 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const progressPercent = Math.min(100, Math.max(0, (distanceWalked / route.distance_required_meters) * 100));
   const orderedRoutes = useMemo(() => [...routes].sort(compareRoutes), [routes]);
   const adminRoutes = useMemo(() => orderedRoutes.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [orderedRoutes, selectedChapter, selectedSeason]);
+  const adminWorldRoutes = useMemo(() => adminRoutes.filter((item) => !item.mini_map_id), [adminRoutes]);
+  const adminMiniMapRoutes = useMemo(() => adminRoutes.filter((item) => item.mini_map_id === activeMiniMap?.id), [activeMiniMap?.id, adminRoutes]);
+  const activeRouteScopeRoutes = activeMiniMap ? adminMiniMapRoutes : adminWorldRoutes;
   const routeProgressPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
   const playerPosition = savedPlayerPosition ?? routeProgressPosition;
-  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminRoutes : [route], route.id), [adminRoutes, isAdmin, route]);
+  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminWorldRoutes : [route], route.id), [adminWorldRoutes, isAdmin, route]);
+  const miniMapRouteSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminMiniMapRoutes : route.mini_map_id === activeMiniMap?.id ? [route] : [], route.id), [activeMiniMap?.id, adminMiniMapRoutes, isAdmin, route]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [pathDraft]);
   const worldMarkers = useMemo(() => markers.filter((marker) => !marker.mini_map_id), [markers]);
   const miniMapMarkers = useMemo(() => markers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [markers, activeMiniMap?.id]);
   const miniMapSpawnMarker = useMemo(() => miniMapMarkers.find((marker) => marker.type === "Player Spawn") ?? null, [miniMapMarkers]);
-  const miniMapPlayerPosition = miniMapSpawnMarker ? { x: Number(miniMapSpawnMarker.x_percent), y: Number(miniMapSpawnMarker.y_percent) } : { x: 50, y: 50 };
+  const miniMapSpawnPosition = miniMapSpawnMarker ? { x: Number(miniMapSpawnMarker.x_percent), y: Number(miniMapSpawnMarker.y_percent) } : { x: 50, y: 50 };
+  const miniMapPlayerPosition = route.mini_map_id === activeMiniMap?.id ? playerPosition : miniMapSpawnPosition;
   const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
   const adminWorldMarkers = useMemo(() => worldMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, worldMarkers]);
   const adminMiniMapMarkers = useMemo(() => miniMapMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMapMarkers, selectedChapter, selectedSeason]);
@@ -1339,7 +1344,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setMarkerPanelMessage(null);
-    setActiveMiniMap(null);
+    const nextMiniMap = nextRoute.mini_map_id ? miniMaps.find((item) => item.id === nextRoute.mini_map_id) ?? null : null;
+    setActiveMiniMap(nextMiniMap);
+    setSelectedMiniMapId(nextMiniMap?.id ?? null);
     await selectRoute(nextRoute, true);
     setGpsMessage(`${nextRoute.name} is now your active walking path.`);
   }
@@ -1608,6 +1615,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    if (activeMiniMap && route.mini_map_id !== activeMiniMap.id) {
+      setAdminMessage("Select an existing trail from this mini map, or use Create as New Walking Path to add a mini-map trail.");
+      return;
+    }
+
     try {
       const updated = await updateMapRoute(route.id, {
         name: routeName.trim() || route.name,
@@ -1618,6 +1630,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         path_points: pathDraft,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
+        mini_map_id: activeMiniMap?.id ?? route.mini_map_id ?? null,
         season_number: selectedSeason,
         chapter_number: selectedChapter,
       });
@@ -1638,7 +1651,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     try {
       const created = await createMapRoute({
         name: routeName.trim() || "New Walking Path",
-        sort_order: Number(routeOrder) || getNextRouteOrder(routes),
+        sort_order: Number(routeOrder) || getNextRouteOrder(activeRouteScopeRoutes.length > 0 ? activeRouteScopeRoutes : routes),
         terrain: routeTerrain.trim() || "Unknown road",
         danger_level: routeDanger.trim() || "Low",
         distance_required_meters: Number(routeDistance) || 1000,
@@ -1647,6 +1660,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         is_active: true,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
+        mini_map_id: activeMiniMap?.id ?? null,
         season_number: selectedSeason,
         chapter_number: selectedChapter,
       });
@@ -2667,6 +2681,43 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               : {})}
           >
             {miniMapImage ? <Image source={{ uri: miniMapImage }} style={styles.miniMapImage} /> : <View style={styles.miniMapFallback}><Text style={styles.copy}>No mini map image set.</Text></View>}
+            {miniMapRouteSegments.map((segment, index) => (
+              <View
+                key={`${segment.id}-${index}`}
+                pointerEvents="none"
+                style={[
+                  styles.routeSegment,
+                  !segment.isActive && styles.routeSegmentInactive,
+                  {
+                    left: `${segment.left}%`,
+                    top: `${segment.top}%`,
+                    width: segment.length,
+                    transform: [{ rotate: `${segment.angle}deg` }],
+                  },
+                ]}
+              />
+            ))}
+            {isAdmin && editorMode === "Walking Path" ? draftSegments.map((segment, index) => (
+              <View
+                key={`${segment.id}-${index}`}
+                pointerEvents="none"
+                style={[
+                  styles.routeSegment,
+                  styles.routeSegmentDraft,
+                  {
+                    left: `${segment.left}%`,
+                    top: `${segment.top}%`,
+                    width: segment.length,
+                    transform: [{ rotate: `${segment.angle}deg` }],
+                  },
+                ]}
+              />
+            )) : null}
+            {isAdmin && editorMode === "Walking Path" ? pathDraft.map((point, index) => (
+              <View key={`${point.x}-${point.y}-${index}`} pointerEvents="none" style={[styles.pathPoint, { left: `${point.x}%`, top: `${point.y}%` }]}>
+                <Text style={styles.pathPointText}>{index + 1}</Text>
+              </View>
+            )) : null}
             <View style={[styles.playerPin, { left: `${miniMapPlayerPosition.x}%`, top: `${miniMapPlayerPosition.y}%` }]}>
               {character.portrait_url ? <Image source={{ uri: character.portrait_url }} style={styles.playerPortrait} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
             </View>
@@ -2693,6 +2744,34 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           <Text style={styles.copy}>Only interactable mini-map markers within proximity are shown to players. Admins can see all mini-map markers.</Text>
         </Frame>
         <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
+        {route.mini_map_id === activeMiniMap.id ? (
+          <Frame style={styles.panel}>
+            <View style={styles.panelHeader}>
+              <Text style={styles.sectionTitle}>Journey Panel</Text>
+              <View style={styles.headerActions}>
+                <Pressable style={[styles.gpsButton, isTracking && styles.gpsActive]} onPress={isTracking ? stopGpsTracking : startGpsTracking}>
+                  <Text style={styles.gpsText}>{isTracking ? "Pause GPS" : "Track Walk"}</Text>
+                </Pressable>
+                <Pressable style={[styles.gpsButton, routeDirection === "reverse" && styles.gpsActive]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0}>
+                  <Text style={styles.gpsText}>{routeDirection === "reverse" ? "Travel Forward" : "Turn Back"}</Text>
+                </Pressable>
+              </View>
+            </View>
+            <Info label="Current Route" value={route.name} />
+            <Info label="Direction" value={routeDirection === "reverse" ? "Returning to start" : "Traveling forward"} />
+            <Info label="Distance Walked" value={`${metersToMiles(distanceWalked)} mi`} />
+            <Info label="Distance Remaining" value={`${metersToMiles(Math.max(0, route.distance_required_meters - distanceWalked))} mi`} />
+            <Info label="Progress" value={`${Math.round(progressPercent)}%`} />
+            <Info label="Health" value={`${currentHealth} / ${combatResources.maxHp}`} />
+            <Info label="State" value={playerMovementState} />
+            <Info label="Movement" value={movementStatus.label} />
+            <Info label="Current Speed" value={`${movementStatus.speedMph.toFixed(1)} mph`} />
+            <Info label="Terrain" value={route.terrain} />
+            <Info label="Danger Level" value={route.danger_level} />
+            <ProgressBar value={progressPercent} max={100} color={colors.blue} height={9} />
+            <Text style={styles.gpsMessage}>{gpsMessage}</Text>
+          </Frame>
+        ) : null}
         {isAdmin ? (
           <Frame style={styles.panel}>
             <Text style={styles.sectionTitle}>Mini Map Admin Preview</Text>
@@ -2727,7 +2806,32 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 </View>
               ))}
             </View>
-            <MiniMapMarkerAdminForm
+            <View style={styles.modeRow}>
+              {editorModes.map((mode) => (
+                <Pressable key={mode} style={[styles.modeButton, editorMode === mode && styles.typeSelected]} onPress={() => setEditorMode(mode)}>
+                  <Text style={styles.typeText}>{mode}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {editorMode === "Walking Path" ? (
+              <View style={styles.routeList}>
+                <Text style={styles.selectedTitle}>Mini Map Walking Paths</Text>
+                {adminMiniMapRoutes.length === 0 ? <Text style={styles.copy}>No walking paths created in this mini map yet.</Text> : null}
+                {adminMiniMapRoutes.map((item) => (
+                  <View key={item.id} style={[styles.routeRow, route.id === item.id && styles.routeRowActive]}>
+                    <Text style={styles.routeNumber}>{item.sort_order}</Text>
+                    <Pressable style={styles.routeRowText} onPress={() => void selectRoute(item, true)}>
+                      <Text style={styles.markerName}>{item.name}</Text>
+                      <Text style={styles.copy}>{item.is_active ? "Active" : "Hidden"} / {metersToMiles(item.distance_required_meters)} mi / {item.terrain}</Text>
+                    </Pressable>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeWalkingPath(item.id)}>
+                      <Text style={styles.dangerText}>Delete</Text>
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {editorMode === "Marker" ? <MiniMapMarkerAdminForm
               activeSectionMarkerTypes={miniMapMarkerTypes}
               draftType={draftType}
               setDraftType={setDraftType}
@@ -2775,7 +2879,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerLinkedRouteId={setMarkerLinkedRouteId}
               markerStartsRouteOnAccept={markerStartsRouteOnAccept}
               setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
-              routes={adminRoutes}
+              routes={activeRouteScopeRoutes}
               selectedMarkerRouteIds={selectedMarkerRouteIds}
               toggleSignPostRoute={toggleSignPostRoute}
               worldMarkers={adminWorldMarkers}
@@ -2806,7 +2910,37 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               onSaveSelectedMarker={() => void saveSelectedMarkerSettings()}
               onSaveMarketItem={() => void saveMarketItem()}
               onRemoveMarketItem={(marketItemId) => void removeMarketItem(marketItemId)}
-            />
+            /> : (
+              <View style={styles.pathEditor}>
+                <Text style={styles.selectedTitle}>Create / Edit Mini Map Walking Path</Text>
+                <Text style={styles.copy}>Click the mini map image above to add percentage path points. These trails can be linked to Sign Post markers in this mini map.</Text>
+                <TextInput value={routeName} onChangeText={setRouteName} placeholder="Route name" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={routeOrder} onChangeText={setRouteOrder} placeholder="Route order" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={routeTerrain} onChangeText={setRouteTerrain} placeholder="Terrain" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={routeDanger} onChangeText={setRouteDanger} placeholder="Danger level" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
+                <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
+                {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
+                <Info label="Path Points" value={String(pathDraft.length)} />
+                <View style={styles.modeRow}>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={loadSelectedPathIntoDraft}>
+                    <Text style={styles.secondaryText}>Load Selected Path</Text>
+                  </Pressable>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={() => setPathDraft([])}>
+                    <Text style={styles.secondaryText}>Clear Path</Text>
+                  </Pressable>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={undoPathPoint}>
+                    <Text style={styles.secondaryText}>Undo Point</Text>
+                  </Pressable>
+                </View>
+                <Pressable style={styles.primaryButton} onPress={() => void saveWalkingPath()}>
+                  <Text style={styles.primaryText}>Save Walking Path</Text>
+                </Pressable>
+                <Pressable style={styles.secondaryButton} onPress={() => void createWalkingPath()}>
+                  <Text style={styles.secondaryText}>Create as New Mini Map Walking Path</Text>
+                </Pressable>
+              </View>
+            )}
           </Frame>
         ) : null}
       </Screen>
@@ -3205,7 +3339,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           ) : null}
           {adminSection === "Walking Paths" ? <View style={styles.routeList}>
             <Text style={styles.selectedTitle}>Walking Path Order</Text>
-            {adminRoutes.map((item) => (
+            {adminWorldRoutes.map((item) => (
               <View key={item.id} style={[styles.routeRow, route.id === item.id && styles.routeRowActive]}>
                 <Text style={styles.routeNumber}>{item.sort_order}</Text>
                 <Pressable style={styles.routeRowText} onPress={() => void selectRoute(item, true)}>
@@ -3339,7 +3473,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
                   <Text style={styles.copy}>Players choose from these paths when they interact with this Sign Post.</Text>
                   <View style={styles.storyRoutePicker}>
-                    {adminRoutes.map((item) => (
+                    {adminWorldRoutes.map((item) => (
                       <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
                         <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
                       </Pressable>
@@ -3362,7 +3496,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Quest dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
                   <TextInput value={markerQuestImage} onChangeText={setMarkerQuestImage} placeholder="Quest image URL" placeholderTextColor={colors.muted} style={styles.input} />
                   <AdminImageUploadButton folder="quest-images" onUploaded={setMarkerQuestImage} onMessage={setAdminMessage} />
-                  <RoutePicker routes={adminRoutes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
+                  <RoutePicker routes={adminWorldRoutes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
                   <Pressable style={[styles.secondaryButton, markerStartsRouteOnAccept && styles.typeSelected]} onPress={() => setMarkerStartsRouteOnAccept((value) => !value)}>
                     <Text style={styles.secondaryText}>Start Path On Accept: {markerStartsRouteOnAccept ? "Yes" : "No"}</Text>
                   </Pressable>
@@ -3461,7 +3595,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <AdminImageUploadButton folder="tutorials" onUploaded={setTutorialImage} onMessage={setAdminMessage} />
               <MarkerPicker label="Linked marker optional" markers={adminWorldMarkers} selectedId={tutorialMarkerId} onSelect={setTutorialMarkerId} />
               <MiniMapPicker miniMaps={adminMiniMaps} selectedId={tutorialMiniMapId} onSelect={setTutorialMiniMapId} />
-              <RoutePicker routes={adminRoutes} selectedId={tutorialRouteId} onSelect={setTutorialRouteId} />
+              <RoutePicker routes={adminWorldRoutes} selectedId={tutorialRouteId} onSelect={setTutorialRouteId} />
               <TextInput value={tutorialRewardXp} onChangeText={setTutorialRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={tutorialRewardGold} onChangeText={setTutorialRewardGold} placeholder="Reward gold" placeholderTextColor={colors.muted} style={styles.input} />
               <ItemPicker label="Reward item" items={itemDefinitions} selectedId={tutorialRewardItemId} onSelect={setTutorialRewardItemId} />
@@ -3490,7 +3624,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <Text style={styles.selectedTitle}>Dialogue / Event Builder on {route.name}</Text>
             <Text style={styles.copy}>Create dialogue, investigation, reward, or battle events for the selected trail. The distance marker is the route progress percent where the event opens for players.</Text>
             <View style={styles.storyRoutePicker}>
-              {adminRoutes.map((item) => (
+              {adminWorldRoutes.map((item) => (
                 <Pressable key={item.id} style={[styles.routeChip, route.id === item.id && styles.routeChipActive]} onPress={() => void selectRoute(item, true)}>
                   <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
                 </Pressable>
