@@ -83,8 +83,9 @@ import {
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const mapSize = { width: 1800, height: 1400 };
-const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
-const miniMapMarkerTypes = ["Market", "Quest", "Side Quest", "Point of Interest", "Battle", "Training", "Dungeon Room", "Exit/Leave"];
+const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post", "Player Spawn"];
+const miniMapMarkerTypes = ["Player Spawn", "Market", "Quest", "Side Quest", "Point of Interest", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
+const exitTargetTypes = ["world_marker", "mini_map"] as const;
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const editorModes = ["Marker", "Walking Path"] as const;
 const adminSections = ["World Markers", "Area/Town Markers", "Mini Maps", "Walking Paths", "Tutorials", "Rewards/Interactions", "Legend"] as const;
@@ -246,6 +247,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerRewardOnce, setMarkerRewardOnce] = useState(true);
   const [markerLinkedRouteId, setMarkerLinkedRouteId] = useState<string | null>(null);
   const [markerStartsRouteOnAccept, setMarkerStartsRouteOnAccept] = useState(false);
+  const [markerExitTargetType, setMarkerExitTargetType] = useState<MapMarker["exit_target_type"]>("world_marker");
+  const [markerExitTargetMarkerId, setMarkerExitTargetMarkerId] = useState<string | null>(null);
+  const [markerExitTargetMiniMapId, setMarkerExitTargetMiniMapId] = useState<string | null>(null);
   const [markerLockType, setMarkerLockType] = useState<MapMarker["lock_type"]>("public");
   const [markerLockMessage, setMarkerLockMessage] = useState("");
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
@@ -353,12 +357,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const adminRoutes = useMemo(() => orderedRoutes.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [orderedRoutes, selectedChapter, selectedSeason]);
   const routeProgressPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
   const playerPosition = savedPlayerPosition ?? routeProgressPosition;
-  const miniMapPlayerPosition = { x: 50, y: 50 };
-  const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
   const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminRoutes : [route], route.id), [adminRoutes, isAdmin, route]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [pathDraft]);
   const worldMarkers = useMemo(() => markers.filter((marker) => !marker.mini_map_id), [markers]);
   const miniMapMarkers = useMemo(() => markers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [markers, activeMiniMap?.id]);
+  const miniMapSpawnMarker = useMemo(() => miniMapMarkers.find((marker) => marker.type === "Player Spawn") ?? null, [miniMapMarkers]);
+  const miniMapPlayerPosition = miniMapSpawnMarker ? { x: Number(miniMapSpawnMarker.x_percent), y: Number(miniMapSpawnMarker.y_percent) } : { x: 50, y: 50 };
+  const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
   const adminWorldMarkers = useMemo(() => worldMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, worldMarkers]);
   const adminMiniMapMarkers = useMemo(() => miniMapMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMapMarkers, selectedChapter, selectedSeason]);
   const adminMiniMaps = useMemo(() => miniMaps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMaps, selectedChapter, selectedSeason]);
@@ -886,6 +891,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    if (adminSection === "Mini Maps" && draftType === "Player Spawn" && markers.some((marker) => marker.mini_map_id === selectedMiniMapId && marker.type === "Player Spawn")) {
+      setAdminMessage("This mini map already has a Player Spawn marker. Edit or move the existing spawn instead.");
+      return;
+    }
+
     try {
       const created = await createMapMarker({
         type: draftType,
@@ -897,9 +907,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         is_unlocked: true,
         route_id: adminSection === "Mini Maps" ? null : route.id,
         quest_key: null,
-        linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : null,
+        linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : (draftType === "Exit" || draftType === "Exit/Leave") && markerExitTargetType === "mini_map" ? markerExitTargetMiniMapId : null,
         mini_map_id: adminSection === "Mini Maps" ? selectedMiniMapId : null,
         parent_marker_id: adminSection === "Mini Maps" ? selectedMarker?.id ?? null : null,
+        exit_target_type: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetType : null,
+        exit_target_marker_id: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetMarkerId : null,
         linked_route_id: isQuestMarkerType(draftType) ? markerLinkedRouteId : null,
         starts_route_on_accept: isQuestMarkerType(draftType) && markerStartsRouteOnAccept,
         icon_label: markerIconLabel.trim() || null,
@@ -952,9 +964,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       reward_timing: markerRewardTiming,
       repeatable: markerRepeatable,
       reward_once_per_player: markerRewardOnce,
-      linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : null,
+      linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : (draftType === "Exit" || draftType === "Exit/Leave") && markerExitTargetType === "mini_map" ? markerExitTargetMiniMapId : null,
       mini_map_id: selectedMarker?.mini_map_id ?? (adminSection === "Mini Maps" ? selectedMiniMapId : null),
       parent_marker_id: selectedMarker?.parent_marker_id ?? null,
+      exit_target_type: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetType : null,
+      exit_target_marker_id: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetMarkerId : null,
       linked_route_id: isQuestMarkerType(draftType) ? markerLinkedRouteId : null,
       starts_route_on_accept: isQuestMarkerType(draftType) && markerStartsRouteOnAccept,
       season_number: selectedSeason,
@@ -963,8 +977,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function selectMarker(marker: MapMarker) {
-    if (activeMiniMap && !isAdmin && marker.type === "Exit/Leave") {
-      leaveMiniMap();
+    if (activeMiniMap && !isAdmin && isExitMarker(marker)) {
+      openExitMarker(marker);
       return;
     }
 
@@ -996,6 +1010,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
     setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
+    setMarkerExitTargetType(marker.exit_target_type ?? "world_marker");
+    setMarkerExitTargetMarkerId(marker.exit_target_marker_id ?? null);
+    setMarkerExitTargetMiniMapId(marker.exit_target_type === "mini_map" ? marker.linked_mini_map_id : null);
     setSelectedMiniMapId(marker.linked_mini_map_id ?? marker.mini_map_id ?? selectedMiniMapId);
     setMarkerPanelMessage(null);
 
@@ -1027,6 +1044,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function saveSelectedMarkerSettings() {
     if (!selectedMarker) {
+      return;
+    }
+
+    if (
+      selectedMarker.mini_map_id &&
+      draftType === "Player Spawn" &&
+      markers.some((marker) => marker.id !== selectedMarker.id && marker.mini_map_id === selectedMarker.mini_map_id && marker.type === "Player Spawn")
+    ) {
+      setAdminMessage("This mini map already has a Player Spawn marker. Move or edit that spawn instead.");
       return;
     }
 
@@ -1478,6 +1504,30 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setMarkerPanelMessage(null);
+  }
+
+  function openExitMarker(marker: MapMarker) {
+    if (marker.exit_target_type === "mini_map" && marker.linked_mini_map_id) {
+      const nextMiniMap = miniMaps.find((item) => item.id === marker.linked_mini_map_id);
+      if (nextMiniMap) {
+        openMiniMap(nextMiniMap);
+        return;
+      }
+    }
+
+    if (marker.exit_target_type === "world_marker" && marker.exit_target_marker_id) {
+      const worldMarker = markers.find((item) => item.id === marker.exit_target_marker_id);
+      if (worldMarker) {
+        setActiveMiniMap(null);
+        setSelectedMarker(null);
+        setPreviewMarkerScene(false);
+        setMarkerPanelMessage(null);
+        setSavedPlayerPosition({ x: Number(worldMarker.x_percent), y: Number(worldMarker.y_percent) });
+        return;
+      }
+    }
+
+    leaveMiniMap();
   }
 
   async function saveTutorialForm() {
@@ -2723,6 +2773,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               markerStartsRouteOnAccept={markerStartsRouteOnAccept}
               setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
               routes={routes}
+              worldMarkers={adminWorldMarkers}
+              miniMaps={adminMiniMaps}
+              markerExitTargetType={markerExitTargetType}
+              setMarkerExitTargetType={setMarkerExitTargetType}
+              markerExitTargetMarkerId={markerExitTargetMarkerId}
+              setMarkerExitTargetMarkerId={setMarkerExitTargetMarkerId}
+              markerExitTargetMiniMapId={markerExitTargetMiniMapId}
+              setMarkerExitTargetMiniMapId={setMarkerExitTargetMiniMapId}
               itemDefinitions={itemDefinitions}
               markerMarketItems={markerMarketItems}
               marketItemId={marketItemId}
@@ -3259,6 +3317,18 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <LockPicker label="Marker lock" value={markerLockType} onSelect={setMarkerLockType} />
               {markerLockType !== "public" ? <TextInput value={markerLockMessage} onChangeText={setMarkerLockMessage} placeholder="Lock message shown to players" placeholderTextColor={colors.muted} style={styles.input} /> : null}
               {draftType === "Area/Town Entrance" ? <MiniMapPicker miniMaps={adminMiniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} /> : null}
+              {isExitMarkerType(draftType) ? (
+                <ExitTargetEditor
+                  targetType={markerExitTargetType}
+                  setTargetType={setMarkerExitTargetType}
+                  targetMarkerId={markerExitTargetMarkerId}
+                  setTargetMarkerId={setMarkerExitTargetMarkerId}
+                  targetMiniMapId={markerExitTargetMiniMapId}
+                  setTargetMiniMapId={setMarkerExitTargetMiniMapId}
+                  worldMarkers={adminWorldMarkers}
+                  miniMaps={adminMiniMaps}
+                />
+              ) : null}
               {draftType === "Sign Post" ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
@@ -3975,6 +4045,14 @@ function isMarkerLocked(marker: MapMarker) {
   return (marker.lock_type ?? "public") !== "public";
 }
 
+function isExitMarker(marker: MapMarker) {
+  return isExitMarkerType(marker.type);
+}
+
+function isExitMarkerType(type: string) {
+  return type === "Exit" || type === "Exit/Leave";
+}
+
 function getMarkerLockMessage(marker: MapMarker) {
   if (!isMarkerLocked(marker)) {
     return "Available";
@@ -4538,6 +4616,14 @@ function MiniMapMarkerAdminForm({
   markerStartsRouteOnAccept,
   setMarkerStartsRouteOnAccept,
   routes,
+  worldMarkers,
+  miniMaps,
+  markerExitTargetType,
+  setMarkerExitTargetType,
+  markerExitTargetMarkerId,
+  setMarkerExitTargetMarkerId,
+  markerExitTargetMiniMapId,
+  setMarkerExitTargetMiniMapId,
   itemDefinitions,
   markerMarketItems,
   marketItemId,
@@ -4607,6 +4693,14 @@ function MiniMapMarkerAdminForm({
   markerStartsRouteOnAccept: boolean;
   setMarkerStartsRouteOnAccept: (value: boolean | ((current: boolean) => boolean)) => void;
   routes: MapRoute[];
+  worldMarkers: MapMarker[];
+  miniMaps: MiniMap[];
+  markerExitTargetType: MapMarker["exit_target_type"];
+  setMarkerExitTargetType: (value: MapMarker["exit_target_type"]) => void;
+  markerExitTargetMarkerId: string | null;
+  setMarkerExitTargetMarkerId: (value: string | null) => void;
+  markerExitTargetMiniMapId: string | null;
+  setMarkerExitTargetMiniMapId: (value: string | null) => void;
   itemDefinitions: ItemDefinition[];
   markerMarketItems: MarkerMarketItem[];
   marketItemId: string | null;
@@ -4630,6 +4724,7 @@ function MiniMapMarkerAdminForm({
 }) {
   const supportsQuest = isQuestMarkerType(draftType);
   const supportsMarket = draftType === "Market" || selectedMarker?.type === "Market";
+  const supportsExit = isExitMarkerType(draftType);
 
   return (
     <View style={styles.storyEditor}>
@@ -4655,6 +4750,18 @@ function MiniMapMarkerAdminForm({
       <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
         <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
       </Pressable>
+      {supportsExit ? (
+        <ExitTargetEditor
+          targetType={markerExitTargetType}
+          setTargetType={setMarkerExitTargetType}
+          targetMarkerId={markerExitTargetMarkerId}
+          setTargetMarkerId={setMarkerExitTargetMarkerId}
+          targetMiniMapId={markerExitTargetMiniMapId}
+          setTargetMiniMapId={setMarkerExitTargetMiniMapId}
+          worldMarkers={worldMarkers}
+          miniMaps={miniMaps}
+        />
+      ) : null}
       {supportsQuest ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>Quest / Path Link</Text>
@@ -4919,6 +5026,58 @@ function RewardTimingPicker({ value, onSelect }: { value: (typeof rewardTimings)
   );
 }
 
+function ExitTargetEditor({
+  targetType,
+  setTargetType,
+  targetMarkerId,
+  setTargetMarkerId,
+  targetMiniMapId,
+  setTargetMiniMapId,
+  worldMarkers,
+  miniMaps,
+}: {
+  targetType: MapMarker["exit_target_type"];
+  setTargetType: (value: MapMarker["exit_target_type"]) => void;
+  targetMarkerId: string | null;
+  setTargetMarkerId: (value: string | null) => void;
+  targetMiniMapId: string | null;
+  setTargetMiniMapId: (value: string | null) => void;
+  worldMarkers: MapMarker[];
+  miniMaps: MiniMap[];
+}) {
+  const safeType = targetType ?? "world_marker";
+  const worldTargets = worldMarkers.filter((marker) => !marker.mini_map_id);
+
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Exit Target</Text>
+      <View style={styles.storyRoutePicker}>
+        {exitTargetTypes.map((type) => (
+          <Pressable
+            key={type}
+            style={[styles.routeChip, safeType === type && styles.routeChipActive]}
+            onPress={() => {
+              setTargetType(type);
+              if (type === "world_marker") {
+                setTargetMiniMapId(null);
+              } else {
+                setTargetMarkerId(null);
+              }
+            }}
+          >
+            <Text style={styles.routeChipText}>{type === "world_marker" ? "Return To World Marker" : "Open Another Mini Map"}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {safeType === "world_marker" ? (
+        <MarkerPicker label="World return marker" markers={worldTargets} selectedId={targetMarkerId} onSelect={setTargetMarkerId} />
+      ) : (
+        <MiniMapPicker miniMaps={miniMaps} selectedId={targetMiniMapId} onSelect={setTargetMiniMapId} />
+      )}
+    </View>
+  );
+}
+
 function AdminImageUploadButton({ folder, onUploaded, onMessage }: { folder: string; onUploaded: (url: string) => void; onMessage?: (message: string) => void }) {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -5094,11 +5253,13 @@ function isQuestMarkerType(type: string) {
 function getDefaultMarkerIconLabel(type: string) {
   if (type === "Market") return "MKT";
   if (type === "Sign Post") return "SIG";
+  if (type === "Player Spawn") return "SPN";
   if (type === "Area/Town Entrance") return "IN";
   if (type === "Battle" || type === "Battle Zone") return "BTL";
   if (type === "Quest" || type === "Side Quest" || type === "Story") return "!";
   if (type === "Training" || type === "Training Spot") return "TRN";
   if (type === "Dungeon Room") return "DGN";
+  if (type === "Exit") return "EXT";
   if (type === "Exit/Leave") return "OUT";
   if (type === "Point of Interest") return "POI";
   return "*";
@@ -5107,11 +5268,13 @@ function getDefaultMarkerIconLabel(type: string) {
 function getDefaultMarkerIconColor(type: string) {
   if (type === "Market") return colors.gold;
   if (type === "Sign Post") return "#f0d28a";
+  if (type === "Player Spawn") return colors.blue;
   if (type === "Area/Town Entrance") return colors.blue;
   if (type === "Battle" || type === "Battle Zone") return "#e0574f";
   if (type === "Quest" || type === "Side Quest" || type === "Story") return "#8fe8a1";
   if (type === "Training" || type === "Training Spot") return "#7fe7ff";
   if (type === "Dungeon Room") return "#b889ff";
+  if (type === "Exit") return "#f0d28a";
   if (type === "Exit/Leave") return colors.muted;
   if (type === "Point of Interest") return "#f0d28a";
   return colors.goldSoft;
