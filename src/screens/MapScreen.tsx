@@ -587,6 +587,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const eligibleEvents = mapEvents.filter(
       (event) =>
         event.is_active &&
+        !event.linked_only &&
         event.route_id === route.id &&
         !completedEventIds.has(event.id) &&
         Number(event.distance_marker_percent) <= progressPercent,
@@ -2623,6 +2624,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       distance_marker_percent: clamp(Number(eventDistance) || 0, 0, 100),
       trigger_mode: eventTriggerMode,
       random_chance_percent: eventTriggerMode === "random" ? clamp(Number(eventRandomChance) || 0, 0, 100) : 0,
+      linked_only: editingEvent?.linked_only ?? false,
       background_image_url: eventBackgroundImage.trim() || null,
       npc_name: eventNpcName.trim() || null,
       npc_portrait_url: eventNpcPortrait.trim() || null,
@@ -2701,6 +2703,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         reward_item_quantity: source.reward_item_quantity,
         trigger_mode: source.trigger_mode ?? "fixed",
         random_chance_percent: source.trigger_mode === "random" ? source.random_chance_percent : 0,
+        linked_only: source.linked_only ?? false,
         season_number: selectedSeason,
         chapter_number: selectedChapter,
         is_active: source.is_active,
@@ -2957,6 +2960,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       distance_marker_percent: Number(selectedDialogueEvent.distance_marker_percent) || 0,
       trigger_mode: "fixed" as const,
       random_chance_percent: 0,
+      linked_only: true,
       background_image_url: null,
       npc_name: null,
       npc_portrait_url: null,
@@ -3834,7 +3838,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   {adminMapEvents.map((event) => (
                     <View key={event.id} style={styles.storyCard}>
                       <Text style={styles.markerName}>{event.distance_marker_percent}% - {event.title}</Text>
-                      <Text style={styles.copy}>{eventTriggerModeName(event)} / {event.event_type === "battle" && event.npc_id ? getNpcName(npcDefinitions, event.npc_id) : eventTypeName(event.event_type)}</Text>
+                      <Text style={styles.copy}>{eventTriggerModeName(event)} / {event.linked_only ? "Linked Only / " : ""}{event.event_type === "battle" && event.npc_id ? getNpcName(npcDefinitions, event.npc_id) : eventTypeName(event.event_type)}</Text>
                       <View style={styles.modeRow}>
                         <Pressable style={styles.secondaryButtonFlex} onPress={() => void previewMapEvent(event)}>
                           <Text style={styles.secondaryText}>Preview/Test</Text>
@@ -4596,7 +4600,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             {adminMapEvents.map((event) => (
               <View key={event.id} style={styles.storyCard}>
                 <Text style={styles.markerName}>{event.distance_marker_percent}% - {event.title}</Text>
-                <Text style={styles.debugLine}>{eventTriggerModeName(event)}</Text>
+                <Text style={styles.debugLine}>{event.linked_only ? "Linked Only / " : ""}{eventTriggerModeName(event)}</Text>
                 <Text style={styles.copy}>
                   {event.event_type === "battle"
                     ? `${event.npc_id ? getNpcName(npcDefinitions, event.npc_id) : event.enemy_id ? getEnemyName(enemyDefinitions, event.enemy_id) : event.enemy_name || "Enemy"} - ${event.npc_id ? "Admin NPC" : event.enemy_id ? "Admin Enemy" : `HP ${event.enemy_hp}`}`
