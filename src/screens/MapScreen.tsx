@@ -2913,6 +2913,27 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceSortOrder(String(choiceNodeId ? getNextChoiceOrder(dialogueChoices, choiceNodeId) : 0));
   }
 
+  function selectChoiceBattleEvent(event: MapEvent) {
+    setChoiceBattleEventId(event.id);
+    setChoiceAction("start_battle");
+    setChoiceBattleTitle(event.title);
+    setEventNpcId(event.npc_id ?? null);
+    setEventEnemyId(event.enemy_id ?? null);
+    setEnemyName(event.enemy_name ?? "");
+    setEnemyImage(event.enemy_image_url ?? "");
+    setEnemyHp(String(event.enemy_hp ?? 30));
+    setEnemyAttack(String(event.enemy_attack_damage ?? 5));
+    setBattleIntro(event.battle_intro_text ?? "");
+    setVictoryText(event.victory_text ?? "");
+    setDefeatText(event.defeat_text ?? "");
+    setRewardXp(String(event.reward_xp ?? 0));
+    setRewardGold(String(event.reward_gold ?? 0));
+    setRewardItem(event.reward_item ?? "");
+    setRewardItemId(event.reward_item_id ?? null);
+    setRewardItemQuantity(String(event.reward_item_quantity ?? 1));
+    setAdminMessage(`Editing linked battle "${event.title}".`);
+  }
+
   async function saveDialogueChoice() {
     if (!choiceNodeId || !choiceButtonText.trim()) {
       setAdminMessage("Select a dialogue node and add choice button text.");
@@ -2946,13 +2967,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
-  async function createLinkedBattleForChoice() {
+  async function saveLinkedBattleForChoice() {
     if (!selectedDialogueEvent) {
       setAdminMessage("Select a dialogue event before creating a linked battle.");
       return;
     }
 
-    const title = choiceBattleTitle.trim() || `${selectedDialogueEvent.title} Battle`;
+    const existingBattle = choiceBattleEventId ? mapEvents.find((event) => event.id === choiceBattleEventId) ?? allMapEvents.find((event) => event.id === choiceBattleEventId) ?? null : null;
+    const title = choiceBattleTitle.trim() || existingBattle?.title || `${selectedDialogueEvent.title} Battle`;
     const values = {
       event_type: "battle" as const,
       title,
@@ -2987,14 +3009,25 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     };
 
     try {
-      const saved = await createMapEvent(values);
-      setMapEvents((current) => [...current, saved].sort((a, b) => Number(a.distance_marker_percent) - Number(b.distance_marker_percent)));
+      const saved = existingBattle ? await updateMapEvent(existingBattle.id, values) : await createMapEvent(values);
+      setMapEvents((current) => {
+        const next = current.some((event) => event.id === saved.id)
+          ? current.map((event) => (event.id === saved.id ? saved : event))
+          : [...current, saved];
+        return next.sort((a, b) => Number(a.distance_marker_percent) - Number(b.distance_marker_percent));
+      });
+      setAllMapEvents((current) => {
+        const next = current.some((event) => event.id === saved.id)
+          ? current.map((event) => (event.id === saved.id ? saved : event))
+          : [...current, saved];
+        return next.sort(compareEventsByRouteAndDistance);
+      });
       setChoiceBattleEventId(saved.id);
       setChoiceAction("start_battle");
-      setChoiceBattleTitle("");
-      setAdminMessage(`Linked battle "${saved.title}" created. Save the player choice to connect it.`);
+      setChoiceBattleTitle(saved.title);
+      setAdminMessage(`Linked battle "${saved.title}" saved. Now save the player choice to connect it.`);
     } catch (error) {
-      setAdminMessage(getErrorMessage(error, "Unable to create linked battle event."));
+      setAdminMessage(getErrorMessage(error, "Unable to save linked battle event."));
     }
   }
 
@@ -3028,15 +3061,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     return (
       <View style={styles.storyEditor}>
         <Text style={styles.selectedTitle}>Linked Battle</Text>
-        <Text style={styles.copy}>Select an existing battle event, or create one here. The created battle can use an Enemy, a battle-capable NPC, or manual fallback stats.</Text>
+        <Text style={styles.copy}>Select an existing linked battle to edit, or build one here. Save Linked Battle stores the battle as linked-only so it starts from this player choice, not the trail percentage.</Text>
         <View style={styles.storyRoutePicker}>
           {adminMapEvents.filter((event) => event.event_type === "battle").map((event) => (
-            <Pressable key={event.id} style={[styles.routeChip, choiceBattleEventId === event.id && styles.routeChipActive]} onPress={() => setChoiceBattleEventId(event.id)}>
+            <Pressable key={event.id} style={[styles.routeChip, choiceBattleEventId === event.id && styles.routeChipActive]} onPress={() => selectChoiceBattleEvent(event)}>
               <Text style={styles.routeChipText}>{event.title}</Text>
+              <Text style={styles.debugLine}>{event.linked_only ? "Linked Only" : "Trail Battle"}</Text>
             </Pressable>
           ))}
         </View>
-        <TextInput value={choiceBattleTitle} onChangeText={setChoiceBattleTitle} placeholder="New linked battle title" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={choiceBattleTitle} onChangeText={setChoiceBattleTitle} placeholder="Linked battle title" placeholderTextColor={colors.muted} style={styles.input} />
         <EnemyPicker enemies={enemyDefinitions} selectedId={eventEnemyId} onSelect={selectEventEnemy} />
         <NpcPicker label="Or select a battle-capable NPC" npcs={npcDefinitions} selectedId={eventNpcId} onSelect={selectEventBattleNpc} battleOnly />
         {eventNpcId ? (
@@ -3068,10 +3102,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         <ItemPicker label="Reward item" items={itemDefinitions} selectedId={rewardItemId} onSelect={setRewardItemId} />
         <TextInput value={rewardItemQuantity} onChangeText={setRewardItemQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
         <TextInput value={rewardItem} onChangeText={setRewardItem} placeholder="Legacy reward item text optional" placeholderTextColor={colors.muted} style={styles.input} />
-        <Pressable style={styles.secondaryButton} onPress={() => void createLinkedBattleForChoice()}>
-          <Text style={styles.secondaryText}>Create Linked Battle Event</Text>
+        <Pressable style={styles.primaryButton} onPress={() => void saveLinkedBattleForChoice()}>
+          <Text style={styles.primaryText}>Save Linked Battle</Text>
         </Pressable>
-        <Text style={styles.debugLine}>After creating or selecting a battle, save the player choice to connect it.</Text>
+        <Text style={styles.debugLine}>After saving the linked battle, save the player choice to connect the button to this battle.</Text>
       </View>
     );
   }
