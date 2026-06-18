@@ -17,6 +17,7 @@ export const marketListingModes: MarketListingMode[] = ["buy_and_sell", "buy_onl
 export type MapStoryInstance = Tables["map_story_instances"];
 export type MapEvent = Tables["map_events"];
 export type MapEventCompletion = Tables["map_event_completions"];
+export type StoryMarkerCompletion = Tables["story_marker_completions"];
 export type StoryDialogueNode = Tables["story_dialogue_nodes"];
 export type StoryDialogueChoice = Tables["story_dialogue_choices"];
 export type Role = Tables["profiles"]["role"];
@@ -540,7 +541,7 @@ export async function saveMarkerRouteLinks(markerId: string, routeIds: string[],
   return (data ?? []) as MarkerRouteLink[];
 }
 
-export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key"> & Partial<Pick<MapMarker, "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "reward_timing" | "season_number" | "chapter_number">>) {
+export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key"> & Partial<Pick<MapMarker, "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "reward_timing" | "season_number" | "chapter_number">>) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -654,7 +655,7 @@ export async function deleteMapRoute(routeId: string) {
   }
 }
 
-export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "reward_timing" | "season_number" | "chapter_number">>) {
+export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "reward_timing" | "season_number" | "chapter_number">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({
@@ -672,7 +673,7 @@ export async function updateMapMarker(markerId: string, values: Partial<Pick<Map
   return data as MapMarker;
 }
 
-export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "reward_timing" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "season_number" | "chapter_number">>) {
+export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "reward_timing" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "season_number" | "chapter_number">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({
@@ -875,6 +876,60 @@ export async function completeMapEvent(eventId: string) {
   }
 
   return data as MapEventCompletion;
+}
+
+export async function getStoryMarkerCompletions(markerIds: string[]) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user || markerIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("story_marker_completions")
+    .select("*")
+    .eq("user_id", user.id)
+    .in("marker_id", markerIds);
+
+  if (error) {
+    console.warn("[map] story marker completions unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as StoryMarkerCompletion[];
+}
+
+export async function completeStoryMarker(markerId: string) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to complete story quests.");
+  }
+
+  const { data, error } = await supabase
+    .from("story_marker_completions")
+    .upsert(
+      {
+        user_id: user.id,
+        marker_id: markerId,
+        completed_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,marker_id" },
+    )
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as StoryMarkerCompletion;
 }
 
 export async function applyRewards(

@@ -375,6 +375,10 @@ export type Tables = {
     icon_color: string | null;
     lock_type: "public" | "story_locked" | "quest_locked";
     lock_message: string | null;
+    story_order: number;
+    unlock_after_marker_id: string | null;
+    hide_when_completed: boolean;
+    require_all_linked_routes: boolean;
     season_number: number;
     chapter_number: number;
     created_by: string | null;
@@ -432,6 +436,12 @@ export type Tables = {
     event_id: string | null;
     choice_id: string | null;
     claimed_at: string;
+  };
+  story_marker_completions: {
+    id: string;
+    user_id: string;
+    marker_id: string;
+    completed_at: string;
   };
   mini_maps: {
     id: string;

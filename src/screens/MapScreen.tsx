@@ -13,6 +13,7 @@ import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyL
 import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../services/inventoryService";
 import {
   completeMapEvent,
+  completeStoryMarker,
   applyRewards,
   buyMarketItem,
   canMarketItemBeBought,
@@ -46,6 +47,7 @@ import {
   getDialogueChoices,
   getDialogueNodes,
   getEventCompletions,
+  getStoryMarkerCompletions,
   getRouteProgress,
   getRouteProgressForRoutes,
   MapMarker,
@@ -157,6 +159,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [mapEvents, setMapEvents] = useState<MapEvent[]>([]);
   const [allMapEvents, setAllMapEvents] = useState<MapEvent[]>([]);
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
+  const [completedStoryMarkerIds, setCompletedStoryMarkerIds] = useState<Set<string>>(new Set());
   const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
   const [activeBattle, setActiveBattle] = useState<MapEvent | null>(null);
   const [adminPreviewMode, setAdminPreviewMode] = useState<"story" | "battle" | null>(null);
@@ -262,6 +265,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerExitTargetMiniMapId, setMarkerExitTargetMiniMapId] = useState<string | null>(null);
   const [markerLockType, setMarkerLockType] = useState<MapMarker["lock_type"]>("public");
   const [markerLockMessage, setMarkerLockMessage] = useState("");
+  const [markerStoryOrder, setMarkerStoryOrder] = useState("0");
+  const [markerUnlockAfterId, setMarkerUnlockAfterId] = useState<string | null>(null);
+  const [markerHideWhenCompleted, setMarkerHideWhenCompleted] = useState(true);
+  const [markerRequireAllLinkedRoutes, setMarkerRequireAllLinkedRoutes] = useState(true);
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
   const [markerRouteLinks, setMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [selectedMarkerRouteIds, setSelectedMarkerRouteIds] = useState<string[]>([]);
@@ -402,8 +409,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     ),
     [legendItems, mapChapters, mapEvents, markers, miniMaps, routes, selectedSeason, tutorialSteps],
   );
-  const visibleMarkers = isAdmin ? worldMarkers : worldMarkers.filter((marker) => canPlayerSeeMarker(marker, playerPosition));
-  const visibleMiniMapMarkers = isAdmin ? adminMiniMapMarkers : miniMapMarkers.filter((marker) => canPlayerSeeMarker(marker, miniMapPlayerPosition));
+  const visibleMarkers = isAdmin ? worldMarkers : worldMarkers.filter((marker) => canPlayerSeeMarker(marker, playerPosition) && canPlayerSeeStoryMarker(marker, worldMarkers, completedStoryMarkerIds));
+  const visibleMiniMapMarkers = isAdmin ? adminMiniMapMarkers : miniMapMarkers.filter((marker) => canPlayerSeeMarker(marker, miniMapPlayerPosition) && canPlayerSeeStoryMarker(marker, miniMapMarkers, completedStoryMarkerIds));
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedNodeChoices = useMemo(
@@ -635,10 +642,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const progressRows = await getRouteProgressForRoutes(nextRoutes.map((item) => item.id));
+    const storyCompletions = await getStoryMarkerCompletions(loadedMarkers.filter(isStoryQuestMarker).map((item) => item.id));
     const currentProgressRow = progressRows.find((row) => row.is_current);
     const currentRoute = nextRoutes.find((item) => item.id === currentProgressRow?.route_id) ?? null;
     const firstRoute = currentRoute ?? nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
     setRouteProgressRows(progressRows);
+    setCompletedStoryMarkerIds(new Set(storyCompletions.map((completion) => completion.marker_id)));
     setRoutes(nextRoutes);
     setPathDraft([]);
     setMarkers(loadedMarkers);
@@ -988,6 +997,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         icon_color: markerIconColor.trim() || null,
         lock_type: markerLockType,
         lock_message: markerLockMessage.trim() || null,
+        story_order: Number(markerStoryOrder) || 0,
+        unlock_after_marker_id: markerUnlockAfterId,
+        hide_when_completed: markerHideWhenCompleted,
+        require_all_linked_routes: markerRequireAllLinkedRoutes,
         season_number: selectedSeason,
         chapter_number: selectedChapter,
       });
@@ -995,7 +1008,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       if (activeMiniMapId && configured.mini_map_id !== activeMiniMapId) {
         throw new Error("Mini-map marker was saved without the open mini map id. Try again after reopening the mini map.");
       }
-      if (draftType === "Sign Post") {
+      if (draftType === "Sign Post" || isStoryQuestMarker(configured)) {
         const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter);
         setMarkerRouteLinks(links);
       }
@@ -1030,6 +1043,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       icon_color: markerIconColor.trim() || null,
       lock_type: markerLockType,
       lock_message: markerLockMessage.trim() || null,
+      story_order: Number(markerStoryOrder) || 0,
+      unlock_after_marker_id: markerUnlockAfterId,
+      hide_when_completed: markerHideWhenCompleted,
+      require_all_linked_routes: markerRequireAllLinkedRoutes,
       interaction_radius_percent: Math.max(0.5, Number(markerInteractionRadius) || 4),
       reward_xp: Number(markerRewardXp) || 0,
       reward_gold: Number(markerRewardGold) || 0,
@@ -1073,6 +1090,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerIconColor(marker.icon_color ?? "");
     setMarkerLockType(marker.lock_type ?? "public");
     setMarkerLockMessage(marker.lock_message ?? "");
+    setMarkerStoryOrder(String(marker.story_order ?? 0));
+    setMarkerUnlockAfterId(marker.unlock_after_marker_id ?? null);
+    setMarkerHideWhenCompleted(marker.hide_when_completed ?? true);
+    setMarkerRequireAllLinkedRoutes(marker.require_all_linked_routes ?? true);
     setMarkerInteractionRadius(String(marker.interaction_radius_percent ?? 4));
     setMarkerInteractable(marker.is_interactable ?? true);
     setMarkerRewardXp(String(marker.reward_xp ?? 0));
@@ -1092,7 +1113,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     try {
       setMarkerMarketItems(await getMarkerMarketItems(marker.id));
-      if (marker.type === "Sign Post") {
+      if (marker.type === "Sign Post" || isStoryQuestMarker(marker)) {
         const links = await getMarkerRouteLinks(marker.id);
         setMarkerRouteLinks(links);
         setSelectedMarkerRouteIds(links.map((link) => link.route_id));
@@ -1138,7 +1159,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           })
         : selectedMarker;
       const updated = await updateMarkerSettings(moved.id, getMarkerSettingsPayload());
-      if (updated.type === "Sign Post") {
+      if (updated.type === "Sign Post" || isStoryQuestMarker(updated)) {
         const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter);
         setMarkerRouteLinks(links);
       }
@@ -1298,10 +1319,43 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         rewardOncePerPlayer: selectedMarker.reward_once_per_player,
         markerId: selectedMarker.id,
       });
+      if (isStoryQuestMarker(selectedMarker)) {
+        await completeStoryMarker(selectedMarker.id);
+        setCompletedStoryMarkerIds((current) => new Set([...current, selectedMarker.id]));
+        setSelectedMarker(null);
+        setPreviewMarkerScene(false);
+        setMarkerPanelMessage(null);
+        setGpsMessage(result.claimed ? `${selectedMarker.quest_title || selectedMarker.title} completed. ${result.message}` : `${selectedMarker.quest_title || selectedMarker.title} completed.`);
+        await loadInventory();
+        return;
+      }
       setMarkerPanelMessage(result.message);
       await loadInventory();
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to claim marker reward."));
+    }
+  }
+
+  async function completeSelectedStoryMarker(marker: MapMarker) {
+    try {
+      const result = await applyRewards(character, {
+        xp: marker.reward_xp,
+        gold: marker.reward_gold,
+        itemId: marker.reward_item_id,
+        itemQuantity: marker.reward_item_quantity,
+        repeatable: marker.repeatable,
+        rewardOncePerPlayer: marker.reward_once_per_player,
+        markerId: marker.id,
+      });
+      await completeStoryMarker(marker.id);
+      setCompletedStoryMarkerIds((current) => new Set([...current, marker.id]));
+      setSelectedMarker(null);
+      setPreviewMarkerScene(false);
+      setMarkerPanelMessage(null);
+      setGpsMessage(result.claimed ? `${marker.quest_title || marker.title} completed. ${result.message}` : `${marker.quest_title || marker.title} completed.`);
+      await loadInventory();
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to complete story quest."));
     }
   }
 
@@ -1310,12 +1364,24 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
-    if (!selectedMarker.linked_route_id || !selectedMarker.starts_route_on_accept) {
+    if (!selectedMarker.starts_route_on_accept && markerRouteLinks.length === 0) {
       await claimSelectedMarkerReward();
       return;
     }
 
-    const linkedRoute = routes.find((item) => item.id === selectedMarker.linked_route_id);
+    const orderedLinks = getOrderedMarkerRouteLinks(markerRouteLinks);
+    const firstIncompleteLink = orderedLinks.find((link) => {
+      const progress = routeProgressRows.find((row) => row.route_id === link.route_id)?.progress_percent ?? 0;
+      return progress < 100;
+    });
+
+    if (orderedLinks.length > 0 && !firstIncompleteLink) {
+      await completeSelectedStoryMarker(selectedMarker);
+      return;
+    }
+
+    const routeId = firstIncompleteLink?.route_id ?? selectedMarker.linked_route_id;
+    const linkedRoute = routes.find((item) => item.id === routeId);
 
     if (!linkedRoute) {
       setMarkerPanelMessage("This quest is linked to a walking path that could not be found.");
@@ -1356,7 +1422,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
 
       const sourceMarker = markers.find((marker) => marker.id === progress.source_marker_id);
-      if (!sourceMarker || sourceMarker.reward_timing !== "on_path_complete") {
+      if (!sourceMarker || (sourceMarker.reward_timing !== "on_path_complete" && !isStoryQuestMarker(sourceMarker))) {
+        return;
+      }
+
+      const linkedRoutes = getOrderedMarkerRouteLinks(await getMarkerRouteLinks(sourceMarker.id))
+        .map((link) => routes.find((item) => item.id === link.route_id))
+        .filter(Boolean) as MapRoute[];
+      const completedRouteIds = new Set(routeProgressRows.filter((row) => Number(row.progress_percent) >= 100).map((row) => row.route_id));
+      completedRouteIds.add(routeId);
+      const nextRoute = linkedRoutes.find((item) => !completedRouteIds.has(item.id));
+
+      if (nextRoute && sourceMarker.require_all_linked_routes !== false) {
+        await startLinkedStoryRoute(sourceMarker, nextRoute);
+        setGpsMessage(`${route.name} completed. Next story path started: ${nextRoute.name}.`);
         return;
       }
 
@@ -1370,7 +1449,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         markerId: sourceMarker.id,
       });
 
-      setGpsMessage(result.claimed ? `${route.name} completed. ${result.message}` : `${route.name} completed. ${result.message}`);
+      if (isStoryQuestMarker(sourceMarker)) {
+        await completeStoryMarker(sourceMarker.id);
+        setCompletedStoryMarkerIds((current) => new Set([...current, sourceMarker.id]));
+      }
+
+      setGpsMessage(result.claimed ? `${route.name} completed. ${result.message}` : `${route.name} completed. ${sourceMarker.quest_title || sourceMarker.title} is now complete.`);
       await loadInventory();
     } catch (error) {
       setGpsMessage(getErrorMessage(error, "Path completed, but the linked quest reward could not be granted."));
@@ -1418,6 +1502,32 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMiniMapId(nextMiniMap?.id ?? null);
     await selectRoute(nextRoute, true);
     setGpsMessage(`${nextRoute.name} is now your active walking path.`);
+  }
+
+  async function startLinkedStoryRoute(sourceMarker: MapMarker, nextRoute: MapRoute) {
+    const startPoint = nextRoute.path_points[0] ?? { x: 33.8, y: 73.81 };
+    await setCurrentRoute(nextRoute.id);
+    setRouteDirection("forward");
+    routeDirectionRef.current = "forward";
+    distanceWalkedRef.current = 0;
+    setDistanceWalked(0);
+    setSavedPlayerPosition(startPoint);
+    setRouteProgressRows((current) =>
+      upsertRouteProgressRow(current, nextRoute.id, 0).map((row) => ({ ...row, is_current: row.route_id === nextRoute.id })),
+    );
+    await saveRouteProgress(nextRoute.id, {
+      distance_walked_meters: 0,
+      progress_percent: 0,
+      current_x_percent: startPoint.x,
+      current_y_percent: startPoint.y,
+      last_lat: null,
+      last_lng: null,
+      travel_direction: "forward",
+      is_current: true,
+      source_marker_id: sourceMarker.id,
+    });
+    setActiveMiniMap(nextRoute.mini_map_id ? miniMaps.find((item) => item.id === nextRoute.mini_map_id) ?? null : null);
+    await selectRoute(nextRoute, true);
   }
 
   async function turnBackOnCurrentPath() {
@@ -3773,10 +3883,19 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerLinkedRouteId={setMarkerLinkedRouteId}
               markerStartsRouteOnAccept={markerStartsRouteOnAccept}
               setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
+              markerStoryOrder={markerStoryOrder}
+              setMarkerStoryOrder={setMarkerStoryOrder}
+              markerUnlockAfterId={markerUnlockAfterId}
+              setMarkerUnlockAfterId={setMarkerUnlockAfterId}
+              markerHideWhenCompleted={markerHideWhenCompleted}
+              setMarkerHideWhenCompleted={setMarkerHideWhenCompleted}
+              markerRequireAllLinkedRoutes={markerRequireAllLinkedRoutes}
+              setMarkerRequireAllLinkedRoutes={setMarkerRequireAllLinkedRoutes}
               routes={activeRouteScopeRoutes}
               selectedMarkerRouteIds={selectedMarkerRouteIds}
               toggleSignPostRoute={toggleSignPostRoute}
               worldMarkers={adminWorldMarkers}
+              storyScopeMarkers={adminMiniMapMarkers}
               miniMaps={adminMiniMaps}
               markerExitTargetType={markerExitTargetType}
               setMarkerExitTargetType={setMarkerExitTargetType}
@@ -4472,6 +4591,37 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Quest dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
                   <TextInput value={markerQuestImage} onChangeText={setMarkerQuestImage} placeholder="Quest image URL" placeholderTextColor={colors.muted} style={styles.input} />
                   <AdminImageUploadButton folder="quest-images" onUploaded={setMarkerQuestImage} onMessage={setAdminMessage} />
+                  {draftType === "Story" ? (
+                    <>
+                      <TextInput value={markerStoryOrder} onChangeText={setMarkerStoryOrder} placeholder="Story order, example 1" placeholderTextColor={colors.muted} style={styles.input} />
+                      <Text style={styles.selectedTitle}>Unlock After Story Marker</Text>
+                      <View style={styles.storyRoutePicker}>
+                        <Pressable style={[styles.routeChip, !markerUnlockAfterId && styles.routeChipActive]} onPress={() => setMarkerUnlockAfterId(null)}>
+                          <Text style={styles.routeChipText}>Use story order</Text>
+                        </Pressable>
+                        {adminWorldMarkers.filter((marker) => marker.type === "Story" && marker.id !== selectedMarker?.id).map((marker) => (
+                          <Pressable key={marker.id} style={[styles.routeChip, markerUnlockAfterId === marker.id && styles.routeChipActive]} onPress={() => setMarkerUnlockAfterId(marker.id)}>
+                            <Text style={styles.routeChipText}>{marker.story_order || 0}. {marker.title}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      <Pressable style={[styles.secondaryButton, markerHideWhenCompleted && styles.typeSelected]} onPress={() => setMarkerHideWhenCompleted((value) => !value)}>
+                        <Text style={styles.secondaryText}>Hide After Completion: {markerHideWhenCompleted ? "Yes" : "No"}</Text>
+                      </Pressable>
+                      <Pressable style={[styles.secondaryButton, markerRequireAllLinkedRoutes && styles.typeSelected]} onPress={() => setMarkerRequireAllLinkedRoutes((value) => !value)}>
+                        <Text style={styles.secondaryText}>Require All Linked Paths: {markerRequireAllLinkedRoutes ? "Yes" : "No"}</Text>
+                      </Pressable>
+                    </>
+                  ) : null}
+                  <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
+                  <Text style={styles.copy}>Select one or more paths. They run in the order shown by route sort/order.</Text>
+                  <View style={styles.storyRoutePicker}>
+                    {adminWorldRoutes.map((item) => (
+                      <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
+                        <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
                   <RoutePicker routes={adminWorldRoutes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
                   <Pressable style={[styles.secondaryButton, markerStartsRouteOnAccept && styles.typeSelected]} onPress={() => setMarkerStartsRouteOnAccept((value) => !value)}>
                     <Text style={styles.secondaryText}>Start Path On Accept: {markerStartsRouteOnAccept ? "Yes" : "No"}</Text>
@@ -5018,6 +5168,41 @@ function canPlayerSeeMarker(marker: MapMarker, playerPosition: { x: number; y: n
 
   const radius = Number(marker.interaction_radius_percent ?? 4) || 4;
   return getPercentDistance(playerPosition, { x: Number(marker.x_percent), y: Number(marker.y_percent) }) <= radius;
+}
+
+function isStoryQuestMarker(marker: Pick<MapMarker, "type">) {
+  return marker.type === "Story" || marker.type === "Quest";
+}
+
+function getOrderedMarkerRouteLinks(links: MarkerRouteLink[]) {
+  return [...links].sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0) || a.created_at.localeCompare(b.created_at));
+}
+
+function canPlayerSeeStoryMarker(marker: MapMarker, scopeMarkers: MapMarker[], completedMarkerIds: Set<string>) {
+  if (!isStoryQuestMarker(marker)) {
+    return true;
+  }
+
+  if (marker.hide_when_completed !== false && completedMarkerIds.has(marker.id)) {
+    return false;
+  }
+
+  if (marker.unlock_after_marker_id && !completedMarkerIds.has(marker.unlock_after_marker_id)) {
+    return false;
+  }
+
+  const order = Number(marker.story_order ?? 0);
+  if (order <= 0) {
+    return true;
+  }
+
+  return scopeMarkers
+    .filter((item) => isStoryQuestMarker(item))
+    .filter((item) => Number(item.season_number ?? 1) === Number(marker.season_number ?? 1))
+    .filter((item) => Number(item.chapter_number ?? 1) === Number(marker.chapter_number ?? 1))
+    .filter((item) => (item.mini_map_id ?? null) === (marker.mini_map_id ?? null))
+    .filter((item) => Number(item.story_order ?? 0) > 0 && Number(item.story_order ?? 0) < order)
+    .every((item) => completedMarkerIds.has(item.id));
 }
 
 function getMarkerRenderStyle(marker: MapMarker, playerPosition: { x: number; y: number }, markerSize = 48) {
@@ -5817,10 +6002,19 @@ function MiniMapMarkerAdminForm({
   setMarkerLinkedRouteId,
   markerStartsRouteOnAccept,
   setMarkerStartsRouteOnAccept,
+  markerStoryOrder,
+  setMarkerStoryOrder,
+  markerUnlockAfterId,
+  setMarkerUnlockAfterId,
+  markerHideWhenCompleted,
+  setMarkerHideWhenCompleted,
+  markerRequireAllLinkedRoutes,
+  setMarkerRequireAllLinkedRoutes,
   routes,
   selectedMarkerRouteIds,
   toggleSignPostRoute,
   worldMarkers,
+  storyScopeMarkers,
   miniMaps,
   markerExitTargetType,
   setMarkerExitTargetType,
@@ -5896,10 +6090,19 @@ function MiniMapMarkerAdminForm({
   setMarkerLinkedRouteId: (value: string | null) => void;
   markerStartsRouteOnAccept: boolean;
   setMarkerStartsRouteOnAccept: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerStoryOrder: string;
+  setMarkerStoryOrder: (value: string) => void;
+  markerUnlockAfterId: string | null;
+  setMarkerUnlockAfterId: (value: string | null) => void;
+  markerHideWhenCompleted: boolean;
+  setMarkerHideWhenCompleted: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerRequireAllLinkedRoutes: boolean;
+  setMarkerRequireAllLinkedRoutes: (value: boolean | ((current: boolean) => boolean)) => void;
   routes: MapRoute[];
   selectedMarkerRouteIds: string[];
   toggleSignPostRoute: (routeId: string) => void;
   worldMarkers: MapMarker[];
+  storyScopeMarkers: MapMarker[];
   miniMaps: MiniMap[];
   markerExitTargetType: MapMarker["exit_target_type"];
   setMarkerExitTargetType: (value: MapMarker["exit_target_type"]) => void;
@@ -5995,6 +6198,37 @@ function MiniMapMarkerAdminForm({
           <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Quest dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
           <TextInput value={markerQuestImage} onChangeText={setMarkerQuestImage} placeholder="Quest image URL" placeholderTextColor={colors.muted} style={styles.input} />
           <AdminImageUploadButton folder="mini-quest-images" onUploaded={setMarkerQuestImage} onMessage={() => undefined} />
+          {draftType === "Quest" ? (
+            <>
+              <TextInput value={markerStoryOrder} onChangeText={setMarkerStoryOrder} placeholder="Story order, example 1" placeholderTextColor={colors.muted} style={styles.input} />
+              <Text style={styles.selectedTitle}>Unlock After Quest Marker</Text>
+              <View style={styles.storyRoutePicker}>
+                <Pressable style={[styles.routeChip, !markerUnlockAfterId && styles.routeChipActive]} onPress={() => setMarkerUnlockAfterId(null)}>
+                  <Text style={styles.routeChipText}>Use story order</Text>
+                </Pressable>
+                {storyScopeMarkers.filter((marker) => marker.type === "Quest" && marker.id !== selectedMarker?.id).map((marker) => (
+                  <Pressable key={marker.id} style={[styles.routeChip, markerUnlockAfterId === marker.id && styles.routeChipActive]} onPress={() => setMarkerUnlockAfterId(marker.id)}>
+                    <Text style={styles.routeChipText}>{marker.story_order || 0}. {marker.title}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Pressable style={[styles.secondaryButton, markerHideWhenCompleted && styles.typeSelected]} onPress={() => setMarkerHideWhenCompleted((value) => !value)}>
+                <Text style={styles.secondaryText}>Hide After Completion: {markerHideWhenCompleted ? "Yes" : "No"}</Text>
+              </Pressable>
+              <Pressable style={[styles.secondaryButton, markerRequireAllLinkedRoutes && styles.typeSelected]} onPress={() => setMarkerRequireAllLinkedRoutes((value) => !value)}>
+                <Text style={styles.secondaryText}>Require All Linked Paths: {markerRequireAllLinkedRoutes ? "Yes" : "No"}</Text>
+              </Pressable>
+            </>
+          ) : null}
+          <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
+          <Text style={styles.copy}>Select one or more paths. They run in the order shown by route sort/order.</Text>
+          <View style={styles.storyRoutePicker}>
+            {routes.map((item) => (
+              <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
+                <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+              </Pressable>
+            ))}
+          </View>
           <RoutePicker routes={routes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
           <Pressable style={[styles.secondaryButton, markerStartsRouteOnAccept && styles.typeSelected]} onPress={() => setMarkerStartsRouteOnAccept((value) => !value)}>
             <Text style={styles.secondaryText}>Start Path On Accept: {markerStartsRouteOnAccept ? "Yes" : "No"}</Text>
@@ -6096,6 +6330,17 @@ function MarkerSceneScreen({
 }) {
   const backgroundUri = resolveSceneImageUri(marker.scene_background_image_url || marker.shop_background_image_url);
   const npcUri = resolveSceneImageUri(marker.scene_npc_image_url || marker.shop_image_url || marker.quest_image_url);
+  const orderedRouteLinks = getOrderedMarkerRouteLinks(routeLinks);
+  const storyLinkedRoutes = orderedRouteLinks
+    .map((link) => ({ link, route: routes.find((item) => item.id === link.route_id) ?? null }))
+    .filter((item): item is { link: MarkerRouteLink; route: MapRoute } => Boolean(item.route));
+  const firstIncompleteStoryRoute = storyLinkedRoutes.find(({ route }) => {
+    const progress = routeProgressRows.find((row) => row.route_id === route.id)?.progress_percent ?? 0;
+    return progress < 100;
+  });
+  const nextStoryRoute = firstIncompleteStoryRoute?.route ?? null;
+  const nextStoryRouteLocked = nextStoryRoute ? isRouteLocked(nextStoryRoute) : false;
+  const storyRoutesComplete = storyLinkedRoutes.length > 0 && !firstIncompleteStoryRoute;
 
   return (
     <Screen>
@@ -6132,8 +6377,8 @@ function MarkerSceneScreen({
         ) : marker.type === "Sign Post" ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Choose Your Path</Text>
-            {routeLinks.length === 0 ? <Text style={styles.copy}>No walking paths are linked to this sign post yet.</Text> : null}
-            {routeLinks.map((link) => {
+            {orderedRouteLinks.length === 0 ? <Text style={styles.copy}>No walking paths are linked to this sign post yet.</Text> : null}
+            {orderedRouteLinks.map((link) => {
               const linkedRoute = routes.find((item) => item.id === link.route_id);
               const progress = routeProgressRows.find((row) => row.route_id === link.route_id)?.progress_percent ?? 0;
 
@@ -6154,6 +6399,37 @@ function MarkerSceneScreen({
                 </View>
               );
             })}
+          </View>
+        ) : isStoryQuestMarker(marker) && storyLinkedRoutes.length > 0 ? (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Story Quest Paths</Text>
+            <Text style={styles.copy}>Complete these walking paths in order to finish this story quest.</Text>
+            {storyLinkedRoutes.map(({ link, route }, index) => {
+              const progress = routeProgressRows.find((row) => row.route_id === route.id)?.progress_percent ?? 0;
+              const complete = progress >= 100;
+              const current = route.id === nextStoryRoute?.id;
+              const locked = !complete && !current;
+
+              return (
+                <View key={link.id} style={[styles.storyCard, locked && styles.lockedCard]}>
+                  <Text style={styles.markerName}>{index + 1}. {route.name}</Text>
+                  <Text style={styles.copy}>Destination: {link.destination_label || route.terrain}</Text>
+                  <Text style={styles.copy}>{metersToMiles(route.distance_required_meters)} mi / Progress {Math.round(progress)}%</Text>
+                  <Text style={complete ? styles.unlockText : locked ? styles.lockText : styles.adminMessage}>
+                    {complete ? "Completed" : locked ? "Locked until earlier story paths are completed" : nextStoryRouteLocked ? getRouteLockMessage(route) : "Next path"}
+                  </Text>
+                </View>
+              );
+            })}
+            <Text style={styles.copy}>
+              Rewards: {marker.reward_xp ?? 0} XP / {marker.reward_gold ?? 0} gold
+              {marker.reward_item_id ? ` / ${marker.reward_item_quantity ?? 1} ${getItemName(itemDefinitions, marker.reward_item_id)}` : ""}
+            </Text>
+            <Pressable style={[styles.primaryButton, nextStoryRouteLocked && !storyRoutesComplete && styles.disabledAction]} onPress={onAcceptQuest} disabled={nextStoryRouteLocked && !storyRoutesComplete}>
+              <Text style={styles.primaryText}>
+                {storyRoutesComplete ? "Complete Story Quest" : nextStoryRoute ? `Start ${nextStoryRoute.name}` : "Continue Story Quest"}
+              </Text>
+            </Pressable>
           </View>
         ) : marker.type === "Market" ? (
           <View style={styles.storyEditor}>
