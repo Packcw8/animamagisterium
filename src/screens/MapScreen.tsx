@@ -3467,6 +3467,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           <Text style={styles.journeyDebug}>Speed {movementStatus.speedMph.toFixed(1)} mph</Text>
           <Text style={styles.journeyDebug}>{route.terrain}</Text>
         </View>
+        <View style={styles.walkingNotice}>
+          <Text style={styles.walkingNoticeTitle}>Keep App Open While Walking</Text>
+          <Text style={styles.walkingNoticeText}>Browser tracking only counts reliably while this screen stays active. Treadmill step tracking is planned for the future iOS app.</Text>
+        </View>
         <Text style={styles.gpsMessage}>{gpsMessage}</Text>
 
         {mapInventoryOpen ? (
@@ -3556,6 +3560,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <Text style={styles.subtitle}>Mini Map / {activeMiniMap.type}</Text>
           </View>
         </View>
+        {route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
         <Frame style={styles.panel}>
           <View style={styles.panelHeader}>
             <View>
@@ -3638,7 +3643,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </View>
         </Frame>
         <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
-        {route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
         {isAdmin ? (
           <Frame style={styles.panel}>
             <Text style={styles.sectionTitle}>Mini Map Admin Preview</Text>
@@ -3972,6 +3976,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       </View>
       <Text style={styles.mapHint}>Scroll the map frame horizontally and vertically to explore the full image. Use the controls or mouse wheel to zoom. Click the image in admin mode to capture X/Y coordinates.</Text>
 
+      {renderJourneyPanel()}
+
       <View ref={viewportRef as never} style={styles.viewport} {...({ onWheel: handleWheel } as object)}>
         <View
           style={[
@@ -4059,8 +4065,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       </View>
 
       <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
-
-      {renderJourneyPanel()}
 
       {selectedMarker && !isAdmin ? (
         <Frame style={styles.panel}>
@@ -7071,6 +7075,25 @@ const styles = StyleSheet.create({
     borderColor: "rgba(255,255,255,0.07)",
     paddingHorizontal: 8,
     paddingVertical: 4,
+  },
+  walkingNotice: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(24, 178, 242, 0.28)",
+    backgroundColor: "rgba(24, 178, 242, 0.08)",
+    padding: 10,
+    gap: 4,
+  },
+  walkingNoticeTitle: {
+    color: colors.blue,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    fontSize: 11,
+  },
+  walkingNoticeText: {
+    color: colors.muted,
+    lineHeight: 19,
+    fontSize: 12,
   },
   mapInventoryDrawer: {
     marginTop: 4,
