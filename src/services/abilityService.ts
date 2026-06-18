@@ -370,7 +370,7 @@ export function getAbilityCostLabel(ability: AbilityDefinition) {
     const costs = [
       ability.adminAbility.health_cost > 0 ? `${ability.adminAbility.health_cost} Health` : null,
       ability.adminAbility.stamina_cost > 0 ? `${ability.adminAbility.stamina_cost} Stamina` : null,
-      ability.adminAbility.magika_cost > 0 ? `${ability.adminAbility.magika_cost} Magika` : null,
+      ability.adminAbility.magika_cost > 0 ? `${ability.adminAbility.magika_cost} Mana` : null,
     ].filter(Boolean);
 
     return costs.length > 0 ? costs.join(" + ") : "No cost";
@@ -380,7 +380,7 @@ export function getAbilityCostLabel(ability: AbilityDefinition) {
     return "No cost";
   }
 
-  return `${ability.cost} ${ability.resource === "magicka" ? "Magika" : ability.resource.charAt(0).toUpperCase() + ability.resource.slice(1)}`;
+  return `${ability.cost} ${ability.resource === "magicka" ? "Mana" : ability.resource.charAt(0).toUpperCase() + ability.resource.slice(1)}`;
 }
 
 export function getAbilitySourceLabel(ability: AbilityDefinition) {
@@ -542,7 +542,7 @@ function adminAbilityToDefinition(ability: CombatAbility): AbilityDefinition {
     baseDamage: ability.damage,
     scaling: primaryAttribute ? 2 : 0,
     critBonus: ability.critical_chance / 100,
-    description: `${ability.type}. ${ability.damage} damage, ${ability.healing} healing, ${ability.defense_amount} defense, ${ability.stamina_restore} stamina restore, ${ability.magika_restore} magika restore.`,
+    description: `${ability.type}. ${ability.damage} damage, ${ability.healing} healing, ${ability.defense_amount} defense, ${ability.stamina_restore} stamina restore, ${ability.magika_restore} mana restore.`,
     source: "admin",
     adminAbility: ability,
   };

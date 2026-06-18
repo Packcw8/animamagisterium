@@ -2244,7 +2244,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const currentResource = ability.resource === "stamina" ? battleStamina : ability.resource === "magicka" ? battleMagicka : ability.resource === "health" ? battlePlayerHp : Number.POSITIVE_INFINITY;
 
     if (currentResource < ability.cost) {
-      setBattleLog((current) => [`Not enough ${ability.resource === "magicka" ? "Magika" : ability.resource === "none" ? "power" : ability.resource} for ${ability.name}.`, ...current].slice(0, 8));
+      setBattleLog((current) => [`Not enough ${ability.resource === "magicka" ? "Mana" : ability.resource === "none" ? "power" : ability.resource} for ${ability.name}.`, ...current].slice(0, 8));
       return;
     }
 
@@ -2273,9 +2273,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         nextLog.push(`${ability.name} restores ${staminaRestore} Stamina.`);
       }
       if (magikaRestore > 0) {
-        pushCombatIndicator("player", `+${magikaRestore} Magika`, "#7dd3fc");
+        pushCombatIndicator("player", `+${magikaRestore} Mana`, "#7dd3fc");
         setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + magikaRestore));
-        nextLog.push(`${ability.name} restores ${magikaRestore} Magika.`);
+        nextLog.push(`${ability.name} restores ${magikaRestore} Mana.`);
       }
       if (nextLog.length === 0) {
         nextLog.push(`${ability.name} has no restore amount configured.`);
@@ -2328,9 +2328,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       nextLog.push(`${ability.name} restores ${staminaRestore} Stamina.`);
     }
     if (magikaRestore > 0) {
-      pushCombatIndicator("player", `+${magikaRestore} Magika`, "#7dd3fc");
+      pushCombatIndicator("player", `+${magikaRestore} Mana`, "#7dd3fc");
       setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + magikaRestore));
-      nextLog.push(`${ability.name} restores ${magikaRestore} Magika.`);
+      nextLog.push(`${ability.name} restores ${magikaRestore} Mana.`);
     }
 
     if (nextEnemyHp <= 0) {
@@ -2374,7 +2374,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
     if (costType === "magika" && battleMagicka < cost) {
-      setBattleLog((current) => [`Not enough Magika for ${weapon.ability_name || weapon.name}.`, ...current].slice(0, 8));
+      setBattleLog((current) => [`Not enough Mana for ${weapon.ability_name || weapon.name}.`, ...current].slice(0, 8));
       return;
     }
 
@@ -2420,7 +2420,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       nextLog.push("On-hit effect restores Stamina.");
     } else if (weapon.on_hit_effect === "restore magika per hit") {
       setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + Math.max(1, weapon.buff_amount || 2)));
-      nextLog.push("On-hit effect restores Magika.");
+      nextLog.push("On-hit effect restores Mana.");
     } else if (weapon.on_hit_effect) {
       nextLog.push(`On-hit effect: ${weapon.on_hit_effect}.`);
     }
@@ -2508,8 +2508,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
       if (magikaRestore > 0) {
         setBattleEnemyMagika((current) => Math.min(Number(activeEnemy?.magika ?? 0), current + magikaRestore));
-        pushCombatIndicator("enemy", `+${magikaRestore} Magika`, "#7dd3fc");
-        logs.push(`${enemyName} restores ${magikaRestore} Magika.`);
+        pushCombatIndicator("enemy", `+${magikaRestore} Mana`, "#7dd3fc");
+        logs.push(`${enemyName} restores ${magikaRestore} Mana.`);
       }
       return { damage: 0, log: [`${enemyName} uses ${ability.name}.`, ...(logs.length > 0 ? logs : ["No restore amount is configured."])] };
     }
@@ -3598,6 +3598,30 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </View>
         </View>
 
+        <View style={styles.journeyResources}>
+          <View style={styles.journeyResource}>
+            <View style={styles.journeyResourceHeader}>
+              <Text style={[styles.journeyResourceLabel, { color: colors.red }]}>HP</Text>
+              <Text style={styles.journeyResourceValue}>{currentHealth} / {combatResources.maxHp}</Text>
+            </View>
+            <ProgressBar value={currentHealth} max={Math.max(1, combatResources.maxHp)} color={colors.red} height={6} />
+          </View>
+          <View style={styles.journeyResource}>
+            <View style={styles.journeyResourceHeader}>
+              <Text style={[styles.journeyResourceLabel, { color: colors.gold }]}>Stamina</Text>
+              <Text style={styles.journeyResourceValue}>{combatResources.maxStamina} / {combatResources.maxStamina}</Text>
+            </View>
+            <ProgressBar value={combatResources.maxStamina} max={Math.max(1, combatResources.maxStamina)} color={colors.gold} height={6} />
+          </View>
+          <View style={styles.journeyResource}>
+            <View style={styles.journeyResourceHeader}>
+              <Text style={[styles.journeyResourceLabel, { color: colors.blue }]}>Mana</Text>
+              <Text style={styles.journeyResourceValue}>{combatResources.maxMagicka} / {combatResources.maxMagicka}</Text>
+            </View>
+            <ProgressBar value={combatResources.maxMagicka} max={Math.max(1, combatResources.maxMagicka)} color={colors.blue} height={6} />
+          </View>
+        </View>
+
         <View style={styles.journeyActions}>
           <Pressable style={[styles.journeyPrimary, isTracking && styles.gpsActive]} onPress={isTracking ? stopGpsTracking : startGpsTracking}>
             <Text style={styles.journeyPrimaryText}>{primaryLabel}</Text>
@@ -3611,7 +3635,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         </View>
 
         <View style={styles.journeyDebugGrid}>
-          <Text style={styles.journeyDebug}>Health {currentHealth} / {combatResources.maxHp}</Text>
           <Text style={styles.journeyDebug}>State {playerMovementState}</Text>
           <Text style={styles.journeyDebug}>Speed {movementStatus.speedMph.toFixed(1)} mph</Text>
           <Text style={styles.journeyDebug}>{route.terrain}</Text>
@@ -5300,19 +5323,20 @@ function metersToMiles(meters: number) {
 
 function getConsumableSummary(item: ItemDefinition) {
   const target = item.potion_target ?? "health";
+  const targetLabel = target === "magika" ? "mana" : target;
   const flat = Number(item.restore_amount ?? 0);
   const percent = Number(item.restore_percent ?? 0);
 
   if (flat > 0 && percent > 0) {
-    return `Restores ${flat} + ${percent}% ${target}`;
+    return `Restores ${flat} + ${percent}% ${targetLabel}`;
   }
 
   if (percent > 0) {
-    return `Restores ${percent}% ${target}`;
+    return `Restores ${percent}% ${targetLabel}`;
   }
 
   if (flat > 0) {
-    return `Restores ${flat} ${target}`;
+    return `Restores ${flat} ${targetLabel}`;
   }
 
   return item.description || "Quick use item";
@@ -5626,7 +5650,7 @@ function choiceActionLabel(action: StoryDialogueChoice["action"]) {
 
 function formatResourceName(resource: string) {
   if (resource === "magicka" || resource === "magika") {
-    return "Magika";
+    return "Mana";
   }
   if (resource === "health") {
     return "Health";
@@ -5873,7 +5897,7 @@ function BattleEventScreen({
           <ProgressBar value={playerHp} max={resources.maxHp} color={colors.red} height={7} />
           <Text style={styles.copy}>Stamina {stamina} / {resources.maxStamina}</Text>
           <ProgressBar value={stamina} max={resources.maxStamina} color={colors.gold} height={7} />
-          <Text style={styles.copy}>Magika {magicka} / {resources.maxMagicka}</Text>
+          <Text style={styles.copy}>Mana {magicka} / {resources.maxMagicka}</Text>
           <ProgressBar value={magicka} max={resources.maxMagicka} color={colors.blue} height={7} />
         </View>
         <View style={styles.modeRow}>
@@ -7379,6 +7403,36 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginTop: 2,
     textAlign: "center",
+  },
+  journeyResources: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  journeyResource: {
+    flex: 1,
+    minWidth: 112,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(0,0,0,0.22)",
+    padding: 8,
+    gap: 6,
+  },
+  journeyResourceHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  journeyResourceLabel: {
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  journeyResourceValue: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: "900",
   },
   journeyActions: {
     flexDirection: "row",

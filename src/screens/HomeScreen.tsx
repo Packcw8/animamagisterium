@@ -634,7 +634,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
       <Frame style={styles.resourcesPanel}>
         <ResourceBar label="HP" value={currentHealth} max={resources.maxHp} color={colors.red} icon="♥" />
         <ResourceBar label="Stamina" value={resources.maxStamina} max={resources.maxStamina} color={colors.gold} icon="ϟ" />
-        <ResourceBar label="Magika" value={resources.maxMagicka} max={resources.maxMagicka} color={colors.blue} icon="◉" />
+        <ResourceBar label="Mana" value={resources.maxMagicka} max={resources.maxMagicka} color={colors.blue} icon="◉" />
       </Frame>
 
       <View style={styles.tabs}>
@@ -701,11 +701,11 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
             <View style={styles.combatStatGrid}>
               <CombatStat label="Health" value={`${currentHealth} / ${battleStats.maxHp}`} note="Persistent Health / max Health" />
               <CombatStat label="Stamina" value={battleStats.maxStamina} note="Strength, Endurance, gear" />
-              <CombatStat label="Magika" value={battleStats.maxMagicka} note="Intelligence, Wisdom, Spirit" />
+              <CombatStat label="Mana" value={battleStats.maxMagicka} note="Intelligence, Wisdom, Spirit" />
               <CombatStat label="Defense" value={battleStats.defense} note="10 + Endurance + Agility + armor" />
               <CombatStat label="Melee Attack" value={`+${battleStats.meleeAttackBonus}`} note="Strength + gear damage" />
               <CombatStat label="Ranged / Dodge" value={`+${battleStats.agilityBonus}`} note="Agility accuracy and evasion" />
-              <CombatStat label="Spell Power" value={`+${battleStats.spellPower}`} note="Intelligence + Magika scaling" />
+              <CombatStat label="Spell Power" value={`+${battleStats.spellPower}`} note="Intelligence + Mana scaling" />
               <CombatStat label="Healing Power" value={`+${battleStats.healingPower}`} note="Wisdom support scaling" />
               <CombatStat label="Spirit Power" value={`+${battleStats.spiritPower}`} note="Spirit resistance and divine scaling" />
               <CombatStat label="Crit Chance" value={`${battleStats.critChance}%`} note="Agility-based starter value" />
@@ -759,10 +759,10 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
                 <Text style={styles.muted}>{selectedPlayerAbility.description}</Text>
                 <Info label="Damage / Healing / Effect" value={getAbilityEffectSummary(selectedPlayerAbility)} />
                 <Info label="Stamina Cost" value={String(selectedPlayerAbility.adminAbility?.stamina_cost ?? (selectedPlayerAbility.resource === "stamina" ? selectedPlayerAbility.cost : 0))} />
-                <Info label="Magika Cost" value={String(selectedPlayerAbility.adminAbility?.magika_cost ?? (selectedPlayerAbility.resource === "magicka" ? selectedPlayerAbility.cost : 0))} />
+                <Info label="Mana Cost" value={String(selectedPlayerAbility.adminAbility?.magika_cost ?? (selectedPlayerAbility.resource === "magicka" ? selectedPlayerAbility.cost : 0))} />
                 <Info label="Health Cost" value={String(selectedPlayerAbility.adminAbility?.health_cost ?? (selectedPlayerAbility.resource === "health" ? selectedPlayerAbility.cost : 0))} />
                 <Info label="Stamina Restore" value={String(selectedPlayerAbility.adminAbility?.stamina_restore ?? 0)} />
-                <Info label="Magika Restore" value={String(selectedPlayerAbility.adminAbility?.magika_restore ?? 0)} />
+                <Info label="Mana Restore" value={String(selectedPlayerAbility.adminAbility?.magika_restore ?? 0)} />
                 <Info label="Cooldown" value={`${selectedPlayerAbility.adminAbility?.cooldown_turns ?? 0} turns`} />
                 <Info label="Linked Attribute" value={selectedPlayerAbility.attribute ?? "None"} />
                 <Info label="Required Level" value={String(selectedPlayerAbility.unlockLevel ?? 0)} />
@@ -832,8 +832,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
                     <AssetPreview label="Selected ability image" uri={resolveAbilityImageUri(selectedAdminAbility.image_path)} />
                     <Text style={styles.abilityName}>{selectedAdminAbility.name}</Text>
                     <Text style={styles.muted}>{selectedAdminAbility.type} / Damage {selectedAdminAbility.damage} / Healing {selectedAdminAbility.healing} / Defense {selectedAdminAbility.defense_amount}</Text>
-                    <Text style={styles.muted}>Restores: {selectedAdminAbility.stamina_restore} Stamina / {selectedAdminAbility.magika_restore} Magika</Text>
-                    <Text style={styles.muted}>Costs: {selectedAdminAbility.stamina_cost} Stamina / {selectedAdminAbility.magika_cost} Magika / {selectedAdminAbility.health_cost} Health</Text>
+                    <Text style={styles.muted}>Restores: {selectedAdminAbility.stamina_restore} Stamina / {selectedAdminAbility.magika_restore} Mana</Text>
+                    <Text style={styles.muted}>Costs: {selectedAdminAbility.stamina_cost} Stamina / {selectedAdminAbility.magika_cost} Mana / {selectedAdminAbility.health_cost} Health</Text>
                     <Text style={styles.muted}>Unlock: {selectedAdminAbility.required_attribute ? `${selectedAdminAbility.required_attribute} ${selectedAdminAbility.required_attribute_level}` : selectedAdminAbility.learn_method}</Text>
                     <View style={styles.slotActions}>
                       <Pressable style={styles.smallButton} onPress={() => void editAdminAbility(selectedAdminAbility)}><Text style={styles.smallButtonText}>Edit Selected</Text></Pressable>
@@ -855,7 +855,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
                 </View>
                 <View style={styles.slotActions}>
                   <ItemText label="Stamina cost" value={String(abilityForm.stamina_cost ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, stamina_cost: Number(value) || 0 }))} />
-                  <ItemText label="Magika cost" value={String(abilityForm.magika_cost ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, magika_cost: Number(value) || 0 }))} />
+                  <ItemText label="Mana cost" value={String(abilityForm.magika_cost ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, magika_cost: Number(value) || 0 }))} />
                   <ItemText label="Health cost" value={String(abilityForm.health_cost ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, health_cost: Number(value) || 0 }))} />
                 </View>
                 <View style={styles.slotActions}>
@@ -880,7 +880,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
                 <ItemText label="Required Attribute Level" value={String(abilityForm.required_attribute_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_attribute_level: Number(value) || 0, required_level: Number(value) || current.required_level || 0 }))} />
                 <View style={styles.slotActions}>
                   <ItemText label="Stamina Restore" value={String(abilityForm.stamina_restore ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, stamina_restore: Number(value) || 0 }))} />
-                  <ItemText label="Magika Restore" value={String(abilityForm.magika_restore ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, magika_restore: Number(value) || 0 }))} />
+                  <ItemText label="Mana Restore" value={String(abilityForm.magika_restore ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, magika_restore: Number(value) || 0 }))} />
                 </View>
                 <ItemText label="Image URL/path" value={abilityForm.image_path ?? ""} onChange={(value) => setAbilityForm((current) => ({ ...current, image_path: value }))} />
                 <AdminImageUploadButton folder="abilities" onUploaded={(url) => setAbilityForm((current) => ({ ...current, image_path: url }))} onMessage={setAbilityMessage} />
@@ -901,7 +901,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
                       <View style={styles.itemBody}>
                     <Text style={styles.abilityName}>{ability.name}</Text>
                     <Text style={styles.muted}>{ability.type} / {ability.damage} damage / {ability.healing} healing / {ability.status_effect}</Text>
-                    <Text style={styles.muted}>Restores {ability.stamina_restore} Stamina / {ability.magika_restore} Magika</Text>
+                    <Text style={styles.muted}>Restores {ability.stamina_restore} Stamina / {ability.magika_restore} Mana</Text>
                     <Text style={styles.muted}>Unlock: {ability.learn_method === "starter" ? "Starter" : ability.required_attribute ? `${ability.required_attribute} ${ability.required_attribute_level}` : "manual/gear/quest"}</Text>
                       </View>
                     </View>
@@ -924,7 +924,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
                 <View style={styles.slotActions}>
                   <ItemText label="Health" value={String(enemyForm.health ?? 20)} onChange={(value) => setEnemyForm((current) => ({ ...current, health: Number(value) || 20 }))} />
                   <ItemText label="Stamina" value={String(enemyForm.stamina ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, stamina: Number(value) || 0 }))} />
-                  <ItemText label="Magika" value={String(enemyForm.magika ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, magika: Number(value) || 0 }))} />
+                  <ItemText label="Mana" value={String(enemyForm.magika ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, magika: Number(value) || 0 }))} />
                 </View>
                 {attributeKeys.map((key) => (
                   <ItemText key={key} label={key} value={String(enemyForm[key] ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, [key]: Number(value) || 0 }))} />
@@ -1001,7 +1001,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
                 <View style={styles.slotActions}>
                   <ItemText label="Health" value={String(npcForm.health ?? 20)} onChange={(value) => setNpcForm((current) => ({ ...current, health: Number(value) || 20 }))} />
                   <ItemText label="Stamina" value={String(npcForm.stamina ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, stamina: Number(value) || 0 }))} />
-                  <ItemText label="Magika" value={String(npcForm.magika ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, magika: Number(value) || 0 }))} />
+                  <ItemText label="Mana" value={String(npcForm.magika ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, magika: Number(value) || 0 }))} />
                 </View>
                 {attributeKeys.map((key) => (
                   <ItemText key={key} label={key} value={String(npcForm[key] ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, [key]: Number(value) || 0 }))} />
@@ -1440,7 +1440,7 @@ function ChoiceRow<T extends string>({ label, options, value, onSelect }: { labe
       <View style={styles.choiceRow}>
         {options.map((option) => (
           <Pressable key={option || "none"} style={[styles.choiceButton, value === option && styles.choiceButtonActive]} onPress={() => onSelect(option)}>
-            <Text style={styles.choiceText}>{option || "none"}</Text>
+            <Text style={styles.choiceText}>{option ? String(option).replace(/magika/gi, "Mana") : "none"}</Text>
           </Pressable>
         ))}
       </View>
@@ -1539,7 +1539,7 @@ function getAbilityEffectSummary(ability: AbilityDefinition) {
       ability.adminAbility.healing ? `${ability.adminAbility.healing} healing` : null,
       ability.adminAbility.defense_amount ? `${ability.adminAbility.defense_amount} defense` : null,
       ability.adminAbility.stamina_restore ? `${ability.adminAbility.stamina_restore} stamina restore` : null,
-      ability.adminAbility.magika_restore ? `${ability.adminAbility.magika_restore} magika restore` : null,
+      ability.adminAbility.magika_restore ? `${ability.adminAbility.magika_restore} mana restore` : null,
       ability.adminAbility.status_effect !== "none" ? `${ability.adminAbility.status_effect} ${ability.adminAbility.effect_amount} for ${ability.adminAbility.effect_duration} turns` : null,
     ].filter(Boolean);
 

@@ -10,7 +10,7 @@
     "web": "expo start --web",
     "prebuild": "node scripts/write-runtime-env.cjs",
     "build": "expo export -p web && node scripts/patch-web-icons.cjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "node --stack-size=8192 node_modules/typescript/lib/tsc.js --noEmit"
   },
   "dependencies": {
     "@expo/metro-runtime": "~5.0.5",
