@@ -2445,7 +2445,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   function resolveEnemyCounterAttack(extraPlayerDefense = 0) {
     const enemyName = activeEnemy?.name || activeBattle?.enemy_name || "Enemy";
-    const ability = chooseWeightedEnemyAbility(activeEnemy, battleEnemyStamina, battleEnemyMagika);
+    const ability = chooseWeightedEnemyAbility(activeEnemy, battleEnemyStamina, battleEnemyMagika, battleEnemyHp);
     const playerDefense = getPlayerDefense(extraPlayerDefense);
 
     if (!ability) {
@@ -3081,6 +3081,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceNextNodeId(null);
     setChoiceBattleEventId(null);
     setChoiceBattleTitle("");
+    setEventBackgroundImage("");
     setChoiceRewardXp("0");
     setChoiceRewardGold("0");
     setChoiceRewardItem("");
@@ -3093,6 +3094,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceBattleEventId(event.id);
     setChoiceAction("start_battle");
     setChoiceBattleTitle(event.title);
+    setEventBackgroundImage(event.background_image_url ?? "");
     setEventNpcId(event.npc_id ?? null);
     setEventEnemyId(event.enemy_id ?? null);
     setEnemyName(event.enemy_name ?? "");
@@ -3159,7 +3161,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       trigger_mode: "fixed" as const,
       random_chance_percent: 0,
       linked_only: true,
-      background_image_url: null,
+      background_image_url: eventBackgroundImage.trim() || null,
       npc_name: null,
       npc_portrait_url: null,
       dialogue_npc_id: null,
@@ -3247,6 +3249,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           ))}
         </View>
         <TextInput value={choiceBattleTitle} onChangeText={setChoiceBattleTitle} placeholder="Linked battle title" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={eventBackgroundImage} onChangeText={setEventBackgroundImage} placeholder="Battleground image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+        <AdminImageUploadButton folder="battle-backgrounds" onUploaded={setEventBackgroundImage} onMessage={setAdminMessage} />
         <EnemyPicker enemies={enemyDefinitions} selectedId={eventEnemyId} onSelect={selectEventEnemy} />
         <NpcPicker label="Or select a battle-capable NPC" npcs={npcDefinitions} selectedId={eventNpcId} onSelect={selectEventBattleNpc} battleOnly />
         {eventNpcId ? (
@@ -4019,6 +4023,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   ) : (
                     <>
                       <Text style={styles.selectedTitle}>Enemy From Admin</Text>
+                      <TextInput value={eventBackgroundImage} onChangeText={setEventBackgroundImage} placeholder="Battleground image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+                      <AdminImageUploadButton folder="battle-backgrounds" onUploaded={setEventBackgroundImage} onMessage={setAdminMessage} />
                       <EnemyPicker enemies={enemyDefinitions} selectedId={eventEnemyId} onSelect={selectEventEnemy} />
                       <NpcPicker label="Or select a battle-capable NPC" npcs={npcDefinitions} selectedId={eventNpcId} onSelect={selectEventBattleNpc} battleOnly />
                       {eventNpcId ? (
@@ -4810,6 +4816,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             ) : (
               <>
                 <Text style={styles.selectedTitle}>Enemy From Admin</Text>
+                <TextInput value={eventBackgroundImage} onChangeText={setEventBackgroundImage} placeholder="Battleground image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+                <AdminImageUploadButton folder="battle-backgrounds" onUploaded={setEventBackgroundImage} onMessage={setAdminMessage} />
                 <EnemyPicker enemies={enemyDefinitions} selectedId={eventEnemyId} onSelect={selectEventEnemy} />
                 <NpcPicker label="Or select a battle-capable NPC" npcs={npcDefinitions} selectedId={eventNpcId} onSelect={selectEventBattleNpc} battleOnly />
                 {eventNpcId ? (
@@ -5138,17 +5146,29 @@ function getPercentDistance(a: { x: number; y: number }, b: { x: number; y: numb
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
-function chooseWeightedEnemyAbility(enemy: EnemyWithLoadout | NpcWithLoadout | null, stamina: number, magika: number) {
+function chooseWeightedEnemyAbility(enemy: EnemyWithLoadout | NpcWithLoadout | null, stamina: number, magika: number, currentHp?: number) {
   const valid = (enemy?.abilities ?? []).filter((row) => row.ability && row.ability.is_active && row.ability.stamina_cost <= stamina && row.ability.magika_cost <= magika);
-  const totalWeight = valid.reduce((sum, row) => sum + Math.max(1, Number(row.use_weight) || 1), 0);
+  const maxHp = Number(enemy?.health ?? 0);
+  const hurtRatio = maxHp > 0 && typeof currentHp === "number" ? currentHp / maxHp : 1;
+  const weighted = valid.map((row) => {
+    const ability = row.ability;
+    const baseWeight = Math.max(1, Number(row.use_weight) || 1);
+    const smartWeight = ability?.type === "heal" && hurtRatio <= 0.45
+      ? baseWeight * 4
+      : (ability?.type === "defense" || ability?.type === "buff") && hurtRatio <= 0.35
+        ? baseWeight * 2
+        : baseWeight;
+    return { row, weight: smartWeight };
+  });
+  const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
 
   if (valid.length === 0 || totalWeight <= 0) {
     return null;
   }
 
   let roll = Math.random() * totalWeight;
-  for (const row of valid) {
-    roll -= Math.max(1, Number(row.use_weight) || 1);
+  for (const { row, weight } of weighted) {
+    roll -= weight;
     if (roll <= 0) {
       return row.ability ?? null;
     }
@@ -5765,6 +5785,11 @@ function BattleEventScreen({
   const [enemyImageFailed, setEnemyImageFailed] = useState(false);
   const [playerImageFailed, setPlayerImageFailed] = useState(false);
   const enemyImageUri = resolveEnemyImageUri(activeEnemy?.image_url ?? event.enemy_image_url);
+  const backgroundUri = resolveSceneImageUri(event.background_image_url);
+  const enemyMaxHp = Number(activeEnemy?.health ?? event.enemy_hp) || 30;
+  const rewardXp = Number(event.reward_xp ?? 0) + Number(activeEnemy?.xp_reward ?? 0);
+  const rewardGold = Number(event.reward_gold ?? 0) + Number(activeEnemy?.gold_reward ?? 0);
+  const battlePhase = result === "victory" ? "Victory" : result === "defeat" ? "Defeat" : revivePromptOpen ? "Revive Choice" : "Player Turn";
 
   useEffect(() => {
     setEnemyImageFailed(false);
@@ -5780,7 +5805,8 @@ function BattleEventScreen({
 
   return (
     <Screen>
-      <Frame style={styles.eventScreen}>
+      <Frame style={backgroundUri ? [styles.eventScreen, styles.battleScreenFrame, ({ backgroundImage: `url(${backgroundUri})`, backgroundSize: "cover", backgroundPosition: "center" } as never)] : [styles.eventScreen, styles.battleScreenFrame]}>
+        <View style={styles.battleBackdrop}>
         {previewMode ? (
           <View style={styles.previewBanner}>
             <Text style={styles.previewText}>Admin Battle Preview - no Health, items, rewards, or route progress will be saved.</Text>
@@ -5789,7 +5815,15 @@ function BattleEventScreen({
             </Pressable>
           </View>
         ) : null}
-        <Text style={styles.sectionTitle}>{event.title}</Text>
+        <View style={styles.battleHeader}>
+          <View>
+            <Text style={styles.sectionTitle}>{event.title}</Text>
+            <Text style={styles.copy}>{event.battle_intro_text || "Battle encounter"}</Text>
+          </View>
+          <View style={styles.phasePill}>
+            <Text style={styles.phaseText}>{battlePhase}</Text>
+          </View>
+        </View>
         <View style={styles.battleArena}>
           <View style={styles.enemyPanel}>
             <View style={styles.combatImageWrap}>
@@ -5797,7 +5831,8 @@ function BattleEventScreen({
               <CombatIndicatorStack indicators={enemyIndicators} />
             </View>
             <Text style={styles.markerName}>{activeEnemy?.name || event.enemy_name || "Enemy"}</Text>
-            <Text style={styles.copy}>HP {enemyHp}</Text>
+            <Text style={styles.copy}>HP {enemyHp} / {enemyMaxHp}</Text>
+            <ProgressBar value={enemyHp} max={enemyMaxHp} color={colors.red} height={7} />
             {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
           </View>
           <View style={styles.playerPanel}>
@@ -5874,14 +5909,20 @@ function BattleEventScreen({
           </View>
         ) : null}
         {result === "victory" ? (
-          <Pressable style={styles.primaryButton} onPress={onComplete}>
-            <Text style={styles.primaryText}>Complete Battle</Text>
-          </Pressable>
+          <View style={styles.battleResultPanel}>
+            <Text style={styles.selectedTitle}>Victory Rewards</Text>
+            <Text style={styles.copy}>{event.victory_text || "The enemy falls."}</Text>
+            <Text style={styles.copy}>XP {rewardXp} / Gold {rewardGold}{event.reward_item_id ? ` / Item reward ready` : ""}</Text>
+            <Pressable style={styles.primaryButton} onPress={onComplete}>
+              <Text style={styles.primaryText}>Claim Rewards</Text>
+            </Pressable>
+          </View>
         ) : null}
         {result === "defeat" && !revivePromptOpen ? <Text style={styles.feedItem}>Defeat is final for this attempt. Return to the trail start to continue.</Text> : null}
         {battleLog.map((line, index) => (
           <Text key={`${line}-${index}`} style={styles.feedItem}>{line}</Text>
         ))}
+        </View>
       </Frame>
     </Screen>
   );
@@ -7907,6 +7948,34 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 12,
   },
+  battleScreenFrame: {
+    overflow: "hidden",
+  },
+  battleBackdrop: {
+    gap: 12,
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: "rgba(0,0,0,0.58)",
+  },
+  battleHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "flex-start",
+  },
+  phasePill: {
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: "rgba(7, 16, 22, 0.82)",
+  },
+  phaseText: {
+    color: colors.blue,
+    fontWeight: "900",
+    fontSize: 12,
+  },
   enemyPanel: {
     alignSelf: "flex-end",
     alignItems: "center",
@@ -7969,6 +8038,14 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginBottom: 4,
     backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  battleResultPanel: {
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "rgba(9, 15, 13, 0.86)",
   },
   errorText: {
     color: colors.red,
