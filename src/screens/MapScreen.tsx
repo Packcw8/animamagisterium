@@ -5850,7 +5850,16 @@ function BattleEventScreen({
   const enemyMaxHp = Number(activeEnemy?.health ?? event.enemy_hp) || 30;
   const rewardXp = Number(event.reward_xp ?? 0) + Number(activeEnemy?.xp_reward ?? 0);
   const rewardGold = Number(event.reward_gold ?? 0) + Number(activeEnemy?.gold_reward ?? 0);
-  const battlePhase = result === "victory" ? "Victory" : result === "defeat" ? "Defeat" : revivePromptOpen ? "Revive Choice" : "Player Turn";
+  const battlePhase = result === "victory" ? "Victory" : result === "defeat" ? "Defeat" : revivePromptOpen ? "Revive Choice" : "Your Turn";
+  const battleHint = getBattleHint({
+    result,
+    revivePromptOpen,
+    playerHp,
+    enemyHp,
+    resources,
+    stamina,
+    magicka,
+  });
 
   useEffect(() => {
     setEnemyImageFailed(false);
@@ -5885,49 +5894,56 @@ function BattleEventScreen({
             <Text style={styles.phaseText}>{battlePhase}</Text>
           </View>
         </View>
+        <View style={styles.turnCallout}>
+          <Text style={styles.turnLabel}>{battlePhase}</Text>
+          <Text style={styles.turnHint}>{battleHint}</Text>
+        </View>
         <View style={styles.battleArena}>
-          <View style={styles.enemyPanel}>
-            <View style={styles.combatImageWrap}>
-              {enemyImageUri && !enemyImageFailed ? <Image source={{ uri: enemyImageUri }} style={styles.enemyImage} onError={() => setEnemyImageFailed(true)} /> : <View style={styles.enemyImagePlaceholder}><Text style={styles.copy}>Enemy image missing</Text></View>}
-              <CombatIndicatorStack indicators={enemyIndicators} />
+          <View style={styles.combatantRow}>
+            <View style={styles.playerPanel}>
+              <View style={styles.combatImageWrap}>
+                {character.portrait_url && !playerImageFailed ? <Image source={{ uri: character.portrait_url }} style={styles.battlePortrait} onError={() => setPlayerImageFailed(true)} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
+                <CombatIndicatorStack indicators={playerIndicators} />
+              </View>
+              <View style={styles.combatantInfo}>
+                <Text style={styles.combatantName}>{character.name}</Text>
+                <Text style={styles.combatantSub}>Adventurer</Text>
+                <ResourceMeter label="HP" value={playerHp} max={resources.maxHp} color={colors.red} />
+              </View>
             </View>
-            <Text style={styles.markerName}>{activeEnemy?.name || event.enemy_name || "Enemy"}</Text>
-            <Text style={styles.copy}>HP {enemyHp} / {enemyMaxHp}</Text>
-            <ProgressBar value={enemyHp} max={enemyMaxHp} color={colors.red} height={7} />
-            {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
-          </View>
-          <View style={styles.playerPanel}>
-            <View style={styles.combatImageWrap}>
-              {character.portrait_url && !playerImageFailed ? <Image source={{ uri: character.portrait_url }} style={styles.battlePortrait} onError={() => setPlayerImageFailed(true)} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
-              <CombatIndicatorStack indicators={playerIndicators} />
+            <Text style={styles.versusText}>VS</Text>
+            <View style={styles.enemyPanel}>
+              <View style={styles.combatantInfo}>
+                <Text style={styles.combatantName}>{activeEnemy?.name || event.enemy_name || "Enemy"}</Text>
+                <Text style={styles.combatantSub}>{activeEnemy?.type || "Enemy"}</Text>
+                <ResourceMeter label="HP" value={enemyHp} max={enemyMaxHp} color={colors.red} />
+                {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
+              </View>
+              <View style={styles.combatImageWrap}>
+                {enemyImageUri && !enemyImageFailed ? <Image source={{ uri: enemyImageUri }} style={styles.enemyImage} onError={() => setEnemyImageFailed(true)} /> : <View style={styles.enemyImagePlaceholder}><Text style={styles.copy}>Enemy image missing</Text></View>}
+                <CombatIndicatorStack indicators={enemyIndicators} />
+              </View>
             </View>
-            <Text style={styles.markerName}>{character.name}</Text>
-            <Text style={styles.copy}>HP {playerHp}</Text>
           </View>
         </View>
         <View style={styles.resourceBars}>
-          <Text style={styles.copy}>HP {playerHp} / {resources.maxHp}</Text>
-          <ProgressBar value={playerHp} max={resources.maxHp} color={colors.red} height={7} />
-          <Text style={styles.copy}>Stamina {stamina} / {resources.maxStamina}</Text>
-          <ProgressBar value={stamina} max={resources.maxStamina} color={colors.gold} height={7} />
-          <Text style={styles.copy}>Mana {magicka} / {resources.maxMagicka}</Text>
-          <ProgressBar value={magicka} max={resources.maxMagicka} color={colors.blue} height={7} />
+          <ResourceMeter label="Health" value={playerHp} max={resources.maxHp} color={colors.red} />
+          <ResourceMeter label="Stamina" value={stamina} max={resources.maxStamina} color={colors.gold} />
+          <ResourceMeter label="Mana" value={magicka} max={resources.maxMagicka} color={colors.blue} />
         </View>
-        <View style={styles.modeRow}>
+        <View style={styles.abilityGrid}>
           {equippedAbilities.map((ability, index) => {
             const resourcePool = ability?.resource === "stamina" ? stamina : ability?.resource === "magicka" ? magicka : ability?.resource === "health" ? playerHp : Number.POSITIVE_INFINITY;
             const hasResource = ability ? resourcePool >= ability.cost : false;
             return (
-            <Pressable
-              key={`ability-${index}`}
-              style={[styles.secondaryButtonFlex, (!ability || !hasResource || Boolean(result)) && styles.disabledAction]}
-              onPress={() => ability ? onAction(ability) : undefined}
-              disabled={!ability || !hasResource || Boolean(result)}
-            >
-              {ability ? <BattleAbilityIcon ability={ability} /> : null}
-              <Text style={styles.secondaryText}>{ability?.name ?? `Empty Slot ${index + 1}`}</Text>
-              {ability ? <Text style={styles.actionCost}>{getAbilityCostLabel(ability)}</Text> : null}
-            </Pressable>
+              <BattleActionCard
+                key={`ability-${index}`}
+                ability={ability}
+                slotNumber={index + 1}
+                disabled={!ability || !hasResource || Boolean(result)}
+                unavailableReason={ability && !hasResource ? "Not enough resource" : null}
+                onPress={() => ability ? onAction(ability) : undefined}
+              />
           )})}
         </View>
         <View style={styles.modeRow}>
@@ -5980,12 +5996,61 @@ function BattleEventScreen({
           </View>
         ) : null}
         {result === "defeat" && !revivePromptOpen ? <Text style={styles.feedItem}>Defeat is final for this attempt. Return to the trail start to continue.</Text> : null}
-        {battleLog.map((line, index) => (
-          <Text key={`${line}-${index}`} style={styles.feedItem}>{line}</Text>
-        ))}
+        <View style={styles.battleLogPanel}>
+          <Text style={styles.battleLogTitle}>Battle Log</Text>
+          {battleLog.slice(0, 5).map((line, index) => (
+            <Text key={`${line}-${index}`} style={styles.battleLogLine}>{line}</Text>
+          ))}
+        </View>
         </View>
       </Frame>
     </Screen>
+  );
+}
+
+function ResourceMeter({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+  const safeMax = Math.max(1, max);
+
+  return (
+    <View style={styles.resourceMeter}>
+      <View style={styles.resourceMeterHeader}>
+        <Text style={styles.resourceMeterLabel}>{label}</Text>
+        <Text style={styles.resourceMeterValue}>{Math.max(0, value)} / {safeMax}</Text>
+      </View>
+      <ProgressBar value={value} max={safeMax} color={color} height={8} />
+    </View>
+  );
+}
+
+function BattleActionCard({
+  ability,
+  slotNumber,
+  disabled,
+  unavailableReason,
+  onPress,
+}: {
+  ability: AbilityDefinition | null;
+  slotNumber: number;
+  disabled: boolean;
+  unavailableReason: string | null;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={[styles.battleActionCard, disabled && styles.disabledAction]}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      <View style={styles.battleActionIconWrap}>
+        {ability ? <BattleAbilityIcon ability={ability} /> : <Text style={styles.battleActionFallback}>{slotNumber}</Text>}
+      </View>
+      <View style={styles.battleActionInfo}>
+        <Text style={styles.battleActionName}>{ability?.name ?? `Empty Slot ${slotNumber}`}</Text>
+        {ability ? <Text style={styles.battleActionMeta}>{getAbilityPowerLabel(ability)}</Text> : <Text style={styles.battleActionMeta}>Equip an ability on Home</Text>}
+        {ability ? <Text style={styles.actionCost}>{getAbilityCostLabel(ability)}</Text> : null}
+        {unavailableReason ? <Text style={styles.battleActionWarning}>{unavailableReason}</Text> : null}
+      </View>
+    </Pressable>
   );
 }
 
@@ -6009,11 +6074,66 @@ function BattleAbilityIcon({ ability }: { ability: AbilityDefinition }) {
       : null;
 
   if (!imageUri) {
-    return null;
+    return <Text style={styles.battleActionFallback}>{ability.name.slice(0, 1).toUpperCase()}</Text>;
   }
 
   return <Image source={{ uri: imageUri }} style={styles.battleAbilityIcon} />;
 }
+
+function getAbilityPowerLabel(ability: AbilityDefinition) {
+  if (ability.adminAbility) {
+    const parts = [
+      ability.adminAbility.damage > 0 ? `${ability.adminAbility.damage} damage` : null,
+      ability.adminAbility.healing > 0 ? `${ability.adminAbility.healing} healing` : null,
+      ability.adminAbility.defense_amount > 0 ? `${ability.adminAbility.defense_amount} defense` : null,
+    ].filter(Boolean);
+
+    return parts.length > 0 ? parts.join(" / ") : ability.adminAbility.type;
+  }
+
+  if (ability.baseDamage > 0) {
+    return `${ability.baseDamage} damage${ability.scaling > 0 ? ` + ${ability.attribute ?? "stat"}` : ""}`;
+  }
+
+  return ability.description;
+}
+
+function getBattleHint({
+  result,
+  revivePromptOpen,
+  playerHp,
+  enemyHp,
+  resources,
+  stamina,
+  magicka,
+}: {
+  result: "victory" | "defeat" | null;
+  revivePromptOpen: boolean;
+  playerHp: number;
+  enemyHp: number;
+  resources: CharacterResources;
+  stamina: number;
+  magicka: number;
+}) {
+  if (result === "victory") {
+    return "The enemy is defeated. Claim your rewards to finish the encounter.";
+  }
+  if (result === "defeat" || revivePromptOpen) {
+    return "Choose a revive item if you have one, or return to the trail start.";
+  }
+  if (playerHp <= resources.maxHp * 0.3) {
+    return "You are wounded. Consider inventory, guard effects, or fleeing before the next hit.";
+  }
+  if (enemyHp <= 8) {
+    return "The enemy is close to falling. A low-cost attack may be enough.";
+  }
+  if (stamina <= 2 && magicka <= 2) {
+    return "Resources are low. Use a free attack or open inventory.";
+  }
+
+  return "Choose an ability. Higher-cost attacks hit harder, but saving resources may keep you alive.";
+}
+
 
 type MarkerIconSource = Pick<MapMarker, "type" | "icon_label" | "icon_image_url" | "icon_color">;
 
@@ -7762,6 +7882,25 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: "rgba(0,0,0,0.22)",
   },
+  resourceMeter: {
+    gap: 5,
+  },
+  resourceMeterHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  resourceMeterLabel: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  resourceMeterValue: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "900",
+  },
   battleInventory: {
     gap: 8,
     borderWidth: 1,
@@ -8067,15 +8206,69 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 12,
   },
-  enemyPanel: {
-    alignSelf: "flex-end",
+  turnCallout: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(54, 171, 224, 0.4)",
+    padding: 10,
+    backgroundColor: "rgba(6, 23, 34, 0.62)",
+    gap: 4,
+  },
+  turnLabel: {
+    color: colors.blue,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    fontSize: 12,
+  },
+  turnHint: {
+    color: colors.text,
+    lineHeight: 19,
+    fontSize: 13,
+  },
+  combatantRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
+    gap: 10,
+  },
+  enemyPanel: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
     gap: 6,
   },
   playerPanel: {
-    alignSelf: "flex-start",
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
     alignItems: "center",
     gap: 6,
+  },
+  combatantInfo: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  combatantName: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 14,
+  },
+  combatantSub: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  versusText: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 22,
+    textShadowColor: "rgba(0,0,0,0.8)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 8,
   },
   combatImageWrap: {
     position: "relative",
@@ -8099,15 +8292,15 @@ const styles = StyleSheet.create({
     opacity: 0.96,
   },
   enemyImage: {
-    width: 124,
-    height: 124,
+    width: 112,
+    height: 112,
     borderRadius: 8,
     borderWidth: 2,
     borderColor: "#ffb4aa",
   },
   enemyImagePlaceholder: {
-    width: 124,
-    height: 124,
+    width: 112,
+    height: 112,
     borderRadius: 8,
     borderWidth: 2,
     borderColor: "#ffb4aa",
@@ -8117,17 +8310,72 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   battlePortrait: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
+    width: 82,
+    height: 82,
+    borderRadius: 41,
     borderWidth: 2,
     borderColor: colors.blue,
   },
+  abilityGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  battleActionCard: {
+    flex: 1,
+    minWidth: 150,
+    minHeight: 76,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(232, 181, 94, 0.36)",
+    padding: 9,
+    backgroundColor: "rgba(8, 12, 13, 0.78)",
+  },
+  battleActionIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "rgba(54, 171, 224, 0.34)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "rgba(0,0,0,0.34)",
+  },
+  battleActionInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  battleActionName: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  battleActionMeta: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  battleActionWarning: {
+    color: "#ffb4aa",
+    fontSize: 10,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+  battleActionFallback: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 18,
+    fontWeight: "900",
+  },
   battleAbilityIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    marginBottom: 4,
+    width: "100%",
+    height: "100%",
+    borderRadius: 8,
     backgroundColor: "rgba(0,0,0,0.28)",
   },
   battleResultPanel: {
@@ -8137,6 +8385,28 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     backgroundColor: "rgba(9, 15, 13, 0.86)",
+  },
+  battleLogPanel: {
+    gap: 7,
+    borderWidth: 1,
+    borderColor: "rgba(232, 181, 94, 0.22)",
+    borderRadius: 8,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.32)",
+  },
+  battleLogTitle: {
+    color: colors.gold,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    fontSize: 12,
+  },
+  battleLogLine: {
+    color: colors.text,
+    lineHeight: 18,
+    fontSize: 12,
+    borderTopWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    paddingTop: 6,
   },
   errorText: {
     color: colors.red,
