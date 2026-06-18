@@ -11,6 +11,7 @@ import { CharacterCreationScreen } from "./src/screens/CharacterCreationScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { MapScreen } from "./src/screens/MapScreen";
 import { QuestsScreen } from "./src/screens/QuestsScreen";
+import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SocialScreen } from "./src/screens/SocialScreen";
 import { CharacterWithDetails, createProfileIfMissing, getAvatarAssets, getCharacter } from "./src/services/characterService";
 import { Tables } from "./src/lib/supabase";
@@ -22,6 +23,7 @@ export default function App() {
   const [character, setCharacter] = useState<CharacterWithDetails | null>(null);
   const [avatarAssets, setAvatarAssets] = useState<Tables["avatar_assets"][]>([]);
   const [activeScreen, setActiveScreen] = useState<ScreenKey>("home");
+  const [activeUtilityScreen, setActiveUtilityScreen] = useState<"settings" | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -92,9 +94,17 @@ export default function App() {
             <Text style={styles.errorText}>{error}</Text>
           </View>
         ) : character ? (
-          <AuthenticatedLayout activeScreen={activeScreen} onChangeScreen={setActiveScreen}>
-            {activeScreen === "home" ? (
-              <HomeScreen character={character} onCharacterUpdated={setCharacter} />
+          <AuthenticatedLayout
+            activeScreen={activeScreen}
+            onChangeScreen={(screen) => {
+              setActiveUtilityScreen(null);
+              setActiveScreen(screen);
+            }}
+          >
+            {activeUtilityScreen === "settings" ? (
+              <SettingsScreen character={character} onBack={() => setActiveUtilityScreen(null)} />
+            ) : activeScreen === "home" ? (
+              <HomeScreen character={character} onCharacterUpdated={setCharacter} onOpenSettings={() => setActiveUtilityScreen("settings")} />
             ) : activeScreen === "map" ? (
               <MapScreen character={character} onCharacterUpdated={setCharacter} />
             ) : activeScreen === "quests" ? (
