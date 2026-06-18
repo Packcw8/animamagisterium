@@ -155,6 +155,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [legendItems, setLegendItems] = useState<MarkerLegendItem[]>([]);
   const [legendOpen, setLegendOpen] = useState(false);
   const [mapEvents, setMapEvents] = useState<MapEvent[]>([]);
+  const [allMapEvents, setAllMapEvents] = useState<MapEvent[]>([]);
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
   const [activeBattle, setActiveBattle] = useState<MapEvent | null>(null);
@@ -316,6 +317,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [rewardItem, setRewardItem] = useState("");
   const [rewardItemId, setRewardItemId] = useState<string | null>(null);
   const [rewardItemQuantity, setRewardItemQuantity] = useState("1");
+  const [reuseEventId, setReuseEventId] = useState<string | null>(null);
   const [selectedDialogueEventId, setSelectedDialogueEventId] = useState<string | null>(null);
   const [editingNode, setEditingNode] = useState<StoryDialogueNode | null>(null);
   const [editingChoice, setEditingChoice] = useState<StoryDialogueChoice | null>(null);
@@ -414,6 +416,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const selectedMiniMap = useMemo(() => miniMaps.find((miniMap) => miniMap.id === selectedMiniMapId) ?? null, [miniMaps, selectedMiniMapId]);
   const activeSectionMarkerTypes = adminSection === "Area/Town Markers" ? ["Area/Town Entrance"] : markerTypes;
   const routeEvents = useMemo(() => mapEvents.filter((event) => event.route_id === route.id), [mapEvents, route.id]);
+  const reusableMapEvents = useMemo(() => allMapEvents.filter((event) => isInSelectedChapter(event, selectedSeason, selectedChapter)), [allMapEvents, selectedChapter, selectedSeason]);
   const completedRouteEvents = useMemo(() => routeEvents.filter((event) => completedEventIds.has(event.id)).length, [completedEventIds, routeEvents]);
   const routePotentialXp = useMemo(() => routeEvents.reduce((total, event) => total + Number(event.reward_xp ?? 0), 0), [routeEvents]);
   const routePotentialGold = useMemo(() => routeEvents.reduce((total, event) => total + Number(event.reward_gold ?? 0), 0), [routeEvents]);
@@ -617,7 +620,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }, [activeEvent]);
 
   async function loadMap() {
-    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedSeasons, loadedChapters, loadedRole] = await Promise.all([
+    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedSeasons, loadedChapters, loadedRole, loadedEvents] = await Promise.all([
       getMapRoutes(),
       getMapMarkers(),
       getMiniMaps(),
@@ -626,6 +629,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       getMapSeasons(),
       getMapChapters(),
       getCurrentRole(),
+      getMapEvents(),
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const progressRows = await getRouteProgressForRoutes(nextRoutes.map((item) => item.id));
@@ -642,6 +646,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMapSeasons(loadedSeasons);
     setMapChapters(loadedChapters);
     setRole(loadedRole);
+    setAllMapEvents(loadedEvents);
     await selectRoute(firstRoute, true);
     if (!currentRoute) {
       setGpsMessage("Choose a path from a Sign Post to begin travel.");
@@ -2531,6 +2536,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setRewardItem("");
     setRewardItemId(null);
     setRewardItemQuantity("1");
+    setReuseEventId(null);
   }
 
   async function saveMapEvent() {
@@ -2577,6 +2583,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         const next = editingEvent ? current.map((event) => (event.id === saved.id ? saved : event)) : [...current, saved];
         return next.sort((a, b) => Number(a.distance_marker_percent) - Number(b.distance_marker_percent));
       });
+      setAllMapEvents((current) => {
+        const next = editingEvent ? current.map((event) => (event.id === saved.id ? saved : event)) : [...current, saved];
+        return next.sort(compareEventsByRouteAndDistance);
+      });
       clearEventForm();
       setAdminMessage("Event saved.");
     } catch (error) {
@@ -2584,10 +2594,114 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
+  async function reuseSavedEvent() {
+    const source = allMapEvents.find((event) => event.id === reuseEventId);
+
+    if (!source) {
+      setAdminMessage("Choose a saved event to reuse first.");
+      return;
+    }
+
+    try {
+      const copied = await createMapEvent({
+        event_type: source.event_type,
+        title: eventTitle.trim() || `${source.title} Copy`,
+        route_id: route.id,
+        distance_marker_percent: clamp(Number(eventDistance) || Number(source.distance_marker_percent) || 0, 0, 100),
+        background_image_url: source.background_image_url,
+        npc_name: source.npc_name,
+        npc_portrait_url: source.npc_portrait_url,
+        dialogue_npc_id: source.dialogue_npc_id,
+        npc_id: source.npc_id,
+        dialogue_text: source.dialogue_text,
+        choices: source.choices ?? [],
+        enemy_name: source.enemy_name,
+        enemy_id: source.enemy_id,
+        enemy_image_url: source.enemy_image_url,
+        enemy_hp: source.enemy_hp,
+        enemy_attack_damage: source.enemy_attack_damage,
+        battle_intro_text: source.battle_intro_text,
+        victory_text: source.victory_text,
+        defeat_text: source.defeat_text,
+        reward_xp: source.reward_xp,
+        reward_gold: source.reward_gold,
+        reward_item: source.reward_item,
+        reward_item_id: source.reward_item_id,
+        reward_item_quantity: source.reward_item_quantity,
+        trigger_mode: source.trigger_mode ?? "fixed",
+        random_chance_percent: source.trigger_mode === "random" ? source.random_chance_percent : 0,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
+        is_active: source.is_active,
+      });
+
+      await copyDialogueTree(source.id, copied.id);
+      setMapEvents((current) => [...current, copied].sort((a, b) => Number(a.distance_marker_percent) - Number(b.distance_marker_percent)));
+      setAllMapEvents((current) => [...current, copied].sort(compareEventsByRouteAndDistance));
+      setReuseEventId(null);
+      clearEventForm();
+      setAdminMessage(`Reused ${source.title} on ${route.name}.`);
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to reuse event."));
+    }
+  }
+
+  async function copyDialogueTree(sourceEventId: string, targetEventId: string) {
+    const sourceNodes = await getDialogueNodes(sourceEventId);
+    if (sourceNodes.length === 0) {
+      return;
+    }
+
+    const sourceChoices = await getDialogueChoices(sourceNodes.map((node) => node.id));
+    const nodeIdMap = new Map<string, string>();
+
+    for (const node of sourceNodes) {
+      const copiedNode = await createDialogueNode({
+        event_id: targetEventId,
+        node_key: `${node.node_key}-${Date.now()}`.slice(0, 120),
+        title: node.title,
+        npc_name: node.npc_name,
+        npc_id: node.npc_id,
+        npc_portrait_url: node.npc_portrait_url,
+        background_image_url: node.background_image_url,
+        dialogue_text: node.dialogue_text,
+        is_start: node.is_start,
+        is_ending: node.is_ending,
+        allow_end_chat: node.allow_end_chat,
+        end_completes_event: node.end_completes_event,
+        sort_order: node.sort_order,
+      });
+      nodeIdMap.set(node.id, copiedNode.id);
+    }
+
+    for (const choice of sourceChoices) {
+      const copiedNodeId = nodeIdMap.get(choice.node_id);
+      if (!copiedNodeId) {
+        continue;
+      }
+
+      await createDialogueChoice({
+        node_id: copiedNodeId,
+        button_text: choice.button_text,
+        player_dialogue_text: choice.player_dialogue_text,
+        action: choice.action,
+        next_node_id: choice.next_node_id ? nodeIdMap.get(choice.next_node_id) ?? null : null,
+        battle_event_id: choice.battle_event_id,
+        reward_xp: choice.reward_xp,
+        reward_gold: choice.reward_gold,
+        reward_item: choice.reward_item,
+        reward_item_id: choice.reward_item_id,
+        reward_item_quantity: choice.reward_item_quantity,
+        sort_order: choice.sort_order,
+      });
+    }
+  }
+
   async function removeMapEvent(eventId: string) {
     try {
       await deleteMapEvent(eventId);
       setMapEvents((current) => current.filter((event) => event.id !== eventId));
+      setAllMapEvents((current) => current.filter((event) => event.id !== eventId));
       if (editingEvent?.id === eventId) {
         clearEventForm();
       }
@@ -3224,6 +3338,44 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     );
   }
 
+  function renderReuseEventPanel() {
+    const selectedReusableEvent = reusableMapEvents.find((event) => event.id === reuseEventId) ?? null;
+
+    return (
+      <View style={styles.storyEditor}>
+        <Text style={styles.selectedTitle}>Reuse Existing Event</Text>
+        <Text style={styles.copy}>Pick any saved event, set the distance marker above or below, then copy it onto the selected trail.</Text>
+        {reusableMapEvents.length === 0 ? <Text style={styles.copy}>No saved events found for this season and chapter yet.</Text> : null}
+        <View style={styles.storyRoutePicker}>
+          {reusableMapEvents.map((event) => (
+            <Pressable
+              key={event.id}
+              style={[styles.routeChip, reuseEventId === event.id && styles.routeChipActive]}
+              onPress={() => {
+                setReuseEventId(event.id);
+                setEventType(event.event_type === "story" ? "dialogue" : event.event_type);
+                setEventDistance(String(event.distance_marker_percent));
+                setEventTitle((current) => current || `${event.title} Copy`);
+              }}
+            >
+              <Text style={styles.routeChipText}>{event.title}</Text>
+              <Text style={styles.debugLine}>{eventTypeName(event.event_type)} / {getRouteName(routes, event.route_id ?? "")}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {selectedReusableEvent ? (
+          <View style={styles.storyCard}>
+            <Text style={styles.markerName}>{selectedReusableEvent.title}</Text>
+            <Text style={styles.copy}>{eventTypeName(selectedReusableEvent.event_type)} copied to {route.name} at {clamp(Number(eventDistance) || 0, 0, 100)}%.</Text>
+            <Pressable style={styles.primaryButton} onPress={() => void reuseSavedEvent()}>
+              <Text style={styles.primaryText}>Reuse Event on This Trail</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
   if (activeMiniMap) {
     const miniMapImage = resolveMapImageUri(activeMiniMap.background_image_url);
 
@@ -3526,6 +3678,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               {adminMiniMapRoutes.length === 0 ? <Text style={styles.copy}>Create a mini-map walking path before adding trail events.</Text> : null}
               {route.mini_map_id === activeMiniMap.id ? (
                 <>
+                  {renderReuseEventPanel()}
                   <View style={styles.modeRow}>
                     {eventTypes.map((type) => (
                       <Pressable key={type} style={[styles.modeButton, eventType === type && styles.typeSelected]} onPress={() => setEventType(type)}>
@@ -4282,6 +4435,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 </Pressable>
               ))}
             </View>
+            {renderReuseEventPanel()}
             <View style={styles.modeRow}>
               {eventTypes.map((type) => (
                 <Pressable key={type} style={[styles.modeButton, eventType === type && styles.typeSelected]} onPress={() => setEventType(type)}>
@@ -6149,6 +6303,10 @@ function getNpcName(npcs: NpcDefinition[], npcId: string | null) {
 
 function getRouteName(routes: MapRoute[], routeId: string) {
   return routes.find((route) => route.id === routeId)?.name ?? "Unknown Path";
+}
+
+function compareEventsByRouteAndDistance(a: MapEvent, b: MapEvent) {
+  return String(a.route_id ?? "").localeCompare(String(b.route_id ?? "")) || Number(a.distance_marker_percent) - Number(b.distance_marker_percent) || a.title.localeCompare(b.title);
 }
 
 function isQuestMarkerType(type: string) {
