@@ -1,3 +1,4 @@
+import { Map, ScrollText, Shield, Trophy, Users } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ScreenKey } from "../types";
 import { colors } from "./theme";
@@ -5,15 +6,15 @@ import { colors } from "./theme";
 type Item = {
   key: ScreenKey;
   label: string;
-  icon: string;
+  Icon: typeof Shield;
 };
 
 const items: Item[] = [
-  { key: "home", label: "Home", icon: "HM" },
-  { key: "quests", label: "Training", icon: "TR" },
-  { key: "map", label: "Map", icon: "MP" },
-  { key: "social", label: "Social", icon: "SO" },
-  { key: "badges", label: "Badges", icon: "BD" },
+  { key: "home", label: "Home", Icon: Shield },
+  { key: "quests", label: "Training", Icon: ScrollText },
+  { key: "map", label: "Map", Icon: Map },
+  { key: "social", label: "Social", Icon: Users },
+  { key: "badges", label: "Badges", Icon: Trophy },
 ];
 
 type BottomNavProps = {
@@ -26,9 +27,10 @@ export function BottomNav({ active, onChange }: BottomNavProps) {
     <View style={styles.nav}>
       {items.map((item) => {
         const selected = item.key === active;
+        const Icon = item.Icon;
         return (
           <Pressable key={item.key} style={[styles.item, item.key === "map" && styles.centerItem]} onPress={() => onChange(item.key)}>
-            <Text style={[styles.icon, selected && styles.active]}>{item.icon}</Text>
+            <Icon size={23} color={selected ? colors.gold : colors.goldSoft} strokeWidth={2.3} />
             <Text style={[styles.label, selected && styles.active]}>{item.label}</Text>
           </Pressable>
         );
@@ -62,11 +64,6 @@ const styles = StyleSheet.create({
     shadowColor: colors.gold,
     shadowOpacity: 0.28,
     shadowRadius: 12,
-  },
-  icon: {
-    color: colors.goldSoft,
-    fontWeight: "900",
-    fontSize: 18,
   },
   label: {
     color: colors.goldSoft,
