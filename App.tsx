@@ -6,11 +6,11 @@ import { BottomNav } from "./src/components/BottomNav";
 import { colors } from "./src/components/theme";
 import { supabase, testSupabaseConnection } from "./src/lib/supabase";
 import { AuthScreen } from "./src/screens/AuthScreen";
+import { BadgesScreen } from "./src/screens/BadgesScreen";
 import { CharacterCreationScreen } from "./src/screens/CharacterCreationScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { MapScreen } from "./src/screens/MapScreen";
 import { QuestsScreen } from "./src/screens/QuestsScreen";
-import { SimpleSectionScreen } from "./src/screens/SimpleSectionScreen";
 import { SocialScreen } from "./src/screens/SocialScreen";
 import { CharacterWithDetails, createProfileIfMissing, getAvatarAssets, getCharacter } from "./src/services/characterService";
 import { Tables } from "./src/lib/supabase";
@@ -102,16 +102,12 @@ export default function App() {
             ) : activeScreen === "social" ? (
               <SocialScreen />
             ) : (
-              <SimpleSectionScreen title="Settings" description="Manage account settings, notifications, privacy, app preferences, support, and logout." showSignOut />
+              <BadgesScreen character={character} />
             )}
           </AuthenticatedLayout>
         ) : (
           <AuthenticatedLayout activeScreen={activeScreen} onChangeScreen={setActiveScreen}>
-            {activeScreen === "settings" ? (
-              <SimpleSectionScreen title="Settings" description="Manage account settings, notifications, privacy, app preferences, support, and logout." showSignOut />
-            ) : (
-              <CharacterCreationScreen assets={avatarAssets} onCreated={setCharacter} />
-            )}
+            <CharacterCreationScreen assets={avatarAssets} onCreated={setCharacter} />
           </AuthenticatedLayout>
         )}
       </View>

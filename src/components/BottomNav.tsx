@@ -9,11 +9,11 @@ type Item = {
 };
 
 const items: Item[] = [
-  { key: "home", label: "Home", icon: "⌂" },
-  { key: "quests", label: "Training", icon: "✦" },
-  { key: "map", label: "Map", icon: "⌖" },
-  { key: "social", label: "Social", icon: "♟" },
-  { key: "settings", label: "Settings", icon: "⚙" },
+  { key: "home", label: "Home", icon: "HM" },
+  { key: "quests", label: "Training", icon: "TR" },
+  { key: "map", label: "Map", icon: "MP" },
+  { key: "social", label: "Social", icon: "SO" },
+  { key: "badges", label: "Badges", icon: "BD" },
 ];
 
 type BottomNavProps = {
@@ -65,8 +65,8 @@ const styles = StyleSheet.create({
   },
   icon: {
     color: colors.goldSoft,
-    fontWeight: "700",
-    fontSize: 22,
+    fontWeight: "900",
+    fontSize: 18,
   },
   label: {
     color: colors.goldSoft,

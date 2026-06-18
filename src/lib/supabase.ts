@@ -323,6 +323,33 @@ export type Tables = {
     kill_count: number;
     last_killed_at: string;
   };
+  badge_definitions: {
+    id: string;
+    title: string;
+    description: string | null;
+    badge_type: "distance" | "enemy_type_kills" | "story_completion" | "training_sessions";
+    metric_key: string | null;
+    target_value: number;
+    icon_url: string | null;
+    icon_label: string | null;
+    sort_order: number;
+    is_active: boolean;
+    season_number: number;
+    chapter_number: number;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  player_badges: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    badge_id: string;
+    progress_value: number;
+    is_earned: boolean;
+    earned_at: string | null;
+    updated_at: string;
+  };
   story_dialogue_nodes: {
     id: string;
     event_id: string;

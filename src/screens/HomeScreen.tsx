@@ -5,6 +5,7 @@ import { Frame } from "../components/Frame";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
+import { supabase } from "../lib/supabase";
 import { pickAndUploadAdminImage } from "../services/adminImageService";
 import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
 import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getAbilityCostLabel, getAbilitySourceLabel, getCombatLoadout, getCharacterResources, getCurrentHealth, learnAbilityFromScroll } from "../services/abilityService";
@@ -83,7 +84,7 @@ type HomeScreenProps = {
   onCharacterUpdated: (character: CharacterWithDetails) => void;
 };
 
-const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Abilities", "Inventory"] as const;
+const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Abilities", "Inventory", "Settings"] as const;
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 const inventoryCategoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
@@ -1068,7 +1069,7 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
               </View>
             ) : null}
           </View>
-        ) : (
+        ) : activeTab === "Inventory" ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Inventory</Text>
             {inventoryMessage ? <Text style={styles.abilityMessage}>{inventoryMessage}</Text> : null}
@@ -1223,6 +1224,24 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                 {adminToolTab === "Enemies" ? <Text style={styles.muted}>Open the Abilities tab to manage enemy records.</Text> : null}
               </View>
             ) : null}
+          </View>
+        ) : (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Settings</Text>
+            <Text style={styles.muted}>Account settings, app preferences, privacy controls, support, and sign out now live inside Home.</Text>
+            <View style={styles.detailPanel}>
+              <Text style={styles.subTitle}>Account</Text>
+              <Info label="Character" value={character.name} />
+              <Info label="Role" value={role} />
+              <Info label="Portrait" value={character.portrait_url ? "Generated" : "Missing"} />
+            </View>
+            <View style={styles.detailPanel}>
+              <Text style={styles.subTitle}>App Preferences</Text>
+              <Text style={styles.muted}>Notifications, privacy options, and support links can be expanded here without needing another bottom tab.</Text>
+            </View>
+            <Pressable style={styles.primaryAdminButton} onPress={() => void supabase.auth.signOut()}>
+              <Text style={styles.primaryAdminText}>Sign Out</Text>
+            </Pressable>
           </View>
         )}
       </Frame>
