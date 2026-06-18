@@ -11,6 +11,7 @@ import { HomeScreen } from "./src/screens/HomeScreen";
 import { MapScreen } from "./src/screens/MapScreen";
 import { QuestsScreen } from "./src/screens/QuestsScreen";
 import { SimpleSectionScreen } from "./src/screens/SimpleSectionScreen";
+import { SocialScreen } from "./src/screens/SocialScreen";
 import { CharacterWithDetails, createProfileIfMissing, getAvatarAssets, getCharacter } from "./src/services/characterService";
 import { Tables } from "./src/lib/supabase";
 import { ScreenKey } from "./src/types";
@@ -99,7 +100,7 @@ export default function App() {
             ) : activeScreen === "quests" ? (
               <QuestsScreen character={character} onCharacterUpdated={setCharacter} />
             ) : activeScreen === "social" ? (
-              <SimpleSectionScreen title="Social" description="Guilds, friends, parties, leaderboards, chat, community events, PvP, and cooperative content will gather here." />
+              <SocialScreen />
             ) : (
               <SimpleSectionScreen title="Settings" description="Manage account settings, notifications, privacy, app preferences, support, and logout." showSignOut />
             )}
