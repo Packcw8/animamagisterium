@@ -473,6 +473,8 @@ export type Tables = {
     damage: number;
     healing: number;
     defense_amount: number;
+    stamina_restore: number;
+    magika_restore: number;
     stamina_cost: number;
     magika_cost: number;
     health_cost: number;
@@ -485,7 +487,7 @@ export type Tables = {
     effect_amount: number;
     effect_duration: number;
     linked_stat: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | "weapon" | "item" | "none";
-    learn_method: "level" | "weapon equipped" | "armor equipped" | "wearable equipped" | "scroll" | "quest" | "admin";
+    learn_method: "starter" | "level" | "weapon equipped" | "armor equipped" | "wearable equipped" | "scroll" | "quest" | "admin";
     required_level: number;
     required_attribute: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | null;
     required_attribute_level: number;

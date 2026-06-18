@@ -414,8 +414,7 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
     supabase
       .from("combat_abilities")
       .select("*")
-      .eq("is_active", true)
-      .not("required_attribute", "is", null),
+      .eq("is_active", true),
   ]);
 
   if (adminAbilitiesResult.error) {
@@ -424,6 +423,10 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
 
   const unlocked = abilityDefinitions.filter((ability) => ability.attribute && (character.attributes?.[ability.attribute] ?? 0) >= ability.unlockLevel);
   const adminUnlocked = ((adminAbilitiesResult.data ?? []) as CombatAbility[]).filter((ability) => {
+    if (ability.learn_method === "starter") {
+      return true;
+    }
+
     const attribute = ability.required_attribute;
     return attribute && (character.attributes?.[attribute] ?? 0) >= ability.required_attribute_level;
   });
@@ -444,7 +447,7 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
         user_id: user.id,
         character_id: character.id,
         ability_key: getAdminAbilityKey(ability.id),
-        unlocked_by_attribute: ability.required_attribute as AttributeKey,
+        unlocked_by_attribute: ability.learn_method === "starter" ? null : ability.required_attribute as AttributeKey,
       })),
     ],
     { onConflict: "character_id,ability_key", ignoreDuplicates: true },
@@ -539,7 +542,7 @@ function adminAbilityToDefinition(ability: CombatAbility): AbilityDefinition {
     baseDamage: ability.damage,
     scaling: primaryAttribute ? 2 : 0,
     critBonus: ability.critical_chance / 100,
-    description: `${ability.type}. ${ability.damage} damage, ${ability.healing} healing, ${ability.defense_amount} defense.`,
+    description: `${ability.type}. ${ability.damage} damage, ${ability.healing} healing, ${ability.defense_amount} defense, ${ability.stamina_restore} stamina restore, ${ability.magika_restore} magika restore.`,
     source: "admin",
     adminAbility: ability,
   };

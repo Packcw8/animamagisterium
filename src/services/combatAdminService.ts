@@ -22,7 +22,7 @@ export const combatAbilityTypes: CombatAbility["type"][] = ["attack", "heal", "b
 export const statusEffects: CombatAbility["status_effect"][] = ["none", "poison", "burn", "regen", "shield", "weakness", "slow", "stun"];
 export const linkedStats: CombatAbility["linked_stat"][] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit", "weapon", "item", "none"];
 export const requiredAttributes: NonNullable<CombatAbility["required_attribute"]>[] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"];
-export const learnMethods: CombatAbility["learn_method"][] = ["level", "weapon equipped", "armor equipped", "wearable equipped", "scroll", "quest", "admin"];
+export const learnMethods: CombatAbility["learn_method"][] = ["starter", "level", "weapon equipped", "armor equipped", "wearable equipped", "scroll", "quest", "admin"];
 export const usageContexts: CombatAbility["usage_context"][] = ["battle_only", "outside_battle_only", "both"];
 export const enemyAssetBasePath = "/assets/Enemies/";
 
@@ -61,6 +61,8 @@ export function blankCombatAbility(): Partial<CombatAbility> {
     damage: 0,
     healing: 0,
     defense_amount: 0,
+    stamina_restore: 0,
+    magika_restore: 0,
     stamina_cost: 0,
     magika_cost: 0,
     health_cost: 0,
@@ -347,6 +349,8 @@ function normalizeCombatAbility(input: Partial<CombatAbility>, userId: string | 
     damage: Number(input.damage) || 0,
     healing: Number(input.healing) || 0,
     defense_amount: Number(input.defense_amount) || 0,
+    stamina_restore: Number(input.stamina_restore) || 0,
+    magika_restore: Number(input.magika_restore) || 0,
     stamina_cost: Number(input.stamina_cost) || 0,
     magika_cost: Number(input.magika_cost) || 0,
     health_cost: Number(input.health_cost) || 0,

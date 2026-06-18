@@ -760,6 +760,8 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                 <Info label="Stamina Cost" value={String(selectedPlayerAbility.adminAbility?.stamina_cost ?? (selectedPlayerAbility.resource === "stamina" ? selectedPlayerAbility.cost : 0))} />
                 <Info label="Magika Cost" value={String(selectedPlayerAbility.adminAbility?.magika_cost ?? (selectedPlayerAbility.resource === "magicka" ? selectedPlayerAbility.cost : 0))} />
                 <Info label="Health Cost" value={String(selectedPlayerAbility.adminAbility?.health_cost ?? (selectedPlayerAbility.resource === "health" ? selectedPlayerAbility.cost : 0))} />
+                <Info label="Stamina Restore" value={String(selectedPlayerAbility.adminAbility?.stamina_restore ?? 0)} />
+                <Info label="Magika Restore" value={String(selectedPlayerAbility.adminAbility?.magika_restore ?? 0)} />
                 <Info label="Cooldown" value={`${selectedPlayerAbility.adminAbility?.cooldown_turns ?? 0} turns`} />
                 <Info label="Linked Attribute" value={selectedPlayerAbility.attribute ?? "None"} />
                 <Info label="Required Level" value={String(selectedPlayerAbility.unlockLevel ?? 0)} />
@@ -829,6 +831,7 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                     <AssetPreview label="Selected ability image" uri={resolveAbilityImageUri(selectedAdminAbility.image_path)} />
                     <Text style={styles.abilityName}>{selectedAdminAbility.name}</Text>
                     <Text style={styles.muted}>{selectedAdminAbility.type} / Damage {selectedAdminAbility.damage} / Healing {selectedAdminAbility.healing} / Defense {selectedAdminAbility.defense_amount}</Text>
+                    <Text style={styles.muted}>Restores: {selectedAdminAbility.stamina_restore} Stamina / {selectedAdminAbility.magika_restore} Magika</Text>
                     <Text style={styles.muted}>Costs: {selectedAdminAbility.stamina_cost} Stamina / {selectedAdminAbility.magika_cost} Magika / {selectedAdminAbility.health_cost} Health</Text>
                     <Text style={styles.muted}>Unlock: {selectedAdminAbility.required_attribute ? `${selectedAdminAbility.required_attribute} ${selectedAdminAbility.required_attribute_level}` : selectedAdminAbility.learn_method}</Text>
                     <View style={styles.slotActions}>
@@ -870,9 +873,14 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                 </View>
                 <ChoiceRow label="Linked stat" options={linkedStats} value={abilityForm.linked_stat ?? "none"} onSelect={(value) => setAbilityForm((current) => ({ ...current, linked_stat: value }))} />
                 <ChoiceRow label="Learn method" options={learnMethods} value={abilityForm.learn_method ?? "admin"} onSelect={(value) => setAbilityForm((current) => ({ ...current, learn_method: value }))} />
+                <ToggleRow label="Starter Ability" value={abilityForm.learn_method === "starter"} onPress={() => setAbilityForm((current) => ({ ...current, learn_method: current.learn_method === "starter" ? "admin" : "starter", required_attribute: current.learn_method === "starter" ? current.required_attribute ?? null : null, required_attribute_level: current.learn_method === "starter" ? current.required_attribute_level ?? 0 : 0, required_level: current.learn_method === "starter" ? current.required_level ?? 0 : 0 }))} />
                 <ItemText label="Required level" value={String(abilityForm.required_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_level: Number(value) || 0 }))} />
                 <ChoiceRow label="Required Attribute" options={["", ...requiredAttributes]} value={abilityForm.required_attribute ?? ""} onSelect={(value) => setAbilityForm((current) => ({ ...current, required_attribute: value || null, linked_stat: value || current.linked_stat }))} />
                 <ItemText label="Required Attribute Level" value={String(abilityForm.required_attribute_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_attribute_level: Number(value) || 0, required_level: Number(value) || current.required_level || 0 }))} />
+                <View style={styles.slotActions}>
+                  <ItemText label="Stamina Restore" value={String(abilityForm.stamina_restore ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, stamina_restore: Number(value) || 0 }))} />
+                  <ItemText label="Magika Restore" value={String(abilityForm.magika_restore ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, magika_restore: Number(value) || 0 }))} />
+                </View>
                 <ItemText label="Image URL/path" value={abilityForm.image_path ?? ""} onChange={(value) => setAbilityForm((current) => ({ ...current, image_path: value }))} />
                 <AdminImageUploadButton folder="abilities" onUploaded={(url) => setAbilityForm((current) => ({ ...current, image_path: url }))} onMessage={setAbilityMessage} />
                 <AssetPreview label="Ability image preview" uri={resolveAbilityImageUri(abilityForm.image_path)} />
@@ -892,7 +900,8 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
                       <View style={styles.itemBody}>
                     <Text style={styles.abilityName}>{ability.name}</Text>
                     <Text style={styles.muted}>{ability.type} / {ability.damage} damage / {ability.healing} healing / {ability.status_effect}</Text>
-                    <Text style={styles.muted}>Unlock: {ability.required_attribute ? `${ability.required_attribute} ${ability.required_attribute_level}` : "manual/gear/quest"}</Text>
+                    <Text style={styles.muted}>Restores {ability.stamina_restore} Stamina / {ability.magika_restore} Magika</Text>
+                    <Text style={styles.muted}>Unlock: {ability.learn_method === "starter" ? "Starter" : ability.required_attribute ? `${ability.required_attribute} ${ability.required_attribute_level}` : "manual/gear/quest"}</Text>
                       </View>
                     </View>
                     <View style={styles.slotActions}>
@@ -1526,6 +1535,8 @@ function getAbilityEffectSummary(ability: AbilityDefinition) {
       ability.adminAbility.damage ? `${ability.adminAbility.damage} damage` : null,
       ability.adminAbility.healing ? `${ability.adminAbility.healing} healing` : null,
       ability.adminAbility.defense_amount ? `${ability.adminAbility.defense_amount} defense` : null,
+      ability.adminAbility.stamina_restore ? `${ability.adminAbility.stamina_restore} stamina restore` : null,
+      ability.adminAbility.magika_restore ? `${ability.adminAbility.magika_restore} magika restore` : null,
       ability.adminAbility.status_effect !== "none" ? `${ability.adminAbility.status_effect} ${ability.adminAbility.effect_amount} for ${ability.adminAbility.effect_duration} turns` : null,
     ].filter(Boolean);
 

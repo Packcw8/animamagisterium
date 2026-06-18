@@ -2111,12 +2111,32 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       await savePlayerHealth(Math.max(1, battlePlayerHp - ability.cost));
     }
 
-    if (ability.adminAbility?.type === "heal") {
-      const healing = Math.max(1, Number(ability.adminAbility.healing) || ability.baseDamage || 1);
-      pushCombatIndicator("player", `+${healing}`, "#42d77d");
-      const nextLog = [`${ability.name} restores ${healing} Health.`];
+    const healthRestore = Math.max(0, Number(ability.adminAbility?.healing ?? 0));
+    const staminaRestore = Math.max(0, Number(ability.adminAbility?.stamina_restore ?? 0));
+    const magikaRestore = Math.max(0, Number(ability.adminAbility?.magika_restore ?? 0));
+    const isPureRestoreAbility = ability.adminAbility && ability.adminAbility.type === "heal" && Number(ability.adminAbility.damage ?? 0) <= 0;
+
+    if (isPureRestoreAbility) {
+      const nextLog: string[] = [];
+      if (healthRestore > 0) {
+        pushCombatIndicator("player", `+${healthRestore}`, "#42d77d");
+        nextLog.push(`${ability.name} restores ${healthRestore} Health.`);
+      }
+      if (staminaRestore > 0) {
+        pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6");
+        setBattleStamina((current) => Math.min(combatResources.maxStamina, current + staminaRestore));
+        nextLog.push(`${ability.name} restores ${staminaRestore} Stamina.`);
+      }
+      if (magikaRestore > 0) {
+        pushCombatIndicator("player", `+${magikaRestore} Magika`, "#7dd3fc");
+        setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + magikaRestore));
+        nextLog.push(`${ability.name} restores ${magikaRestore} Magika.`);
+      }
+      if (nextLog.length === 0) {
+        nextLog.push(`${ability.name} has no restore amount configured.`);
+      }
       const counter = resolveEnemyCounterAttack();
-      const nextPlayerHp = Math.max(0, Math.min(combatResources.maxHp, battlePlayerHp + healing) - counter.damage);
+      const nextPlayerHp = Math.max(0, Math.min(combatResources.maxHp, battlePlayerHp + healthRestore) - counter.damage);
       nextLog.push(...counter.log);
       await savePlayerHealth(nextPlayerHp);
       if (nextPlayerHp <= 0) {
@@ -2151,8 +2171,27 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c");
     nextLog.push(`${ability.name} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} ${ability.kind} damage.`);
     applyAbilityStatusToTarget(ability, "enemy", nextLog);
+    let postAbilityPlayerHp = battlePlayerHp;
+    if (healthRestore > 0) {
+      postAbilityPlayerHp = Math.min(combatResources.maxHp, battlePlayerHp + healthRestore);
+      pushCombatIndicator("player", `+${healthRestore}`, "#42d77d");
+      nextLog.push(`${ability.name} restores ${healthRestore} Health.`);
+    }
+    if (staminaRestore > 0) {
+      pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6");
+      setBattleStamina((current) => Math.min(combatResources.maxStamina, current + staminaRestore));
+      nextLog.push(`${ability.name} restores ${staminaRestore} Stamina.`);
+    }
+    if (magikaRestore > 0) {
+      pushCombatIndicator("player", `+${magikaRestore} Magika`, "#7dd3fc");
+      setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + magikaRestore));
+      nextLog.push(`${ability.name} restores ${magikaRestore} Magika.`);
+    }
 
     if (nextEnemyHp <= 0) {
+      if (healthRestore > 0) {
+        await savePlayerHealth(postAbilityPlayerHp);
+      }
       setBattleEnemyHp(0);
       setBattleFinished("victory");
       setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
@@ -2160,7 +2199,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     const counter = resolveEnemyCounterAttack();
-    const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
+    const nextPlayerHp = Math.max(0, postAbilityPlayerHp - counter.damage);
     nextLog.push(...counter.log);
 
     setBattleEnemyHp(nextEnemyHp);
@@ -2308,10 +2347,26 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (ability.type === "heal") {
-      const healing = Math.max(1, Number(ability.healing) || 1);
-      setBattleEnemyHp((current) => Math.min(Number(activeEnemy?.health ?? activeBattle?.enemy_hp ?? 30), current + healing));
-      pushCombatIndicator("enemy", `+${healing}`, "#42d77d");
-      return { damage: 0, log: [`${enemyName} uses ${ability.name} and heals ${healing}.`] };
+      const logs: string[] = [];
+      const healing = Math.max(0, Number(ability.healing) || 0);
+      const staminaRestore = Math.max(0, Number(ability.stamina_restore) || 0);
+      const magikaRestore = Math.max(0, Number(ability.magika_restore) || 0);
+      if (healing > 0) {
+        setBattleEnemyHp((current) => Math.min(Number(activeEnemy?.health ?? activeBattle?.enemy_hp ?? 30), current + healing));
+        pushCombatIndicator("enemy", `+${healing}`, "#42d77d");
+        logs.push(`${enemyName} heals ${healing}.`);
+      }
+      if (staminaRestore > 0) {
+        setBattleEnemyStamina((current) => Math.min(Number(activeEnemy?.stamina ?? 0), current + staminaRestore));
+        pushCombatIndicator("enemy", `+${staminaRestore} Stamina`, "#3b82f6");
+        logs.push(`${enemyName} restores ${staminaRestore} Stamina.`);
+      }
+      if (magikaRestore > 0) {
+        setBattleEnemyMagika((current) => Math.min(Number(activeEnemy?.magika ?? 0), current + magikaRestore));
+        pushCombatIndicator("enemy", `+${magikaRestore} Magika`, "#7dd3fc");
+        logs.push(`${enemyName} restores ${magikaRestore} Magika.`);
+      }
+      return { damage: 0, log: [`${enemyName} uses ${ability.name}.`, ...(logs.length > 0 ? logs : ["No restore amount is configured."])] };
     }
 
     if (ability.type === "defense" || ability.type === "buff" || ability.type === "passive") {
