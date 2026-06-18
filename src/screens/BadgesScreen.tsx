@@ -17,7 +17,7 @@ import {
   saveBadgeDefinition,
 } from "../services/badgeService";
 import type { CharacterWithDetails } from "../services/characterService";
-import { EnemyDefinition, getEnemies } from "../services/combatAdminService";
+import { EnemyDefinition, getEnemies, resolveEnemyImageUri } from "../services/combatAdminService";
 import { getCurrentRole, getMapMarkers, MapMarker, Role } from "../services/mapService";
 
 type BadgesScreenProps = {
@@ -160,9 +160,8 @@ export function BadgesScreen({ character }: BadgesScreenProps) {
             <ChoiceRow label="Training attribute" options={trainingKeys} value={form.metric_key ?? ""} labels={{ "": "Any Training" }} onSelect={(value) => setForm((current) => ({ ...current, metric_key: value || null }))} />
           ) : null}
           {form.badge_type === "enemy_name_kills" ? (
-            <NamedChoiceRow
-              label="Enemy from admin"
-              options={[{ id: "", label: "Any named enemy" }, ...enemies.map((enemy) => ({ id: `enemy:${enemy.id}`, label: `${enemy.name}${enemy.type ? ` (${enemy.type})` : ""}` }))]}
+            <EnemyBadgeSelector
+              enemies={enemies}
               value={form.metric_key ?? ""}
               onSelect={(value) => setForm((current) => ({ ...current, metric_key: value || null }))}
             />
@@ -305,6 +304,48 @@ function NamedChoiceRow({ label, options, value, onSelect }: { label: string; op
             <Text style={[styles.buttonText, value === option.id && styles.choiceTextActive]}>{option.label}</Text>
           </Pressable>
         ))}
+      </View>
+    </View>
+  );
+}
+
+function EnemyBadgeSelector({ enemies, value, onSelect }: { enemies: EnemyDefinition[]; value: string; onSelect: (value: string) => void }) {
+  const selectedEnemyId = value.startsWith("enemy:") ? value.replace("enemy:", "") : "";
+  const selectedEnemy = enemies.find((enemy) => enemy.id === selectedEnemyId);
+
+  return (
+    <View style={styles.choiceGroup}>
+      <Text style={styles.choiceLabel}>Enemy from Enemy Admin</Text>
+      <Text style={styles.hint}>Select a created enemy to track kills by that exact enemy. Choose Any Enemy to count all named enemy kills.</Text>
+      <View style={styles.enemySelectorHeader}>
+        <Pressable style={[styles.choiceButton, !value && styles.choiceActive]} onPress={() => onSelect("")}>
+          <Text style={[styles.buttonText, !value && styles.choiceTextActive]}>Any Enemy</Text>
+        </Pressable>
+        {selectedEnemy ? (
+          <Text style={styles.selectedEnemyText}>Selected: {selectedEnemy.name}</Text>
+        ) : value ? (
+          <Text style={styles.selectedEnemyText}>Selected enemy is missing from Enemy Admin.</Text>
+        ) : null}
+      </View>
+      <View style={styles.enemySelectGrid}>
+        {enemies.length === 0 ? <Text style={styles.muted}>No enemies created yet. Add enemies in Home / Abilities / Enemy Admin.</Text> : null}
+        {enemies.map((enemy) => {
+          const optionValue = `enemy:${enemy.id}`;
+          const isSelected = value === optionValue;
+          const imageUri = resolveEnemyImageUri(enemy.image_url);
+
+          return (
+            <Pressable key={enemy.id} style={[styles.enemySelectCard, isSelected && styles.enemySelectCardActive]} onPress={() => onSelect(optionValue)}>
+              <View style={styles.enemySelectImageWrap}>
+                {imageUri ? <Image source={{ uri: imageUri }} style={styles.enemySelectImage} /> : <Text style={styles.enemySelectInitial}>{enemy.name.slice(0, 1).toUpperCase()}</Text>}
+              </View>
+              <View style={styles.enemySelectInfo}>
+                <Text style={styles.enemySelectName} numberOfLines={1}>{enemy.name}</Text>
+                <Text style={styles.enemySelectMeta} numberOfLines={1}>{enemy.type || "Enemy"} / HP {enemy.health}</Text>
+              </View>
+            </Pressable>
+          );
+        })}
       </View>
     </View>
   );
@@ -540,6 +581,72 @@ const styles = StyleSheet.create({
   },
   choiceTextActive: {
     color: colors.text,
+  },
+  enemySelectorHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
+  },
+  selectedEnemyText: {
+    color: colors.blue,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  enemySelectGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  enemySelectCard: {
+    width: 160,
+    minHeight: 72,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 8,
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  enemySelectCardActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.62)",
+  },
+  enemySelectImageWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(232, 181, 94, 0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  enemySelectImage: {
+    width: "100%",
+    height: "100%",
+  },
+  enemySelectInitial: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 20,
+  },
+  enemySelectInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  enemySelectName: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  enemySelectMeta: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 3,
   },
   toggleButton: {
     minHeight: 48,
