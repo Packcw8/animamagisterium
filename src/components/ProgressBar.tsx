@@ -13,10 +13,16 @@ export function ProgressBar({ value, max, color, height = 8 }: ProgressBarProps)
 
   return (
     <View style={[styles.track, { height }]}>
-      <View style={[styles.fill, { width, backgroundColor: color }]} />
+      <View style={[styles.fill, { width, backgroundColor: color }, smoothWidthTransition]} />
     </View>
   );
 }
+
+const smoothWidthTransition = {
+  transitionProperty: "width",
+  transitionDuration: "220ms",
+  transitionTimingFunction: "ease-out",
+} as never;
 
 const styles = StyleSheet.create({
   track: {

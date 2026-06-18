@@ -5852,6 +5852,8 @@ function BattleEventScreen({
   const rewardGold = Number(event.reward_gold ?? 0) + Number(activeEnemy?.gold_reward ?? 0);
   const battlePhase = result === "victory" ? "Victory" : result === "defeat" ? "Defeat" : revivePromptOpen ? "Revive Choice" : "Your Turn";
   const playerTurnActive = !result && !revivePromptOpen;
+  const enemyIntent = getEnemyIntent(activeEnemy, event);
+  const enemyLevel = getBattleEnemyLevel(enemyMaxHp);
 
   useEffect(() => {
     setEnemyImageFailed(false);
@@ -5889,32 +5891,33 @@ function BattleEventScreen({
         <View style={styles.battleArena}>
           <View style={[styles.enemyPanel, !playerTurnActive && !result && styles.combatantActive]}>
             <View style={styles.combatantInfo}>
-              <Text style={styles.combatantName}>{activeEnemy?.name || event.enemy_name || "Enemy"}</Text>
-              <Text style={styles.combatantSub}>{activeEnemy?.type || "Enemy"}</Text>
+              <Text style={styles.combatantName} numberOfLines={1}>{activeEnemy?.name || event.enemy_name || "Enemy"}</Text>
+              <Text style={styles.combatantSub} numberOfLines={1}>{activeEnemy?.type || "Enemy"} / Level {enemyLevel}</Text>
               <ResourceMeter label="HP" value={enemyHp} max={enemyMaxHp} color={colors.red} />
+              <View style={styles.enemyIntentBox}>
+                <Text style={styles.enemyIntentLabel}>Intent</Text>
+                <Text style={styles.enemyIntentText} numberOfLines={1}>{enemyIntent}</Text>
+              </View>
               {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
             </View>
-            <View style={styles.combatImageWrap}>
+            <View style={[styles.combatImageWrap, enemyIndicators.length > 0 && styles.combatImageHit]}>
               {enemyImageUri && !enemyImageFailed ? <Image source={{ uri: enemyImageUri }} style={styles.enemyImage} onError={() => setEnemyImageFailed(true)} /> : <View style={styles.enemyImagePlaceholder}><Text style={styles.copy}>Enemy image missing</Text></View>}
               <CombatIndicatorStack indicators={enemyIndicators} />
             </View>
           </View>
           <View style={[styles.playerPanel, playerTurnActive && styles.combatantActive]}>
-            <View style={styles.combatImageWrap}>
+            <View style={[styles.combatImageWrap, playerIndicators.length > 0 && styles.combatImageHit]}>
               {character.portrait_url && !playerImageFailed ? <Image source={{ uri: character.portrait_url }} style={styles.battlePortrait} onError={() => setPlayerImageFailed(true)} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
               <CombatIndicatorStack indicators={playerIndicators} />
             </View>
             <View style={styles.combatantInfo}>
-              <Text style={styles.combatantName}>{character.name}</Text>
-              <Text style={styles.combatantSub}>Adventurer</Text>
+              <Text style={styles.combatantName} numberOfLines={1}>{character.name}</Text>
+              <Text style={styles.combatantSub} numberOfLines={1}>{character.origin || "Adventurer"}</Text>
               <ResourceMeter label="HP" value={playerHp} max={resources.maxHp} color={colors.red} />
+              <ResourceMeter label="Stamina" value={stamina} max={resources.maxStamina} color={colors.gold} compact />
+              <ResourceMeter label="Mana" value={magicka} max={resources.maxMagicka} color={colors.blue} compact />
             </View>
           </View>
-        </View>
-        <View style={styles.resourceBars}>
-          <ResourceMeter label="Health" value={playerHp} max={resources.maxHp} color={colors.red} />
-          <ResourceMeter label="Stamina" value={stamina} max={resources.maxStamina} color={colors.gold} />
-          <ResourceMeter label="Mana" value={magicka} max={resources.maxMagicka} color={colors.blue} />
         </View>
         <View style={styles.abilityGrid}>
           {equippedAbilities.map((ability, index) => {
@@ -5931,12 +5934,12 @@ function BattleEventScreen({
               />
           )})}
         </View>
-        <View style={styles.modeRow}>
-          <Pressable style={styles.secondaryButtonFlex} onPress={onToggleInventory}>
+        <View style={styles.battleUtilityRow}>
+          <Pressable style={styles.inventoryBattleButton} onPress={onToggleInventory}>
             <Text style={styles.secondaryText}>Inventory</Text>
           </Pressable>
           {!result ? (
-            <Pressable style={styles.secondaryButtonFlex} onPress={onFlee}>
+            <Pressable style={styles.fleeBattleButton} onPress={onFlee}>
               <Text style={styles.dangerText}>Flee</Text>
             </Pressable>
           ) : null}
@@ -5993,16 +5996,16 @@ function BattleEventScreen({
   );
 }
 
-function ResourceMeter({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+function ResourceMeter({ label, value, max, color, compact = false }: { label: string; value: number; max: number; color: string; compact?: boolean }) {
   const safeMax = Math.max(1, max);
 
   return (
-    <View style={styles.resourceMeter}>
+    <View style={[styles.resourceMeter, compact && styles.resourceMeterCompact]}>
       <View style={styles.resourceMeterHeader}>
         <Text style={styles.resourceMeterLabel}>{label}</Text>
         <Text style={styles.resourceMeterValue}>{Math.max(0, value)} / {safeMax}</Text>
       </View>
-      <ProgressBar value={value} max={safeMax} color={color} height={8} />
+      <ProgressBar value={value} max={safeMax} color={color} height={compact ? 5 : 8} />
     </View>
   );
 }
@@ -6022,7 +6025,7 @@ function BattleActionCard({
 }) {
   return (
     <Pressable
-      style={[styles.battleActionCard, disabled && styles.disabledAction]}
+      style={({ pressed }) => [styles.battleActionCard, pressed && !disabled && styles.battleActionPressed, disabled && styles.disabledAction]}
       onPress={onPress}
       disabled={disabled}
     >
@@ -6081,6 +6084,24 @@ function getAbilityPowerLabel(ability: AbilityDefinition) {
   }
 
   return ability.description;
+}
+
+function getEnemyIntent(enemy: EnemyWithLoadout | NpcWithLoadout | null, event: MapEvent) {
+  const strongestAbility = enemy?.abilities
+    ?.filter((entry) => entry.ability)
+    .sort((a, b) => Number(b.use_weight ?? 0) - Number(a.use_weight ?? 0))[0]?.ability;
+
+  if (strongestAbility) {
+    return strongestAbility.type === "attack"
+      ? `Preparing ${strongestAbility.name}`
+      : `May use ${strongestAbility.name}`;
+  }
+
+  return event.enemy_attack_damage > 0 ? `Attack for ${event.enemy_attack_damage}` : "Watching your move";
+}
+
+function getBattleEnemyLevel(enemyMaxHp: number) {
+  return Math.max(1, Math.round(enemyMaxHp / 25));
 }
 
 type MarkerIconSource = Pick<MapMarker, "type" | "icon_label" | "icon_image_url" | "icon_color">;
@@ -7833,6 +7854,9 @@ const styles = StyleSheet.create({
   resourceMeter: {
     gap: 5,
   },
+  resourceMeterCompact: {
+    gap: 3,
+  },
   resourceMeterHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -8122,18 +8146,21 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   battleArena: {
-    minHeight: 260,
+    minHeight: 340,
     justifyContent: "space-between",
-    gap: 12,
+    gap: 18,
+    paddingHorizontal: 2,
+    paddingVertical: 6,
   },
   battleScreenFrame: {
     overflow: "hidden",
   },
   battleBackdrop: {
-    gap: 12,
+    gap: 10,
     padding: 10,
+    paddingTop: 12,
     borderRadius: 8,
-    backgroundColor: "rgba(0,0,0,0.58)",
+    backgroundColor: "rgba(0,0,0,0.28)",
   },
   battleHeader: {
     flexDirection: "row",
@@ -8156,37 +8183,43 @@ const styles = StyleSheet.create({
   },
   enemyPanel: {
     alignSelf: "flex-end",
-    width: "72%",
+    width: "84%",
     maxWidth: 360,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: 8,
-    borderRadius: 10,
+    gap: 10,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(255, 180, 170, 0.34)",
-    padding: 8,
-    backgroundColor: "rgba(30, 8, 8, 0.34)",
+    borderColor: "rgba(255, 180, 170, 0.52)",
+    padding: 9,
+    backgroundColor: "rgba(12, 8, 8, 0.58)",
+    shadowColor: "#ff6d63",
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
   },
   playerPanel: {
     alignSelf: "flex-start",
-    width: "72%",
+    width: "84%",
     maxWidth: 360,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    borderRadius: 10,
+    gap: 10,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(54, 171, 224, 0.34)",
-    padding: 8,
-    backgroundColor: "rgba(6, 23, 34, 0.34)",
+    borderColor: "rgba(54, 171, 224, 0.5)",
+    padding: 9,
+    backgroundColor: "rgba(6, 16, 24, 0.62)",
+    shadowColor: colors.blue,
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
   },
   combatantActive: {
     borderColor: colors.blue,
-    backgroundColor: "rgba(20, 61, 86, 0.58)",
+    backgroundColor: "rgba(20, 61, 86, 0.68)",
     shadowColor: colors.blue,
-    shadowOpacity: 0.32,
-    shadowRadius: 10,
+    shadowOpacity: 0.42,
+    shadowRadius: 16,
   },
   combatantInfo: {
     flex: 1,
@@ -8196,7 +8229,7 @@ const styles = StyleSheet.create({
   combatantName: {
     color: colors.text,
     fontWeight: "900",
-    fontSize: 14,
+    fontSize: 15,
   },
   combatantSub: {
     color: colors.muted,
@@ -8208,6 +8241,12 @@ const styles = StyleSheet.create({
     position: "relative",
     alignItems: "center",
     justifyContent: "center",
+  },
+  combatImageHit: {
+    transform: [{ scale: 1.04 }],
+    shadowColor: colors.red,
+    shadowOpacity: 0.48,
+    shadowRadius: 14,
   },
   combatIndicatorStack: {
     position: "absolute",
@@ -8226,16 +8265,16 @@ const styles = StyleSheet.create({
     opacity: 0.96,
   },
   enemyImage: {
-    width: 112,
-    height: 112,
-    borderRadius: 8,
+    width: 126,
+    height: 126,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: "#ffb4aa",
   },
   enemyImagePlaceholder: {
-    width: 112,
-    height: 112,
-    borderRadius: 8,
+    width: 126,
+    height: 126,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: "#ffb4aa",
     backgroundColor: "rgba(100, 20, 20, 0.38)",
@@ -8244,11 +8283,31 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   battlePortrait: {
-    width: 82,
-    height: 82,
-    borderRadius: 41,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
     borderWidth: 2,
     borderColor: colors.blue,
+  },
+  enemyIntentBox: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  enemyIntentLabel: {
+    color: "#ffb4aa",
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  enemyIntentText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 1,
   },
   abilityGrid: {
     flexDirection: "row",
@@ -8258,15 +8317,21 @@ const styles = StyleSheet.create({
   battleActionCard: {
     flex: 1,
     minWidth: 150,
-    minHeight: 76,
+    flexBasis: "48%",
+    minHeight: 78,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "rgba(232, 181, 94, 0.36)",
     padding: 9,
-    backgroundColor: "rgba(8, 12, 13, 0.78)",
+    backgroundColor: "rgba(8, 12, 13, 0.72)",
+  },
+  battleActionPressed: {
+    borderColor: colors.gold,
+    backgroundColor: "rgba(232, 181, 94, 0.14)",
+    transform: [{ scale: 0.99 }],
   },
   battleActionIconWrap: {
     width: 42,
@@ -8287,6 +8352,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 13,
     fontWeight: "900",
+    lineHeight: 16,
   },
   battleActionMeta: {
     color: colors.muted,
@@ -8311,6 +8377,30 @@ const styles = StyleSheet.create({
     height: "100%",
     borderRadius: 8,
     backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  battleUtilityRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  inventoryBattleButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(54, 171, 224, 0.52)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(6, 23, 34, 0.58)",
+  },
+  fleeBattleButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255, 180, 170, 0.52)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(62, 15, 15, 0.4)",
   },
   battleResultPanel: {
     gap: 8,
