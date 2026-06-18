@@ -1,6 +1,7 @@
 import { supabase, Tables } from "../lib/supabase";
 import type { CharacterWithDetails } from "./characterService";
 import { consumeInventoryItem, grantItemToCharacter, type InventoryItem } from "./inventoryService";
+import { applyCharacterXpGold } from "./progressionService";
 
 export type MapRoute = Tables["map_routes"];
 export type MapSeason = Tables["map_seasons"];
@@ -978,34 +979,12 @@ export async function applyRewards(
     }
   }
 
-  const { data: currentCharacter, error: characterError } = await supabase
-    .from("characters")
-    .select("xp,gold")
-    .eq("id", character.id)
-    .eq("user_id", user.id)
-    .single();
-
-  if (characterError) {
-    throw characterError;
-  }
-
   const xp = Math.max(0, Number(reward.xp) || 0);
   const gold = Math.max(0, Number(reward.gold) || 0);
   const quantity = Math.max(1, Number(reward.itemQuantity) || 1);
 
   if (xp > 0 || gold > 0) {
-    const { error } = await supabase
-      .from("characters")
-      .update({
-        xp: Number(currentCharacter.xp) + xp,
-        gold: Number(currentCharacter.gold) + gold,
-      })
-      .eq("id", character.id)
-      .eq("user_id", user.id);
-
-    if (error) {
-      throw error;
-    }
+    await applyCharacterXpGold(character, xp, gold);
   }
 
   if (reward.itemId) {

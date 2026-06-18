@@ -78,6 +78,7 @@ import {
 } from "../services/inventoryService";
 import { getCurrentRole, getCurrentRouteProgress, Role } from "../services/mapService";
 import { getInboxUnreadCount } from "../services/inboxService";
+import { defaultProgressionSettings, GameProgressionSettings, getCharacterXpProgress, getProgressionSettings } from "../services/progressionService";
 
 type HomeScreenProps = {
   character: CharacterWithDetails;
@@ -141,6 +142,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [role, setRole] = useState<Role>("player");
   const [distanceWalkedMeters, setDistanceWalkedMeters] = useState(0);
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
+  const [progressionSettings, setProgressionSettings] = useState<GameProgressionSettings>(defaultProgressionSettings);
   const knownAbilityKeysRef = useRef<Set<string> | null>(null);
   const knownInventoryRef = useRef<Map<string, number> | null>(null);
   const inventoryBonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
@@ -162,6 +164,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     () => getDerivedBattleStats(character, resources, inventoryBonuses, equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>, totalInventoryWeight, carryCapacity),
     [character, resources, inventoryBonuses, equippedItems, totalInventoryWeight, carryCapacity],
   );
+  const characterXpProgress = useMemo(() => getCharacterXpProgress(character.xp, progressionSettings), [character.xp, progressionSettings]);
 
   useEffect(() => {
     void loadAbilities();
@@ -169,8 +172,17 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     void loadAdminCombat();
     void loadTravelProgress();
     void loadInboxCount();
+    void loadProgressionSettings();
     void getCurrentRole().then(setRole);
   }, [character.id, character.attributes]);
+
+  async function loadProgressionSettings() {
+    try {
+      setProgressionSettings(await getProgressionSettings());
+    } catch {
+      setProgressionSettings(defaultProgressionSettings);
+    }
+  }
 
   async function loadInboxCount() {
     try {
@@ -636,8 +648,10 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
             </View>
             <View style={styles.levelCopy}>
               <Text style={styles.levelLabel}>Level {character.level}</Text>
-              <Text style={styles.xpText}>{character.xp.toLocaleString()} / {Math.max(400, Math.ceil((character.xp + 1) / 400) * 400).toLocaleString()} XP</Text>
-              <ProgressBar value={character.xp % 400} max={400} color={colors.gold} height={8} />
+              <Text style={styles.xpText}>
+                {characterXpProgress.isCapped ? "Level cap reached" : `${characterXpProgress.progress.toLocaleString()} / ${characterXpProgress.required.toLocaleString()} XP`}
+              </Text>
+              <ProgressBar value={characterXpProgress.progress} max={characterXpProgress.required} color={colors.gold} height={8} />
             </View>
           </View>
         </View>

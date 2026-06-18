@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Frame } from "../components/Frame";
 import { Header } from "../components/Header";
 import { ProgressBar } from "../components/ProgressBar";
@@ -7,6 +7,16 @@ import { Screen } from "../components/Screen";
 import { colors } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
 import { AttributeKey, completeTrainingSession, getTrainingLevelProgress, getTrainingState, TrainingCardState } from "../services/trainingService";
+import { getCurrentRole, Role } from "../services/mapService";
+import {
+  defaultProgressionSettings,
+  GameProgressionSettings,
+  getProgressionSettings,
+  getTrainingConfigs,
+  saveProgressionSettings,
+  saveTrainingConfig,
+  TrainingAttributeConfig,
+} from "../services/progressionService";
 
 type QuestsScreenProps = {
   character: CharacterWithDetails;
@@ -23,6 +33,10 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [role, setRole] = useState<Role>("player");
+  const [progressionSettings, setProgressionSettings] = useState<GameProgressionSettings>(defaultProgressionSettings);
+  const [trainingConfigs, setTrainingConfigs] = useState<TrainingAttributeConfig[]>([]);
+  const [balanceMessage, setBalanceMessage] = useState<string | null>(null);
 
   useEffect(() => {
     void loadTraining();
@@ -39,10 +53,14 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
 
     try {
       const state = await getTrainingState(character);
+      const [settings, configs, currentRole] = await Promise.all([getProgressionSettings(), getTrainingConfigs(), getCurrentRole()]);
       setCards(state.cards);
       setDailyCompleted(state.dailyCompleted);
       setDailyLimit(state.dailyLimit);
       setSelectedAttribute((current) => current ?? state.cards[0]?.key ?? null);
+      setProgressionSettings(settings);
+      setTrainingConfigs(configs);
+      setRole(currentRole);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load training.");
     } finally {
@@ -70,7 +88,42 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   }
 
   const selectedCard = cards.find((card) => card.key === selectedAttribute) ?? cards[0] ?? null;
-  const selectedLevelProgress = selectedCard ? getTrainingLevelProgress(selectedCard.currentXp) : null;
+  const selectedLevelProgress = selectedCard ? getTrainingLevelProgress(selectedCard.currentXp, selectedCard.levelCap) : null;
+  const selectedConfig = trainingConfigs.find((config) => config.attribute_key === selectedCard?.key) ?? null;
+
+  async function saveGlobalBalance() {
+    try {
+      const saved = await saveProgressionSettings(progressionSettings);
+      setProgressionSettings(saved);
+      setBalanceMessage("Global progression balance saved.");
+      await loadTraining();
+    } catch (saveError) {
+      setBalanceMessage(saveError instanceof Error ? saveError.message : "Unable to save progression balance.");
+    }
+  }
+
+  async function saveAttributeBalance() {
+    if (!selectedConfig) {
+      return;
+    }
+
+    try {
+      const saved = await saveTrainingConfig(selectedConfig);
+      setTrainingConfigs((current) => current.map((config) => (config.attribute_key === saved.attribute_key ? saved : config)));
+      setBalanceMessage(`${saved.name} training balance saved.`);
+      await loadTraining();
+    } catch (saveError) {
+      setBalanceMessage(saveError instanceof Error ? saveError.message : "Unable to save training balance.");
+    }
+  }
+
+  function updateSelectedConfig(values: Partial<TrainingAttributeConfig>) {
+    if (!selectedConfig) {
+      return;
+    }
+
+    setTrainingConfigs((current) => current.map((config) => (config.attribute_key === selectedConfig.attribute_key ? { ...config, ...values } : config)));
+  }
 
   return (
     <Screen>
@@ -93,6 +146,47 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
         </View>
         <ProgressBar value={dailyCompleted} max={dailyLimit} color={colors.gold} height={8} />
       </Frame>
+
+      {role === "admin" ? (
+        <Frame style={styles.adminBalance}>
+          <Text style={styles.sectionTitle}>Admin Game Balance</Text>
+          <Text style={styles.copy}>Tune level caps, XP curves, cooldowns, and the selected attribute training session.</Text>
+          {balanceMessage ? <Text style={styles.successText}>{balanceMessage}</Text> : null}
+          <View style={styles.balanceGrid}>
+            <BalanceNumber label="Overall level cap" value={progressionSettings.character_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_level_cap: value }))} />
+            <BalanceNumber label="XP for next level base" value={progressionSettings.character_xp_base} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_base: value }))} />
+            <BalanceNumber label="XP growth per level" value={progressionSettings.character_xp_growth} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_growth: value }))} />
+            <BalanceNumber label="Default attribute cap" value={progressionSettings.default_attribute_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, default_attribute_level_cap: value }))} />
+            <BalanceNumber label="Daily training limit" value={progressionSettings.daily_training_limit} onChange={(value) => setProgressionSettings((current) => ({ ...current, daily_training_limit: value }))} />
+            <BalanceNumber label="Cooldown minutes" value={progressionSettings.training_cooldown_minutes} onChange={(value) => setProgressionSettings((current) => ({ ...current, training_cooldown_minutes: value }))} />
+          </View>
+          <Pressable style={styles.primaryButton} onPress={() => void saveGlobalBalance()}>
+            <Text style={styles.primaryText}>Save Global Balance</Text>
+          </Pressable>
+
+          {selectedConfig ? (
+            <View style={styles.attributeBalance}>
+              <Text style={styles.sectionTitle}>Selected Training: {selectedConfig.name}</Text>
+              <BalanceText label="Training name" value={selectedConfig.name} onChange={(value) => updateSelectedConfig({ name: value })} />
+              <BalanceText label="Session effect text" value={selectedConfig.effect} onChange={(value) => updateSelectedConfig({ effect: value })} />
+              <BalanceText label="Activity examples" value={selectedConfig.activities} onChange={(value) => updateSelectedConfig({ activities: value })} />
+              <BalanceText label="Goal text template" value={selectedConfig.goal_template} onChange={(value) => updateSelectedConfig({ goal_template: value })} />
+              <Text style={styles.copy}>Template tokens: {"{value}"}, {"{unit}"}, {"{attribute}"}</Text>
+              <View style={styles.balanceGrid}>
+                <BalanceText label="Unit" value={selectedConfig.unit} onChange={(value) => updateSelectedConfig({ unit: value })} />
+                <BalanceNumber label="Starting goal" value={selectedConfig.starting_goal} onChange={(value) => updateSelectedConfig({ starting_goal: value })} />
+                <BalanceNumber label="Goal increase" value={selectedConfig.goal_increment} onChange={(value) => updateSelectedConfig({ goal_increment: value })} />
+                <BalanceNumber label="Character XP reward" value={selectedConfig.character_xp_reward} onChange={(value) => updateSelectedConfig({ character_xp_reward: value })} />
+                <BalanceNumber label="Attribute XP reward" value={selectedConfig.attribute_xp_reward} onChange={(value) => updateSelectedConfig({ attribute_xp_reward: value })} />
+                <BalanceNumber label="Attribute level cap" value={selectedConfig.level_cap} onChange={(value) => updateSelectedConfig({ level_cap: value })} />
+              </View>
+              <Pressable style={styles.primaryButton} onPress={() => void saveAttributeBalance()}>
+                <Text style={styles.primaryText}>Save Selected Training</Text>
+              </Pressable>
+            </View>
+          ) : null}
+        </Frame>
+      ) : null}
 
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {isLoading ? (
@@ -183,6 +277,25 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
+function BalanceText({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <View style={styles.balanceField}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <TextInput style={styles.balanceInput} value={String(value ?? "")} onChangeText={onChange} placeholderTextColor={colors.muted} />
+    </View>
+  );
+}
+
+function BalanceNumber({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+  return (
+    <BalanceText
+      label={label}
+      value={String(value ?? 0)}
+      onChange={(nextValue) => onChange(Number(nextValue) || 0)}
+    />
+  );
+}
+
 function canTrain(card: TrainingCardState, dailyCompleted: number, dailyLimit: number, now: number) {
   if (dailyCompleted >= dailyLimit) {
     return false;
@@ -255,6 +368,42 @@ const styles = StyleSheet.create({
     margin: 14,
     padding: 14,
     gap: 10,
+  },
+  adminBalance: {
+    marginHorizontal: 14,
+    marginBottom: 14,
+    padding: 14,
+    gap: 12,
+  },
+  balanceGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  attributeBalance: {
+    gap: 10,
+    borderTopWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingTop: 12,
+  },
+  balanceField: {
+    flexGrow: 1,
+    flexBasis: "45%",
+    gap: 6,
+  },
+  balanceInput: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    color: colors.text,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  successText: {
+    color: colors.blue,
+    fontWeight: "800",
   },
   sectionTitle: {
     color: colors.gold,

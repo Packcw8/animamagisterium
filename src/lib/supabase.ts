@@ -169,6 +169,31 @@ export type Tables = {
     value: number;
     updated_at: string;
   };
+  game_progression_settings: {
+    id: boolean;
+    character_level_cap: number;
+    character_xp_base: number;
+    character_xp_growth: number;
+    default_attribute_level_cap: number;
+    daily_training_limit: number;
+    training_cooldown_minutes: number;
+    updated_at: string;
+  };
+  training_attribute_configs: {
+    attribute_key: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit";
+    name: string;
+    effect: string;
+    activities: string;
+    unit: string;
+    goal_template: string;
+    starting_goal: number;
+    goal_increment: number;
+    character_xp_reward: number;
+    attribute_xp_reward: number;
+    level_cap: number;
+    is_active: boolean;
+    updated_at: string;
+  };
   avatar_assets: {
     id: string;
     type: "base" | "face" | "hair" | "armor" | "weapon" | "cloak" | "background";

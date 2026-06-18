@@ -1,6 +1,7 @@
 import { supabase, Tables } from "../lib/supabase";
-import { getCharacter, updateCharacter } from "./characterService";
+import { getCharacter } from "./characterService";
 import { grantItemToCharacter } from "./inventoryService";
+import { applyCharacterXpGold } from "./progressionService";
 import { getCurrentUserId, getFriendRows, updateFriendRequest } from "./socialService";
 
 export type InboxReward = Tables["player_inbox_rewards"] & {
@@ -120,10 +121,7 @@ export async function claimInboxReward(rewardId: string) {
   }
 
   if (reward.reward_xp || reward.reward_gold) {
-    await updateCharacter(character.id, {
-      xp: character.xp + reward.reward_xp,
-      gold: character.gold + reward.reward_gold,
-    });
+    await applyCharacterXpGold(character, reward.reward_xp, reward.reward_gold);
   }
 
   const { error: claimError } = await supabase
