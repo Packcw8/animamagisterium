@@ -396,6 +396,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
   const adminWorldMarkers = useMemo(() => worldMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, worldMarkers]);
   const adminMiniMapMarkers = useMemo(() => miniMapMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMapMarkers, selectedChapter, selectedSeason]);
+  const adminStoryMarkers = useMemo(() => markers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter) && isStoryQuestMarker(item)), [markers, selectedChapter, selectedSeason]);
   const adminMiniMaps = useMemo(() => miniMaps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMaps, selectedChapter, selectedSeason]);
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
@@ -409,8 +410,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     ),
     [legendItems, mapChapters, mapEvents, markers, miniMaps, routes, selectedSeason, tutorialSteps],
   );
-  const visibleMarkers = isAdmin ? worldMarkers : worldMarkers.filter((marker) => canPlayerSeeMarker(marker, playerPosition) && canPlayerSeeStoryMarker(marker, worldMarkers, completedStoryMarkerIds));
-  const visibleMiniMapMarkers = isAdmin ? adminMiniMapMarkers : miniMapMarkers.filter((marker) => canPlayerSeeMarker(marker, miniMapPlayerPosition) && canPlayerSeeStoryMarker(marker, miniMapMarkers, completedStoryMarkerIds));
+  const visibleMarkers = isAdmin ? worldMarkers : worldMarkers.filter((marker) => canPlayerSeeMarker(marker, playerPosition) && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
+  const visibleMiniMapMarkers = isAdmin ? adminMiniMapMarkers : miniMapMarkers.filter((marker) => canPlayerSeeMarker(marker, miniMapPlayerPosition) && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedNodeChoices = useMemo(
@@ -3908,7 +3909,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               selectedMarkerRouteIds={selectedMarkerRouteIds}
               toggleSignPostRoute={toggleSignPostRoute}
               worldMarkers={adminWorldMarkers}
-              storyScopeMarkers={adminMiniMapMarkers}
+              storyScopeMarkers={adminStoryMarkers}
               miniMaps={adminMiniMaps}
               markerExitTargetType={markerExitTargetType}
               setMarkerExitTargetType={setMarkerExitTargetType}
@@ -4612,9 +4613,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                         <Pressable style={[styles.routeChip, !markerUnlockAfterId && styles.routeChipActive]} onPress={() => setMarkerUnlockAfterId(null)}>
                           <Text style={styles.routeChipText}>Use story order</Text>
                         </Pressable>
-                        {adminWorldMarkers.filter((marker) => marker.type === "Story" && marker.id !== selectedMarker?.id).map((marker) => (
+                        {adminStoryMarkers.filter((marker) => marker.id !== selectedMarker?.id).map((marker) => (
                           <Pressable key={marker.id} style={[styles.routeChip, markerUnlockAfterId === marker.id && styles.routeChipActive]} onPress={() => setMarkerUnlockAfterId(marker.id)}>
-                            <Text style={styles.routeChipText}>{marker.story_order || 0}. {marker.title}</Text>
+                            <Text style={styles.routeChipText}>{marker.story_order || 0}. {marker.title}{marker.mini_map_id ? " (Mini)" : " (World)"}</Text>
                           </Pressable>
                         ))}
                       </View>
@@ -5215,7 +5216,6 @@ function canPlayerSeeStoryMarker(marker: MapMarker, scopeMarkers: MapMarker[], c
     .filter((item) => isStoryQuestMarker(item))
     .filter((item) => Number(item.season_number ?? 1) === Number(marker.season_number ?? 1))
     .filter((item) => Number(item.chapter_number ?? 1) === Number(marker.chapter_number ?? 1))
-    .filter((item) => (item.mini_map_id ?? null) === (marker.mini_map_id ?? null))
     .filter((item) => Number(item.story_order ?? 0) > 0 && Number(item.story_order ?? 0) < order)
     .every((item) => completedMarkerIds.has(item.id));
 }
@@ -6225,7 +6225,7 @@ function MiniMapMarkerAdminForm({
                 </Pressable>
                 {storyScopeMarkers.filter((marker) => isStoryQuestMarker(marker) && marker.id !== selectedMarker?.id).map((marker) => (
                   <Pressable key={marker.id} style={[styles.routeChip, markerUnlockAfterId === marker.id && styles.routeChipActive]} onPress={() => setMarkerUnlockAfterId(marker.id)}>
-                    <Text style={styles.routeChipText}>{marker.story_order || 0}. {marker.title}</Text>
+                    <Text style={styles.routeChipText}>{marker.story_order || 0}. {marker.title}{marker.mini_map_id ? " (Mini)" : " (World)"}</Text>
                   </Pressable>
                 ))}
               </View>
