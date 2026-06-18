@@ -5851,15 +5851,7 @@ function BattleEventScreen({
   const rewardXp = Number(event.reward_xp ?? 0) + Number(activeEnemy?.xp_reward ?? 0);
   const rewardGold = Number(event.reward_gold ?? 0) + Number(activeEnemy?.gold_reward ?? 0);
   const battlePhase = result === "victory" ? "Victory" : result === "defeat" ? "Defeat" : revivePromptOpen ? "Revive Choice" : "Your Turn";
-  const battleHint = getBattleHint({
-    result,
-    revivePromptOpen,
-    playerHp,
-    enemyHp,
-    resources,
-    stamina,
-    magicka,
-  });
+  const playerTurnActive = !result && !revivePromptOpen;
 
   useEffect(() => {
     setEnemyImageFailed(false);
@@ -5894,35 +5886,28 @@ function BattleEventScreen({
             <Text style={styles.phaseText}>{battlePhase}</Text>
           </View>
         </View>
-        <View style={styles.turnCallout}>
-          <Text style={styles.turnLabel}>{battlePhase}</Text>
-          <Text style={styles.turnHint}>{battleHint}</Text>
-        </View>
         <View style={styles.battleArena}>
-          <View style={styles.combatantRow}>
-            <View style={styles.playerPanel}>
-              <View style={styles.combatImageWrap}>
-                {character.portrait_url && !playerImageFailed ? <Image source={{ uri: character.portrait_url }} style={styles.battlePortrait} onError={() => setPlayerImageFailed(true)} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
-                <CombatIndicatorStack indicators={playerIndicators} />
-              </View>
-              <View style={styles.combatantInfo}>
-                <Text style={styles.combatantName}>{character.name}</Text>
-                <Text style={styles.combatantSub}>Adventurer</Text>
-                <ResourceMeter label="HP" value={playerHp} max={resources.maxHp} color={colors.red} />
-              </View>
+          <View style={[styles.enemyPanel, !playerTurnActive && !result && styles.combatantActive]}>
+            <View style={styles.combatantInfo}>
+              <Text style={styles.combatantName}>{activeEnemy?.name || event.enemy_name || "Enemy"}</Text>
+              <Text style={styles.combatantSub}>{activeEnemy?.type || "Enemy"}</Text>
+              <ResourceMeter label="HP" value={enemyHp} max={enemyMaxHp} color={colors.red} />
+              {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
             </View>
-            <Text style={styles.versusText}>VS</Text>
-            <View style={styles.enemyPanel}>
-              <View style={styles.combatantInfo}>
-                <Text style={styles.combatantName}>{activeEnemy?.name || event.enemy_name || "Enemy"}</Text>
-                <Text style={styles.combatantSub}>{activeEnemy?.type || "Enemy"}</Text>
-                <ResourceMeter label="HP" value={enemyHp} max={enemyMaxHp} color={colors.red} />
-                {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
-              </View>
-              <View style={styles.combatImageWrap}>
-                {enemyImageUri && !enemyImageFailed ? <Image source={{ uri: enemyImageUri }} style={styles.enemyImage} onError={() => setEnemyImageFailed(true)} /> : <View style={styles.enemyImagePlaceholder}><Text style={styles.copy}>Enemy image missing</Text></View>}
-                <CombatIndicatorStack indicators={enemyIndicators} />
-              </View>
+            <View style={styles.combatImageWrap}>
+              {enemyImageUri && !enemyImageFailed ? <Image source={{ uri: enemyImageUri }} style={styles.enemyImage} onError={() => setEnemyImageFailed(true)} /> : <View style={styles.enemyImagePlaceholder}><Text style={styles.copy}>Enemy image missing</Text></View>}
+              <CombatIndicatorStack indicators={enemyIndicators} />
+            </View>
+          </View>
+          <View style={[styles.playerPanel, playerTurnActive && styles.combatantActive]}>
+            <View style={styles.combatImageWrap}>
+              {character.portrait_url && !playerImageFailed ? <Image source={{ uri: character.portrait_url }} style={styles.battlePortrait} onError={() => setPlayerImageFailed(true)} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
+              <CombatIndicatorStack indicators={playerIndicators} />
+            </View>
+            <View style={styles.combatantInfo}>
+              <Text style={styles.combatantName}>{character.name}</Text>
+              <Text style={styles.combatantSub}>Adventurer</Text>
+              <ResourceMeter label="HP" value={playerHp} max={resources.maxHp} color={colors.red} />
             </View>
           </View>
         </View>
@@ -6097,43 +6082,6 @@ function getAbilityPowerLabel(ability: AbilityDefinition) {
 
   return ability.description;
 }
-
-function getBattleHint({
-  result,
-  revivePromptOpen,
-  playerHp,
-  enemyHp,
-  resources,
-  stamina,
-  magicka,
-}: {
-  result: "victory" | "defeat" | null;
-  revivePromptOpen: boolean;
-  playerHp: number;
-  enemyHp: number;
-  resources: CharacterResources;
-  stamina: number;
-  magicka: number;
-}) {
-  if (result === "victory") {
-    return "The enemy is defeated. Claim your rewards to finish the encounter.";
-  }
-  if (result === "defeat" || revivePromptOpen) {
-    return "Choose a revive item if you have one, or return to the trail start.";
-  }
-  if (playerHp <= resources.maxHp * 0.3) {
-    return "You are wounded. Consider inventory, guard effects, or fleeing before the next hit.";
-  }
-  if (enemyHp <= 8) {
-    return "The enemy is close to falling. A low-cost attack may be enough.";
-  }
-  if (stamina <= 2 && magicka <= 2) {
-    return "Resources are low. Use a free attack or open inventory.";
-  }
-
-  return "Choose an ability. Higher-cost attacks hit harder, but saving resources may keep you alive.";
-}
-
 
 type MarkerIconSource = Pick<MapMarker, "type" | "icon_label" | "icon_image_url" | "icon_color">;
 
@@ -8206,45 +8154,39 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 12,
   },
-  turnCallout: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(54, 171, 224, 0.4)",
-    padding: 10,
-    backgroundColor: "rgba(6, 23, 34, 0.62)",
-    gap: 4,
-  },
-  turnLabel: {
-    color: colors.blue,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    fontSize: 12,
-  },
-  turnHint: {
-    color: colors.text,
-    lineHeight: 19,
-    fontSize: 13,
-  },
-  combatantRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 10,
-  },
   enemyPanel: {
-    flex: 1,
-    minWidth: 0,
+    alignSelf: "flex-end",
+    width: "72%",
+    maxWidth: 360,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
-    gap: 6,
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255, 180, 170, 0.34)",
+    padding: 8,
+    backgroundColor: "rgba(30, 8, 8, 0.34)",
   },
   playerPanel: {
-    flex: 1,
-    minWidth: 0,
+    alignSelf: "flex-start",
+    width: "72%",
+    maxWidth: 360,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(54, 171, 224, 0.34)",
+    padding: 8,
+    backgroundColor: "rgba(6, 23, 34, 0.34)",
+  },
+  combatantActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.58)",
+    shadowColor: colors.blue,
+    shadowOpacity: 0.32,
+    shadowRadius: 10,
   },
   combatantInfo: {
     flex: 1,
@@ -8261,14 +8203,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     textTransform: "uppercase",
-  },
-  versusText: {
-    color: colors.gold,
-    fontFamily: fonts.title,
-    fontSize: 22,
-    textShadowColor: "rgba(0,0,0,0.8)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 8,
   },
   combatImageWrap: {
     position: "relative",
