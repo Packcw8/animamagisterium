@@ -86,7 +86,7 @@ import {
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const mapSize = { width: 1800, height: 1400 };
 const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post", "Player Spawn"];
-const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Market", "Quest", "Side Quest", "Point of Interest", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
+const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "Point of Interest", "Market", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const exitTargetTypes = ["world_marker", "mini_map"] as const;
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const editorModes = ["Marker", "Walking Path"] as const;
@@ -6206,15 +6206,15 @@ function MiniMapMarkerAdminForm({
           <TextInput value={markerQuestDialogue} onChangeText={setMarkerQuestDialogue} placeholder="Quest dialogue" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
           <TextInput value={markerQuestImage} onChangeText={setMarkerQuestImage} placeholder="Quest image URL" placeholderTextColor={colors.muted} style={styles.input} />
           <AdminImageUploadButton folder="mini-quest-images" onUploaded={setMarkerQuestImage} onMessage={() => undefined} />
-          {draftType === "Quest" ? (
+          {isStoryQuestMarker({ type: draftType }) ? (
             <>
               <TextInput value={markerStoryOrder} onChangeText={setMarkerStoryOrder} placeholder="Story order, example 1" placeholderTextColor={colors.muted} style={styles.input} />
-              <Text style={styles.selectedTitle}>Unlock After Quest Marker</Text>
+              <Text style={styles.selectedTitle}>Unlock After Story / Quest Marker</Text>
               <View style={styles.storyRoutePicker}>
                 <Pressable style={[styles.routeChip, !markerUnlockAfterId && styles.routeChipActive]} onPress={() => setMarkerUnlockAfterId(null)}>
                   <Text style={styles.routeChipText}>Use story order</Text>
                 </Pressable>
-                {storyScopeMarkers.filter((marker) => marker.type === "Quest" && marker.id !== selectedMarker?.id).map((marker) => (
+                {storyScopeMarkers.filter((marker) => isStoryQuestMarker(marker) && marker.id !== selectedMarker?.id).map((marker) => (
                   <Pressable key={marker.id} style={[styles.routeChip, markerUnlockAfterId === marker.id && styles.routeChipActive]} onPress={() => setMarkerUnlockAfterId(marker.id)}>
                     <Text style={styles.routeChipText}>{marker.story_order || 0}. {marker.title}</Text>
                   </Pressable>
