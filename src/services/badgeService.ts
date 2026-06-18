@@ -11,10 +11,11 @@ export type BadgeState = {
   earnedAt: string | null;
 };
 
-export const badgeTypes: BadgeType[] = ["distance", "enemy_type_kills", "story_completion", "training_sessions"];
+export const badgeTypes: BadgeType[] = ["distance", "enemy_name_kills", "enemy_type_kills", "story_completion", "training_sessions"];
 
 export const badgeTypeLabels: Record<BadgeType, string> = {
   distance: "Distance Walked",
+  enemy_name_kills: "Enemy Name Kills",
   enemy_type_kills: "Enemy Type Kills",
   story_completion: "Story Completion",
   training_sessions: "Training Sessions",
@@ -98,21 +99,23 @@ export async function getBadgeState(character: CharacterWithDetails) {
     return [];
   }
 
-  const [existingResult, routeResult, enemyTypeResult, storyResult, trainingResult] = await Promise.all([
+  const [existingResult, routeResult, enemyNameResult, enemyTypeResult, storyResult, trainingResult] = await Promise.all([
     supabase.from("player_badges").select("*").eq("character_id", character.id),
     supabase.from("route_progress").select("distance_walked_meters").eq("user_id", character.user_id),
+    supabase.from("player_enemy_kill_stats").select("enemy_key, kill_count").eq("character_id", character.id),
     supabase.from("player_enemy_type_kill_stats").select("enemy_type, kill_count").eq("character_id", character.id),
     supabase.from("story_marker_completions").select("marker_id").eq("user_id", character.user_id),
     supabase.from("training_sessions").select("attribute_key").eq("user_id", character.user_id).eq("character_id", character.id),
   ]);
 
-  const firstError = existingResult.error ?? routeResult.error ?? enemyTypeResult.error ?? storyResult.error ?? trainingResult.error;
+  const firstError = existingResult.error ?? routeResult.error ?? enemyNameResult.error ?? enemyTypeResult.error ?? storyResult.error ?? trainingResult.error;
   if (firstError) {
     throw firstError;
   }
 
   const existing = new Map(((existingResult.data ?? []) as PlayerBadge[]).map((row) => [row.badge_id, row]));
   const distanceWalked = (routeResult.data ?? []).reduce((sum, row) => sum + Number(row.distance_walked_meters ?? 0), 0);
+  const enemyNameCounts = new Map((enemyNameResult.data ?? []).map((row) => [String(row.enemy_key ?? "").toLowerCase(), Number(row.kill_count ?? 0)]));
   const enemyTypeCounts = new Map((enemyTypeResult.data ?? []).map((row) => [String(row.enemy_type ?? "").toLowerCase(), Number(row.kill_count ?? 0)]));
   const completedStories = new Set((storyResult.data ?? []).map((row) => String(row.marker_id)));
   const trainingRows = trainingResult.data ?? [];
@@ -126,6 +129,7 @@ export async function getBadgeState(character: CharacterWithDetails) {
   const states = definitions.map((definition) => {
     const progressValue = getProgressForDefinition(definition, {
       distanceWalked,
+      enemyNameCounts,
       enemyTypeCounts,
       completedStories,
       trainingTotal: trainingRows.length,
@@ -166,6 +170,7 @@ function getProgressForDefinition(
   definition: BadgeDefinition,
   metrics: {
     distanceWalked: number;
+    enemyNameCounts: Map<string, number>;
     enemyTypeCounts: Map<string, number>;
     completedStories: Set<string>;
     trainingTotal: number;
@@ -176,6 +181,14 @@ function getProgressForDefinition(
 
   if (definition.badge_type === "distance") {
     return Math.floor(metrics.distanceWalked);
+  }
+
+  if (definition.badge_type === "enemy_name_kills") {
+    if (!metricKey) {
+      return Array.from(metrics.enemyNameCounts.values()).reduce((sum, count) => sum + count, 0);
+    }
+
+    return metrics.enemyNameCounts.get(metricKey) ?? 0;
   }
 
   if (definition.badge_type === "enemy_type_kills") {

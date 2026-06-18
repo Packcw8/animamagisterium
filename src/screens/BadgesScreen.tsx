@@ -17,6 +17,7 @@ import {
   saveBadgeDefinition,
 } from "../services/badgeService";
 import type { CharacterWithDetails } from "../services/characterService";
+import { EnemyDefinition, getEnemies } from "../services/combatAdminService";
 import { getCurrentRole, getMapMarkers, MapMarker, Role } from "../services/mapService";
 
 type BadgesScreenProps = {
@@ -44,6 +45,7 @@ export function BadgesScreen({ character }: BadgesScreenProps) {
   const [states, setStates] = useState<BadgeState[]>([]);
   const [definitions, setDefinitions] = useState<BadgeDefinition[]>([]);
   const [storyMarkers, setStoryMarkers] = useState<MapMarker[]>([]);
+  const [enemies, setEnemies] = useState<EnemyDefinition[]>([]);
   const [form, setForm] = useState<Partial<BadgeDefinition>>(blankBadge);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -60,16 +62,18 @@ export function BadgesScreen({ character }: BadgesScreenProps) {
     setIsLoading(true);
     setMessage(null);
     try {
-      const [nextRole, nextStates, nextDefinitions, markers] = await Promise.all([
+      const [nextRole, nextStates, nextDefinitions, markers, enemyRows] = await Promise.all([
         getCurrentRole(),
         getBadgeState(character),
         getBadgeDefinitions(true),
         getMapMarkers(),
+        getEnemies(),
       ]);
       setRole(nextRole);
       setStates(nextStates);
       setDefinitions(nextDefinitions);
       setStoryMarkers(markers.filter((marker) => ["story", "side quest", "quest"].includes(marker.type.toLowerCase())));
+      setEnemies(enemyRows);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load badges.");
     } finally {
@@ -155,8 +159,16 @@ export function BadgesScreen({ character }: BadgesScreenProps) {
           {form.badge_type === "training_sessions" ? (
             <ChoiceRow label="Training attribute" options={trainingKeys} value={form.metric_key ?? ""} labels={{ "": "Any Training" }} onSelect={(value) => setForm((current) => ({ ...current, metric_key: value || null }))} />
           ) : null}
+          {form.badge_type === "enemy_name_kills" ? (
+            <NamedChoiceRow
+              label="Enemy from admin"
+              options={[{ id: "", label: "Any named enemy" }, ...enemies.map((enemy) => ({ id: `enemy:${enemy.id}`, label: `${enemy.name}${enemy.type ? ` (${enemy.type})` : ""}` }))]}
+              value={form.metric_key ?? ""}
+              onSelect={(value) => setForm((current) => ({ ...current, metric_key: value || null }))}
+            />
+          ) : null}
           {form.badge_type === "enemy_type_kills" ? (
-            <Field label="Enemy type, example Animal or Bandit. Leave blank for all kills." value={form.metric_key ?? ""} onChange={(value) => setForm((current) => ({ ...current, metric_key: value }))} />
+            <Field label="Enemy type, example Animal or Bandit. Leave blank for all enemy types." value={form.metric_key ?? ""} onChange={(value) => setForm((current) => ({ ...current, metric_key: value }))} />
           ) : null}
           {form.badge_type === "distance" ? (
             <Text style={styles.hint}>Target value is meters. Example: 1609 equals roughly 1 mile.</Text>
@@ -192,7 +204,7 @@ export function BadgesScreen({ character }: BadgesScreenProps) {
                 <Text style={styles.ruleTitle}>{definition.title}</Text>
                 <Text style={styles.ruleMeta}>{badgeTypeLabels[definition.badge_type]}</Text>
               </View>
-              <Text style={styles.muted}>{describeBadgeRule(definition, storyMarkers)}</Text>
+              <Text style={styles.muted}>{describeBadgeRule(definition, storyMarkers, enemies)}</Text>
               <View style={styles.actions}>
                 <Pressable style={styles.secondaryButton} onPress={() => editBadge(definition)}>
                   <Text style={styles.buttonText}>Edit</Text>
@@ -225,7 +237,7 @@ function BadgeCard({ state }: { state: BadgeState }) {
           <Text style={styles.badgeType}>{badgeTypeLabels[definition.badge_type]}</Text>
         </View>
       </View>
-      <Text style={styles.description}>{definition.description ?? describeBadgeRule(definition, [])}</Text>
+      <Text style={styles.description}>{definition.description ?? describeBadgeRule(definition, [], [])}</Text>
       <View style={styles.progressHeader}>
         <Text style={styles.muted}>{formatProgressValue(definition.badge_type, state.progressValue)} / {formatProgressValue(definition.badge_type, definition.target_value)}</Text>
         <Text style={state.isEarned ? styles.earnedText : styles.lockedText}>{state.isEarned ? "Earned" : `${percent}%`}</Text>
@@ -298,9 +310,17 @@ function NamedChoiceRow({ label, options, value, onSelect }: { label: string; op
   );
 }
 
-function describeBadgeRule(definition: BadgeDefinition, storyMarkers: MapMarker[]) {
+function describeBadgeRule(definition: BadgeDefinition, storyMarkers: MapMarker[], enemies: EnemyDefinition[]) {
   if (definition.badge_type === "distance") {
     return `Walk ${formatProgressValue("distance", definition.target_value)}.`;
+  }
+
+  if (definition.badge_type === "enemy_name_kills") {
+    const enemyId = definition.metric_key?.startsWith("enemy:") ? definition.metric_key.replace("enemy:", "") : null;
+    const enemy = enemies.find((row) => row.id === enemyId);
+    return definition.metric_key
+      ? `Defeat ${definition.target_value} ${enemy?.name ?? "selected enemy"}${definition.target_value === 1 ? "" : "s"}.`
+      : `Defeat ${definition.target_value} named enem${definition.target_value === 1 ? "y" : "ies"}.`;
   }
 
   if (definition.badge_type === "enemy_type_kills") {

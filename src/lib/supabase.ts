@@ -327,7 +327,7 @@ export type Tables = {
     id: string;
     title: string;
     description: string | null;
-    badge_type: "distance" | "enemy_type_kills" | "story_completion" | "training_sessions";
+    badge_type: "distance" | "enemy_name_kills" | "enemy_type_kills" | "story_completion" | "training_sessions";
     metric_key: string | null;
     target_value: number;
     icon_url: string | null;
