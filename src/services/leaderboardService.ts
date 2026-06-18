@@ -7,7 +7,8 @@ export type LeaderboardMetric =
   | "level"
   | "attribute_total"
   | "training_sessions_completed"
-  | "event_completions";
+  | "event_completions"
+  | "total_enemy_kills";
 
 export type LeaderboardRow = {
   character_id: string;
@@ -29,6 +30,7 @@ export type LeaderboardRow = {
   total_distance_walked_meters: number;
   training_sessions_completed: number;
   event_completions: number;
+  total_enemy_kills: number;
 };
 
 export const leaderboardMetrics: Array<{ key: LeaderboardMetric; label: string }> = [
@@ -39,6 +41,7 @@ export const leaderboardMetrics: Array<{ key: LeaderboardMetric; label: string }
   { key: "attribute_total", label: "Attributes" },
   { key: "training_sessions_completed", label: "Training" },
   { key: "event_completions", label: "Events" },
+  { key: "total_enemy_kills", label: "Enemy Kills" },
 ];
 
 export async function getLeaderboard(metric: LeaderboardMetric, limit = 50) {

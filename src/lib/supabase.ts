@@ -286,6 +286,43 @@ export type Tables = {
     event_id: string;
     completed_at: string;
   };
+  enemy_kill_log: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    enemy_key: string;
+    enemy_id: string | null;
+    npc_id: string | null;
+    enemy_name: string;
+    enemy_type: string | null;
+    enemy_source: "enemy" | "npc" | "manual";
+    route_id: string | null;
+    map_event_id: string | null;
+    season_number: number;
+    chapter_number: number;
+    killed_at: string;
+  };
+  player_enemy_kill_stats: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    enemy_key: string;
+    enemy_id: string | null;
+    npc_id: string | null;
+    enemy_name: string;
+    enemy_type: string | null;
+    enemy_source: "enemy" | "npc" | "manual";
+    kill_count: number;
+    last_killed_at: string;
+  };
+  player_enemy_type_kill_stats: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    enemy_type: string;
+    kill_count: number;
+    last_killed_at: string;
+  };
   story_dialogue_nodes: {
     id: string;
     event_id: string;

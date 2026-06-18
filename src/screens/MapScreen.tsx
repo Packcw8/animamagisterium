@@ -11,6 +11,7 @@ import { CharacterWithDetails, updateCharacterHealth } from "../services/charact
 import { AbilityDefinition, CharacterResources, clampHealth, getAbilityCostLabel, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, getNpcLoadout, getNpcs, NpcDefinition, NpcWithLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
 import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../services/inventoryService";
+import { recordEnemyKill } from "../services/progressionService";
 import {
   completeMapEvent,
   completeStoryMarker,
@@ -2076,12 +2077,35 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           drops.push(`item x${drop.quantity}`);
         }
       }
+      let killMessage = "";
+      if (event.event_type === "battle") {
+        try {
+          const enemySource = event.npc_id ? "npc" : event.enemy_id ? "enemy" : "manual";
+          const kill = await recordEnemyKill({
+            userId: character.user_id,
+            characterId: character.id,
+            enemyId: enemySource === "enemy" ? event.enemy_id : null,
+            npcId: enemySource === "npc" ? event.npc_id : null,
+            enemyName: activeEnemy?.name || event.enemy_name || "Unknown Enemy",
+            enemyType: activeEnemy?.type || (enemySource === "manual" ? "Manual" : "Unknown"),
+            enemySource,
+            routeId: event.route_id,
+            mapEventId: event.id,
+            seasonNumber: event.season_number,
+            chapterNumber: event.chapter_number,
+          });
+          killMessage = ` ${kill.enemyName} defeated ${kill.enemyKillCount} time${kill.enemyKillCount === 1 ? "" : "s"}. ${kill.enemyType} kills: ${kill.typeKillCount}.`;
+        } catch (killError) {
+          console.warn("[battle] unable to record enemy kill", killError);
+          killMessage = " Kill tracking could not be saved.";
+        }
+      }
       await completeMapEvent(event.id);
       setCompletedEventIds((current) => new Set([...current, event.id]));
       setActiveEvent(null);
       setActiveBattle(null);
       setActiveEnemy(null);
-      setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}`);
+      setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}`);
       await loadInventory();
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to complete event."));
