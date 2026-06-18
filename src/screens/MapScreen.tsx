@@ -3752,7 +3752,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             {visibleMiniMapMarkers.map((marker) => (
               <Pressable
                 key={marker.id}
-                style={[styles.marker, styles.miniMapMarker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, miniMapPlayerPosition, 36)]}
+                style={[styles.marker, styles.miniMapMarker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, miniMapPlayerPosition, 25)]}
                 onPress={(event) => {
                   event.stopPropagation();
                   void selectMarker(marker);
@@ -5220,7 +5220,7 @@ function canPlayerSeeStoryMarker(marker: MapMarker, scopeMarkers: MapMarker[], c
     .every((item) => completedMarkerIds.has(item.id));
 }
 
-function getMarkerRenderStyle(marker: MapMarker, playerPosition: { x: number; y: number }, markerSize = 48) {
+function getMarkerRenderStyle(marker: MapMarker, playerPosition: { x: number; y: number }, markerSize = 34) {
   const markerPosition = { x: Number(marker.x_percent), y: Number(marker.y_percent) };
   const radius = Math.max(1, Number(marker.interaction_radius_percent ?? 4) || 4);
   const distance = getPercentDistance(playerPosition, markerPosition);
@@ -6998,14 +6998,14 @@ const styles = StyleSheet.create({
   },
   marker: {
     position: "absolute",
-    width: 48,
-    height: 48,
+    width: 34,
+    height: 34,
     alignItems: "center",
     justifyContent: "center",
   },
   miniMapMarker: {
-    width: 36,
-    height: 36,
+    width: 25,
+    height: 25,
   },
   markerHidden: {
     opacity: 0.46,
@@ -7023,9 +7023,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.blue,
   },
   markerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 25,
+    height: 25,
+    borderRadius: 13,
     borderWidth: 2,
     backgroundColor: "rgba(4, 6, 6, 0.94)",
     alignItems: "center",
@@ -7040,13 +7040,13 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   markerIconText: {
-    fontSize: 11,
+    fontSize: 8,
     fontWeight: "900",
   },
   miniMapMarkerIcon: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     borderWidth: 2,
     backgroundColor: "rgba(4, 6, 6, 0.94)",
     alignItems: "center",
@@ -7061,7 +7061,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   miniMapMarkerIconText: {
-    fontSize: 8,
+    fontSize: 6,
     fontWeight: "900",
   },
   markerType: {
