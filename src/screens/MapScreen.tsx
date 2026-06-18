@@ -327,6 +327,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [rewardItemId, setRewardItemId] = useState<string | null>(null);
   const [rewardItemQuantity, setRewardItemQuantity] = useState("1");
   const [reuseEventId, setReuseEventId] = useState<string | null>(null);
+  const [reuseEventOpen, setReuseEventOpen] = useState(false);
   const [selectedDialogueEventId, setSelectedDialogueEventId] = useState<string | null>(null);
   const [editingNode, setEditingNode] = useState<StoryDialogueNode | null>(null);
   const [editingChoice, setEditingChoice] = useState<StoryDialogueChoice | null>(null);
@@ -3687,34 +3688,46 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     return (
       <View style={styles.storyEditor}>
-        <Text style={styles.selectedTitle}>Reuse Existing Event</Text>
-        <Text style={styles.copy}>Pick any saved event, set the distance marker above or below, then copy it onto the selected trail.</Text>
-        {reusableMapEvents.length === 0 ? <Text style={styles.copy}>No saved events found for this season and chapter yet.</Text> : null}
-        <View style={styles.storyRoutePicker}>
-          {reusableMapEvents.map((event) => (
-            <Pressable
-              key={event.id}
-              style={[styles.routeChip, reuseEventId === event.id && styles.routeChipActive]}
-              onPress={() => {
-                setReuseEventId(event.id);
-                setEventType(event.event_type === "story" ? "dialogue" : event.event_type);
-                setEventDistance(String(event.distance_marker_percent));
-                setEventTitle((current) => current || `${event.title} Copy`);
-              }}
-            >
-              <Text style={styles.routeChipText}>{event.title}</Text>
-              <Text style={styles.debugLine}>{eventTypeName(event.event_type)} / {getRouteName(routes, event.route_id ?? "")}</Text>
-            </Pressable>
-          ))}
-        </View>
-        {selectedReusableEvent ? (
-          <View style={styles.storyCard}>
-            <Text style={styles.markerName}>{selectedReusableEvent.title}</Text>
-            <Text style={styles.copy}>{eventTypeName(selectedReusableEvent.event_type)} copied to {route.name} at {clamp(Number(eventDistance) || 0, 0, 100)}%.</Text>
-            <Pressable style={styles.primaryButton} onPress={() => void reuseSavedEvent()}>
-              <Text style={styles.primaryText}>Reuse Event on This Trail</Text>
-            </Pressable>
+        <View style={styles.panelHeader}>
+          <View>
+            <Text style={styles.selectedTitle}>Reuse Existing Event</Text>
+            <Text style={styles.copy}>{reuseEventOpen ? "Pick any saved event and copy it onto the selected trail." : "Copy a saved event onto this trail."}</Text>
           </View>
+          <Pressable style={styles.secondaryButtonFlex} onPress={() => setReuseEventOpen((value) => !value)}>
+            <Text style={styles.secondaryText}>{reuseEventOpen ? "Hide" : "Show"}</Text>
+          </Pressable>
+        </View>
+        {reuseEventOpen ? (
+          <>
+            <Text style={styles.copy}>Pick any saved event, set the distance marker above or below, then copy it onto the selected trail.</Text>
+            {reusableMapEvents.length === 0 ? <Text style={styles.copy}>No saved events found for this season and chapter yet.</Text> : null}
+            <View style={styles.storyRoutePicker}>
+              {reusableMapEvents.map((event) => (
+                <Pressable
+                  key={event.id}
+                  style={[styles.routeChip, reuseEventId === event.id && styles.routeChipActive]}
+                  onPress={() => {
+                    setReuseEventId(event.id);
+                    setEventType(event.event_type === "story" ? "dialogue" : event.event_type);
+                    setEventDistance(String(event.distance_marker_percent));
+                    setEventTitle((current) => current || `${event.title} Copy`);
+                  }}
+                >
+                  <Text style={styles.routeChipText}>{event.title}</Text>
+                  <Text style={styles.debugLine}>{eventTypeName(event.event_type)} / {getRouteName(routes, event.route_id ?? "")}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {selectedReusableEvent ? (
+              <View style={styles.storyCard}>
+                <Text style={styles.markerName}>{selectedReusableEvent.title}</Text>
+                <Text style={styles.copy}>{eventTypeName(selectedReusableEvent.event_type)} copied to {route.name} at {clamp(Number(eventDistance) || 0, 0, 100)}%.</Text>
+                <Pressable style={styles.primaryButton} onPress={() => void reuseSavedEvent()}>
+                  <Text style={styles.primaryText}>Reuse Event on This Trail</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </>
         ) : null}
       </View>
     );
