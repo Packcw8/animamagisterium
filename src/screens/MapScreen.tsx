@@ -957,7 +957,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function addMarker() {
-    if (!clickedPercent || !draftTitle.trim()) {
+    if (!clickedPercent) {
+      setAdminMessage("Tap the map image first to capture X/Y coordinates, then create the marker.");
+      return;
+    }
+
+    if (!draftTitle.trim()) {
+      setAdminMessage("Add a marker title before creating the marker.");
       return;
     }
 
@@ -4674,7 +4680,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   ))}
                 </View>
               ) : null}
-              <Pressable style={styles.primaryButton} onPress={() => void addMarker()} disabled={!clickedPercent || !draftTitle.trim()}>
+              {!clickedPercent ? <Text style={styles.lockText}>Tap the map image first to choose this marker's position.</Text> : null}
+              {!draftTitle.trim() ? <Text style={styles.lockText}>Add a marker title before creating it.</Text> : null}
+              <Pressable style={[styles.primaryButton, (!clickedPercent || !draftTitle.trim()) && styles.disabledAction]} onPress={() => void addMarker()}>
                 <Text style={styles.primaryText}>Create Marker</Text>
               </Pressable>
               {selectedMarker ? (
@@ -6286,7 +6294,9 @@ function MiniMapMarkerAdminForm({
           ))}
         </View>
       ) : null}
-      <Pressable style={styles.primaryButton} onPress={onAddMarker} disabled={!clickedPercent || !draftTitle.trim()}>
+      {!clickedPercent ? <Text style={styles.lockText}>Tap the mini map image first to choose this marker's position.</Text> : null}
+      {!draftTitle.trim() ? <Text style={styles.lockText}>Add a marker title before creating it.</Text> : null}
+      <Pressable style={[styles.primaryButton, (!clickedPercent || !draftTitle.trim()) && styles.disabledAction]} onPress={onAddMarker}>
         <Text style={styles.primaryText}>{selectedMarker ? "Create New Marker At Clicked Spot" : "Create Mini Map Marker"}</Text>
       </Pressable>
     </View>
