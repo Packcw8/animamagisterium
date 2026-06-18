@@ -84,14 +84,15 @@ type HomeScreenProps = {
   onCharacterUpdated: (character: CharacterWithDetails) => void;
 };
 
-const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Abilities", "Inventory", "Settings"] as const;
+const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Abilities", "Inventory"] as const;
+type HomeTab = (typeof homeTabs)[number] | "Settings";
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 const inventoryCategoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
 const adminToolTabs = ["Items", "Abilities", "Enemies", "NPCs"] as const;
 
 export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
-  const [activeTab, setActiveTab] = useState<(typeof homeTabs)[number]>("Overview");
+  const [activeTab, setActiveTab] = useState<HomeTab>("Overview");
   const [unlockedAbilities, setUnlockedAbilities] = useState<AbilityDefinition[]>([]);
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
   const [selectedAbilityKey, setSelectedAbilityKey] = useState<string | null>(null);
@@ -595,7 +596,7 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
         <Pressable style={styles.chromeButton}><Text style={styles.chromeIcon}>☰</Text></Pressable>
         <View style={styles.chromeActions}>
           <Pressable style={styles.chromeButton}><Text style={styles.chromeIcon}>✉</Text></Pressable>
-          <Pressable style={styles.chromeButton}><Text style={styles.chromeIcon}>⚙</Text></Pressable>
+          <Pressable style={styles.chromeButton} onPress={() => setActiveTab("Settings")}><Text style={styles.chromeIcon}>⚙</Text></Pressable>
         </View>
       </View>
 
