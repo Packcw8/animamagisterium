@@ -358,6 +358,21 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  player_inbox_rewards: {
+    id: string;
+    user_id: string;
+    character_id: string | null;
+    title: string;
+    body: string | null;
+    reward_xp: number;
+    reward_gold: number;
+    reward_item_id: string | null;
+    reward_item_quantity: number;
+    is_claimed: boolean;
+    seen_at: string | null;
+    claimed_at: string | null;
+    created_at: string;
+  };
   story_dialogue_nodes: {
     id: string;
     event_id: string;

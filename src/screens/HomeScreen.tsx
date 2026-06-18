@@ -77,10 +77,12 @@ import {
   ItemDefinition,
 } from "../services/inventoryService";
 import { getCurrentRole, getCurrentRouteProgress, Role } from "../services/mapService";
+import { getInboxUnreadCount } from "../services/inboxService";
 
 type HomeScreenProps = {
   character: CharacterWithDetails;
   onCharacterUpdated: (character: CharacterWithDetails) => void;
+  onOpenInbox: () => void;
   onOpenSettings: () => void;
 };
 
@@ -90,7 +92,7 @@ const inventoryCategoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
 const adminToolTabs = ["Items", "Abilities", "Enemies", "NPCs"] as const;
 
-export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: HomeScreenProps) {
+export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenSettings }: HomeScreenProps) {
   const [activeTab, setActiveTab] = useState<(typeof homeTabs)[number]>("Overview");
   const [unlockedAbilities, setUnlockedAbilities] = useState<AbilityDefinition[]>([]);
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
@@ -138,6 +140,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
   const [inventoryMessage, setInventoryMessage] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("player");
   const [distanceWalkedMeters, setDistanceWalkedMeters] = useState(0);
+  const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
   const knownAbilityKeysRef = useRef<Set<string> | null>(null);
   const knownInventoryRef = useRef<Map<string, number> | null>(null);
   const inventoryBonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
@@ -165,8 +168,17 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
     void loadInventory();
     void loadAdminCombat();
     void loadTravelProgress();
+    void loadInboxCount();
     void getCurrentRole().then(setRole);
   }, [character.id, character.attributes]);
+
+  async function loadInboxCount() {
+    try {
+      setInboxUnreadCount(await getInboxUnreadCount());
+    } catch {
+      setInboxUnreadCount(0);
+    }
+  }
 
   async function loadTravelProgress() {
     try {
@@ -594,7 +606,14 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenSettings }: Ho
       <View style={styles.homeChrome}>
         <Pressable style={styles.chromeButton}><Text style={styles.chromeIcon}>☰</Text></Pressable>
         <View style={styles.chromeActions}>
-          <Pressable style={styles.chromeButton}><Text style={styles.chromeIcon}>✉</Text></Pressable>
+          <Pressable style={styles.chromeButton} onPress={onOpenInbox}>
+            <Text style={styles.chromeIcon}>✉</Text>
+            {inboxUnreadCount > 0 ? (
+              <View style={styles.inboxBadge}>
+                <Text style={styles.inboxBadgeText}>{inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}</Text>
+              </View>
+            ) : null}
+          </Pressable>
           <Pressable style={styles.chromeButton} onPress={onOpenSettings}><Text style={styles.chromeIcon}>⚙</Text></Pressable>
         </View>
       </View>
@@ -1686,6 +1705,25 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(4, 6, 6, 0.62)",
     alignItems: "center",
     justifyContent: "center",
+  },
+  inboxBadge: {
+    position: "absolute",
+    top: -8,
+    right: -8,
+    minWidth: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#2c0808",
+    backgroundColor: colors.red,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+  },
+  inboxBadgeText: {
+    color: "#fff8ee",
+    fontSize: 12,
+    fontWeight: "900",
   },
   chromeIcon: {
     color: colors.goldSoft,
