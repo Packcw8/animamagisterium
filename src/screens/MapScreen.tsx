@@ -3560,7 +3560,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <Text style={styles.subtitle}>Mini Map / {activeMiniMap.type}</Text>
           </View>
         </View>
-        {route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
         <Frame style={styles.panel}>
           <View style={styles.panelHeader}>
             <View>
@@ -3643,6 +3642,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </View>
         </Frame>
         <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
+        {route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
         {isAdmin ? (
           <Frame style={styles.panel}>
             <Text style={styles.sectionTitle}>Mini Map Admin Preview</Text>
@@ -3974,10 +3974,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         <Pressable style={styles.toolButton} onPress={centerOnPlayer}><Text style={styles.toolText}>Center Player</Text></Pressable>
         <Pressable style={[styles.toolButton, followPlayer && styles.toolActive]} onPress={() => setFollowPlayer((value) => !value)}><Text style={styles.toolText}>Follow {followPlayer ? "On" : "Off"}</Text></Pressable>
       </View>
-      <Text style={styles.mapHint}>Scroll the map frame horizontally and vertically to explore the full image. Use the controls or mouse wheel to zoom. Click the image in admin mode to capture X/Y coordinates.</Text>
-
-      {renderJourneyPanel()}
-
       <View ref={viewportRef as never} style={styles.viewport} {...({ onWheel: handleWheel } as object)}>
         <View
           style={[
@@ -4065,6 +4061,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       </View>
 
       <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
+
+      {renderJourneyPanel()}
 
       {selectedMarker && !isAdmin ? (
         <Frame style={styles.panel}>
@@ -6589,13 +6587,6 @@ const styles = StyleSheet.create({
   toolText: {
     color: colors.gold,
     fontWeight: "800",
-    fontSize: 12,
-  },
-  mapHint: {
-    color: colors.muted,
-    lineHeight: 18,
-    paddingHorizontal: 14,
-    paddingBottom: 10,
     fontSize: 12,
   },
   viewport: {
