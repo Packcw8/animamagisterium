@@ -37,6 +37,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const [progressionSettings, setProgressionSettings] = useState<GameProgressionSettings>(defaultProgressionSettings);
   const [trainingConfigs, setTrainingConfigs] = useState<TrainingAttributeConfig[]>([]);
   const [balanceMessage, setBalanceMessage] = useState<string | null>(null);
+  const [showAdminBalance, setShowAdminBalance] = useState(false);
 
   useEffect(() => {
     void loadTraining();
@@ -147,47 +148,6 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
         <ProgressBar value={dailyCompleted} max={dailyLimit} color={colors.gold} height={8} />
       </Frame>
 
-      {role === "admin" ? (
-        <Frame style={styles.adminBalance}>
-          <Text style={styles.sectionTitle}>Admin Game Balance</Text>
-          <Text style={styles.copy}>Tune level caps, XP curves, cooldowns, and the selected attribute training session.</Text>
-          {balanceMessage ? <Text style={styles.successText}>{balanceMessage}</Text> : null}
-          <View style={styles.balanceGrid}>
-            <BalanceNumber label="Overall level cap" value={progressionSettings.character_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_level_cap: value }))} />
-            <BalanceNumber label="XP for next level base" value={progressionSettings.character_xp_base} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_base: value }))} />
-            <BalanceNumber label="XP growth per level" value={progressionSettings.character_xp_growth} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_growth: value }))} />
-            <BalanceNumber label="Default attribute cap" value={progressionSettings.default_attribute_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, default_attribute_level_cap: value }))} />
-            <BalanceNumber label="Daily training limit" value={progressionSettings.daily_training_limit} onChange={(value) => setProgressionSettings((current) => ({ ...current, daily_training_limit: value }))} />
-            <BalanceNumber label="Cooldown minutes" value={progressionSettings.training_cooldown_minutes} onChange={(value) => setProgressionSettings((current) => ({ ...current, training_cooldown_minutes: value }))} />
-          </View>
-          <Pressable style={styles.primaryButton} onPress={() => void saveGlobalBalance()}>
-            <Text style={styles.primaryText}>Save Global Balance</Text>
-          </Pressable>
-
-          {selectedConfig ? (
-            <View style={styles.attributeBalance}>
-              <Text style={styles.sectionTitle}>Selected Training: {selectedConfig.name}</Text>
-              <BalanceText label="Training name" value={selectedConfig.name} onChange={(value) => updateSelectedConfig({ name: value })} />
-              <BalanceText label="Session effect text" value={selectedConfig.effect} onChange={(value) => updateSelectedConfig({ effect: value })} />
-              <BalanceText label="Activity examples" value={selectedConfig.activities} onChange={(value) => updateSelectedConfig({ activities: value })} />
-              <BalanceText label="Goal text template" value={selectedConfig.goal_template} onChange={(value) => updateSelectedConfig({ goal_template: value })} />
-              <Text style={styles.copy}>Template tokens: {"{value}"}, {"{unit}"}, {"{attribute}"}</Text>
-              <View style={styles.balanceGrid}>
-                <BalanceText label="Unit" value={selectedConfig.unit} onChange={(value) => updateSelectedConfig({ unit: value })} />
-                <BalanceNumber label="Starting goal" value={selectedConfig.starting_goal} onChange={(value) => updateSelectedConfig({ starting_goal: value })} />
-                <BalanceNumber label="Goal increase" value={selectedConfig.goal_increment} onChange={(value) => updateSelectedConfig({ goal_increment: value })} />
-                <BalanceNumber label="Character XP reward" value={selectedConfig.character_xp_reward} onChange={(value) => updateSelectedConfig({ character_xp_reward: value })} />
-                <BalanceNumber label="Attribute XP reward" value={selectedConfig.attribute_xp_reward} onChange={(value) => updateSelectedConfig({ attribute_xp_reward: value })} />
-                <BalanceNumber label="Attribute level cap" value={selectedConfig.level_cap} onChange={(value) => updateSelectedConfig({ level_cap: value })} />
-              </View>
-              <Pressable style={styles.primaryButton} onPress={() => void saveAttributeBalance()}>
-                <Text style={styles.primaryText}>Save Selected Training</Text>
-              </Pressable>
-            </View>
-          ) : null}
-        </Frame>
-      ) : null}
-
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {isLoading ? (
         <Frame style={styles.loading}>
@@ -252,6 +212,60 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
         <Text style={styles.sectionTitle}>Quest Goals / Coming Soon</Text>
         <Text style={styles.copy}>Story quests, seasonal objectives, map discoveries, and event rewards will connect here after the map/event system grows.</Text>
       </Frame>
+
+      {role === "admin" ? (
+        <Frame style={styles.adminBalance}>
+          <Pressable style={styles.adminBalanceHeader} onPress={() => setShowAdminBalance((current) => !current)}>
+            <View style={styles.headerText}>
+              <Text style={styles.sectionTitle}>Admin Game Balance</Text>
+              <Text style={styles.copy}>Tune level caps, XP curves, cooldowns, and selected training rules.</Text>
+            </View>
+            <Text style={styles.toggleText}>{showAdminBalance ? "Hide" : "Show"}</Text>
+          </Pressable>
+
+          {balanceMessage ? <Text style={styles.successText}>{balanceMessage}</Text> : null}
+
+          {showAdminBalance ? (
+            <View style={styles.balanceBody}>
+              <Text style={styles.balanceGroupTitle}>Global Level Rules</Text>
+              <View style={styles.balanceGrid}>
+                <BalanceNumber label="Overall level cap" value={progressionSettings.character_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_level_cap: value }))} />
+                <BalanceNumber label="XP for next level base" value={progressionSettings.character_xp_base} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_base: value }))} />
+                <BalanceNumber label="XP growth per level" value={progressionSettings.character_xp_growth} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_growth: value }))} />
+                <BalanceNumber label="Default attribute cap" value={progressionSettings.default_attribute_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, default_attribute_level_cap: value }))} />
+                <BalanceNumber label="Daily training limit" value={progressionSettings.daily_training_limit} onChange={(value) => setProgressionSettings((current) => ({ ...current, daily_training_limit: value }))} />
+                <BalanceNumber label="Cooldown minutes" value={progressionSettings.training_cooldown_minutes} onChange={(value) => setProgressionSettings((current) => ({ ...current, training_cooldown_minutes: value }))} />
+              </View>
+              <Pressable style={styles.primaryButton} onPress={() => void saveGlobalBalance()}>
+                <Text style={styles.primaryText}>Save Global Balance</Text>
+              </Pressable>
+
+              {selectedConfig ? (
+                <View style={styles.attributeBalance}>
+                  <Text style={styles.balanceGroupTitle}>Selected Training: {selectedConfig.name}</Text>
+                  <Text style={styles.copy}>Choose an attribute card above, then edit its training text and scaling here.</Text>
+                  <BalanceText label="Training name" value={selectedConfig.name} onChange={(value) => updateSelectedConfig({ name: value })} />
+                  <BalanceText label="Session effect text" value={selectedConfig.effect} onChange={(value) => updateSelectedConfig({ effect: value })} />
+                  <BalanceText label="Activity examples" value={selectedConfig.activities} onChange={(value) => updateSelectedConfig({ activities: value })} />
+                  <BalanceText label="Goal text template" value={selectedConfig.goal_template} onChange={(value) => updateSelectedConfig({ goal_template: value })} />
+                  <Text style={styles.copy}>Template tokens: {"{value}"}, {"{unit}"}, {"{attribute}"}</Text>
+                  <View style={styles.balanceGrid}>
+                    <BalanceText label="Unit" value={selectedConfig.unit} onChange={(value) => updateSelectedConfig({ unit: value })} />
+                    <BalanceNumber label="Starting goal" value={selectedConfig.starting_goal} onChange={(value) => updateSelectedConfig({ starting_goal: value })} />
+                    <BalanceNumber label="Goal increase" value={selectedConfig.goal_increment} onChange={(value) => updateSelectedConfig({ goal_increment: value })} />
+                    <BalanceNumber label="Character XP reward" value={selectedConfig.character_xp_reward} onChange={(value) => updateSelectedConfig({ character_xp_reward: value })} />
+                    <BalanceNumber label="Attribute XP reward" value={selectedConfig.attribute_xp_reward} onChange={(value) => updateSelectedConfig({ attribute_xp_reward: value })} />
+                    <BalanceNumber label="Attribute level cap" value={selectedConfig.level_cap} onChange={(value) => updateSelectedConfig({ level_cap: value })} />
+                  </View>
+                  <Pressable style={styles.primaryButton} onPress={() => void saveAttributeBalance()}>
+                    <Text style={styles.primaryText}>Save Selected Training</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+            </View>
+          ) : null}
+        </Frame>
+      ) : null}
 
       <Modal transparent visible={Boolean(message)} animationType="fade" onRequestClose={() => setMessage(null)}>
         <View style={styles.modalBackdrop}>
@@ -374,6 +388,29 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     padding: 14,
     gap: 12,
+  },
+  adminBalanceHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  headerText: {
+    flex: 1,
+    gap: 4,
+  },
+  toggleText: {
+    color: colors.blue,
+    fontWeight: "900",
+  },
+  balanceBody: {
+    gap: 12,
+    borderTopWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingTop: 12,
+  },
+  balanceGroupTitle: {
+    color: colors.gold,
+    fontWeight: "900",
   },
   balanceGrid: {
     flexDirection: "row",
