@@ -1396,7 +1396,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     try {
       const startPoint = linkedRoute.path_points[0] ?? { x: 33.8, y: 73.81 };
-      setActiveMiniMap(null);
+      const targetMiniMap = linkedRoute.mini_map_id ? miniMaps.find((item) => item.id === linkedRoute.mini_map_id) ?? null : null;
+      setActiveMiniMap(targetMiniMap);
+      setSelectedMiniMapId(targetMiniMap?.id ?? null);
       setSelectedMarker(null);
       setPreviewMarkerScene(false);
       setMarkerPanelMessage(null);
@@ -1532,7 +1534,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       is_current: true,
       source_marker_id: sourceMarker.id,
     });
-    setActiveMiniMap(nextRoute.mini_map_id ? miniMaps.find((item) => item.id === nextRoute.mini_map_id) ?? null : null);
+    const nextMiniMap = nextRoute.mini_map_id ? miniMaps.find((item) => item.id === nextRoute.mini_map_id) ?? null : null;
+    setActiveMiniMap(nextMiniMap);
+    setSelectedMiniMapId(nextMiniMap?.id ?? null);
     await selectRoute(nextRoute, true);
   }
 
@@ -3682,9 +3686,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <Text style={styles.sectionTitle}>{activeMiniMap.name}</Text>
               {activeMiniMap.description ? <Text style={styles.copy}>{activeMiniMap.description}</Text> : null}
             </View>
-            <Pressable style={styles.secondaryButtonFlex} onPress={() => void leaveMiniMap()}>
-              <Text style={styles.secondaryText}>Exit / Leave</Text>
-            </Pressable>
+            {isAdmin ? (
+              <Pressable style={styles.secondaryButtonFlex} onPress={() => void leaveMiniMap()}>
+                <Text style={styles.secondaryText}>Close Mini Map</Text>
+              </Pressable>
+            ) : null}
           </View>
           <View
             style={styles.miniMapSurface}
@@ -3898,6 +3904,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               markerRequireAllLinkedRoutes={markerRequireAllLinkedRoutes}
               setMarkerRequireAllLinkedRoutes={setMarkerRequireAllLinkedRoutes}
               routes={activeRouteScopeRoutes}
+              storyRoutes={adminRoutes}
               selectedMarkerRouteIds={selectedMarkerRouteIds}
               toggleSignPostRoute={toggleSignPostRoute}
               worldMarkers={adminWorldMarkers}
@@ -4622,13 +4629,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
                   <Text style={styles.copy}>Select one or more paths. They run in the order shown by route sort/order.</Text>
                   <View style={styles.storyRoutePicker}>
-                    {adminWorldRoutes.map((item) => (
+                    {adminRoutes.map((item) => (
                       <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
-                        <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+                        <Text style={styles.routeChipText}>{item.sort_order}. {item.name}{item.mini_map_id ? " (Mini)" : " (World)"}</Text>
                       </Pressable>
                     ))}
                   </View>
-                  <RoutePicker routes={adminWorldRoutes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
+                  <RoutePicker routes={adminRoutes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
                   <Pressable style={[styles.secondaryButton, markerStartsRouteOnAccept && styles.typeSelected]} onPress={() => setMarkerStartsRouteOnAccept((value) => !value)}>
                     <Text style={styles.secondaryText}>Start Path On Accept: {markerStartsRouteOnAccept ? "Yes" : "No"}</Text>
                   </Pressable>
@@ -6019,6 +6026,7 @@ function MiniMapMarkerAdminForm({
   markerRequireAllLinkedRoutes,
   setMarkerRequireAllLinkedRoutes,
   routes,
+  storyRoutes,
   selectedMarkerRouteIds,
   toggleSignPostRoute,
   worldMarkers,
@@ -6107,6 +6115,7 @@ function MiniMapMarkerAdminForm({
   markerRequireAllLinkedRoutes: boolean;
   setMarkerRequireAllLinkedRoutes: (value: boolean | ((current: boolean) => boolean)) => void;
   routes: MapRoute[];
+  storyRoutes: MapRoute[];
   selectedMarkerRouteIds: string[];
   toggleSignPostRoute: (routeId: string) => void;
   worldMarkers: MapMarker[];
@@ -6231,13 +6240,13 @@ function MiniMapMarkerAdminForm({
           <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
           <Text style={styles.copy}>Select one or more paths. They run in the order shown by route sort/order.</Text>
           <View style={styles.storyRoutePicker}>
-            {routes.map((item) => (
+            {storyRoutes.map((item) => (
               <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
-                <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+                <Text style={styles.routeChipText}>{item.sort_order}. {item.name}{item.mini_map_id ? " (Mini)" : " (World)"}</Text>
               </Pressable>
             ))}
           </View>
-          <RoutePicker routes={routes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
+          <RoutePicker routes={storyRoutes} selectedId={markerLinkedRouteId} onSelect={setMarkerLinkedRouteId} />
           <Pressable style={[styles.secondaryButton, markerStartsRouteOnAccept && styles.typeSelected]} onPress={() => setMarkerStartsRouteOnAccept((value) => !value)}>
             <Text style={styles.secondaryText}>Start Path On Accept: {markerStartsRouteOnAccept ? "Yes" : "No"}</Text>
           </Pressable>
