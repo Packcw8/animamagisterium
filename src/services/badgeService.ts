@@ -10,6 +10,11 @@ export type BadgeState = {
   isEarned: boolean;
   earnedAt: string | null;
 };
+export type EarnedBadgeSummary = {
+  badge: BadgeDefinition;
+  earnedAt: string | null;
+  progressValue: number;
+};
 
 export const badgeTypes: BadgeType[] = ["distance", "enemy_name_kills", "enemy_type_kills", "story_completion", "training_sessions"];
 
@@ -164,6 +169,42 @@ export async function getBadgeState(character: CharacterWithDetails) {
   }
 
   return states;
+}
+
+export async function getEarnedBadgesForCharacter(characterId: string) {
+  const { data, error } = await supabase
+    .from("player_badges")
+    .select("badge_id, progress_value, earned_at")
+    .eq("character_id", characterId)
+    .eq("is_earned", true)
+    .order("earned_at", { ascending: false });
+
+  if (error) {
+    throw error;
+  }
+
+  const rows = (data ?? []) as Array<{ badge_id: string; progress_value: number; earned_at: string | null }>;
+  if (rows.length === 0) {
+    return [];
+  }
+
+  const { data: badgeRows, error: badgeError } = await supabase
+    .from("badge_definitions")
+    .select("*")
+    .in("id", rows.map((row) => row.badge_id));
+
+  if (badgeError) {
+    throw badgeError;
+  }
+
+  const badges = new Map(((badgeRows ?? []) as BadgeDefinition[]).map((badge) => [badge.id, badge]));
+
+  return rows
+    .map((row) => {
+      const badge = badges.get(row.badge_id);
+      return badge ? { badge, earnedAt: row.earned_at, progressValue: row.progress_value } : null;
+    })
+    .filter(Boolean) as EarnedBadgeSummary[];
 }
 
 function getProgressForDefinition(

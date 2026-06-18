@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
+import { PlayerProfileCard } from "../components/PlayerProfileCard";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
@@ -14,10 +15,13 @@ import {
   deleteBadgeDefinition,
   getBadgeDefinitions,
   getBadgeState,
+  getEarnedBadgesForCharacter,
+  EarnedBadgeSummary,
   saveBadgeDefinition,
 } from "../services/badgeService";
 import type { CharacterWithDetails } from "../services/characterService";
 import { EnemyDefinition, getEnemies, resolveEnemyImageUri } from "../services/combatAdminService";
+import { getLeaderboardProfileForCharacter, LeaderboardRow } from "../services/leaderboardService";
 import { getCurrentRole, getMapMarkers, MapMarker, Role } from "../services/mapService";
 
 type BadgesScreenProps = {
@@ -46,6 +50,9 @@ export function BadgesScreen({ character }: BadgesScreenProps) {
   const [definitions, setDefinitions] = useState<BadgeDefinition[]>([]);
   const [storyMarkers, setStoryMarkers] = useState<MapMarker[]>([]);
   const [enemies, setEnemies] = useState<EnemyDefinition[]>([]);
+  const [activeTab, setActiveTab] = useState<"profile" | "badges">("profile");
+  const [profile, setProfile] = useState<LeaderboardRow | null>(null);
+  const [earnedBadges, setEarnedBadges] = useState<EarnedBadgeSummary[]>([]);
   const [form, setForm] = useState<Partial<BadgeDefinition>>(blankBadge);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -62,18 +69,22 @@ export function BadgesScreen({ character }: BadgesScreenProps) {
     setIsLoading(true);
     setMessage(null);
     try {
-      const [nextRole, nextStates, nextDefinitions, markers, enemyRows] = await Promise.all([
+      const [nextRole, nextStates, nextDefinitions, markers, enemyRows, profileRow, earnedRows] = await Promise.all([
         getCurrentRole(),
         getBadgeState(character),
         getBadgeDefinitions(true),
         getMapMarkers(),
         getEnemies(),
+        getLeaderboardProfileForCharacter(character.id),
+        getEarnedBadgesForCharacter(character.id),
       ]);
       setRole(nextRole);
       setStates(nextStates);
       setDefinitions(nextDefinitions);
       setStoryMarkers(markers.filter((marker) => ["story", "side quest", "quest"].includes(marker.type.toLowerCase())));
       setEnemies(enemyRows);
+      setProfile(profileRow);
+      setEarnedBadges(earnedRows);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load badges.");
     } finally {
@@ -118,13 +129,13 @@ export function BadgesScreen({ character }: BadgesScreenProps) {
         <BrandLogo size={54} />
         <View>
           <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
-          <Text style={styles.subtitle}>Achievements / Badges</Text>
+          <Text style={styles.subtitle}>Achievements</Text>
         </View>
       </View>
 
       <Frame style={styles.summaryCard}>
-        <Text style={styles.title}>Badges</Text>
-        <Text style={styles.description}>Earned through walking, training, stories, and enemy victories.</Text>
+        <Text style={styles.title}>Achievements</Text>
+        <Text style={styles.description}>Your profile, badges, and long-term accomplishments.</Text>
         <View style={styles.summaryRow}>
           <SummaryPill label="Earned" value={`${earnedCount}`} />
           <SummaryPill label="Available" value={`${states.length}`} />
@@ -133,13 +144,28 @@ export function BadgesScreen({ character }: BadgesScreenProps) {
         {message ? <Text style={styles.message}>{message}</Text> : null}
       </Frame>
 
-      <View style={styles.badgeGrid}>
-        {isLoading ? <Text style={styles.muted}>Reading the achievement ledger...</Text> : null}
-        {!isLoading && states.length === 0 ? <Text style={styles.muted}>No badges have been created yet.</Text> : null}
-        {states.map((state) => (
-          <BadgeCard key={state.definition.id} state={state} />
-        ))}
+      <View style={styles.tabRow}>
+        <Pressable style={[styles.tabButton, activeTab === "profile" && styles.tabActive]} onPress={() => setActiveTab("profile")}>
+          <Text style={styles.buttonText}>Profile</Text>
+        </Pressable>
+        <Pressable style={[styles.tabButton, activeTab === "badges" && styles.tabActive]} onPress={() => setActiveTab("badges")}>
+          <Text style={styles.buttonText}>Badges</Text>
+        </Pressable>
       </View>
+
+      {activeTab === "profile" ? (
+        <View style={styles.profileWrap}>
+          {profile ? <PlayerProfileCard profile={profile} badges={earnedBadges} title="Your Profile" /> : <Text style={styles.muted}>Loading profile...</Text>}
+        </View>
+      ) : (
+        <View style={styles.badgeGrid}>
+          {isLoading ? <Text style={styles.muted}>Reading the achievement ledger...</Text> : null}
+          {!isLoading && states.length === 0 ? <Text style={styles.muted}>No badges have been created yet.</Text> : null}
+          {states.map((state) => (
+            <BadgeCard key={state.definition.id} state={state} />
+          ))}
+        </View>
+      )}
 
       {isAdmin ? (
         <Frame style={styles.adminCard}>
@@ -447,6 +473,30 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
+  },
+  tabRow: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+  },
+  tabButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  tabActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.7)",
+  },
+  profileWrap: {
+    marginHorizontal: 12,
+    marginBottom: 12,
   },
   summaryPill: {
     flex: 1,

@@ -14,7 +14,7 @@ const items: Item[] = [
   { key: "quests", label: "Training", Icon: ScrollText },
   { key: "map", label: "Map", Icon: Map },
   { key: "social", label: "Social", Icon: Users },
-  { key: "badges", label: "Badges", Icon: Trophy },
+  { key: "badges", label: "Achievements", Icon: Trophy },
 ];
 
 type BottomNavProps = {

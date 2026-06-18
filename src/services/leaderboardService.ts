@@ -44,12 +44,75 @@ export const leaderboardMetrics: Array<{ key: LeaderboardMetric; label: string }
   { key: "total_enemy_kills", label: "Enemy Kills" },
 ];
 
-export async function getLeaderboard(metric: LeaderboardMetric, limit = 50) {
-  const { data, error } = await supabase
+export async function getLeaderboard(metric: LeaderboardMetric, limit = 100, userIds?: string[]) {
+  let query = supabase
     .from("player_leaderboards")
     .select("*")
     .order(metric, { ascending: false })
-    .order("xp", { ascending: false })
+    .order("xp", { ascending: false });
+
+  if (userIds?.length) {
+    query = query.in("user_id", userIds);
+  }
+
+  const { data, error } = await query.limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as LeaderboardRow[];
+}
+
+export async function getLeaderboardWithRank(metric: LeaderboardMetric, userIds?: string[]) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  let query = supabase
+    .from("player_leaderboards")
+    .select("*")
+    .order(metric, { ascending: false })
+    .order("xp", { ascending: false });
+
+  if (userIds?.length) {
+    query = query.in("user_id", userIds);
+  }
+
+  const { data, error } = await query.limit(5000);
+
+  if (error) {
+    throw error;
+  }
+
+  const ranked = ((data ?? []) as LeaderboardRow[]).map((row, index) => ({ row, rank: index + 1 }));
+  const topRows = ranked.slice(0, 100);
+  const currentPlayer = user ? ranked.find((entry) => entry.row.user_id === user.id) ?? null : null;
+
+  return {
+    rows: topRows.map((entry) => entry.row),
+    currentPlayerRow: currentPlayer?.row ?? null,
+    currentPlayerRank: currentPlayer?.rank ?? null,
+  };
+}
+
+export async function searchLeaderboardPlayers(term: string, limit = 20) {
+  const trimmed = term.trim();
+
+  if (trimmed.length < 2) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("player_leaderboards")
+    .select("*")
+    .or(`display_name.ilike.%${trimmed}%,character_name.ilike.%${trimmed}%`)
+    .order("level", { ascending: false })
     .limit(limit);
 
   if (error) {
@@ -57,4 +120,18 @@ export async function getLeaderboard(metric: LeaderboardMetric, limit = 50) {
   }
 
   return (data ?? []) as LeaderboardRow[];
+}
+
+export async function getLeaderboardProfileForCharacter(characterId: string) {
+  const { data, error } = await supabase
+    .from("player_leaderboards")
+    .select("*")
+    .eq("character_id", characterId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as LeaderboardRow | null;
 }

@@ -1,34 +1,127 @@
 import { useEffect, useMemo, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
+import { PlayerProfileCard } from "../components/PlayerProfileCard";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
-import { getLeaderboard, LeaderboardMetric, LeaderboardRow, leaderboardMetrics } from "../services/leaderboardService";
+import { getEarnedBadgesForCharacter, EarnedBadgeSummary } from "../services/badgeService";
+import { getLeaderboardWithRank, LeaderboardMetric, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers } from "../services/leaderboardService";
+import { FriendWithProfile, getCurrentUserId, getFriendRows, removeFriend, sendFriendRequest, updateFriendRequest } from "../services/socialService";
+
+type SocialTab = "friends" | "leaderboard" | "profile";
+type LeaderboardScope = "all" | "friends";
 
 export function SocialScreen() {
+  const [activeTab, setActiveTab] = useState<SocialTab>("leaderboard");
   const [activeMetric, setActiveMetric] = useState<LeaderboardMetric>("total_distance_walked_meters");
+  const [scope, setScope] = useState<LeaderboardScope>("all");
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
+  const [currentPlayerRow, setCurrentPlayerRow] = useState<LeaderboardRow | null>(null);
+  const [currentPlayerRank, setCurrentPlayerRank] = useState<number | null>(null);
+  const [friends, setFriends] = useState<FriendWithProfile[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchResults, setSearchResults] = useState<LeaderboardRow[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<LeaderboardRow | null>(null);
+  const [selectedBadges, setSelectedBadges] = useState<EarnedBadgeSummary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    void loadLeaderboard(activeMetric);
-  }, [activeMetric]);
-
   const activeLabel = useMemo(() => leaderboardMetrics.find((metric) => metric.key === activeMetric)?.label ?? "Leaderboard", [activeMetric]);
+  const acceptedFriendIds = useMemo(
+    () => friends.filter((friend) => friend.status === "accepted").map((friend) => friend.friend_user_id),
+    [friends],
+  );
+  const incomingRequests = friends.filter((friend) => friend.status === "pending" && friend.addressee_id === userId);
+  const outgoingRequests = friends.filter((friend) => friend.status === "pending" && friend.requester_id === userId);
+  const acceptedFriends = friends.filter((friend) => friend.status === "accepted");
 
-  async function loadLeaderboard(metric: LeaderboardMetric) {
+  useEffect(() => {
+    void loadSocial();
+  }, []);
+
+  useEffect(() => {
+    void loadLeaderboard();
+  }, [activeMetric, scope, acceptedFriendIds.join("|")]);
+
+  async function loadSocial() {
     setIsLoading(true);
     setMessage(null);
     try {
-      const data = await getLeaderboard(metric);
-      setRows(data);
+      const [nextUserId, nextFriends] = await Promise.all([getCurrentUserId(), getFriendRows()]);
+      setUserId(nextUserId);
+      setFriends(nextFriends);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load social data.");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function loadLeaderboard() {
+    setMessage(null);
+    try {
+      const friendScopeIds = scope === "friends" ? [userId, ...acceptedFriendIds].filter(Boolean) as string[] : undefined;
+      const data = await getLeaderboardWithRank(activeMetric, friendScopeIds);
+      setRows(data.rows);
+      setCurrentPlayerRow(data.currentPlayerRow);
+      setCurrentPlayerRank(data.currentPlayerRank);
     } catch (error) {
       setRows([]);
       setMessage(error instanceof Error ? error.message : "Unable to load leaderboards. Confirm the Supabase leaderboard migration has run.");
-    } finally {
-      setIsLoading(false);
+    }
+  }
+
+  async function runSearch() {
+    setMessage(null);
+    try {
+      const results = await searchLeaderboardPlayers(searchTerm);
+      setSearchResults(results.filter((row) => row.user_id !== userId));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to search players.");
+    }
+  }
+
+  async function addFriend(row: LeaderboardRow) {
+    try {
+      await sendFriendRequest(row.user_id);
+      setMessage(`Friend request sent to ${row.character_name}.`);
+      setSearchResults((current) => current.filter((item) => item.user_id !== row.user_id));
+      await loadSocial();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to send friend request.");
+    }
+  }
+
+  async function setFriendStatus(friendshipId: string, status: "accepted" | "declined") {
+    try {
+      await updateFriendRequest(friendshipId, status);
+      setMessage(status === "accepted" ? "Friend request accepted." : "Friend request declined.");
+      await loadSocial();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update friend request.");
+    }
+  }
+
+  async function unfriend(friendshipId: string) {
+    try {
+      await removeFriend(friendshipId);
+      setMessage("Friend removed.");
+      await loadSocial();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to remove friend.");
+    }
+  }
+
+  async function openProfile(profile: LeaderboardRow) {
+    setSelectedProfile(profile);
+    setActiveTab("profile");
+    setSelectedBadges([]);
+    try {
+      setSelectedBadges(await getEarnedBadgesForCharacter(profile.character_id));
+    } catch {
+      setSelectedBadges([]);
     }
   }
 
@@ -38,39 +131,150 @@ export function SocialScreen() {
         <BrandLogo size={54} />
         <View style={styles.headerText}>
           <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
-          <Text style={styles.subtitle}>Social / Leaderboards</Text>
+          <Text style={styles.subtitle}>Social / Friends / Leaderboards</Text>
         </View>
       </View>
 
-      <Frame style={styles.heroCard}>
-        <Text style={styles.eyebrow}>All Players</Text>
-        <Text style={styles.title}>{activeLabel} Leaderboard</Text>
-        <Text style={styles.copy}>Rankings use saved character, training, event, and route progress data.</Text>
-      </Frame>
-
-      <View style={styles.metricTabs}>
-        {leaderboardMetrics.map((metric) => (
-          <Pressable key={metric.key} style={[styles.metricTab, activeMetric === metric.key && styles.metricTabActive]} onPress={() => setActiveMetric(metric.key)}>
-            <Text style={[styles.metricTabText, activeMetric === metric.key && styles.metricTabTextActive]}>{metric.label}</Text>
+      <View style={styles.tabs}>
+        {(["friends", "leaderboard", "profile"] as const).map((tab) => (
+          <Pressable key={tab} style={[styles.tab, activeTab === tab && styles.tabActive]} onPress={() => setActiveTab(tab)}>
+            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab === "friends" ? "Friends" : tab === "leaderboard" ? "Leaderboards" : "Profile"}</Text>
           </Pressable>
         ))}
       </View>
 
-      <Frame style={styles.board}>
-        {message ? <Text style={styles.errorText}>{message}</Text> : null}
-        {isLoading ? <Text style={styles.copy}>Loading leaderboard...</Text> : null}
-        {!isLoading && rows.length === 0 && !message ? <Text style={styles.copy}>No leaderboard entries yet.</Text> : null}
-        {rows.map((row, index) => (
-          <LeaderboardCard key={row.character_id} row={row} rank={index + 1} metric={activeMetric} />
-        ))}
-      </Frame>
+      {message ? <Text style={styles.message}>{message}</Text> : null}
+
+      {activeTab === "friends" ? (
+        <View style={styles.stack}>
+          <Frame style={styles.panel}>
+            <Text style={styles.sectionTitle}>Add Friends</Text>
+            <Text style={styles.copy}>Search by character name or player display name.</Text>
+            <View style={styles.searchRow}>
+              <TextInput value={searchTerm} onChangeText={setSearchTerm} placeholder="Search players" placeholderTextColor={colors.muted} style={styles.input} />
+              <Pressable style={styles.smallButton} onPress={() => void runSearch()}>
+                <Text style={styles.buttonText}>Search</Text>
+              </Pressable>
+            </View>
+            {searchResults.map((row) => (
+              <PlayerRow key={row.character_id} row={row} actionLabel="Add Friend" onPress={() => void addFriend(row)} onOpen={() => void openProfile(row)} />
+            ))}
+          </Frame>
+
+          <FriendSection title="Incoming Requests" rows={incomingRequests} empty="No incoming requests.">
+            {(friend) => (
+              <View style={styles.friendActions}>
+                <Pressable style={styles.smallButton} onPress={() => void setFriendStatus(friend.id, "accepted")}><Text style={styles.buttonText}>Accept</Text></Pressable>
+                <Pressable style={styles.dangerButton} onPress={() => void setFriendStatus(friend.id, "declined")}><Text style={styles.dangerText}>Decline</Text></Pressable>
+              </View>
+            )}
+          </FriendSection>
+
+          <FriendSection title="Friends" rows={acceptedFriends} empty="No friends yet. Add someone above.">
+            {(friend) => (
+              <View style={styles.friendActions}>
+                <Pressable style={styles.smallButton} onPress={() => friend.friend ? void openProfile(friend.friend) : undefined}><Text style={styles.buttonText}>Profile</Text></Pressable>
+                <Pressable style={styles.dangerButton} onPress={() => void unfriend(friend.id)}><Text style={styles.dangerText}>Remove</Text></Pressable>
+              </View>
+            )}
+          </FriendSection>
+
+          <FriendSection title="Sent Requests" rows={outgoingRequests} empty="No sent requests.">
+            {(friend) => <Text style={styles.copy}>Waiting for response.</Text>}
+          </FriendSection>
+        </View>
+      ) : activeTab === "leaderboard" ? (
+        <View style={styles.stack}>
+          <Frame style={styles.heroCard}>
+            <Text style={styles.eyebrow}>{scope === "friends" ? "Friends" : "All Players"}</Text>
+            <Text style={styles.title}>{activeLabel} Leaderboard</Text>
+            <Text style={styles.copy}>Showing top 100, plus your current rank when you are outside the top 100.</Text>
+          </Frame>
+
+          <View style={styles.metricTabs}>
+            {leaderboardMetrics.map((metric) => (
+              <Pressable key={metric.key} style={[styles.metricTab, activeMetric === metric.key && styles.metricTabActive]} onPress={() => setActiveMetric(metric.key)}>
+                <Text style={[styles.metricTabText, activeMetric === metric.key && styles.metricTabTextActive]}>{metric.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <View style={styles.scopeTabs}>
+            <Pressable style={[styles.scopeButton, scope === "all" && styles.scopeActive]} onPress={() => setScope("all")}><Text style={styles.buttonText}>All Players</Text></Pressable>
+            <Pressable style={[styles.scopeButton, scope === "friends" && styles.scopeActive]} onPress={() => setScope("friends")}><Text style={styles.buttonText}>Friends Only</Text></Pressable>
+          </View>
+
+          <Frame style={styles.board}>
+            {isLoading ? <Text style={styles.copy}>Loading leaderboard...</Text> : null}
+            {!isLoading && rows.length === 0 ? <Text style={styles.copy}>No leaderboard entries yet.</Text> : null}
+            {rows.map((row, index) => (
+              <LeaderboardCard key={row.character_id} row={row} rank={index + 1} metric={activeMetric} onOpen={() => void openProfile(row)} />
+            ))}
+            {currentPlayerRow && currentPlayerRank && currentPlayerRank > 100 && !rows.some((row) => row.character_id === currentPlayerRow.character_id) ? (
+              <>
+                <Text style={styles.rankDivider}>Your Rank</Text>
+                <LeaderboardCard row={currentPlayerRow} rank={currentPlayerRank} metric={activeMetric} onOpen={() => void openProfile(currentPlayerRow)} />
+              </>
+            ) : null}
+          </Frame>
+        </View>
+      ) : selectedProfile ? (
+        <View style={styles.profileWrap}>
+          <PlayerProfileCard profile={selectedProfile} badges={selectedBadges} />
+        </View>
+      ) : (
+        <Frame style={styles.panel}>
+          <Text style={styles.sectionTitle}>No Profile Selected</Text>
+          <Text style={styles.copy}>Tap a player on the leaderboard or friends list to view their profile.</Text>
+        </Frame>
+      )}
     </Screen>
   );
 }
 
-function LeaderboardCard({ row, rank, metric }: { row: LeaderboardRow; rank: number; metric: LeaderboardMetric }) {
+function FriendSection({ title, rows, empty, children }: { title: string; rows: FriendWithProfile[]; empty: string; children: (friend: FriendWithProfile) => React.ReactNode }) {
   return (
-    <View style={[styles.rankCard, rank <= 3 && styles.topRankCard]}>
+    <Frame style={styles.panel}>
+      <Text style={styles.sectionTitle}>{title}</Text>
+      {rows.length === 0 ? <Text style={styles.copy}>{empty}</Text> : null}
+      {rows.map((friend) => (
+        <View key={friend.id} style={styles.friendCard}>
+          {friend.friend ? <MiniProfile row={friend.friend} /> : <Text style={styles.copy}>Player profile unavailable.</Text>}
+          {children(friend)}
+        </View>
+      ))}
+    </Frame>
+  );
+}
+
+function PlayerRow({ row, actionLabel, onPress, onOpen }: { row: LeaderboardRow; actionLabel: string; onPress: () => void; onOpen: () => void }) {
+  return (
+    <View style={styles.friendCard}>
+      <MiniProfile row={row} onPress={onOpen} />
+      <Pressable style={styles.smallButton} onPress={onPress}>
+        <Text style={styles.buttonText}>{actionLabel}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function MiniProfile({ row, onPress }: { row: LeaderboardRow; onPress?: () => void }) {
+  return (
+    <Pressable style={styles.miniProfile} onPress={onPress}>
+      <View style={styles.portraitWrap}>
+        {row.portrait_url ? <Image source={{ uri: row.portrait_url }} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
+      </View>
+      <View style={styles.playerInfo}>
+        <Text style={styles.name}>{row.character_name}</Text>
+        <Text style={styles.copy}>{row.display_name} / Lv {row.level}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function LeaderboardCard({ row, rank, metric, onOpen }: { row: LeaderboardRow; rank: number; metric: LeaderboardMetric; onOpen: () => void }) {
+  return (
+    <Pressable style={[styles.rankCard, rank <= 3 && styles.topRankCard]} onPress={onOpen}>
       <View style={styles.rankBadge}>
         <Text style={styles.rankText}>{rank}</Text>
       </View>
@@ -80,17 +284,12 @@ function LeaderboardCard({ row, rank, metric }: { row: LeaderboardRow; rank: num
       <View style={styles.playerInfo}>
         <Text style={styles.name}>{row.character_name}</Text>
         <Text style={styles.copy}>{row.display_name}</Text>
-        <View style={styles.statLine}>
-          <Text style={styles.statPill}>Lv {row.level}</Text>
-          <Text style={styles.statPill}>{row.xp.toLocaleString()} XP</Text>
-          <Text style={styles.statPill}>{row.gold.toLocaleString()} Gold</Text>
-        </View>
       </View>
       <View style={styles.scoreBox}>
         <Text style={styles.score}>{formatMetricValue(row, metric)}</Text>
         <Text style={styles.scoreLabel}>{leaderboardMetrics.find((item) => item.key === metric)?.label}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -132,8 +331,42 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginTop: 3,
   },
+  tabs: {
+    flexDirection: "row",
+    gap: 8,
+    padding: 12,
+  },
+  tab: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  tabActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.7)",
+  },
+  tabText: {
+    color: colors.text,
+    fontWeight: "800",
+  },
+  tabTextActive: {
+    color: "#dff6ff",
+  },
+  stack: {
+    gap: 12,
+  },
+  panel: {
+    marginHorizontal: 12,
+    padding: 14,
+    gap: 10,
+  },
   heroCard: {
-    margin: 12,
+    marginHorizontal: 12,
     padding: 16,
     gap: 8,
   },
@@ -148,23 +381,92 @@ const styles = StyleSheet.create({
     fontFamily: fonts.title,
     fontSize: 24,
   },
+  sectionTitle: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 16,
+  },
   copy: {
     color: colors.muted,
     lineHeight: 20,
+  },
+  message: {
+    color: colors.gold,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    fontWeight: "800",
+  },
+  searchRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  input: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    color: colors.text,
+    paddingHorizontal: 12,
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  smallButton: {
+    minHeight: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.blue,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(20, 61, 86, 0.58)",
+  },
+  dangerButton: {
+    minHeight: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ffb4aa",
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(62, 15, 15, 0.35)",
+  },
+  buttonText: {
+    color: colors.text,
+    fontWeight: "900",
+  },
+  dangerText: {
+    color: "#ffb4aa",
+    fontWeight: "900",
+  },
+  friendCard: {
+    gap: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  friendActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  miniProfile: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
   },
   metricTabs: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
     paddingHorizontal: 12,
-    paddingBottom: 4,
   },
   metricTab: {
-    minHeight: 42,
+    minHeight: 38,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.22)",
@@ -176,9 +478,28 @@ const styles = StyleSheet.create({
   metricTabText: {
     color: colors.text,
     fontWeight: "800",
+    fontSize: 12,
   },
   metricTabTextActive: {
     color: "#dff6ff",
+  },
+  scopeTabs: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  scopeButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scopeActive: {
+    borderColor: colors.gold,
+    backgroundColor: "rgba(217, 170, 93, 0.12)",
   },
   board: {
     margin: 12,
@@ -242,21 +563,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 15,
   },
-  statLine: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 5,
-    marginTop: 6,
-  },
-  statPill: {
-    color: colors.muted,
-    fontSize: 11,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
   scoreBox: {
     minWidth: 78,
     alignItems: "flex-end",
@@ -270,8 +576,14 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 11,
   },
-  errorText: {
-    color: "#ffb4aa",
-    lineHeight: 20,
+  rankDivider: {
+    color: colors.blue,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    fontSize: 12,
+    marginTop: 8,
+  },
+  profileWrap: {
+    margin: 12,
   },
 });
