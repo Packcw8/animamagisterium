@@ -76,7 +76,7 @@ import {
   usageContexts as itemUsageContexts,
   ItemDefinition,
 } from "../services/inventoryService";
-import { getCurrentRole, Role } from "../services/mapService";
+import { getCurrentRole, getCurrentRouteProgress, Role } from "../services/mapService";
 
 type HomeScreenProps = {
   character: CharacterWithDetails;
@@ -136,6 +136,7 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [inventoryMessage, setInventoryMessage] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("player");
+  const [distanceWalkedMeters, setDistanceWalkedMeters] = useState(0);
   const knownAbilityKeysRef = useRef<Set<string> | null>(null);
   const knownInventoryRef = useRef<Map<string, number> | null>(null);
   const inventoryBonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
@@ -162,8 +163,18 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
     void loadAbilities();
     void loadInventory();
     void loadAdminCombat();
+    void loadTravelProgress();
     void getCurrentRole().then(setRole);
   }, [character.id, character.attributes]);
+
+  async function loadTravelProgress() {
+    try {
+      const progress = await getCurrentRouteProgress();
+      setDistanceWalkedMeters(Number(progress?.distance_walked_meters ?? 0));
+    } catch {
+      setDistanceWalkedMeters(0);
+    }
+  }
 
   async function loadAbilities() {
     try {
@@ -615,7 +626,7 @@ export function HomeScreen({ character, onCharacterUpdated }: HomeScreenProps) {
       <Frame style={styles.summaryBand}>
         <SummaryTile icon="◎" label="Gold" value={character.gold.toLocaleString()} />
         <SummaryTile icon="✦" label="Seed" value="50" />
-        <SummaryTile icon="⌖" label="Steps Today" value="0" />
+        <SummaryTile icon="⌖" label="Distance Walked" value={formatWalkedDistance(distanceWalkedMeters)} />
         <SummaryTile icon="▧" label="Chapter" value="1" />
       </Frame>
 
@@ -1274,6 +1285,14 @@ function EquipmentSlotCard({ slot, item, onUnequip }: { slot: "weapon" | "armor"
       {item ? <Pressable style={styles.smallButton} onPress={onUnequip}><Text style={styles.smallButtonText}>Unequip</Text></Pressable> : null}
     </View>
   );
+}
+
+function formatWalkedDistance(meters: number) {
+  if (meters < 160.9344) {
+    return `${Math.round(meters * 3.28084).toLocaleString()} ft`;
+  }
+
+  return `${(meters / 1609.344).toFixed(2)} mi`;
 }
 
 function EquippedRow({ slot, item }: { slot: string; item: ItemDefinition | null }) {

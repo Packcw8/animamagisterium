@@ -390,6 +390,31 @@ export async function getRouteProgressForRoutes(routeIds: string[]) {
   return (data ?? []) as RouteProgress[];
 }
 
+export async function getCurrentRouteProgress() {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("route_progress")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("is_current", true)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[map] current route progress unavailable", error.message);
+    return null;
+  }
+
+  return data as RouteProgress | null;
+}
+
 export async function setCurrentRoute(routeId: string) {
   const {
     data: { user },
