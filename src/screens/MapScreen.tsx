@@ -159,6 +159,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
   const [activeBattle, setActiveBattle] = useState<MapEvent | null>(null);
+  const [adminPreviewMode, setAdminPreviewMode] = useState<"story" | "battle" | null>(null);
   const [dialogueNodes, setDialogueNodes] = useState<StoryDialogueNode[]>([]);
   const [dialogueChoices, setDialogueChoices] = useState<StoryDialogueChoice[]>([]);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
@@ -1856,13 +1857,38 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     clearDialogueChoiceForm();
   }
 
+  async function previewMapEvent(event: MapEvent) {
+    if (event.event_type === "battle") {
+      await startBattle(event, true);
+      return;
+    }
+
+    setAdminPreviewMode("story");
+    setActiveBattle(null);
+    setActiveEvent(event);
+    await loadDialogueForEvent(event);
+    setAdminMessage(`Previewing ${event.title}.`);
+  }
+
+  function closeAdminPreview() {
+    setActiveEvent(null);
+    setActiveBattle(null);
+    setActiveEnemy(null);
+    setAdminPreviewMode(null);
+    setBattleFinished(null);
+    setRevivePromptOpen(false);
+    setBattleInventoryOpen(false);
+    setBattleLog([]);
+    setDialogueLog([]);
+  }
+
   function startNewDialogueStep() {
     clearDialogueNodeForm();
     setNodeSortOrder(String(getNextDialogueNodeOrder(dialogueNodes)));
     setNodeIsStart(dialogueNodes.length === 0);
   }
 
-  async function startBattle(event: MapEvent) {
+  async function startBattle(event: MapEvent, preview = false) {
     try {
       const enemy = event.enemy_id ? await getEnemyLoadout(event.enemy_id) : null;
       const npcEnemy = !enemy && event.npc_id ? await getNpcLoadout(event.npc_id) : null;
@@ -1883,6 +1909,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const enemyImage = resolveEnemyImageUri(opponent?.image_url ?? event.enemy_image_url);
       setActiveEvent(null);
       setActiveBattle(event);
+      setAdminPreviewMode(preview ? "battle" : null);
       setActiveEnemy(opponent);
       setCombatIndicators([]);
       setBattlePlayerHp(currentHealth);
@@ -1906,6 +1933,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function finishEvent(event: MapEvent) {
+    if (adminPreviewMode) {
+      setGpsMessage(`Preview complete: ${event.title}.`);
+      closeAdminPreview();
+      return;
+    }
+
     try {
       const rewardResult = await applyRewards(character, {
         xp: (event.reward_xp ?? 0) + (activeEnemy?.xp_reward ?? 0),
@@ -1944,6 +1977,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   async function savePlayerHealth(nextHealth: number) {
     const safeHealth = clampHealth(nextHealth, combatResources.maxHp);
     setBattlePlayerHp(safeHealth);
+    if (adminPreviewMode) {
+      return safeHealth;
+    }
     await updateCharacterHealth(character.id, safeHealth);
     onCharacterUpdated({ ...character, current_health: safeHealth });
     return safeHealth;
@@ -1962,9 +1998,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (action === "Start Battle") {
       const linkedBattle = mapEvents.find((event) => event.event_type === "battle" && !completedEventIds.has(event.id) && event.route_id === activeEvent.route_id);
       if (linkedBattle) {
-        void completeMapEvent(activeEvent.id);
-        setCompletedEventIds((current) => new Set([...current, activeEvent.id]));
-        void startBattle(linkedBattle);
+        if (!adminPreviewMode) {
+          void completeMapEvent(activeEvent.id);
+          setCompletedEventIds((current) => new Set([...current, activeEvent.id]));
+        }
+        void startBattle(linkedBattle, adminPreviewMode === "story");
         return;
       }
       setBattleLog(["No linked battle exists on this trail yet."]);
@@ -1995,7 +2033,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (choice.action === "start_battle") {
       const battle = mapEvents.find((event) => event.id === choice.battle_event_id) ?? mapEvents.find((event) => event.event_type === "battle" && event.route_id === activeEvent.route_id);
       if (battle) {
-        void startBattle(battle);
+        void startBattle(battle, adminPreviewMode === "story");
         return;
       }
       setDialogueLog((current) => ["No battle is linked yet.", ...current].slice(0, 4));
@@ -2008,6 +2046,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (choice.action === "give_reward") {
+      if (adminPreviewMode) {
+        setDialogueLog((current) => [`Preview reward: ${choice.reward_xp} XP, ${choice.reward_gold} gold.`, ...current].slice(0, 4));
+        return;
+      }
+
       const rewardResult = await applyRewards(character, {
         xp: choice.reward_xp,
         gold: choice.reward_gold,
@@ -2020,10 +2063,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    if (adminPreviewMode) {
+      closeAdminPreview();
+      return;
+    }
+
     setActiveEvent(null);
   }
 
   async function endDialogueChat(completeEvent: boolean) {
+    if (adminPreviewMode && !completeEvent) {
+      closeAdminPreview();
+      return;
+    }
+
     if (activeEvent && completeEvent) {
       await finishEvent(activeEvent);
       return;
@@ -2216,6 +2269,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const nextHp = Math.max(1, battlePlayerHp - fleeDamage);
     await savePlayerHealth(nextHp);
     pushCombatIndicator("player", `-${fleeDamage}`, "#ff5c5c");
+    if (adminPreviewMode) {
+      setBattleLog((current) => ["Preview flee. No route progress was changed.", ...current].slice(0, 8));
+      closeAdminPreview();
+      return;
+    }
     await reduceCurrentRouteProgress(3);
     setBattleLog((current) => ["You escaped, but took damage and lost ground.", ...current].slice(0, 8));
     setActiveBattle(null);
@@ -2347,6 +2405,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     await savePlayerHealth(1);
     log.push(activeBattle?.defeat_text || "Defeat.");
 
+    if (adminPreviewMode) {
+      setRevivePromptOpen(false);
+      log.push("Preview defeat. No route progress or Health was changed.");
+      return;
+    }
+
     const reviveItem = inventoryItems.find((entry) => entry.quantity > 0 && isReviveBattleItem(entry.item));
 
     if (reviveItem) {
@@ -2363,6 +2427,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function declineReviveAfterDefeat() {
     setRevivePromptOpen(false);
+    if (adminPreviewMode) {
+      setBattleLog((current) => ["Preview ended after defeat.", ...current].slice(0, 8));
+      closeAdminPreview();
+      return;
+    }
     setBattleLog((current) => ["No revive used. Returning to the start of this trail.", ...current].slice(0, 8));
     await resetCurrentRouteAfterDefeat();
   }
@@ -2400,8 +2469,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       pushCombatIndicator("player", `+${amount}`, "#7fdcff");
     }
 
-    await consumeInventoryItem(entry, 1);
-    await loadInventory();
+    if (!adminPreviewMode) {
+      await consumeInventoryItem(entry, 1);
+      await loadInventory();
+    }
     setBattleInventoryOpen(false);
     setBattleLog((current) => [`Used ${item.name}. Restored ${amount} ${target}.`, ...current].slice(0, 8));
   }
@@ -3170,9 +3241,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         npcs={npcDefinitions}
         activeNodeId={activeNodeId}
         dialogueLog={dialogueLog}
+        previewMode={adminPreviewMode === "story"}
         onLegacyChoice={handleStoryChoice}
         onChoice={(choice) => void handleDialogueChoice(choice)}
         onEndChat={(completeEvent) => void endDialogueChat(completeEvent)}
+        onExitPreview={closeAdminPreview}
       />
     );
   }
@@ -3196,6 +3269,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         combatIndicators={combatIndicators}
         revivePromptOpen={revivePromptOpen}
         result={battleFinished}
+        previewMode={adminPreviewMode === "battle"}
         onAction={(ability) => void handleBattleAction(ability)}
         onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
         onFlee={() => void fleeBattle()}
@@ -3203,6 +3277,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
         onDeclineRevive={() => void declineReviveAfterDefeat()}
         onComplete={() => void finishEvent(activeBattle)}
+        onExitPreview={closeAdminPreview}
       />
     );
   }
@@ -3761,6 +3836,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                       <Text style={styles.markerName}>{event.distance_marker_percent}% - {event.title}</Text>
                       <Text style={styles.copy}>{eventTriggerModeName(event)} / {event.event_type === "battle" && event.npc_id ? getNpcName(npcDefinitions, event.npc_id) : eventTypeName(event.event_type)}</Text>
                       <View style={styles.modeRow}>
+                        <Pressable style={styles.secondaryButtonFlex} onPress={() => void previewMapEvent(event)}>
+                          <Text style={styles.secondaryText}>Preview/Test</Text>
+                        </Pressable>
                         <Pressable style={styles.secondaryButtonFlex} onPress={() => editMapEvent(event)}>
                           <Text style={styles.secondaryText}>Edit</Text>
                         </Pressable>
@@ -4525,6 +4603,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                     : `${eventTypeName(event.event_type)} - ${event.dialogue_text || "Add dialogue steps below."}`}
                 </Text>
                 <View style={styles.modeRow}>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={() => void previewMapEvent(event)}>
+                    <Text style={styles.secondaryText}>Preview/Test</Text>
+                  </Pressable>
                   <Pressable style={styles.secondaryButtonFlex} onPress={() => editMapEvent(event)}>
                     <Text style={styles.secondaryText}>Edit</Text>
                   </Pressable>
@@ -5258,9 +5339,11 @@ function StoryInstanceScreen({
   npcs,
   activeNodeId,
   dialogueLog,
+  previewMode = false,
   onLegacyChoice,
   onChoice,
   onEndChat,
+  onExitPreview,
 }: {
   event: MapEvent;
   nodes: StoryDialogueNode[];
@@ -5268,9 +5351,11 @@ function StoryInstanceScreen({
   npcs: NpcDefinition[];
   activeNodeId: string | null;
   dialogueLog: string[];
+  previewMode?: boolean;
   onLegacyChoice: (action: MapEvent["choices"][number]["action"]) => void;
   onChoice: (choice: StoryDialogueChoice) => void;
   onEndChat: (completeEvent: boolean) => void;
+  onExitPreview?: () => void;
 }) {
   const activeNode = nodes.find((node) => node.id === activeNodeId) ?? nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
   const nodeChoices = activeNode ? choices.filter((choice) => choice.node_id === activeNode.id) : [];
@@ -5283,6 +5368,14 @@ function StoryInstanceScreen({
   return (
     <Screen>
       <Frame style={styles.eventScreen}>
+        {previewMode ? (
+          <View style={styles.previewBanner}>
+            <Text style={styles.previewText}>Admin Preview - no rewards or progress will be saved.</Text>
+            <Pressable style={styles.previewExitButton} onPress={onExitPreview}>
+              <Text style={styles.secondaryText}>Exit Preview</Text>
+            </Pressable>
+          </View>
+        ) : null}
         {(activeNode?.background_image_url ?? event.background_image_url) ? <Image source={{ uri: activeNode?.background_image_url ?? event.background_image_url ?? "" }} style={styles.eventImage} /> : <View style={styles.eventImagePlaceholder} />}
         {npcPortrait ? <Image source={{ uri: resolveEnemyImageUri(npcPortrait) ?? npcPortrait }} style={styles.npcPortrait} /> : null}
         <Text style={styles.sectionTitle}>{event.title}</Text>
@@ -5338,6 +5431,7 @@ function BattleEventScreen({
   combatIndicators,
   revivePromptOpen,
   result,
+  previewMode = false,
   onAction,
   onWeaponAction,
   onFlee,
@@ -5345,6 +5439,7 @@ function BattleEventScreen({
   onToggleInventory,
   onDeclineRevive,
   onComplete,
+  onExitPreview,
 }: {
   character: CharacterWithDetails;
   event: MapEvent;
@@ -5362,6 +5457,7 @@ function BattleEventScreen({
   combatIndicators: CombatIndicator[];
   revivePromptOpen: boolean;
   result: "victory" | "defeat" | null;
+  previewMode?: boolean;
   onAction: (ability: AbilityDefinition) => void;
   onWeaponAction: (weapon: ItemDefinition) => void;
   onFlee: () => void;
@@ -5369,6 +5465,7 @@ function BattleEventScreen({
   onToggleInventory: () => void;
   onDeclineRevive: () => void;
   onComplete: () => void;
+  onExitPreview?: () => void;
 }) {
   const [enemyImageFailed, setEnemyImageFailed] = useState(false);
   const [playerImageFailed, setPlayerImageFailed] = useState(false);
@@ -5389,6 +5486,14 @@ function BattleEventScreen({
   return (
     <Screen>
       <Frame style={styles.eventScreen}>
+        {previewMode ? (
+          <View style={styles.previewBanner}>
+            <Text style={styles.previewText}>Admin Battle Preview - no Health, items, rewards, or route progress will be saved.</Text>
+            <Pressable style={styles.previewExitButton} onPress={onExitPreview}>
+              <Text style={styles.secondaryText}>Exit Preview</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <Text style={styles.sectionTitle}>{event.title}</Text>
         <View style={styles.battleArena}>
           <View style={styles.enemyPanel}>
@@ -7339,6 +7444,28 @@ const styles = StyleSheet.create({
     margin: 12,
     padding: 14,
     gap: 12,
+  },
+  previewBanner: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.42)",
+    padding: 10,
+    gap: 8,
+  },
+  previewText: {
+    color: colors.text,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  previewExitButton: {
+    minHeight: 38,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.32)",
   },
   eventImage: {
     width: "100%",
