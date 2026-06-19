@@ -678,7 +678,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       getPlayerMapState(),
     ]);
     const storyCompletions = await getStoryMarkerCompletions(loadedMarkers.filter(isStoryQuestMarker).map((item) => item.id));
-    const currentProgressRow = progressRows.find((row) => row.is_current);
+    const currentProgressRow =
+      [...progressRows]
+        .filter((row) => row.is_current)
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0] ?? null;
     const currentRoute = nextRoutes.find((item) => item.id === currentProgressRow?.route_id) ?? null;
     const firstRoute = currentRoute ?? nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
     setRouteProgressRows(progressRows);
@@ -1476,6 +1479,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     try {
       const startPoint = linkedRoute.path_points[0] ?? { x: 33.8, y: 73.81 };
       const targetMiniMap = linkedRoute.mini_map_id ? miniMaps.find((item) => item.id === linkedRoute.mini_map_id) ?? null : null;
+      await setCurrentRoute(linkedRoute.id);
       setActiveMiniMap(targetMiniMap);
       setSelectedMiniMapId(targetMiniMap?.id ?? null);
       setSavedMiniMapPosition(null);
@@ -1487,7 +1491,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setSelectedMarker(null);
       setPreviewMarkerScene(false);
       setMarkerPanelMessage(null);
-      setRouteProgressRows((current) => upsertRouteProgressRow(current, linkedRoute.id, 0));
+      setRouteProgressRows((current) =>
+        upsertRouteProgressRow(current, linkedRoute.id, 0).map((row) => ({
+          ...row,
+          is_current: row.route_id === linkedRoute.id,
+        })),
+      );
       await saveRouteProgress(linkedRoute.id, {
         distance_walked_meters: 0,
         progress_percent: 0,

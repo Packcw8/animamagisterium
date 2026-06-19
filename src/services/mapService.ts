@@ -525,6 +525,10 @@ export async function saveRouteProgress(routeId: string, values: Pick<RouteProgr
     throw userError ?? new Error("You must be signed in to save route progress.");
   }
 
+  if (values.is_current ?? true) {
+    await supabase.from("route_progress").update({ is_current: false }).eq("user_id", user.id).neq("route_id", routeId);
+  }
+
   const { data, error } = await supabase
     .from("route_progress")
     .upsert(
