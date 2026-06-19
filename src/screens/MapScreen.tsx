@@ -4,6 +4,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-nativ
 import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButton";
 import { BattleEventScreen } from "../components/battle/BattleEventScreen";
 import { type CombatIndicator } from "../components/battle/BattleDisplay";
+import { useBattleEncounter } from "../components/battle/useBattleEncounter";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { AdminCoordinatePanel } from "../components/map/AdminCoordinatePanel";
@@ -22,8 +23,8 @@ import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
-import { AbilityDefinition, CharacterResources, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
-import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, getNpcLoadout, getNpcs, NpcDefinition, NpcWithLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
+import { AbilityDefinition, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
+import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition, resolveEnemyImageUri } from "../services/combatAdminService";
 import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveInventoryImageUri } from "../services/inventoryService";
 import { recordEnemyKill } from "../services/progressionService";
 import { chooseWeightedEnemyAbility, classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph, rollD20Attack } from "../utils/combatMath";
@@ -193,31 +194,50 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [completedStoryMarkerIds, setCompletedStoryMarkerIds] = useState<Set<string>>(new Set());
   const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
-  const [activeBattle, setActiveBattle] = useState<MapEvent | null>(null);
   const [adminPreviewMode, setAdminPreviewMode] = useState<"story" | "battle" | null>(null);
   const [dialogueNodes, setDialogueNodes] = useState<StoryDialogueNode[]>([]);
   const [dialogueChoices, setDialogueChoices] = useState<StoryDialogueChoice[]>([]);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [dialogueLog, setDialogueLog] = useState<string[]>([]);
-  const [battlePlayerHp, setBattlePlayerHp] = useState(100);
-  const [battleStamina, setBattleStamina] = useState(0);
-  const [battleMagicka, setBattleMagicka] = useState(0);
-  const [battleEnemyHp, setBattleEnemyHp] = useState(0);
-  const [battleEnemyStamina, setBattleEnemyStamina] = useState(0);
-  const [battleEnemyMagika, setBattleEnemyMagika] = useState(0);
-  const [battleLog, setBattleLog] = useState<string[]>([]);
-  const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | null>(null);
-  const [revivePromptOpen, setRevivePromptOpen] = useState(false);
-  const [activeEnemy, setActiveEnemy] = useState<EnemyWithLoadout | NpcWithLoadout | null>(null);
-  const [combatIndicators, setCombatIndicators] = useState<CombatIndicator[]>([]);
-  const [combatResources, setCombatResources] = useState<CharacterResources>(() => getCharacterResources(character));
-  const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
+  const {
+    activeBattle,
+    setActiveBattle,
+    battlePlayerHp,
+    setBattlePlayerHp,
+    battleStamina,
+    setBattleStamina,
+    battleMagicka,
+    setBattleMagicka,
+    battleEnemyHp,
+    setBattleEnemyHp,
+    battleEnemyStamina,
+    setBattleEnemyStamina,
+    battleEnemyMagika,
+    setBattleEnemyMagika,
+    battleLog,
+    setBattleLog,
+    battleFinished,
+    setBattleFinished,
+    revivePromptOpen,
+    setRevivePromptOpen,
+    activeEnemy,
+    setActiveEnemy,
+    combatIndicators,
+    setCombatIndicators,
+    combatResources,
+    setCombatResources,
+    equippedAbilities,
+    setEquippedAbilities,
+    battleInventoryOpen,
+    setBattleInventoryOpen,
+    resetBattleState,
+    startBattle: startBattleEncounter,
+  } = useBattleEncounter(character);
   const [enemyDefinitions, setEnemyDefinitions] = useState<EnemyDefinition[]>([]);
   const [npcDefinitions, setNpcDefinitions] = useState<NpcDefinition[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
-  const [battleInventoryOpen, setBattleInventoryOpen] = useState(false);
   const [mapInventoryOpen, setMapInventoryOpen] = useState(false);
   const [mapItemMessage, setMapItemMessage] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("player");
@@ -2114,13 +2134,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   function closeAdminPreview() {
     setActiveEvent(null);
-    setActiveBattle(null);
-    setActiveEnemy(null);
     setAdminPreviewMode(null);
-    setBattleFinished(null);
-    setRevivePromptOpen(false);
-    setBattleInventoryOpen(false);
-    setBattleLog([]);
+    resetBattleState();
     setDialogueLog([]);
   }
 
@@ -2131,47 +2146,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function startBattle(event: MapEvent, preview = false) {
-    try {
-      const enemy = event.enemy_id ? await getEnemyLoadout(event.enemy_id) : null;
-      const npcEnemy = !enemy && event.npc_id ? await getNpcLoadout(event.npc_id) : null;
-      const opponent = enemy ?? npcEnemy;
-
-      if (event.enemy_id && !enemy) {
-        setAdminMessage("Battle enemy could not be loaded from Enemy Admin. Check the selected enemy.");
-        setBattleLog(["Battle enemy could not be loaded from Enemy Admin. Check the selected enemy."]);
-        return;
-      }
-
-      if (event.npc_id && !npcEnemy) {
-        setAdminMessage("Battle NPC could not be loaded from NPC Admin. Check the selected NPC.");
-        setBattleLog(["Battle NPC could not be loaded from NPC Admin. Check the selected NPC."]);
-        return;
-      }
-
-      const enemyImage = resolveEnemyImageUri(opponent?.image_url ?? event.enemy_image_url);
-      setActiveEvent(null);
-      setActiveBattle(event);
-      setAdminPreviewMode(preview ? "battle" : null);
-      setActiveEnemy(opponent);
-      setCombatIndicators([]);
-      setBattlePlayerHp(currentHealth);
-      setBattleStamina(combatResources.maxStamina);
-      setBattleMagicka(combatResources.maxMagicka);
-      setBattleEnemyHp(Number(opponent?.health ?? event.enemy_hp) || 30);
-      setBattleEnemyStamina(Number(opponent?.stamina ?? 0) || 0);
-      setBattleEnemyMagika(Number(opponent?.magika ?? 0) || 0);
-      setBattleFinished(null);
-      setRevivePromptOpen(false);
-      setBattleLog([
-        event.battle_intro_text || `${opponent?.name || event.enemy_name || "An enemy"} blocks the trail.`,
-        opponent?.id ? `Loaded ${opponent.abilities.length} abilities and ${opponent.drops.length} drop entries from Admin.` : "Using manual battle enemy data.",
-        enemyImage ? "Enemy image ready." : "Enemy image missing. A placeholder will be shown.",
-      ]);
-    } catch (error) {
-      const message = getErrorMessage(error, "Unable to load battle enemy data.");
-      setAdminMessage(message);
-      setBattleLog([message]);
-    }
+    await startBattleEncounter(event, {
+      preview,
+      currentHealth,
+      combatResources,
+      setActiveEvent,
+      setAdminPreviewMode,
+      setAdminMessage,
+    });
   }
 
   async function finishEvent(event: MapEvent) {
