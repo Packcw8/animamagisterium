@@ -5,6 +5,7 @@ import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButt
 import { BattleActionCard, CombatIndicatorStack, ResourceMeter, type CombatIndicator } from "../components/battle/BattleDisplay";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
+import { AdminCoordinatePanel } from "../components/map/AdminCoordinatePanel";
 import { AdminMapEditorHeader } from "../components/map/AdminMapEditorHeader";
 import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef } from "../components/map/MapCanvas";
 import { MarkerIcon } from "../components/map/MarkerIcon";
@@ -3866,11 +3867,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <Text style={styles.primaryText}>Update Open Mini Map</Text>
               </Pressable>
             </View>
-            <Info label="Clicked Coordinates" value={clickedPercent ? `X ${clickedPercent.x}% / Y ${clickedPercent.y}%` : "Tap the mini map"} />
-            <Text style={styles.debugLine}>Last click: x: {clickedPercent ? `${clickedPercent.x}%` : "--"}, y: {clickedPercent ? `${clickedPercent.y}%` : "--"}</Text>
-            <Pressable style={styles.secondaryButton} onPress={() => void copyCoordinates()} disabled={!clickedPercent}>
-              <Text style={styles.secondaryText}>Copy Coordinates</Text>
-            </Pressable>
+            <AdminCoordinatePanel clickedPercent={clickedPercent} tapLabel="Tap the mini map" onCopy={() => void copyCoordinates()} />
             <View style={styles.routeList}>
               <Text style={styles.selectedTitle}>Mini Map Markers</Text>
               {adminMiniMapMarkers.length === 0 ? <Text style={styles.copy}>No markers created in this mini map yet.</Text> : null}
@@ -4339,13 +4336,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               onDelete={(marker) => void removeMarker(marker)}
             />
           ) : null}
-          {["World Markers", "Area/Town Markers", "Walking Paths"].includes(adminSection) ? <>
-          <Info label="Clicked Coordinates" value={clickedPercent ? `X ${clickedPercent.x}% / Y ${clickedPercent.y}%` : "Tap the map"} />
-          <Text style={styles.debugLine}>Last click: x: {clickedPercent ? `${clickedPercent.x}%` : "--"}, y: {clickedPercent ? `${clickedPercent.y}%` : "--"}</Text>
-          <Pressable style={styles.secondaryButton} onPress={() => void copyCoordinates()} disabled={!clickedPercent}>
-            <Text style={styles.secondaryText}>Copy Coordinates</Text>
-          </Pressable>
-          </> : null}
+          {["World Markers", "Area/Town Markers", "Walking Paths"].includes(adminSection) ? (
+            <AdminCoordinatePanel clickedPercent={clickedPercent} tapLabel="Tap the map" onCopy={() => void copyCoordinates()} />
+          ) : null}
           {adminSection === "Mini Maps" ? (
             <MiniMapEditor
               miniMapTypes={miniMapTypes}
