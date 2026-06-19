@@ -4,6 +4,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-nativ
 import { BattleActionCard, CombatIndicatorStack, ResourceMeter, type CombatIndicator } from "../components/battle/BattleDisplay";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
+import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef } from "../components/map/MapCanvas";
 import { MarkerIcon } from "../components/map/MarkerIcon";
 import { MarkerLegend } from "../components/map/MarkerLegend";
 import { ProgressBar } from "../components/ProgressBar";
@@ -21,7 +22,6 @@ import {
   canPlayerSeeMarker,
   canPlayerSeeStoryMarker,
   getMarkerLockMessage,
-  getMarkerRenderStyle,
   getOrderedMarkerRouteLinks,
   isExitMarker,
   isExitMarkerType,
@@ -385,13 +385,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [scale, setScale] = useState(0.86);
   const [followPlayer, setFollowPlayer] = useState(true);
   const [completedRouteId, setCompletedRouteId] = useState<string | null>(null);
-  const viewportRef = useRef<{
-    scrollLeft?: number;
-    scrollTop?: number;
-    clientWidth?: number;
-    clientHeight?: number;
-    scrollTo?: (options: { left: number; top: number; behavior?: "smooth" | "auto" }) => void;
-  } | null>(null);
+  const viewportRef = useRef<MapViewportRef | null>(null);
   const watchId = useRef<number | null>(null);
   const distanceWalkedRef = useRef(0);
   const routeRef = useRef(fallbackRoute);
@@ -3824,76 +3818,22 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               </Pressable>
             ) : null}
           </View>
-          <View
-            style={styles.miniMapSurface}
-            {...(isAdmin
-              ? ({
-                  onClick: (event: unknown) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini"),
-                  onStartShouldSetResponder: () => true,
-                } as object)
-              : {})}
-          >
-            {miniMapImage ? <Image source={{ uri: miniMapImage }} style={styles.miniMapImage} /> : <View style={styles.miniMapFallback}><Text style={styles.copy}>No mini map image set.</Text></View>}
-            {miniMapRouteSegments.map((segment, index) => (
-              <View
-                key={`${segment.id}-${index}`}
-                pointerEvents="none"
-                style={[
-                  styles.routeSegment,
-                  !segment.isActive && styles.routeSegmentInactive,
-                  {
-                    left: `${segment.left}%`,
-                    top: `${segment.top}%`,
-                    width: `${segment.length}%`,
-                    transform: [{ rotate: `${segment.angle}deg` }],
-                  },
-                ]}
-              />
-            ))}
-            {isAdmin && editorMode === "Walking Path" ? draftSegments.map((segment, index) => (
-              <View
-                key={`${segment.id}-${index}`}
-                pointerEvents="none"
-                style={[
-                  styles.routeSegment,
-                  styles.routeSegmentDraft,
-                  {
-                    left: `${segment.left}%`,
-                    top: `${segment.top}%`,
-                    width: `${segment.length}%`,
-                    transform: [{ rotate: `${segment.angle}deg` }],
-                  },
-                ]}
-              />
-            )) : null}
-            {isAdmin && editorMode === "Walking Path" ? pathDraft.map((point, index) => (
-              <View key={`${point.x}-${point.y}-${index}`} pointerEvents="none" style={[styles.pathPoint, { left: `${point.x}%`, top: `${point.y}%` }]}>
-                <Text style={styles.pathPointText}>{index + 1}</Text>
-              </View>
-            )) : null}
-            <View style={[styles.playerPin, styles.miniMapPlayerPin, { left: `${miniMapPlayerPosition.x}%`, top: `${miniMapPlayerPosition.y}%` }]}>
-              {character.portrait_url ? <Image source={{ uri: character.portrait_url }} style={styles.playerPortrait} /> : <Text style={[styles.playerInitial, styles.miniMapPlayerInitial]}>{character.name.slice(0, 1).toUpperCase()}</Text>}
-            </View>
-            {isAdmin && editorMode === "Marker" && clickedPercent ? (
-              <View pointerEvents="none" style={[styles.tempMarker, { left: `${clickedPercent.x}%`, top: `${clickedPercent.y}%` }]}>
-                <View style={styles.tempPulse} />
-                <Text style={styles.tempMarkerText}>New Marker</Text>
-              </View>
-            ) : null}
-            {visibleMiniMapMarkers.map((marker) => (
-              <Pressable
-                key={marker.id}
-                style={[styles.marker, styles.miniMapMarker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, miniMapPlayerPosition, 25)]}
-                onPress={(event) => {
-                  event.stopPropagation();
-                  void selectMarker(marker);
-                }}
-                {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
-              >
-                <MarkerIcon marker={marker} mini />
-              </Pressable>
-            ))}
-          </View>
+          <MiniMapCanvas
+            imageUri={miniMapImage}
+            canCapturePointer={isAdmin}
+            onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini")}
+            routeSegments={miniMapRouteSegments}
+            draftSegments={draftSegments}
+            pathDraft={pathDraft}
+            showDraft={isAdmin && editorMode === "Walking Path"}
+            clickedPercent={clickedPercent}
+            showTempMarker={isAdmin && editorMode === "Marker"}
+            markers={visibleMiniMapMarkers}
+            playerPosition={miniMapPlayerPosition}
+            playerName={character.name}
+            playerPortraitUrl={character.portrait_url}
+            onSelectMarker={(marker) => void selectMarker(marker)}
+          />
         </Frame>
         <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
         {route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
@@ -4264,91 +4204,25 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         </Frame>
       ) : null}
 
-      <View ref={viewportRef as never} style={styles.viewport} {...({ onWheel: handleWheel } as object)}>
-        <View
-          style={[
-            styles.mapSurface,
-            {
-              width: scaledMapSize.width,
-              height: scaledMapSize.height,
-            },
-          ]}
-          {...({
-            onClick: handleMapPointer,
-            onStartShouldSetResponder: () => isAdmin,
-          } as object)}
-        >
-          <Image source={forgottenMarches} style={styles.mapImage} {...({ pointerEvents: "none" } as object)} />
-          {routeSegments.map((segment, index) => (
-            <View
-              key={`${segment.id}-${index}`}
-              pointerEvents="none"
-              style={[
-                styles.routeSegment,
-                !segment.isActive && styles.routeSegmentInactive,
-                {
-                  left: `${segment.left}%`,
-                  top: `${segment.top}%`,
-                  width: `${segment.length}%`,
-                  transform: [{ rotate: `${segment.angle}deg` }],
-                },
-              ]}
-            />
-          ))}
-          {isAdmin && adminSection === "Walking Paths" && editorMode === "Walking Path" ? draftSegments.map((segment, index) => (
-            <View
-              key={`${segment.id}-${index}`}
-              pointerEvents="none"
-              style={[
-                styles.routeSegment,
-                styles.routeSegmentDraft,
-                {
-                  left: `${segment.left}%`,
-                  top: `${segment.top}%`,
-                  width: `${segment.length}%`,
-                  transform: [{ rotate: `${segment.angle}deg` }],
-                },
-              ]}
-            />
-          )) : null}
-          {isAdmin && adminSection === "Walking Paths" && editorMode === "Walking Path" ? pathDraft.map((point, index) => (
-            <View key={`${point.x}-${point.y}-${index}`} pointerEvents="none" style={[styles.pathPoint, { left: `${point.x}%`, top: `${point.y}%` }]}>
-              <Text style={styles.pathPointText}>{index + 1}</Text>
-            </View>
-          )) : null}
-          {isAdmin && editorMode === "Marker" && clickedPercent ? (
-            <View pointerEvents="none" style={[styles.tempMarker, { left: `${clickedPercent.x}%`, top: `${clickedPercent.y}%` }]}>
-              <View style={styles.tempPulse} />
-              <Text style={styles.tempMarkerText}>New Marker</Text>
-            </View>
-          ) : null}
-          {visibleMarkers.map((marker) => (
-            <Pressable
-              key={marker.id}
-              style={[styles.marker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, playerPosition)]}
-              onPress={(event) => {
-                event.stopPropagation();
-                void selectMarker(marker);
-              }}
-              {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
-            >
-              <MarkerIcon marker={marker} />
-            </Pressable>
-          ))}
-          <View
-            style={[
-              styles.playerPin,
-              {
-                left: `${playerPosition.x}%`,
-                top: `${playerPosition.y}%`,
-              },
-              { transitionDuration: "450ms" } as object,
-            ]}
-          >
-            {character.portrait_url ? <Image source={{ uri: character.portrait_url }} style={styles.playerPortrait} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
-          </View>
-        </View>
-      </View>
+      <OverworldMapCanvas
+        viewportRef={viewportRef}
+        scaledMapSize={scaledMapSize}
+        imageSource={forgottenMarches}
+        onWheel={handleWheel}
+        canCapturePointer={isAdmin}
+        onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0])}
+        routeSegments={routeSegments}
+        draftSegments={draftSegments}
+        pathDraft={pathDraft}
+        showDraft={isAdmin && adminSection === "Walking Paths" && editorMode === "Walking Path"}
+        clickedPercent={clickedPercent}
+        showTempMarker={isAdmin && editorMode === "Marker"}
+        markers={visibleMarkers}
+        playerPosition={playerPosition}
+        playerName={character.name}
+        playerPortraitUrl={character.portrait_url}
+        onSelectMarker={(marker) => void selectMarker(marker)}
+      />
 
       <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
 
@@ -6703,144 +6577,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 12,
   },
-  viewport: {
-    height: 520,
-    marginHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    overflow: "auto",
-    overflowX: "auto",
-    overflowY: "auto",
-    backgroundColor: "#061010",
-    cursor: "crosshair",
-    touchAction: "pan-x pan-y",
-    overscrollBehavior: "contain",
-    userSelect: "none",
-    WebkitOverflowScrolling: "touch",
-  } as object,
-  mapSurface: {
-    position: "relative",
-    transformOrigin: "0 0",
-    touchAction: "auto",
-    userSelect: "none",
-  } as object,
-  mapImage: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-  },
-  miniMapSurface: {
-    position: "relative",
-    width: "100%",
-    aspectRatio: 1.35,
-    overflow: "hidden",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    backgroundColor: "rgba(0,0,0,0.35)",
-  },
-  miniMapImage: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-  },
-  miniMapFallback: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  routeSegment: {
-    position: "absolute",
-    height: 5,
-    borderRadius: 999,
-    backgroundColor: "rgba(66, 178, 232, 0.62)",
-    transformOrigin: "0 50%",
-  } as object,
-  routeSegmentInactive: {
-    height: 3,
-    backgroundColor: "rgba(213, 164, 65, 0.42)",
-  },
-  routeSegmentDraft: {
-    height: 6,
-    backgroundColor: "rgba(127, 231, 255, 0.88)",
-  },
-  pathPoint: {
-    position: "absolute",
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: colors.blue,
-    backgroundColor: "rgba(4, 6, 6, 0.9)",
-    alignItems: "center",
-    justifyContent: "center",
-    transform: [{ translateX: -14 }, { translateY: -14 }],
-  },
-  pathPointText: {
-    color: colors.text,
-    fontWeight: "900",
-    fontSize: 11,
-  },
-  tempMarker: {
-    position: "absolute",
-    width: 102,
-    minHeight: 42,
-    alignItems: "center",
-    justifyContent: "center",
-    transform: [{ translateX: -51 }, { translateY: -21 }],
-  },
-  tempPulse: {
-    position: "absolute",
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 3,
-    borderColor: "#7fe7ff",
-    backgroundColor: "rgba(30, 168, 236, 0.42)",
-    shadowColor: "#7fe7ff",
-    shadowOpacity: 1,
-    shadowRadius: 14,
-  },
-  tempMarkerText: {
-    color: "#071011",
-    backgroundColor: "#7fe7ff",
-    borderRadius: 999,
-    overflow: "hidden",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    fontWeight: "900",
-    fontSize: 11,
-    marginTop: 40,
-  },
-  marker: {
-    position: "absolute",
-    width: 34,
-    height: 34,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  miniMapMarker: {
-    width: 25,
-    height: 25,
-  },
-  markerHidden: {
-    opacity: 0.46,
-    borderStyle: "dashed",
-  },
-  markerDot: {
-    position: "absolute",
-    left: 10,
-    top: -8,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: colors.gold,
-    backgroundColor: colors.blue,
-  },
   markerType: {
     color: colors.goldSoft,
     fontSize: 10,
@@ -6853,38 +6589,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
-  playerPin: {
-    position: "absolute",
-    zIndex: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 3,
-    borderColor: colors.blue,
-    backgroundColor: "#061118",
-    overflow: "hidden",
-    transform: [{ translateX: -28 }, { translateY: -28 }],
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  miniMapPlayerPin: {
-    width: 35,
-    height: 35,
-    borderRadius: 18,
-    borderWidth: 2,
-    transform: [{ translateX: -18 }, { translateY: -18 }],
-  },
-  playerPortrait: {
-    width: "100%",
-    height: "100%",
-  },
   playerInitial: {
     color: colors.gold,
     fontFamily: fonts.title,
     fontSize: 22,
-  },
-  miniMapPlayerInitial: {
-    fontSize: 14,
   },
   panel: {
     marginHorizontal: 12,
