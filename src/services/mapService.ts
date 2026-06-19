@@ -7,6 +7,7 @@ export type MapRoute = Tables["map_routes"];
 export type MapSeason = Tables["map_seasons"];
 export type MapChapter = Tables["map_chapters"];
 export type RouteProgress = Tables["route_progress"];
+export type PlayerMapState = Tables["player_map_state"];
 export type MapMarker = Tables["map_markers"];
 export type MarkerLegendItem = Tables["marker_legend_items"];
 export type MarkerRouteLink = Tables["marker_route_links"];
@@ -416,6 +417,80 @@ export async function getCurrentRouteProgress() {
   }
 
   return data as RouteProgress | null;
+}
+
+export async function getPlayerMapState() {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("player_map_state")
+    .select("*")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[map] player map state unavailable", error.message);
+    return null;
+  }
+
+  return data as PlayerMapState | null;
+}
+
+export async function savePlayerMapState(values: Pick<PlayerMapState, "active_mini_map_id" | "current_x_percent" | "current_y_percent">) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to save map state.");
+  }
+
+  const { data, error } = await supabase
+    .from("player_map_state")
+    .upsert(
+      {
+        user_id: user.id,
+        active_mini_map_id: values.active_mini_map_id,
+        current_x_percent: values.current_x_percent,
+        current_y_percent: values.current_y_percent,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    )
+    .select()
+    .single();
+
+  if (error) {
+    console.warn("[map] could not save player map state", error.message);
+    return null;
+  }
+
+  return data as PlayerMapState;
+}
+
+export async function clearPlayerMapState() {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return;
+  }
+
+  const { error } = await supabase.from("player_map_state").delete().eq("user_id", user.id);
+
+  if (error) {
+    console.warn("[map] could not clear player map state", error.message);
+  }
 }
 
 export async function setCurrentRoute(routeId: string) {

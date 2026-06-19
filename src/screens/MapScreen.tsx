@@ -56,6 +56,7 @@ import {
   completeStoryMarker,
   applyRewards,
   buyMarketItem,
+  clearPlayerMapState,
   canMarketItemBeSoldTo,
   createDialogueChoice,
   createDialogueNode,
@@ -80,6 +81,7 @@ import {
   getMapEvents,
   getMarkerMarketItems,
   getPlayerMarketPurchaseCounts,
+  getPlayerMapState,
   getMarkerLegendItems,
   getMarkerRouteLinks,
   getMiniMaps,
@@ -110,6 +112,7 @@ import {
   saveMiniMap,
   saveMapChapter,
   saveMapSeason,
+  savePlayerMapState,
   saveRouteProgress,
   saveTutorialStep,
   setCurrentRoute,
@@ -221,6 +224,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const currentHealth = getCurrentHealth(character, combatResources);
   const [distanceWalked, setDistanceWalked] = useState(0);
   const [savedPlayerPosition, setSavedPlayerPosition] = useState<{ x: number; y: number } | null>(null);
+  const [savedMiniMapPosition, setSavedMiniMapPosition] = useState<{ x: number; y: number } | null>(null);
   const [lastPosition, setLastPosition] = useState<Coordinate | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [gpsMessage, setGpsMessage] = useState("GPS is off. Start tracking to count real-world walking distance.");
@@ -419,7 +423,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const miniMapMarkers = useMemo(() => markers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [markers, activeMiniMap?.id]);
   const miniMapSpawnMarker = useMemo(() => miniMapMarkers.find((marker) => marker.type === "Player Spawn") ?? null, [miniMapMarkers]);
   const miniMapSpawnPosition = miniMapSpawnMarker ? { x: Number(miniMapSpawnMarker.x_percent), y: Number(miniMapSpawnMarker.y_percent) } : { x: 50, y: 50 };
-  const miniMapPlayerPosition = route.mini_map_id === activeMiniMap?.id ? playerPosition : miniMapSpawnPosition;
+  const miniMapPlayerPosition = route.mini_map_id === activeMiniMap?.id ? playerPosition : savedMiniMapPosition ?? miniMapSpawnPosition;
   const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
   const adminWorldMarkers = useMemo(() => worldMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, worldMarkers]);
   const adminMiniMapMarkers = useMemo(() => miniMapMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMapMarkers, selectedChapter, selectedSeason]);
@@ -669,7 +673,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       getMapEvents(),
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
-    const progressRows = await getRouteProgressForRoutes(nextRoutes.map((item) => item.id));
+    const [progressRows, playerMapState] = await Promise.all([
+      getRouteProgressForRoutes(nextRoutes.map((item) => item.id)),
+      getPlayerMapState(),
+    ]);
     const storyCompletions = await getStoryMarkerCompletions(loadedMarkers.filter(isStoryQuestMarker).map((item) => item.id));
     const currentProgressRow = progressRows.find((row) => row.is_current);
     const currentRoute = nextRoutes.find((item) => item.id === currentProgressRow?.route_id) ?? null;
@@ -686,10 +693,30 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMapChapters(loadedChapters);
     setRole(loadedRole);
     setAllMapEvents(loadedEvents);
+    const currentMiniMap = currentRoute?.mini_map_id ? loadedMiniMaps.find((item) => item.id === currentRoute.mini_map_id) ?? null : null;
+    const savedMiniMap = !currentMiniMap && playerMapState?.active_mini_map_id ? loadedMiniMaps.find((item) => item.id === playerMapState.active_mini_map_id) ?? null : null;
+    const restoredMiniMap = currentMiniMap ?? savedMiniMap;
+    if (restoredMiniMap) {
+      setActiveMiniMap(restoredMiniMap);
+      setSelectedMiniMapId(restoredMiniMap.id);
+      editMiniMap(restoredMiniMap);
+    }
+    if (savedMiniMap && playerMapState && playerMapState.current_x_percent !== null && playerMapState.current_y_percent !== null) {
+      setSavedMiniMapPosition({ x: Number(playerMapState.current_x_percent), y: Number(playerMapState.current_y_percent) });
+    } else if (restoredMiniMap && !currentMiniMap) {
+      setSavedMiniMapPosition(getMiniMapSpawnPosition(restoredMiniMap.id, loadedMarkers));
+    } else {
+      setSavedMiniMapPosition(null);
+    }
     await selectRoute(firstRoute, true);
     if (!currentRoute) {
       setGpsMessage("Choose a path from a Sign Post to begin travel.");
     }
+  }
+
+  function getMiniMapSpawnPosition(miniMapId: string, markerSource = markers) {
+    const spawnMarker = markerSource.find((marker) => marker.mini_map_id === miniMapId && marker.type === "Player Spawn");
+    return spawnMarker ? { x: Number(spawnMarker.x_percent), y: Number(spawnMarker.y_percent) } : { x: 50, y: 50 };
   }
 
   function switchAdminMapViewMode(mode: "admin" | "player") {
@@ -1451,6 +1478,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const targetMiniMap = linkedRoute.mini_map_id ? miniMaps.find((item) => item.id === linkedRoute.mini_map_id) ?? null : null;
       setActiveMiniMap(targetMiniMap);
       setSelectedMiniMapId(targetMiniMap?.id ?? null);
+      setSavedMiniMapPosition(null);
+      if (targetMiniMap) {
+        void savePlayerMapState({ active_mini_map_id: targetMiniMap.id, current_x_percent: startPoint.x, current_y_percent: startPoint.y });
+      } else {
+        void clearPlayerMapState();
+      }
       setSelectedMarker(null);
       setPreviewMarkerScene(false);
       setMarkerPanelMessage(null);
@@ -1560,6 +1593,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const nextMiniMap = nextRoute.mini_map_id ? miniMaps.find((item) => item.id === nextRoute.mini_map_id) ?? null : null;
     setActiveMiniMap(nextMiniMap);
     setSelectedMiniMapId(nextMiniMap?.id ?? null);
+    setSavedMiniMapPosition(null);
+    if (nextMiniMap) {
+      void savePlayerMapState({ active_mini_map_id: nextMiniMap.id, current_x_percent: nextPoint.x, current_y_percent: nextPoint.y });
+    } else {
+      void clearPlayerMapState();
+    }
     await selectRoute(nextRoute, true);
     setGpsMessage(`${nextRoute.name} is now your active walking path.`);
   }
@@ -1589,6 +1628,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const nextMiniMap = nextRoute.mini_map_id ? miniMaps.find((item) => item.id === nextRoute.mini_map_id) ?? null : null;
     setActiveMiniMap(nextMiniMap);
     setSelectedMiniMapId(nextMiniMap?.id ?? null);
+    setSavedMiniMapPosition(null);
+    if (nextMiniMap) {
+      void savePlayerMapState({ active_mini_map_id: nextMiniMap.id, current_x_percent: startPoint.x, current_y_percent: startPoint.y });
+    } else {
+      void clearPlayerMapState();
+    }
     await selectRoute(nextRoute, true);
   }
 
@@ -1782,7 +1827,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
-  function openMiniMap(miniMap: MiniMap) {
+  function openMiniMap(miniMap: MiniMap, options?: { persistPlayerState?: boolean }) {
+    const persistPlayerState = options?.persistPlayerState ?? !isAdmin;
+    const nextFreeRoamPosition = getMiniMapSpawnPosition(miniMap.id);
     setActiveMiniMap(miniMap);
     setSelectedMiniMapId(miniMap.id);
     editMiniMap(miniMap);
@@ -1791,6 +1838,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setClickedPercent(null);
+    if (route.mini_map_id !== miniMap.id) {
+      setSavedMiniMapPosition(nextFreeRoamPosition);
+      if (persistPlayerState) {
+        void savePlayerMapState({
+          active_mini_map_id: miniMap.id,
+          current_x_percent: nextFreeRoamPosition.x,
+          current_y_percent: nextFreeRoamPosition.y,
+        });
+      }
+    }
   }
 
   async function leaveMiniMap(targetPosition?: { x: number; y: number }) {
@@ -1808,6 +1865,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerPanelMessage(null);
     setClickedPercent(null);
     setPathDraft([]);
+    setSavedMiniMapPosition(null);
+    void clearPlayerMapState();
 
     if (shouldRestoreWorldRoute) {
       await setCurrentRoute(nextWorldRoute.id);

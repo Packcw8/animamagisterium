@@ -448,6 +448,13 @@ export type Tables = {
     source_marker_id: string | null;
     updated_at: string;
   };
+  player_map_state: {
+    user_id: string;
+    active_mini_map_id: string | null;
+    current_x_percent: number | null;
+    current_y_percent: number | null;
+    updated_at: string;
+  };
   map_markers: {
     id: string;
     type: string;
