@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { Frame } from "./Frame";
 import { colors, fonts } from "./theme";
-import type { EarnedBadgeSummary } from "../services/badgeService";
+import type { BadgeDefinition, EarnedBadgeSummary } from "../services/badgeService";
 import type { LeaderboardRow } from "../services/leaderboardService";
 
 type PlayerProfileCardProps = {
@@ -47,13 +48,30 @@ export function PlayerProfileCard({ profile, badges = [], title = "Player Profil
         {badges.length === 0 ? <Text style={styles.copy}>No earned badges visible yet.</Text> : null}
         <View style={styles.badgeRow}>
           {badges.slice(0, 8).map((entry) => (
-            <View key={entry.badge.id} style={styles.badgePill}>
-              <Text style={styles.badgeText}>{entry.badge.icon_label || entry.badge.title.slice(0, 3).toUpperCase()}</Text>
-            </View>
+            <ProfileBadge key={entry.badge.id} badge={entry.badge} />
           ))}
         </View>
       </View>
     </Frame>
+  );
+}
+
+function ProfileBadge({ badge }: { badge: BadgeDefinition }) {
+  const [failed, setFailed] = useState(false);
+  const imageUri = resolveBadgeImageUri(badge.icon_url);
+  const fallbackText = badge.icon_label || badge.title.slice(0, 3).toUpperCase();
+
+  return (
+    <View style={styles.badgeTile}>
+      <View style={styles.badgePill}>
+        {imageUri && !failed ? (
+          <Image source={{ uri: imageUri }} style={styles.badgeImage} resizeMode="cover" onError={() => setFailed(true)} />
+        ) : (
+          <Text style={styles.badgeText}>{fallbackText}</Text>
+        )}
+      </View>
+      <Text style={styles.badgeLabel} numberOfLines={1}>{badge.title}</Text>
+    </View>
   );
 }
 
@@ -72,6 +90,35 @@ function formatDistance(meters: number) {
   }
 
   return `${(meters / 1609.344).toFixed(2)} mi`;
+}
+
+function resolveBadgeImageUri(imagePath?: string | null) {
+  const trimmed = imagePath?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const normalized = trimmed.replaceAll("\\", "/");
+  const fixedFolder = normalized.replace(/^\/?assets\/badges\//i, "/assets/badges/");
+
+  if (fixedFolder.startsWith("/assets/badges/")) {
+    return fixedFolder;
+  }
+
+  if (fixedFolder.startsWith("assets/badges/")) {
+    return `/${fixedFolder}`;
+  }
+
+  if (!fixedFolder.includes("/")) {
+    return `/assets/badges/${fixedFolder}`;
+  }
+
+  return fixedFolder.startsWith("/") ? fixedFolder : `/${fixedFolder}`;
 }
 
 const styles = StyleSheet.create({
@@ -181,19 +228,35 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
   },
+  badgeTile: {
+    width: 58,
+    alignItems: "center",
+    gap: 5,
+  },
   badgePill: {
-    minWidth: 42,
-    height: 36,
-    borderRadius: 18,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.gold,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(217, 170, 93, 0.12)",
+    overflow: "hidden",
+  },
+  badgeImage: {
+    width: "100%",
+    height: "100%",
   },
   badgeText: {
     color: colors.gold,
     fontWeight: "900",
     fontSize: 11,
+  },
+  badgeLabel: {
+    color: colors.muted,
+    fontSize: 9,
+    maxWidth: 58,
+    textAlign: "center",
   },
 });
