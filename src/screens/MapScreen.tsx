@@ -191,6 +191,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [mapInventoryOpen, setMapInventoryOpen] = useState(false);
   const [mapItemMessage, setMapItemMessage] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("player");
+  const [adminMapViewMode, setAdminMapViewMode] = useState<"admin" | "player">("admin");
   const currentHealth = getCurrentHealth(character, combatResources);
   const [distanceWalked, setDistanceWalked] = useState(0);
   const [savedPlayerPosition, setSavedPlayerPosition] = useState<{ x: number; y: number } | null>(null);
@@ -378,7 +379,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const movementStateRef = useRef<PlayerMovementState>("IDLE");
   const movementCandidateRef = useRef<{ state: PlayerMovementState; since: number } | null>(null);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
-  const isAdmin = role === "admin";
+  const actualIsAdmin = role === "admin";
+  const isAdmin = actualIsAdmin && adminMapViewMode === "admin";
+  const isAdminPlayerPreview = actualIsAdmin && adminMapViewMode === "player";
   const scaledMapSize = useMemo(() => ({ width: mapSize.width * scale, height: mapSize.height * scale }), [scale]);
 
   const progressPercent = Math.min(100, Math.max(0, (distanceWalked / route.distance_required_meters) * 100));
@@ -666,6 +669,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     await selectRoute(firstRoute, true);
     if (!currentRoute) {
       setGpsMessage("Choose a path from a Sign Post to begin travel.");
+    }
+  }
+
+  function switchAdminMapViewMode(mode: "admin" | "player") {
+    setAdminMapViewMode(mode);
+
+    if (mode === "player") {
+      setAdminMessage(null);
+      setClickedPercent(null);
+      setPreviewMarkerScene(false);
+      setAdminPreviewMode(null);
+      setSelectedMarker(null);
+      setMarkerPanelMessage("Player view is active. Markers now use player proximity, lock, and visibility rules.");
+    } else {
+      setMarkerPanelMessage(null);
     }
   }
 
@@ -4202,6 +4220,30 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         <Pressable style={styles.toolButton} onPress={centerOnPlayer}><Text style={styles.toolText}>Center Player</Text></Pressable>
         <Pressable style={[styles.toolButton, followPlayer && styles.toolActive]} onPress={() => setFollowPlayer((value) => !value)}><Text style={styles.toolText}>Follow {followPlayer ? "On" : "Off"}</Text></Pressable>
       </View>
+
+      {actualIsAdmin ? (
+        <Frame style={styles.adminViewTool}>
+          <View style={styles.adminViewToolHeader}>
+            <View style={styles.adminViewToolCopy}>
+              <Text style={styles.markerName}>Admin View Tool</Text>
+              <Text style={styles.copy}>
+                {isAdminPlayerPreview
+                  ? "Player View is active. The map uses player proximity, lock, and visibility rules."
+                  : "Admin View is active. Editor tools, all markers, and admin previews are available."}
+              </Text>
+            </View>
+            <View style={styles.viewModeControls}>
+              <Pressable style={[styles.viewModeButton, adminMapViewMode === "admin" && styles.typeSelected]} onPress={() => switchAdminMapViewMode("admin")}>
+                <Text style={styles.secondaryText}>Admin</Text>
+              </Pressable>
+              <Pressable style={[styles.viewModeButton, adminMapViewMode === "player" && styles.typeSelected]} onPress={() => switchAdminMapViewMode("player")}>
+                <Text style={styles.secondaryText}>Player View</Text>
+              </Pressable>
+            </View>
+          </View>
+        </Frame>
+      ) : null}
+
       <View ref={viewportRef as never} style={styles.viewport} {...({ onWheel: handleWheel } as object)}>
         <View
           style={[
@@ -4254,7 +4296,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <Text style={styles.pathPointText}>{index + 1}</Text>
             </View>
           )) : null}
-          {editorMode === "Marker" && clickedPercent ? (
+          {isAdmin && editorMode === "Marker" && clickedPercent ? (
             <View pointerEvents="none" style={[styles.tempMarker, { left: `${clickedPercent.x}%`, top: `${clickedPercent.y}%` }]}>
               <View style={styles.tempPulse} />
               <Text style={styles.tempMarkerText}>New Marker</Text>
@@ -7171,6 +7213,38 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
     padding: 12,
+  },
+  adminViewTool: {
+    marginHorizontal: 12,
+    marginBottom: 10,
+    padding: 12,
+  },
+  adminViewToolHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  adminViewToolCopy: {
+    flex: 1,
+    minWidth: 220,
+    gap: 4,
+  },
+  viewModeControls: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  viewModeButton: {
+    minHeight: 38,
+    minWidth: 96,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 10,
   },
   toolButton: {
     minHeight: 42,
