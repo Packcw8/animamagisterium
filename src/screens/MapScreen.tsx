@@ -104,7 +104,6 @@ import {
   MarkerRouteLink,
   MiniMap,
   Role,
-  resetRouteProgress,
   StoryDialogueChoice,
   StoryDialogueNode,
   saveMarkerMarketItem,
@@ -1612,8 +1611,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     const progress = await getRouteProgress(nextRoute.id);
-    const existingDistance = Number(progress?.distance_walked_meters ?? 0);
-    const nextProgress = Math.min(100, Math.max(0, progress?.progress_percent ?? (existingDistance / nextRoute.distance_required_meters) * 100));
+    const savedProgress = Number(progress?.progress_percent ?? 0);
+    const isCompletedNonStoryRoute = savedProgress >= 100 && !progress?.source_marker_id;
+    const existingDistance = isCompletedNonStoryRoute ? 0 : Number(progress?.distance_walked_meters ?? 0);
+    const nextProgress = isCompletedNonStoryRoute
+      ? 0
+      : Math.min(100, Math.max(0, progress?.progress_percent ?? (existingDistance / nextRoute.distance_required_meters) * 100));
     const nextPoint = getPointOnRoute(nextRoute.path_points, nextProgress);
 
     await setCurrentRoute(nextRoute.id);
@@ -1632,8 +1635,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       last_lng: null,
       travel_direction: "forward",
       is_current: true,
-      source_marker_id: null,
+      source_marker_id: isCompletedNonStoryRoute ? null : progress?.source_marker_id ?? null,
     });
+    if (isCompletedNonStoryRoute) {
+      setCompletedRouteId(null);
+    }
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setMarkerPanelMessage(null);
@@ -2163,6 +2169,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function startBattle(event: MapEvent, preview = false) {
+    if (!preview) {
+      await saveCurrentRoutePositionBeforeBattle();
+    }
+
     await startBattleEncounter(event, {
       preview,
       currentHealth,
@@ -2171,6 +2181,35 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setAdminPreviewMode,
       setAdminMessage,
     });
+  }
+
+  async function saveCurrentRoutePositionBeforeBattle() {
+    const currentDistance = distanceWalkedRef.current;
+    const currentProgress = Math.min(100, Math.max(0, (currentDistance / route.distance_required_meters) * 100 || progressPercent));
+    const currentPoint = getPointOnRoute(route.path_points, currentProgress);
+
+    setDistanceWalked(currentDistance);
+    setSavedPlayerPosition(currentPoint);
+    setRouteProgressRows((current) => upsertRouteProgressRow(current, route.id, currentProgress, true));
+
+    await saveRouteProgress(route.id, {
+      distance_walked_meters: currentDistance,
+      progress_percent: currentProgress,
+      current_x_percent: currentPoint.x,
+      current_y_percent: currentPoint.y,
+      last_lat: null,
+      last_lng: null,
+      travel_direction: routeDirectionRef.current,
+      is_current: true,
+    });
+
+    if (route.mini_map_id) {
+      void savePlayerMapState({
+        active_mini_map_id: route.mini_map_id,
+        current_x_percent: currentPoint.x,
+        current_y_percent: currentPoint.y,
+      });
+    }
   }
 
   async function finishEvent(event: MapEvent) {
@@ -2364,23 +2403,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function resetCurrentRouteAfterDefeat() {
-    const startPoint = route.path_points[0] ?? { x: 33.8, y: 73.81 };
-    const resetProgress = await resetRouteProgress(route.id, startPoint);
-
-    if (!resetProgress) {
-      setBattleLog((current) => ["Unable to save trail reset. Please check your connection and try Return to Trail Start again.", ...current].slice(0, 8));
-      return;
-    }
-
-    distanceWalkedRef.current = 0;
-    setDistanceWalked(0);
-    setSavedPlayerPosition(startPoint);
-    setRouteDirection("forward");
-    routeDirectionRef.current = "forward";
+    await reduceCurrentRouteProgress(5);
     setCompletedRouteId(null);
-    setRouteProgressRows((current) => upsertRouteProgressRow(current, route.id, 0, true));
     resetBattleState();
-    setGpsMessage("Defeated. Route progress reset to the start of this path.");
+    setGpsMessage("Defeated. You lost 5% progress on this path.");
   }
 
   function editMapEvent(event: MapEvent) {

@@ -171,7 +171,7 @@ export function BattleEventScreen({
             <View style={styles.revivePrompt}>
               <Text style={styles.selectedTitle}>You have fallen</Text>
               <Text style={styles.copy}>
-                {reviveItem ? `${reviveItem.item.name} is in your inventory. Use it to continue this battle, or return to the start of the trail.` : "No Revive Scroll found. Return to the start of the trail."}
+                {reviveItem ? `${reviveItem.item.name} is in your inventory. Use it to continue this battle, or accept a 5% path setback.` : "No Revive Scroll found. You will lose 5% progress on this path."}
               </Text>
               <View style={styles.modeRow}>
                 {reviveItem ? (
@@ -180,7 +180,7 @@ export function BattleEventScreen({
                   </Pressable>
                 ) : null}
                 <Pressable style={styles.secondaryButtonFlex} onPress={onDeclineRevive}>
-                  <Text style={styles.secondaryText}>Return to Trail Start</Text>
+                  <Text style={styles.secondaryText}>Accept 5% Setback</Text>
                 </Pressable>
               </View>
             </View>
@@ -209,9 +209,9 @@ export function BattleEventScreen({
           {result === "defeat" && !revivePromptOpen ? (
             <View style={styles.battleResultPanel}>
               <Text style={styles.selectedTitle}>Defeated</Text>
-              <Text style={styles.copy}>Defeat is final for this attempt. Return to the trail start to continue.</Text>
+              <Text style={styles.copy}>Defeat is final for this attempt. Continue from 5% back on the path.</Text>
               <Pressable style={styles.primaryButton} onPress={onReturnToStart}>
-                <Text style={styles.primaryText}>Return to Trail Start</Text>
+                <Text style={styles.primaryText}>Continue From Setback</Text>
               </Pressable>
             </View>
           ) : null}
