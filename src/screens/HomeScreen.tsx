@@ -140,6 +140,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [abilityMessage, setAbilityMessage] = useState<string | null>(null);
   const [adminAbilities, setAdminAbilities] = useState<CombatAbility[]>([]);
   const [abilityForm, setAbilityForm] = useState<Partial<CombatAbility>>(blankCombatAbility());
+  const [abilityCostResource, setAbilityCostResource] = useState<AbilityCostResource>("none");
   const [editingAdminAbilityId, setEditingAdminAbilityId] = useState<string | null>(null);
   const [enemies, setEnemies] = useState<EnemyDefinition[]>([]);
   const [enemyForm, setEnemyForm] = useState<Partial<EnemyDefinition>>(blankEnemy());
@@ -297,6 +298,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
       const saved = await saveCombatAbility({ ...abilityForm, id: editingAdminAbilityId ?? undefined });
       setAbilityMessage(`${saved.name} saved.`);
       setAbilityForm(blankCombatAbility());
+      setAbilityCostResource("none");
       setEditingAdminAbilityId(null);
       await loadAdminCombat();
     } catch (error) {
@@ -309,6 +311,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     setAbilityTypeTab(toAbilityTypeTab(ability.type));
     setEditingAdminAbilityId(ability.id);
     setAbilityForm(ability);
+    setAbilityCostResource(getAbilityCostResource(ability));
   }
 
   async function removeAdminAbility(id: string) {
@@ -927,14 +930,17 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                   <ChoiceRow
                     label="Cost resource"
                     options={abilityCostResources}
-                    value={getAbilityCostResource(abilityForm)}
+                    value={abilityCostResource}
                     labels={abilityCostResourceLabels}
-                    onSelect={(value) => setAbilityForm((current) => setAbilityCost(current, value, getAbilityCostAmount(current)))}
+                    onSelect={(value) => {
+                      setAbilityCostResource(value);
+                      setAbilityForm((current) => setAbilityCost(current, value, getAbilityCostAmount(current)));
+                    }}
                   />
                   <ItemText
-                    label={getAbilityCostResource(abilityForm) === "none" ? "Cost amount disabled" : `${abilityCostResourceLabels[getAbilityCostResource(abilityForm)]} cost amount`}
+                    label={abilityCostResource === "none" ? "Cost amount disabled" : `${abilityCostResourceLabels[abilityCostResource]} cost amount`}
                     value={String(getAbilityCostAmount(abilityForm))}
-                    onChange={(value) => setAbilityForm((current) => setAbilityCost(current, getAbilityCostResource(current), Number(value) || 0))}
+                    onChange={(value) => setAbilityForm((current) => setAbilityCost(current, abilityCostResource, Number(value) || 0))}
                   />
                 </View>
                 <View style={styles.slotActions}>
@@ -969,7 +975,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                   <Text style={styles.primaryAdminText}>{editingAdminAbilityId ? "Update Ability" : "Add Ability"}</Text>
                 </Pressable>
                 {editingAdminAbilityId ? (
-                  <Pressable style={styles.smallButton} onPress={() => { setEditingAdminAbilityId(null); setAbilityForm(blankCombatAbility()); }}>
+                  <Pressable style={styles.smallButton} onPress={() => { setEditingAdminAbilityId(null); setAbilityForm(blankCombatAbility()); setAbilityCostResource("none"); }}>
                     <Text style={styles.smallButtonText}>Cancel Ability Edit</Text>
                   </Pressable>
                 ) : null}
