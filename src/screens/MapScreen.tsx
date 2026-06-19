@@ -14,6 +14,7 @@ import { LegendEditor } from "../components/map/LegendEditor";
 import { MarkerAdminList } from "../components/map/MarkerAdminList";
 import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
+import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
 import { MiniMapEditor } from "../components/map/MiniMapEditor";
 import { WalkingPathAdminPanel } from "../components/map/WalkingPathAdminPanel";
 import { ProgressBar } from "../components/ProgressBar";
@@ -4366,13 +4367,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           ) : null}
           {editorMode === "Marker" && ["World Markers", "Area/Town Markers"].includes(adminSection) ? (
             <>
-              <View style={styles.typeGrid}>
-                {activeSectionMarkerTypes.map((type) => (
-                  <Pressable key={type} style={[styles.typeButton, draftType === type && styles.typeSelected]} onPress={() => setDraftType(type)}>
-                    <Text style={styles.typeText}>{type}</Text>
-                  </Pressable>
-                ))}
-              </View>
+              <MarkerTypeSelector types={activeSectionMarkerTypes} selectedType={draftType} onSelectType={setDraftType} />
               <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
@@ -5566,13 +5561,7 @@ function MiniMapMarkerAdminForm({
   return (
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Create / Edit Mini Map Marker</Text>
-      <View style={styles.typeGrid}>
-        {activeSectionMarkerTypes.map((type) => (
-          <Pressable key={type} style={[styles.typeButton, draftType === type && styles.typeSelected]} onPress={() => setDraftType(type)}>
-            <Text style={styles.typeText}>{type}</Text>
-          </Pressable>
-        ))}
-      </View>
+      <MarkerTypeSelector types={activeSectionMarkerTypes} selectedType={draftType} onSelectType={setDraftType} />
       <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
