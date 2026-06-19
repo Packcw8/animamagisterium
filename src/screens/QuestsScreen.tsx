@@ -229,12 +229,12 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
             <View style={styles.balanceBody}>
               <Text style={styles.balanceGroupTitle}>Global Level Rules</Text>
               <View style={styles.balanceGrid}>
-                <BalanceNumber label="Overall level cap" value={progressionSettings.character_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_level_cap: value }))} />
-                <BalanceNumber label="XP for next level base" value={progressionSettings.character_xp_base} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_base: value }))} />
-                <BalanceNumber label="XP growth per level" value={progressionSettings.character_xp_growth} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_growth: value }))} />
-                <BalanceNumber label="Default attribute cap" value={progressionSettings.default_attribute_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, default_attribute_level_cap: value }))} />
-                <BalanceNumber label="Daily training limit" value={progressionSettings.daily_training_limit} onChange={(value) => setProgressionSettings((current) => ({ ...current, daily_training_limit: value }))} />
-                <BalanceNumber label="Cooldown minutes" value={progressionSettings.training_cooldown_minutes} onChange={(value) => setProgressionSettings((current) => ({ ...current, training_cooldown_minutes: value }))} />
+                <BalanceNumber grid label="Overall level cap" value={progressionSettings.character_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_level_cap: value }))} />
+                <BalanceNumber grid label="XP for next level base" value={progressionSettings.character_xp_base} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_base: value }))} />
+                <BalanceNumber grid label="XP growth per level" value={progressionSettings.character_xp_growth} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_growth: value }))} />
+                <BalanceNumber grid label="Default attribute cap" value={progressionSettings.default_attribute_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, default_attribute_level_cap: value }))} />
+                <BalanceNumber grid label="Daily training limit" value={progressionSettings.daily_training_limit} onChange={(value) => setProgressionSettings((current) => ({ ...current, daily_training_limit: value }))} />
+                <BalanceNumber grid label="Cooldown minutes" value={progressionSettings.training_cooldown_minutes} onChange={(value) => setProgressionSettings((current) => ({ ...current, training_cooldown_minutes: value }))} />
               </View>
               <Pressable style={styles.primaryButton} onPress={() => void saveGlobalBalance()}>
                 <Text style={styles.primaryText}>Save Global Balance</Text>
@@ -250,12 +250,12 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                   <BalanceText label="Goal text template" value={selectedConfig.goal_template} onChange={(value) => updateSelectedConfig({ goal_template: value })} />
                   <Text style={styles.copy}>Template tokens: {"{value}"}, {"{unit}"}, {"{attribute}"}</Text>
                   <View style={styles.balanceGrid}>
-                    <BalanceText label="Unit" value={selectedConfig.unit} onChange={(value) => updateSelectedConfig({ unit: value })} />
-                    <BalanceNumber label="Starting goal" value={selectedConfig.starting_goal} onChange={(value) => updateSelectedConfig({ starting_goal: value })} />
-                    <BalanceNumber label="Goal increase" value={selectedConfig.goal_increment} onChange={(value) => updateSelectedConfig({ goal_increment: value })} />
-                    <BalanceNumber label="Character XP reward" value={selectedConfig.character_xp_reward} onChange={(value) => updateSelectedConfig({ character_xp_reward: value })} />
-                    <BalanceNumber label="Attribute XP reward" value={selectedConfig.attribute_xp_reward} onChange={(value) => updateSelectedConfig({ attribute_xp_reward: value })} />
-                    <BalanceNumber label="Attribute level cap" value={selectedConfig.level_cap} onChange={(value) => updateSelectedConfig({ level_cap: value })} />
+                    <BalanceText grid label="Unit" value={selectedConfig.unit} onChange={(value) => updateSelectedConfig({ unit: value })} />
+                    <BalanceNumber grid label="Starting goal" value={selectedConfig.starting_goal} onChange={(value) => updateSelectedConfig({ starting_goal: value })} />
+                    <BalanceNumber grid label="Goal increase" value={selectedConfig.goal_increment} onChange={(value) => updateSelectedConfig({ goal_increment: value })} />
+                    <BalanceNumber grid label="Character XP reward" value={selectedConfig.character_xp_reward} onChange={(value) => updateSelectedConfig({ character_xp_reward: value })} />
+                    <BalanceNumber grid label="Attribute XP reward" value={selectedConfig.attribute_xp_reward} onChange={(value) => updateSelectedConfig({ attribute_xp_reward: value })} />
+                    <BalanceNumber grid label="Attribute level cap" value={selectedConfig.level_cap} onChange={(value) => updateSelectedConfig({ level_cap: value })} />
                   </View>
                   <Pressable style={styles.primaryButton} onPress={() => void saveAttributeBalance()}>
                     <Text style={styles.primaryText}>Save Selected Training</Text>
@@ -291,18 +291,19 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BalanceText({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+function BalanceText({ label, value, onChange, grid = false }: { label: string; value: string; onChange: (value: string) => void; grid?: boolean }) {
   return (
-    <View style={styles.balanceField}>
+    <View style={[styles.balanceField, grid && styles.balanceGridField]}>
       <Text style={styles.infoLabel}>{label}</Text>
       <TextInput style={styles.balanceInput} value={String(value ?? "")} onChangeText={onChange} placeholderTextColor={colors.muted} />
     </View>
   );
 }
 
-function BalanceNumber({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+function BalanceNumber({ label, value, onChange, grid = false }: { label: string; value: number; onChange: (value: number) => void; grid?: boolean }) {
   return (
     <BalanceText
+      grid={grid}
       label={label}
       value={String(value ?? 0)}
       onChange={(nextValue) => onChange(Number(nextValue) || 0)}
@@ -424,9 +425,14 @@ const styles = StyleSheet.create({
     paddingTop: 12,
   },
   balanceField: {
-    flexGrow: 1,
-    flexBasis: "45%",
+    width: "100%",
     gap: 6,
+  },
+  balanceGridField: {
+    flexGrow: 1,
+    flexBasis: 240,
+    minWidth: 220,
+    maxWidth: "100%",
   },
   balanceInput: {
     minHeight: 44,
