@@ -12,6 +12,7 @@ import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel
 import { LegendEditor } from "../components/map/LegendEditor";
 import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
+import { MiniMapEditor } from "../components/map/MiniMapEditor";
 import { WalkingPathAdminPanel } from "../components/map/WalkingPathAdminPanel";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
@@ -4360,39 +4361,27 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </Pressable>
           </> : null}
           {adminSection === "Mini Maps" ? (
-            <View style={styles.storyEditor}>
-              <Text style={styles.selectedTitle}>Mini Maps</Text>
-              <Text style={styles.copy}>Create maps for towns, forests, dungeons, areas, or tutorials. Link one to an Area/Town Entrance marker to let players enter it.</Text>
-              <TextInput value={miniMapName} onChangeText={setMiniMapName} placeholder="Mini map name" placeholderTextColor={colors.muted} style={styles.input} />
-              <View style={styles.storyRoutePicker}>
-                {miniMapTypes.map((type) => (
-                  <Pressable key={type} style={[styles.routeChip, miniMapType === type && styles.routeChipActive]} onPress={() => setMiniMapType(type)}>
-                    <Text style={styles.routeChipText}>{type}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <TextInput value={miniMapBackground} onChangeText={setMiniMapBackground} placeholder="Background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
-              <AdminImageUploadButton folder="mini-maps" onUploaded={setMiniMapBackground} onMessage={setAdminMessage} />
-              <TextInput value={miniMapDescription} onChangeText={setMiniMapDescription} placeholder="Description" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
-              <Pressable style={[styles.secondaryButton, miniMapActive && styles.typeSelected]} onPress={() => setMiniMapActive((value) => !value)}>
-                <Text style={styles.secondaryText}>Active: {miniMapActive ? "true" : "false"}</Text>
-              </Pressable>
-              <Pressable style={styles.primaryButton} onPress={() => void saveMiniMapForm()} disabled={!miniMapName.trim()}>
-                <Text style={styles.primaryText}>Create Mini Map</Text>
-              </Pressable>
-              <Text style={styles.selectedTitle}>Existing Mini Maps</Text>
-              {adminMiniMaps.map((miniMap) => (
-                <View key={miniMap.id} style={styles.storyCard}>
-                  <Text style={styles.markerName}>{miniMap.name}</Text>
-                  <Text style={styles.copy}>{miniMap.type} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
-                  <View style={styles.modeRow}>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => { setSelectedMiniMapId(miniMap.id); openMiniMap(miniMap); }}><Text style={styles.secondaryText}>Open</Text></Pressable>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeMiniMap(miniMap.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
-                  </View>
-                </View>
-              ))}
-              <Text style={styles.debugLine}>Open a mini map to place spawn markers, sign posts, shops, encounters, and mini-map walking paths.</Text>
-            </View>
+            <MiniMapEditor
+              miniMapTypes={miniMapTypes}
+              miniMaps={adminMiniMaps}
+              name={miniMapName}
+              type={miniMapType}
+              background={miniMapBackground}
+              description={miniMapDescription}
+              active={miniMapActive}
+              onChangeName={setMiniMapName}
+              onChangeType={setMiniMapType}
+              onChangeBackground={setMiniMapBackground}
+              onChangeDescription={setMiniMapDescription}
+              onToggleActive={() => setMiniMapActive((value) => !value)}
+              onSave={() => void saveMiniMapForm()}
+              onOpen={(miniMap) => {
+                setSelectedMiniMapId(miniMap.id);
+                openMiniMap(miniMap);
+              }}
+              onDelete={(miniMapId) => void removeMiniMap(miniMapId)}
+              onUploadMessage={setAdminMessage}
+            />
           ) : null}
           {editorMode === "Marker" && ["World Markers", "Area/Town Markers"].includes(adminSection) ? (
             <>
