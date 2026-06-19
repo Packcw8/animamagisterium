@@ -1,6 +1,7 @@
 import { distance as turfDistance } from "@turf/turf";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButton";
 import { BattleActionCard, CombatIndicatorStack, ResourceMeter, type CombatIndicator } from "../components/battle/BattleDisplay";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
@@ -8,12 +9,12 @@ import { AdminMapEditorHeader } from "../components/map/AdminMapEditorHeader";
 import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef } from "../components/map/MapCanvas";
 import { MarkerIcon } from "../components/map/MarkerIcon";
 import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel";
+import { LegendEditor } from "../components/map/LegendEditor";
 import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
-import { pickAndUploadAdminImage } from "../services/adminImageService";
 import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
 import { AbilityDefinition, CharacterResources, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, getNpcLoadout, getNpcs, NpcDefinition, NpcWithLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
@@ -4296,80 +4297,32 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             }}
           />
           {adminSection === "Legend" ? (
-            <View style={styles.storyEditor}>
-              <Text style={styles.selectedTitle}>Map Legend Builder</Text>
-              <Text style={styles.copy}>Create the player-facing key for map emblems. Use short icon text like MKT, or paste an icon image URL/asset path.</Text>
-              <View style={styles.storyRoutePicker}>
-                {legendMarkerTypes.map((type) => (
-                  <Pressable key={type} style={[styles.routeChip, legendMarkerType === type && styles.routeChipActive]} onPress={() => setLegendMarkerType(type)}>
-                    <Text style={styles.routeChipText}>{type}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <TextInput value={legendTitle} onChangeText={setLegendTitle} placeholder="Legend title, example Market" placeholderTextColor={colors.muted} style={styles.input} />
-              <TextInput value={legendDescription} onChangeText={setLegendDescription} placeholder="What this marker means to players" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
-              <TextInput value={legendIconLabel} onChangeText={setLegendIconLabel} placeholder="Icon text, example MKT" placeholderTextColor={colors.muted} style={styles.input} />
-              <TextInput value={legendIconImage} onChangeText={setLegendIconImage} placeholder="Icon image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
-              <AdminImageUploadButton folder="legend-icons" onUploaded={setLegendIconImage} onMessage={setAdminMessage} />
-              <TextInput value={legendIconColor} onChangeText={setLegendIconColor} placeholder="Icon color, example #d9a441" placeholderTextColor={colors.muted} style={styles.input} />
-              <TextInput value={legendSortOrder} onChangeText={setLegendSortOrder} placeholder="Sort order" placeholderTextColor={colors.muted} style={styles.input} />
-              <Pressable style={[styles.secondaryButton, legendActive && styles.typeSelected]} onPress={() => setLegendActive((value) => !value)}>
-                <Text style={styles.secondaryText}>Active: {legendActive ? "true" : "false"}</Text>
-              </Pressable>
-              <View style={styles.legendPreviewRow}>
-                <MarkerIcon
-                  marker={{
-                    type: legendMarkerType,
-                    icon_label: legendIconLabel,
-                    icon_image_url: legendIconImage,
-                    icon_color: legendIconColor,
-                  }}
-                  compact
-                />
-                <View style={styles.markerTableInfo}>
-                  <Text style={styles.markerName}>{legendTitle || "Legend preview"}</Text>
-                  <Text style={styles.copy}>{legendDescription || "Players will see this text in the collapsible legend."}</Text>
-                </View>
-              </View>
-              <Pressable style={styles.primaryButton} onPress={() => void saveLegendItemForm()} disabled={!legendTitle.trim()}>
-                <Text style={styles.primaryText}>{editingLegendItemId ? "Update Legend Item" : "Create Legend Item"}</Text>
-              </Pressable>
-              {editingLegendItemId ? (
-                <Pressable style={styles.secondaryButton} onPress={clearLegendForm}>
-                  <Text style={styles.secondaryText}>Cancel Legend Edit</Text>
-                </Pressable>
-              ) : null}
-              <Text style={styles.selectedTitle}>Existing Legend Items</Text>
-            {adminLegendItems.length === 0 ? <Text style={styles.copy}>No legend items yet.</Text> : null}
-              {adminLegendItems.map((item) => (
-                <View key={item.id} style={styles.storyCard}>
-                  <View style={styles.legendPreviewRow}>
-                    <MarkerIcon
-                      marker={{
-                        type: item.marker_type,
-                        icon_label: item.icon_label,
-                        icon_image_url: item.icon_image_url,
-                        icon_color: item.icon_color,
-                      }}
-                      compact
-                    />
-                    <View style={styles.markerTableInfo}>
-                      <Text style={styles.markerName}>{item.title}</Text>
-                      <Text style={styles.copy}>{item.marker_type} / Order {item.sort_order} / {item.is_active ? "Active" : "Hidden"}</Text>
-                      {item.description ? <Text style={styles.copy}>{item.description}</Text> : null}
-                    </View>
-                  </View>
-                  <View style={styles.modeRow}>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => editLegendItem(item)}>
-                      <Text style={styles.secondaryText}>Edit</Text>
-                    </Pressable>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeLegendItem(item.id)}>
-                      <Text style={styles.dangerText}>Delete</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ))}
-            </View>
+            <LegendEditor
+              markerTypes={legendMarkerTypes}
+              items={adminLegendItems}
+              editingItemId={editingLegendItemId}
+              markerType={legendMarkerType}
+              title={legendTitle}
+              description={legendDescription}
+              iconLabel={legendIconLabel}
+              iconImage={legendIconImage}
+              iconColor={legendIconColor}
+              sortOrder={legendSortOrder}
+              active={legendActive}
+              onChangeMarkerType={setLegendMarkerType}
+              onChangeTitle={setLegendTitle}
+              onChangeDescription={setLegendDescription}
+              onChangeIconLabel={setLegendIconLabel}
+              onChangeIconImage={setLegendIconImage}
+              onChangeIconColor={setLegendIconColor}
+              onChangeSortOrder={setLegendSortOrder}
+              onToggleActive={() => setLegendActive((value) => !value)}
+              onSave={() => void saveLegendItemForm()}
+              onCancelEdit={clearLegendForm}
+              onEditItem={editLegendItem}
+              onDeleteItem={(legendItemId) => void removeLegendItem(legendItemId)}
+              onUploadMessage={setAdminMessage}
+            />
           ) : null}
           {adminSection === "Walking Paths" ? <View style={styles.routeList}>
             <Text style={styles.selectedTitle}>Walking Path Order</Text>
@@ -5929,37 +5882,6 @@ function ExitTargetEditor({
   );
 }
 
-function AdminImageUploadButton({ folder, onUploaded, onMessage }: { folder: string; onUploaded: (url: string) => void; onMessage?: (message: string) => void }) {
-  const [uploading, setUploading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
-  async function upload() {
-    setUploading(true);
-    setMessage(null);
-    try {
-      const url = await pickAndUploadAdminImage(folder);
-      onUploaded(url);
-      setMessage("Image uploaded.");
-      onMessage?.("Image uploaded and URL added.");
-    } catch (error) {
-      const nextMessage = error instanceof Error ? error.message : "Unable to upload image.";
-      setMessage(nextMessage);
-      onMessage?.(nextMessage);
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  return (
-    <View style={styles.uploadControl}>
-      <Pressable style={[styles.secondaryButton, uploading && styles.disabledAction]} onPress={() => void upload()} disabled={uploading}>
-        <Text style={styles.secondaryText}>{uploading ? "Uploading..." : "Upload Image"}</Text>
-      </Pressable>
-      {message ? <Text style={styles.debugLine}>{message}</Text> : null}
-    </View>
-  );
-}
-
 function MarketListingModePicker({ value, onSelect }: { value: MarkerMarketItem["listing_mode"]; onSelect: (value: MarkerMarketItem["listing_mode"]) => void }) {
   return (
     <View style={styles.storyEditor}>
@@ -6227,11 +6149,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
     marginTop: 12,
     padding: 14,
-    gap: 10,
-  },
-  legendPreviewRow: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: 10,
   },
   panelHeader: {
@@ -6689,9 +6606,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-  },
-  uploadControl: {
-    gap: 6,
   },
   secondaryText: {
     color: colors.blue,
