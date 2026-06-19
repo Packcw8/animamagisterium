@@ -6,6 +6,7 @@ import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef } from "../components/map/MapCanvas";
 import { MarkerIcon } from "../components/map/MarkerIcon";
+import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel";
 import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { ProgressBar } from "../components/ProgressBar";
@@ -22,7 +23,6 @@ import { clamp, getPercentDistance, getPointOnRoute, getRouteSegments, MAP_SIZE 
 import {
   canPlayerSeeMarker,
   canPlayerSeeStoryMarker,
-  getMarkerLockMessage,
   getOrderedMarkerRouteLinks,
   isExitMarker,
   isExitMarkerType,
@@ -36,7 +36,6 @@ import {
   getNextChoiceOrder,
   getNextDialogueNodeOrder,
   getNextRouteOrder,
-  getRouteLockLabel,
   getRouteLockMessage,
   getSeasonLabel,
   isInSelectedChapter,
@@ -50,7 +49,6 @@ import {
   completeStoryMarker,
   applyRewards,
   buyMarketItem,
-  canMarketItemBeBought,
   canMarketItemBeSoldTo,
   createDialogueChoice,
   createDialogueNode,
@@ -4230,127 +4228,35 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       {renderJourneyPanel()}
 
       {selectedMarker && !isAdmin ? (
-        <Frame style={styles.panel}>
-          <View style={styles.panelHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>{selectedMarker.title}</Text>
-              <Text style={styles.copy}>{selectedMarker.type}</Text>
-            </View>
-            <Pressable style={styles.secondaryButtonFlex} onPress={() => setSelectedMarker(null)}>
-              <Text style={styles.secondaryText}>Close</Text>
-            </Pressable>
-          </View>
-          {selectedMarker.description ? <Text style={styles.copy}>{selectedMarker.description}</Text> : null}
-          {markerPanelMessage ? <Text style={styles.adminMessage}>{markerPanelMessage}</Text> : null}
-          {selectedMarkerLocked ? (
-            <View style={styles.storyEditor}>
-              <Text style={styles.selectedTitle}>Locked</Text>
-              <Text style={styles.dialogueText}>{selectedMarker ? getMarkerLockMessage(selectedMarker) : "This marker is locked."}</Text>
-            </View>
-          ) : !canUseSelectedMarker ? (
-            <View style={styles.storyEditor}>
-              {selectedMarker.quest_image_url || selectedMarker.shop_image_url ? <Image source={{ uri: selectedMarker.shop_image_url || selectedMarker.quest_image_url || "" }} style={styles.eventImage} /> : null}
-              <Text style={styles.selectedTitle}>Travel Required</Text>
-              <Text style={styles.copy}>
-                You need to travel closer before entering. Distance: {selectedMarkerDistance.toFixed(2)}% / Required: {selectedMarkerRadius.toFixed(2)}%.
-              </Text>
-              <Pressable style={styles.primaryButton} onPress={isTracking ? undefined : startGpsTracking}>
-                <Text style={styles.primaryText}>{isTracking ? "Tracking Walk" : "Start Tracking Walk"}</Text>
-              </Pressable>
-            </View>
-          ) : selectedMarker.type === "Sign Post" ? (
-            <View style={styles.storyEditor}>
-              <Text style={styles.selectedTitle}>{selectedMarker.quest_title || selectedMarker.title}</Text>
-              {selectedMarker.quest_dialogue || selectedMarker.description ? <Text style={styles.dialogueText}>{selectedMarker.quest_dialogue || selectedMarker.description}</Text> : null}
-              {markerRouteLinks.length === 0 ? <Text style={styles.copy}>No walking paths are linked to this sign post yet.</Text> : null}
-              {markerRouteLinks.map((link) => {
-                const linkedRoute = routes.find((item) => item.id === link.route_id);
-                const progress = routeProgressRows.find((row) => row.route_id === link.route_id)?.progress_percent ?? 0;
-
-                if (!linkedRoute) {
-                  return null;
-                }
-                const locked = isRouteLocked(linkedRoute);
-
-                return (
-                  <View key={link.id} style={[styles.storyCard, locked && styles.lockedCard]}>
-                    <Text style={styles.markerName}>{linkedRoute.name}</Text>
-                    <Text style={styles.copy}>Destination: {link.destination_label || linkedRoute.terrain}</Text>
-                    <Text style={styles.copy}>{metersToMiles(linkedRoute.distance_required_meters)} mi / Progress {Math.round(progress)}%</Text>
-                    <Text style={locked ? styles.lockText : styles.unlockText}>{locked ? getRouteLockMessage(linkedRoute) : "Available"}</Text>
-                    <Pressable style={[styles.primaryButton, locked && styles.disabledAction]} onPress={() => void startPathFromSignPost(linkedRoute)} disabled={locked}>
-                      <Text style={styles.primaryText}>{locked ? getRouteLockLabel(linkedRoute) : "Start Path"}</Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
-            </View>
-          ) : selectedMarker.type === "Area/Town Entrance" ? (
-            <View style={styles.storyEditor}>
-              {selectedMarker.scene_background_image_url || selectedMarker.quest_image_url ? <Image source={{ uri: selectedMarker.scene_background_image_url || selectedMarker.quest_image_url || "" }} style={styles.eventImage} /> : null}
-              <Text style={styles.selectedTitle}>{selectedMarker.quest_title || selectedMarker.title}</Text>
-              {selectedMarker.quest_dialogue || selectedMarker.description ? <Text style={styles.dialogueText}>{selectedMarker.quest_dialogue || selectedMarker.description}</Text> : null}
-              <Pressable
-                style={styles.primaryButton}
-                onPress={() => {
-                  const miniMap = miniMaps.find((item) => item.id === selectedMarker.linked_mini_map_id);
-                  if (miniMap) {
-                    openMiniMap(miniMap);
-                  } else {
-                    setMarkerPanelMessage("No mini map is linked to this entrance yet.");
-                  }
-                }}
-              >
-                <Text style={styles.primaryText}>Enter Area</Text>
-              </Pressable>
-            </View>
-          ) : selectedMarker.type === "Market" ? (
-            <View style={[styles.shopPanel, selectedMarker.shop_background_image_url ? ({ backgroundImage: `url(${selectedMarker.shop_background_image_url})` } as object) : null]}>
-              {selectedMarker.shop_image_url ? <Image source={{ uri: selectedMarker.shop_image_url }} style={styles.eventImage} /> : null}
-              <Text style={styles.selectedTitle}>{selectedMarker.quest_title || selectedMarker.title}</Text>
-              {selectedMarker.quest_dialogue ? <Text style={styles.dialogueText}>{selectedMarker.quest_dialogue}</Text> : null}
-              <Text style={styles.selectedTitle}>Buy</Text>
-              {markerMarketItems.filter(canMarketItemBeBought).length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
-              {markerMarketItems.filter(canMarketItemBeBought).map((marketItem) => (
-                <View key={marketItem.id} style={styles.storyCard}>
-                  <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
-                  <Text style={styles.copy}>{marketItem.buy_price} gold / {marketItem.unlimited_stock ? "Unlimited stock" : `${marketItem.stock_quantity ?? 0} left`}</Text>
-                  <Pressable style={styles.primaryButton} onPress={() => void buyFromMarker(marketItem)}>
-                    <Text style={styles.primaryText}>Buy</Text>
-                  </Pressable>
-                </View>
-              ))}
-              <Text style={styles.selectedTitle}>Sell</Text>
-              {inventoryItems.filter((entry) => entry.item.sellable && markerMarketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item))).length === 0 ? <Text style={styles.copy}>This market is not buying anything in your inventory.</Text> : null}
-              {inventoryItems.filter((entry) => entry.item.sellable && markerMarketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item))).map((entry) => {
-                const marketItem = markerMarketItems.find((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item));
-                const price = marketItem?.sell_price ?? 0;
-                return (
-                  <View key={entry.id} style={styles.storyCard}>
-                    <Text style={styles.markerName}>{entry.item.name} x{entry.quantity}</Text>
-                    <Text style={styles.copy}>Sell for {price} gold</Text>
-                    <Pressable style={styles.secondaryButton} onPress={() => void sellToMarker(entry)}>
-                      <Text style={styles.secondaryText}>Sell One</Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
-            </View>
-          ) : (
-            <View style={styles.storyEditor}>
-              {selectedMarker.quest_image_url ? <Image source={{ uri: selectedMarker.quest_image_url }} style={styles.eventImage} /> : null}
-              <Text style={styles.selectedTitle}>{selectedMarker.quest_title || selectedMarker.title}</Text>
-              {selectedMarker.quest_dialogue ? <Text style={styles.dialogueText}>{selectedMarker.quest_dialogue}</Text> : null}
-              <Text style={styles.copy}>
-                Rewards: {selectedMarker.reward_xp ?? 0} XP / {selectedMarker.reward_gold ?? 0} gold
-                {selectedMarker.reward_item_id ? ` / ${selectedMarker.reward_item_quantity ?? 1} ${getItemName(itemDefinitions, selectedMarker.reward_item_id)}` : ""}
-              </Text>
-              <Pressable style={styles.primaryButton} onPress={() => void claimSelectedMarkerReward()}>
-                <Text style={styles.primaryText}>Claim Reward</Text>
-              </Pressable>
-            </View>
-          )}
-        </Frame>
+        <MarkerInteractionPanel
+          marker={selectedMarker}
+          message={markerPanelMessage}
+          locked={selectedMarkerLocked}
+          canUse={canUseSelectedMarker}
+          distance={selectedMarkerDistance}
+          radius={selectedMarkerRadius}
+          isTracking={isTracking}
+          routeLinks={markerRouteLinks}
+          routes={routes}
+          routeProgressRows={routeProgressRows}
+          marketItems={markerMarketItems}
+          inventoryItems={inventoryItems}
+          itemDefinitions={itemDefinitions}
+          onClose={() => setSelectedMarker(null)}
+          onStartTracking={startGpsTracking}
+          onStartPath={(nextRoute) => void startPathFromSignPost(nextRoute)}
+          onEnterArea={() => {
+            const miniMap = miniMaps.find((item) => item.id === selectedMarker.linked_mini_map_id);
+            if (miniMap) {
+              openMiniMap(miniMap);
+            } else {
+              setMarkerPanelMessage("No mini map is linked to this entrance yet.");
+            }
+          }}
+          onBuy={(marketItem) => void buyFromMarker(marketItem)}
+          onSell={(entry) => void sellToMarker(entry)}
+          onClaimReward={() => void claimSelectedMarkerReward()}
+        />
       ) : null}
 
       {isAdmin ? (
