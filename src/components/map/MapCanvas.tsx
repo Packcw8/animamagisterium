@@ -11,7 +11,14 @@ export type MapViewportRef = {
   scrollTop?: number;
   clientWidth?: number;
   clientHeight?: number;
+  getBoundingClientRect?: () => { left: number; top: number; width: number; height: number };
   scrollTo?: (options: { left: number; top: number; behavior?: "smooth" | "auto" }) => void;
+};
+
+export type PinchZoomPayload = {
+  delta: number;
+  centerClientX: number;
+  centerClientY: number;
 };
 
 export type RouteSegmentView = {
@@ -57,7 +64,7 @@ export function OverworldMapCanvas({
   scaledMapSize: { width: number; height: number };
   imageSource: ImageSourcePropType;
   onWheel: (event: { nativeEvent?: { deltaY?: number } }) => void;
-  onPinchZoom?: (delta: number) => void;
+  onPinchZoom?: (payload: PinchZoomPayload) => void;
   canCapturePointer: boolean;
 }) {
   const pinch = usePinchZoom(onPinchZoom);
@@ -88,9 +95,6 @@ export function OverworldMapCanvas({
       >
         <Image source={imageSource} style={styles.mapImage} {...({ pointerEvents: "none" } as object)} />
         <MapCanvasLayers {...shared} markerSize={34} />
-      </View>
-      <View pointerEvents="none" style={styles.pinchHint}>
-        <Text style={styles.pinchHintText}>Pinch to zoom</Text>
       </View>
     </View>
   );
@@ -221,11 +225,11 @@ type TouchEventLike = {
   };
 };
 
-function usePinchZoom(onPinchZoom?: (delta: number) => void) {
+function usePinchZoom(onPinchZoom?: (payload: PinchZoomPayload) => void) {
   const lastDistanceRef = useRef<number | null>(null);
   const suppressClickUntilRef = useRef(0);
 
-  function getTouchDistance(event: TouchEventLike) {
+  function getTouchGesture(event: TouchEventLike) {
     const touches = event.nativeEvent?.touches ?? [];
 
     if (touches.length < 2) {
@@ -237,30 +241,38 @@ function usePinchZoom(onPinchZoom?: (delta: number) => void) {
     const firstY = first?.clientY ?? 0;
     const secondX = second?.clientX ?? 0;
     const secondY = second?.clientY ?? 0;
-    return Math.hypot(secondX - firstX, secondY - firstY);
+    return {
+      distance: Math.hypot(secondX - firstX, secondY - firstY),
+      centerClientX: (firstX + secondX) / 2,
+      centerClientY: (firstY + secondY) / 2,
+    };
   }
 
   return {
     onTouchStart: (event: TouchEventLike) => {
-      const distance = getTouchDistance(event);
-      if (distance !== null) {
-        lastDistanceRef.current = distance;
+      const gesture = getTouchGesture(event);
+      if (gesture) {
+        lastDistanceRef.current = gesture.distance;
         suppressClickUntilRef.current = Date.now() + 450;
       }
     },
     onTouchMove: (event: TouchEventLike) => {
-      const distance = getTouchDistance(event);
+      const gesture = getTouchGesture(event);
       const lastDistance = lastDistanceRef.current;
 
-      if (distance === null || lastDistance === null || !onPinchZoom) {
+      if (!gesture || lastDistance === null || !onPinchZoom) {
         return;
       }
 
-      const rawDelta = (distance - lastDistance) / 240;
-      const delta = Math.max(-0.08, Math.min(0.08, rawDelta));
+      const rawDelta = (gesture.distance - lastDistance) / 280;
+      const delta = Math.max(-0.06, Math.min(0.06, rawDelta));
       if (Math.abs(delta) >= 0.01) {
-        onPinchZoom(delta);
-        lastDistanceRef.current = distance;
+        onPinchZoom({
+          delta,
+          centerClientX: gesture.centerClientX,
+          centerClientY: gesture.centerClientY,
+        });
+        lastDistanceRef.current = gesture.distance;
         suppressClickUntilRef.current = Date.now() + 450;
       }
     },
@@ -286,7 +298,7 @@ const styles = StyleSheet.create({
     overflowY: "auto",
     backgroundColor: "#061010",
     cursor: "crosshair",
-    touchAction: "pan-x pan-y pinch-zoom",
+    touchAction: "pan-x pan-y",
     overscrollBehavior: "contain",
     userSelect: "none",
     WebkitOverflowScrolling: "touch",
@@ -297,22 +309,6 @@ const styles = StyleSheet.create({
     touchAction: "pan-x pan-y",
     userSelect: "none",
   } as object,
-  pinchHint: {
-    position: "absolute",
-    right: 10,
-    bottom: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(218, 164, 65, 0.34)",
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    backgroundColor: "rgba(0,0,0,0.56)",
-  },
-  pinchHintText: {
-    color: colors.gold,
-    fontSize: 11,
-    fontWeight: "900",
-  },
   mapImage: {
     position: "absolute",
     width: "100%",

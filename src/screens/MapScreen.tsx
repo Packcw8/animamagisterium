@@ -8,7 +8,7 @@ import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { AdminCoordinatePanel } from "../components/map/AdminCoordinatePanel";
 import { AdminMapEditorHeader } from "../components/map/AdminMapEditorHeader";
-import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef } from "../components/map/MapCanvas";
+import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef, type PinchZoomPayload } from "../components/map/MapCanvas";
 import { MarkerIcon } from "../components/map/MarkerIcon";
 import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel";
 import { LegendEditor } from "../components/map/LegendEditor";
@@ -917,8 +917,31 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMovementStatus((current) => ({ ...current, label: "IDLE", speedMph: 0, countedMeters: 0 }));
   }
 
-  function zoomBy(delta: number) {
-    setScale((current) => clamp(current + delta, 0.5, 2.7));
+  function zoomBy(delta: number, focal?: { clientX: number; clientY: number }) {
+    const viewport = viewportRef.current;
+    const rect = viewport?.getBoundingClientRect?.();
+    const currentScrollLeft = viewport?.scrollLeft ?? 0;
+    const currentScrollTop = viewport?.scrollTop ?? 0;
+    const viewportX = focal && rect ? focal.clientX - rect.left : null;
+    const viewportY = focal && rect ? focal.clientY - rect.top : null;
+
+    setScale((current) => {
+      const next = clamp(current + delta, 0.5, 2.7);
+
+      if (viewport && viewportX !== null && viewportY !== null && next !== current) {
+        const unscaledX = (currentScrollLeft + viewportX) / current;
+        const unscaledY = (currentScrollTop + viewportY) / current;
+        requestAnimationFrame(() => {
+          scrollMapTo(unscaledX * next - viewportX, unscaledY * next - viewportY, "auto");
+        });
+      }
+
+      return next;
+    });
+  }
+
+  function handlePinchZoom(payload: PinchZoomPayload) {
+    zoomBy(payload.delta, { clientX: payload.centerClientX, clientY: payload.centerClientY });
   }
 
   function resetZoom() {
@@ -3805,7 +3828,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         scaledMapSize={scaledMapSize}
         imageSource={forgottenMarches}
         onWheel={handleWheel}
-        onPinchZoom={zoomBy}
+        onPinchZoom={handlePinchZoom}
         canCapturePointer={isAdmin}
         onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0])}
         routeSegments={routeSegments}
