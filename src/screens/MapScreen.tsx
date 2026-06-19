@@ -12,6 +12,35 @@ import { AbilityDefinition, CharacterResources, clampHealth, getAbilityCostLabel
 import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, getNpcLoadout, getNpcs, NpcDefinition, NpcWithLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
 import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../services/inventoryService";
 import { recordEnemyKill } from "../services/progressionService";
+import { chooseWeightedEnemyAbility, classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph, rollD20Attack } from "../utils/combatMath";
+import { clamp, getPercentDistance, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, roundPercent } from "../utils/mapGeometry";
+import {
+  canPlayerSeeMarker,
+  canPlayerSeeStoryMarker,
+  getMarkerLockMessage,
+  getMarkerRenderStyle,
+  getOrderedMarkerRouteLinks,
+  isExitMarker,
+  isExitMarkerType,
+  isMarkerLocked,
+  isStoryQuestMarker,
+} from "../utils/mapVisibility";
+import {
+  compareRoutes,
+  getAvailableNumbers,
+  getChapterLabel,
+  getNextChoiceOrder,
+  getNextDialogueNodeOrder,
+  getNextRouteOrder,
+  getRouteLockLabel,
+  getRouteLockMessage,
+  getSeasonLabel,
+  isInSelectedChapter,
+  isRouteLocked,
+  mergeChapterRecords,
+  mergeSeasonRecords,
+  upsertRouteProgressRow,
+} from "../utils/mapProgress";
 import {
   completeMapEvent,
   completeStoryMarker,
@@ -86,7 +115,6 @@ import {
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
-const mapSize = { width: 1800, height: 1400 };
 const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post", "Player Spawn"];
 const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "Point of Interest", "Market", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const exitTargetTypes = ["world_marker", "mini_map"] as const;
@@ -118,12 +146,7 @@ const eventTriggerModeLabels: Record<(typeof eventTriggerModes)[number], string>
   fixed: "Fixed Percent",
   random: "Random Encounter",
 };
-const maxGpsAccuracyMeters = 50;
-const maxTrackingGapSeconds = 60;
-const movementSpeedThresholdMph = 1;
 const movementStateDebounceMs = 5000;
-const maxHumanSpeedMph = 12;
-const minCountedGpsMeters = 0.5;
 
 type MapScreenProps = {
   character: CharacterWithDetails;
@@ -5200,60 +5223,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   );
 }
 
-function getPointOnRoute(points: Array<{ x: number; y: number }>, progressPercent: number) {
-  if (points.length === 0) {
-    return { x: 50, y: 50 };
-  }
-
-  if (points.length === 1) {
-    return points[0];
-  }
-
-  const target = clamp(progressPercent, 0, 100) / 100;
-  const segmentLengths = points.slice(1).map((point, index) => {
-    const previous = points[index];
-    return Math.hypot(point.x - previous.x, point.y - previous.y);
-  });
-  const total = segmentLengths.reduce((sum, value) => sum + value, 0);
-  let traveled = 0;
-
-  for (let index = 0; index < segmentLengths.length; index += 1) {
-    const segment = segmentLengths[index];
-    const nextTraveled = traveled + segment;
-
-    if (target * total <= nextTraveled) {
-      const local = (target * total - traveled) / segment;
-      const start = points[index];
-      const end = points[index + 1];
-      return {
-        x: start.x + (end.x - start.x) * local,
-        y: start.y + (end.y - start.y) * local,
-      };
-    }
-
-    traveled = nextTraveled;
-  }
-
-  return points[points.length - 1];
-}
-
-function getRouteSegments(points: Array<{ x: number; y: number }>) {
-  const mapAspectRatio = mapSize.height / mapSize.width;
-
-  return points.slice(1).map((point, index) => {
-    const previous = points[index];
-    const dx = point.x - previous.x;
-    const dy = point.y - previous.y;
-
-    return {
-      left: previous.x,
-      top: previous.y,
-      length: Math.hypot(dx, dy * mapAspectRatio),
-      angle: Math.atan2(dy * mapSize.height, dx * mapSize.width) * (180 / Math.PI),
-    };
-  });
-}
-
 function getRouteSegmentsForRoutes(routes: MapRoute[], activeRouteId: string) {
   return routes.flatMap((mapRoute) =>
     getRouteSegments(mapRoute.path_points).map((segment, index) => ({
@@ -5263,127 +5232,6 @@ function getRouteSegmentsForRoutes(routes: MapRoute[], activeRouteId: string) {
       isDraft: false,
     })),
   );
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}
-
-function roundPercent(value: number) {
-  return Math.round(value * 100) / 100;
-}
-
-function getPercentDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
-  return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
-}
-
-function chooseWeightedEnemyAbility(enemy: EnemyWithLoadout | NpcWithLoadout | null, stamina: number, magika: number, currentHp?: number) {
-  const valid = (enemy?.abilities ?? []).filter((row) => row.ability && row.ability.is_active && row.ability.stamina_cost <= stamina && row.ability.magika_cost <= magika);
-  const maxHp = Number(enemy?.health ?? 0);
-  const hurtRatio = maxHp > 0 && typeof currentHp === "number" ? currentHp / maxHp : 1;
-  const weighted = valid.map((row) => {
-    const ability = row.ability;
-    const baseWeight = Math.max(1, Number(row.use_weight) || 1);
-    const smartWeight = ability?.type === "heal" && hurtRatio <= 0.45
-      ? baseWeight * 4
-      : (ability?.type === "defense" || ability?.type === "buff") && hurtRatio <= 0.35
-        ? baseWeight * 2
-        : baseWeight;
-    return { row, weight: smartWeight };
-  });
-  const totalWeight = weighted.reduce((sum, item) => sum + item.weight, 0);
-
-  if (valid.length === 0 || totalWeight <= 0) {
-    return null;
-  }
-
-  let roll = Math.random() * totalWeight;
-  for (const { row, weight } of weighted) {
-    roll -= weight;
-    if (roll <= 0) {
-      return row.ability ?? null;
-    }
-  }
-
-  return valid[0].ability ?? null;
-}
-
-function rollD20Attack(statBonus: number, abilityBonus: number, defense: number, criticalChance: number, criticalMultiplier: number) {
-  const roll = Math.ceil(Math.random() * 20);
-  const naturalCritical = roll === 20;
-  const naturalMiss = roll === 1;
-  const critical = naturalCritical || Math.random() * 100 < criticalChance;
-  const total = roll + Math.floor(statBonus / 2) + abilityBonus;
-
-  return {
-    roll,
-    total,
-    hit: !naturalMiss && (naturalCritical || total >= defense),
-    critical,
-    criticalMultiplier,
-  };
-}
-
-function canPlayerSeeMarker(marker: MapMarker, playerPosition: { x: number; y: number }) {
-  if (marker.type === "Player Spawn") {
-    return false;
-  }
-
-  if (!marker.is_active || !marker.is_unlocked || marker.is_interactable === false) {
-    return false;
-  }
-
-  const radius = Number(marker.interaction_radius_percent ?? 4) || 4;
-  return getPercentDistance(playerPosition, { x: Number(marker.x_percent), y: Number(marker.y_percent) }) <= radius;
-}
-
-function isStoryQuestMarker(marker: Pick<MapMarker, "type">) {
-  return marker.type === "Story" || marker.type === "Quest";
-}
-
-function getOrderedMarkerRouteLinks(links: MarkerRouteLink[]) {
-  return [...links].sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0) || a.created_at.localeCompare(b.created_at));
-}
-
-function canPlayerSeeStoryMarker(marker: MapMarker, scopeMarkers: MapMarker[], completedMarkerIds: Set<string>) {
-  if (!isStoryQuestMarker(marker)) {
-    return true;
-  }
-
-  if (marker.hide_when_completed !== false && completedMarkerIds.has(marker.id)) {
-    return false;
-  }
-
-  if (marker.unlock_after_marker_id && !completedMarkerIds.has(marker.unlock_after_marker_id)) {
-    return false;
-  }
-
-  const order = Number(marker.story_order ?? 0);
-  if (order <= 0) {
-    return true;
-  }
-
-  return scopeMarkers
-    .filter((item) => isStoryQuestMarker(item))
-    .filter((item) => Number(item.season_number ?? 1) === Number(marker.season_number ?? 1))
-    .filter((item) => Number(item.chapter_number ?? 1) === Number(marker.chapter_number ?? 1))
-    .filter((item) => Number(item.story_order ?? 0) > 0 && Number(item.story_order ?? 0) < order)
-    .every((item) => completedMarkerIds.has(item.id));
-}
-
-function getMarkerRenderStyle(marker: MapMarker, playerPosition: { x: number; y: number }, markerSize = 34) {
-  const markerPosition = { x: Number(marker.x_percent), y: Number(marker.y_percent) };
-  const radius = Math.max(1, Number(marker.interaction_radius_percent ?? 4) || 4);
-  const distance = getPercentDistance(playerPosition, markerPosition);
-  const scale = distance <= radius * 0.65 ? 1.48 : distance <= radius ? 1.34 : distance <= radius * 1.75 ? 1.16 : 1;
-  const zIndex = distance <= radius ? 45 : 15;
-
-  return {
-    left: `${markerPosition.x}%`,
-    top: `${markerPosition.y}%`,
-    zIndex,
-    transform: [{ translateX: -(markerSize / 2) }, { translateY: -(markerSize / 2) }, { scale }],
-  } as object;
 }
 
 function resolveSceneImageUri(imagePath?: string | null) {
@@ -5426,68 +5274,6 @@ function getConsumableSummary(item: ItemDefinition) {
   return item.description || "Quick use item";
 }
 
-function metersPerSecondToMph(metersPerSecond: number) {
-  return metersPerSecond * 2.23694;
-}
-
-function classifyMovement({
-  meters,
-  elapsedSeconds,
-  speedMph,
-  accuracy,
-}: {
-  meters: number;
-  elapsedSeconds: number;
-  speedMph: number;
-  accuracy: number | null;
-}) {
-  if (accuracy !== null && accuracy > maxGpsAccuracyMeters) {
-    return {
-      label: "Low GPS accuracy",
-      countedMeters: 0,
-      blockedReason: `Travel paused: GPS accuracy is ${Math.round(accuracy)}m. Move somewhere with a clearer signal.`,
-    };
-  }
-
-  if (elapsedSeconds <= 0) {
-    return {
-      label: "Waiting for GPS",
-      countedMeters: 0,
-      blockedReason: "Travel paused: waiting for the next GPS sample.",
-    };
-  }
-
-  if (elapsedSeconds > maxTrackingGapSeconds) {
-    return {
-      label: "Tracking gap",
-      countedMeters: 0,
-      blockedReason: "Travel paused: GPS was inactive too long to count this jump.",
-    };
-  }
-
-  if (meters < minCountedGpsMeters || speedMph <= movementSpeedThresholdMph) {
-    return {
-      label: "IDLE",
-      countedMeters: 0,
-      blockedReason: null,
-    };
-  }
-
-  if (speedMph > maxHumanSpeedMph) {
-    return {
-      label: "Vehicle speed",
-      countedMeters: 0,
-      blockedReason: `Travel paused: ${speedMph.toFixed(1)} mph is too fast for walking progress.`,
-    };
-  }
-
-  return {
-    label: "MOVING",
-    countedMeters: meters,
-    blockedReason: null,
-  };
-}
-
 function getErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error) {
     return error.message;
@@ -5498,174 +5284,6 @@ function getErrorMessage(error: unknown, fallback: string) {
   }
 
   return fallback;
-}
-
-function compareRoutes(a: MapRoute, b: MapRoute) {
-  if (a.sort_order !== b.sort_order) {
-    return a.sort_order - b.sort_order;
-  }
-
-  return a.created_at.localeCompare(b.created_at);
-}
-
-function getNextRoute(routes: MapRoute[], currentRoute: MapRoute) {
-  const currentIndex = routes.findIndex((item) => item.id === currentRoute.id);
-  return routes.slice(currentIndex + 1).find((item) => item.is_active) ?? null;
-}
-
-function getFirstUnfinishedRoute(routes: MapRoute[], progressRows: Array<{ route_id: string; progress_percent: number }>) {
-  const progressByRoute = new Map(progressRows.map((progress) => [progress.route_id, Number(progress.progress_percent)]));
-  return routes.find((mapRoute) => mapRoute.is_active && (progressByRoute.get(mapRoute.id) ?? 0) < 100) ?? null;
-}
-
-function getUnlockedRouteIds(routes: MapRoute[], progressRows: Array<{ route_id: string; progress_percent: number }>) {
-  const progressByRoute = new Map(progressRows.map((progress) => [progress.route_id, Number(progress.progress_percent)]));
-  const unlocked = new Set<string>();
-
-  for (const route of routes.filter((item) => item.is_active)) {
-    unlocked.add(route.id);
-
-    if ((progressByRoute.get(route.id) ?? 0) < 100) {
-      break;
-    }
-  }
-
-  return unlocked;
-}
-
-function isRouteLocked(route: MapRoute) {
-  return (route.lock_type ?? "public") !== "public";
-}
-
-function getRouteLockLabel(route: MapRoute) {
-  const lockType = route.lock_type ?? "public";
-  return lockType === "quest_locked" ? "Quest Locked" : lockType === "story_locked" ? "Story Locked" : "Locked";
-}
-
-function getRouteLockMessage(route: MapRoute) {
-  if (!isRouteLocked(route)) {
-    return "Available";
-  }
-
-  if (route.lock_message?.trim()) {
-    return route.lock_message;
-  }
-
-  return route.lock_type === "quest_locked" ? "Continue the required quest to unlock this path." : "Progress further in the story to unlock this path.";
-}
-
-function isMarkerLocked(marker: MapMarker) {
-  return (marker.lock_type ?? "public") !== "public";
-}
-
-function isExitMarker(marker: MapMarker) {
-  return isExitMarkerType(marker.type);
-}
-
-function isExitMarkerType(type: string) {
-  return type === "Exit" || type === "Exit/Leave";
-}
-
-function getMarkerLockMessage(marker: MapMarker) {
-  if (!isMarkerLocked(marker)) {
-    return "Available";
-  }
-
-  if (marker.lock_message?.trim()) {
-    return marker.lock_message;
-  }
-
-  return marker.lock_type === "quest_locked" ? "Continue the required quest to unlock this." : "Progress further in the story to unlock this.";
-}
-
-function isInSelectedChapter(item: { season_number?: number | null; chapter_number?: number | null }, seasonNumber: number, chapterNumber: number) {
-  return Number(item.season_number ?? 1) === seasonNumber && Number(item.chapter_number ?? 1) === chapterNumber;
-}
-
-function getAvailableNumbers(items: Array<{ season_number?: number | null; chapter_number?: number | null }>, key: "season_number" | "chapter_number") {
-  const values = new Set<number>([1]);
-  for (const item of items) {
-    const value = Number(item[key] ?? 1);
-    if (Number.isFinite(value) && value > 0) {
-      values.add(value);
-    }
-  }
-  return Array.from(values).sort((a, b) => a - b);
-}
-
-function mergeSeasonRecords(seasons: MapSeason[], inferredNumbers: number[]) {
-  const byNumber = new Map<number, MapSeason>();
-  for (const season of seasons) {
-    byNumber.set(Number(season.season_number), season);
-  }
-  for (const number of inferredNumbers) {
-    if (!byNumber.has(number)) {
-      byNumber.set(number, {
-        id: `inferred-season-${number}`,
-        season_number: number,
-        name: `Season ${number}`,
-        description: null,
-        is_active: true,
-        created_by: null,
-        created_at: new Date(0).toISOString(),
-        updated_at: new Date(0).toISOString(),
-      });
-    }
-  }
-  return Array.from(byNumber.values()).sort((a, b) => a.season_number - b.season_number);
-}
-
-function mergeChapterRecords(chapters: MapChapter[], inferredNumbers: number[], seasonNumber: number) {
-  const byNumber = new Map<number, MapChapter>();
-  for (const chapter of chapters) {
-    byNumber.set(Number(chapter.chapter_number), chapter);
-  }
-  for (const number of inferredNumbers) {
-    if (!byNumber.has(number)) {
-      byNumber.set(number, {
-        id: `inferred-chapter-${seasonNumber}-${number}`,
-        season_number: seasonNumber,
-        chapter_number: number,
-        name: `Chapter ${number}`,
-        description: null,
-        is_active: true,
-        created_by: null,
-        created_at: new Date(0).toISOString(),
-        updated_at: new Date(0).toISOString(),
-      });
-    }
-  }
-  return Array.from(byNumber.values()).sort((a, b) => a.chapter_number - b.chapter_number);
-}
-
-function getSeasonLabel(seasons: MapSeason[], seasonNumber: number) {
-  return seasons.find((season) => season.season_number === seasonNumber)?.name ?? `Season ${seasonNumber}`;
-}
-
-function getChapterLabel(chapters: MapChapter[], seasonNumber: number, chapterNumber: number) {
-  return chapters.find((chapter) => chapter.season_number === seasonNumber && chapter.chapter_number === chapterNumber)?.name ?? `Chapter ${chapterNumber}`;
-}
-
-function upsertRouteProgressRow(rows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>, routeId: string, progressPercent: number, isCurrent?: boolean) {
-  const existing = rows.some((row) => row.route_id === routeId);
-
-  if (existing) {
-    return rows.map((row) => (row.route_id === routeId ? { ...row, progress_percent: progressPercent, ...(isCurrent !== undefined ? { is_current: isCurrent } : {}) } : row));
-  }
-
-  return [...rows, { route_id: routeId, progress_percent: progressPercent, ...(isCurrent !== undefined ? { is_current: isCurrent } : {}) }];
-}
-
-function getNextRouteOrder(routes: MapRoute[]) {
-  return routes.reduce((highest, item) => Math.max(highest, item.sort_order), 0) + 1;
-}
-
-function getNextDialogueNodeOrder(nodes: StoryDialogueNode[]) {
-  return nodes.reduce((highest, item) => Math.max(highest, item.sort_order), 0) + 1;
-}
-
-function getNextChoiceOrder(choices: StoryDialogueChoice[], nodeId: string) {
-  return choices.filter((choice) => choice.node_id === nodeId).reduce((highest, item) => Math.max(highest, item.sort_order), 0) + 1;
 }
 
 function parseChoices(value: string): MapEvent["choices"] {
