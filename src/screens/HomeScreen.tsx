@@ -92,6 +92,41 @@ const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisd
 const inventoryCategoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
 const adminToolTabs = ["Items", "Abilities", "Enemies", "NPCs"] as const;
+const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
+type AbilityCostResource = (typeof abilityCostResources)[number];
+const abilityCostResourceLabels: Record<AbilityCostResource, string> = {
+  none: "No Cost",
+  stamina: "Stamina",
+  mana: "Mana",
+  health: "Health",
+};
+
+function getAbilityCostResource(ability: Partial<CombatAbility>): AbilityCostResource {
+  if ((ability.magika_cost ?? 0) > 0) return "mana";
+  if ((ability.stamina_cost ?? 0) > 0) return "stamina";
+  if ((ability.health_cost ?? 0) > 0) return "health";
+  return "none";
+}
+
+function getAbilityCostAmount(ability: Partial<CombatAbility>) {
+  const resource = getAbilityCostResource(ability);
+
+  if (resource === "mana") return ability.magika_cost ?? 0;
+  if (resource === "stamina") return ability.stamina_cost ?? 0;
+  if (resource === "health") return ability.health_cost ?? 0;
+  return 0;
+}
+
+function setAbilityCost(current: Partial<CombatAbility>, resource: AbilityCostResource, amount: number): Partial<CombatAbility> {
+  const safeAmount = Math.max(0, Number(amount) || 0);
+
+  return {
+    ...current,
+    stamina_cost: resource === "stamina" ? safeAmount : 0,
+    magika_cost: resource === "mana" ? safeAmount : 0,
+    health_cost: resource === "health" ? safeAmount : 0,
+  };
+}
 
 export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenSettings }: HomeScreenProps) {
   const [activeTab, setActiveTab] = useState<(typeof homeTabs)[number]>("Overview");
@@ -886,10 +921,21 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                   <ItemText label="Defense amount" value={String(abilityForm.defense_amount ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, defense_amount: Number(value) || 0 }))} />
                   <ItemText label="Attack bonus" value={String(abilityForm.attack_bonus ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, attack_bonus: Number(value) || 0 }))} />
                 </View>
-                <View style={styles.slotActions}>
-                  <ItemText label="Stamina cost" value={String(abilityForm.stamina_cost ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, stamina_cost: Number(value) || 0 }))} />
-                  <ItemText label="Mana cost" value={String(abilityForm.magika_cost ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, magika_cost: Number(value) || 0 }))} />
-                  <ItemText label="Health cost" value={String(abilityForm.health_cost ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, health_cost: Number(value) || 0 }))} />
+                <View style={styles.adminSubPanel}>
+                  <Text style={styles.sectionTitleSmall}>Ability Cost</Text>
+                  <Text style={styles.muted}>Choose what this ability spends in battle, then set the amount.</Text>
+                  <ChoiceRow
+                    label="Cost resource"
+                    options={abilityCostResources}
+                    value={getAbilityCostResource(abilityForm)}
+                    labels={abilityCostResourceLabels}
+                    onSelect={(value) => setAbilityForm((current) => setAbilityCost(current, value, getAbilityCostAmount(current)))}
+                  />
+                  <ItemText
+                    label={getAbilityCostResource(abilityForm) === "none" ? "Cost amount disabled" : `${abilityCostResourceLabels[getAbilityCostResource(abilityForm)]} cost amount`}
+                    value={String(getAbilityCostAmount(abilityForm))}
+                    onChange={(value) => setAbilityForm((current) => setAbilityCost(current, getAbilityCostResource(current), Number(value) || 0))}
+                  />
                 </View>
                 <View style={styles.slotActions}>
                   <ItemText label="Hit chance %" value={String(abilityForm.hit_chance ?? 75)} onChange={(value) => setAbilityForm((current) => ({ ...current, hit_chance: Number(value) || 75 }))} />
@@ -1466,14 +1512,26 @@ function AssetPreview({ label, uri }: { label: string; uri: string | null }) {
   );
 }
 
-function ChoiceRow<T extends string>({ label, options, value, onSelect }: { label: string; options: readonly T[]; value: T | string; onSelect: (value: T) => void }) {
+function ChoiceRow<T extends string>({
+  label,
+  options,
+  value,
+  labels,
+  onSelect,
+}: {
+  label: string;
+  options: readonly T[];
+  value: T | string;
+  labels?: Partial<Record<T | string, string>>;
+  onSelect: (value: T) => void;
+}) {
   return (
     <View style={styles.inputGroup}>
       <Text style={styles.infoLabel}>{label}</Text>
       <View style={styles.choiceRow}>
         {options.map((option) => (
           <Pressable key={option || "none"} style={[styles.choiceButton, value === option && styles.choiceButtonActive]} onPress={() => onSelect(option)}>
-            <Text style={styles.choiceText}>{option ? String(option).replace(/magika/gi, "Mana") : "none"}</Text>
+            <Text style={styles.choiceText}>{labels?.[option] ?? (option ? String(option).replace(/magika/gi, "Mana") : "none")}</Text>
           </Pressable>
         ))}
       </View>
@@ -2143,6 +2201,20 @@ const styles = StyleSheet.create({
     fontFamily: fonts.title,
     fontSize: 18,
     textTransform: "uppercase",
+  },
+  sectionTitleSmall: {
+    color: colors.gold,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    fontSize: 12,
+  },
+  adminSubPanel: {
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.24)",
   },
   subTitle: {
     color: colors.gold,
