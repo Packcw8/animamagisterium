@@ -3945,6 +3945,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerRewardItemId={setMarkerRewardItemId}
               markerRewardQuantity={markerRewardQuantity}
               setMarkerRewardQuantity={setMarkerRewardQuantity}
+              markerRewardTiming={markerRewardTiming}
+              setMarkerRewardTiming={setMarkerRewardTiming}
               markerRepeatable={markerRepeatable}
               setMarkerRepeatable={setMarkerRepeatable}
               markerRewardOnce={markerRewardOnce}
@@ -5413,6 +5415,8 @@ function MiniMapMarkerAdminForm({
   setMarkerRewardItemId,
   markerRewardQuantity,
   setMarkerRewardQuantity,
+  markerRewardTiming,
+  setMarkerRewardTiming,
   markerRepeatable,
   setMarkerRepeatable,
   markerRewardOnce,
@@ -5502,6 +5506,8 @@ function MiniMapMarkerAdminForm({
   setMarkerRewardItemId: (value: string | null) => void;
   markerRewardQuantity: string;
   setMarkerRewardQuantity: (value: string) => void;
+  markerRewardTiming: MapMarker["reward_timing"];
+  setMarkerRewardTiming: (value: MapMarker["reward_timing"]) => void;
   markerRepeatable: boolean;
   setMarkerRepeatable: (value: boolean | ((current: boolean) => boolean)) => void;
   markerRewardOnce: boolean;
@@ -5658,6 +5664,7 @@ function MiniMapMarkerAdminForm({
           <TextInput value={markerRewardGold} onChangeText={setMarkerRewardGold} placeholder="Gold reward" placeholderTextColor={colors.muted} style={styles.input} />
           <ItemPicker label="Item reward" items={itemDefinitions} selectedId={markerRewardItemId} onSelect={setMarkerRewardItemId} />
           <TextInput value={markerRewardQuantity} onChangeText={setMarkerRewardQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
+          <RewardTimingPicker value={markerRewardTiming} onSelect={setMarkerRewardTiming} />
           <View style={styles.modeRow}>
             <Pressable style={[styles.secondaryButtonFlex, markerRepeatable && styles.typeSelected]} onPress={() => setMarkerRepeatable((value) => !value)}>
               <Text style={styles.secondaryText}>Repeatable: {markerRepeatable ? "Yes" : "No"}</Text>
