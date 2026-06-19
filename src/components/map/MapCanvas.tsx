@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import type { MutableRefObject } from "react";
 import { Image, ImageSourcePropType, Pressable, StyleSheet, Text, View } from "react-native";
 import type { MapMarker } from "../../services/mapService";
@@ -48,6 +49,7 @@ export function OverworldMapCanvas({
   scaledMapSize,
   imageSource,
   onWheel,
+  onPinchZoom,
   canCapturePointer,
   ...shared
 }: SharedCanvasProps & {
@@ -55,8 +57,11 @@ export function OverworldMapCanvas({
   scaledMapSize: { width: number; height: number };
   imageSource: ImageSourcePropType;
   onWheel: (event: { nativeEvent?: { deltaY?: number } }) => void;
+  onPinchZoom?: (delta: number) => void;
   canCapturePointer: boolean;
 }) {
+  const pinch = usePinchZoom(onPinchZoom);
+
   return (
     <View ref={viewportRef as never} style={styles.viewport} {...({ onWheel } as object)}>
       <View
@@ -68,12 +73,24 @@ export function OverworldMapCanvas({
           },
         ]}
         {...({
-          onClick: shared.onMapPointer,
+          onClick: (event: unknown) => {
+            if (pinch.shouldSuppressClick()) {
+              return;
+            }
+            shared.onMapPointer?.(event);
+          },
+          onTouchStart: pinch.onTouchStart,
+          onTouchMove: pinch.onTouchMove,
+          onTouchEnd: pinch.onTouchEnd,
+          onTouchCancel: pinch.onTouchEnd,
           onStartShouldSetResponder: () => canCapturePointer,
         } as object)}
       >
         <Image source={imageSource} style={styles.mapImage} {...({ pointerEvents: "none" } as object)} />
         <MapCanvasLayers {...shared} markerSize={34} />
+      </View>
+      <View pointerEvents="none" style={styles.pinchHint}>
+        <Text style={styles.pinchHintText}>Pinch to zoom</Text>
       </View>
     </View>
   );
@@ -192,6 +209,71 @@ function RouteSegment({ segment, draft = false }: { segment: RouteSegmentView; d
   );
 }
 
+type TouchLike = {
+  clientX?: number;
+  clientY?: number;
+};
+
+type TouchEventLike = {
+  nativeEvent?: {
+    touches?: TouchLike[];
+    changedTouches?: TouchLike[];
+  };
+};
+
+function usePinchZoom(onPinchZoom?: (delta: number) => void) {
+  const lastDistanceRef = useRef<number | null>(null);
+  const suppressClickUntilRef = useRef(0);
+
+  function getTouchDistance(event: TouchEventLike) {
+    const touches = event.nativeEvent?.touches ?? [];
+
+    if (touches.length < 2) {
+      return null;
+    }
+
+    const [first, second] = touches;
+    const firstX = first?.clientX ?? 0;
+    const firstY = first?.clientY ?? 0;
+    const secondX = second?.clientX ?? 0;
+    const secondY = second?.clientY ?? 0;
+    return Math.hypot(secondX - firstX, secondY - firstY);
+  }
+
+  return {
+    onTouchStart: (event: TouchEventLike) => {
+      const distance = getTouchDistance(event);
+      if (distance !== null) {
+        lastDistanceRef.current = distance;
+        suppressClickUntilRef.current = Date.now() + 450;
+      }
+    },
+    onTouchMove: (event: TouchEventLike) => {
+      const distance = getTouchDistance(event);
+      const lastDistance = lastDistanceRef.current;
+
+      if (distance === null || lastDistance === null || !onPinchZoom) {
+        return;
+      }
+
+      const rawDelta = (distance - lastDistance) / 240;
+      const delta = Math.max(-0.08, Math.min(0.08, rawDelta));
+      if (Math.abs(delta) >= 0.01) {
+        onPinchZoom(delta);
+        lastDistanceRef.current = distance;
+        suppressClickUntilRef.current = Date.now() + 450;
+      }
+    },
+    onTouchEnd: (event: TouchEventLike) => {
+      const remainingTouches = event.nativeEvent?.touches?.length ?? 0;
+      if (remainingTouches < 2) {
+        lastDistanceRef.current = null;
+      }
+    },
+    shouldSuppressClick: () => Date.now() < suppressClickUntilRef.current,
+  };
+}
+
 const styles = StyleSheet.create({
   viewport: {
     height: 520,
@@ -204,7 +286,7 @@ const styles = StyleSheet.create({
     overflowY: "auto",
     backgroundColor: "#061010",
     cursor: "crosshair",
-    touchAction: "pan-x pan-y",
+    touchAction: "pan-x pan-y pinch-zoom",
     overscrollBehavior: "contain",
     userSelect: "none",
     WebkitOverflowScrolling: "touch",
@@ -212,9 +294,25 @@ const styles = StyleSheet.create({
   mapSurface: {
     position: "relative",
     transformOrigin: "0 0",
-    touchAction: "auto",
+    touchAction: "pan-x pan-y",
     userSelect: "none",
   } as object,
+  pinchHint: {
+    position: "absolute",
+    right: 10,
+    bottom: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.34)",
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    backgroundColor: "rgba(0,0,0,0.56)",
+  },
+  pinchHintText: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: "900",
+  },
   mapImage: {
     position: "absolute",
     width: "100%",

@@ -3805,6 +3805,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         scaledMapSize={scaledMapSize}
         imageSource={forgottenMarches}
         onWheel={handleWheel}
+        onPinchZoom={zoomBy}
         canCapturePointer={isAdmin}
         onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0])}
         routeSegments={routeSegments}
