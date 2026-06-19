@@ -540,6 +540,14 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  player_market_purchases: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    market_item_id: string;
+    quantity_purchased: number;
+    updated_at: string;
+  };
   marker_reward_claims: {
     id: string;
     user_id: string;

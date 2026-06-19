@@ -13,6 +13,7 @@ export type MarkerRouteLink = Tables["marker_route_links"];
 export type MiniMap = Tables["mini_maps"];
 export type TutorialStep = Tables["tutorial_steps"];
 export type MarkerMarketItem = Tables["marker_market_items"];
+export type PlayerMarketPurchase = Tables["player_market_purchases"];
 export type MarketListingMode = MarkerMarketItem["listing_mode"];
 export const marketListingModes: MarketListingMode[] = ["buy_and_sell", "buy_only", "sell_only"];
 export type MapStoryInstance = Tables["map_story_instances"];
@@ -579,6 +580,33 @@ export async function getMarkerMarketItems(markerId: string) {
   return (data ?? []) as MarkerMarketItem[];
 }
 
+export async function getPlayerMarketPurchaseCounts(marketItemIds: string[]) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user || marketItemIds.length === 0) {
+    return {};
+  }
+
+  const { data, error } = await supabase
+    .from("player_market_purchases")
+    .select("market_item_id,quantity_purchased")
+    .eq("user_id", user.id)
+    .in("market_item_id", marketItemIds);
+
+  if (error) {
+    console.warn("[map] player market purchases unavailable", error.message);
+    return {};
+  }
+
+  return ((data ?? []) as Pick<PlayerMarketPurchase, "market_item_id" | "quantity_purchased">[]).reduce<Record<string, number>>((counts, row) => {
+    counts[row.market_item_id] = Number(row.quantity_purchased) || 0;
+    return counts;
+  }, {});
+}
+
 export async function saveMarkerMarketItem(input: Omit<MarkerMarketItem, "id" | "created_at" | "updated_at"> & { id?: string }) {
   const values = {
     marker_id: input.marker_id,
@@ -1022,10 +1050,6 @@ export async function buyMarketItem(character: CharacterWithDetails, marketItem:
     throw new Error("This market item is not for sale.");
   }
 
-  if (!marketItem.unlimited_stock && Number(marketItem.stock_quantity) <= 0) {
-    throw new Error("This item is out of stock.");
-  }
-
   const { data: currentCharacter, error: characterError } = await supabase
     .from("characters")
     .select("gold")
@@ -1035,6 +1059,23 @@ export async function buyMarketItem(character: CharacterWithDetails, marketItem:
 
   if (characterError) {
     throw characterError;
+  }
+
+  const { data: purchaseRow, error: purchaseError } = await supabase
+    .from("player_market_purchases")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("market_item_id", marketItem.id)
+    .maybeSingle();
+
+  if (purchaseError) {
+    throw purchaseError;
+  }
+
+  const purchased = Number((purchaseRow as PlayerMarketPurchase | null)?.quantity_purchased ?? 0);
+  const stockLimit = Math.max(0, Number(marketItem.stock_quantity) || 0);
+  if (!marketItem.unlimited_stock && purchased >= stockLimit) {
+    throw new Error("This item is sold out for you.");
   }
 
   const price = Math.max(0, Number(marketItem.buy_price) || 0);
@@ -1055,15 +1096,23 @@ export async function buyMarketItem(character: CharacterWithDetails, marketItem:
   await grantItemToCharacter(character.id, marketItem.item_id, 1);
 
   if (!marketItem.unlimited_stock) {
-    const { error: stockError } = await supabase
-      .from("marker_market_items")
-      .update({ stock_quantity: Math.max(0, Number(marketItem.stock_quantity) - 1), updated_at: new Date().toISOString() })
-      .eq("id", marketItem.id);
+    const { error: stockError } = await supabase.from("player_market_purchases").upsert(
+      {
+        user_id: user.id,
+        character_id: character.id,
+        market_item_id: marketItem.id,
+        quantity_purchased: purchased + 1,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,market_item_id" },
+    );
 
     if (stockError) {
       throw stockError;
     }
   }
+
+  return { gold: Number(currentCharacter.gold) - price };
 }
 
 export async function sellMarketInventoryItem(character: CharacterWithDetails, inventoryItem: InventoryItem, sellPrice: number) {
@@ -1101,6 +1150,8 @@ export async function sellMarketInventoryItem(character: CharacterWithDetails, i
   if (error) {
     throw error;
   }
+
+  return { gold: Number(currentCharacter.gold) + Math.max(0, Number(sellPrice) || 0) };
 }
 
 export function canMarketItemBeBought(marketItem: MarkerMarketItem) {

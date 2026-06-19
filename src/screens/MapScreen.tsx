@@ -41,6 +41,7 @@ import {
   getMapSeasons,
   getMapEvents,
   getMarkerMarketItems,
+  getPlayerMarketPurchaseCounts,
   getMarkerLegendItems,
   getMarkerRouteLinks,
   getMiniMaps,
@@ -271,6 +272,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerHideWhenCompleted, setMarkerHideWhenCompleted] = useState(true);
   const [markerRequireAllLinkedRoutes, setMarkerRequireAllLinkedRoutes] = useState(true);
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
+  const [marketPurchaseCounts, setMarketPurchaseCounts] = useState<Record<string, number>>({});
   const [markerRouteLinks, setMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [selectedMarkerRouteIds, setSelectedMarkerRouteIds] = useState<string[]>([]);
   const [marketItemId, setMarketItemId] = useState<string | null>(null);
@@ -1121,7 +1123,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerPanelMessage(null);
 
     try {
-      setMarkerMarketItems(await getMarkerMarketItems(marker.id));
+      await loadMarkerMarketState(marker.id);
       if (marker.type === "Sign Post" || isStoryQuestMarker(marker)) {
         const links = await getMarkerRouteLinks(marker.id);
         setMarkerRouteLinks(links);
@@ -1135,6 +1137,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
+  async function loadMarkerMarketState(markerId: string) {
+    const items = await getMarkerMarketItems(markerId);
+    setMarkerMarketItems(items);
+    setMarketPurchaseCounts(await getPlayerMarketPurchaseCounts(items.map((item) => item.id)));
+  }
+
   async function previewMarker(marker: MapMarker) {
     await selectMarker(marker);
     setPreviewMarkerScene(true);
@@ -1144,6 +1152,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setPreviewMarkerScene(false);
     setSelectedMarker(null);
     setMarkerPanelMessage(null);
+    setMarketPurchaseCounts({});
   }
 
   async function saveSelectedMarkerSettings() {
@@ -1278,11 +1287,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function buyFromMarker(marketItem: MarkerMarketItem) {
     try {
-      await buyMarketItem(character, marketItem);
+      const result = await buyMarketItem(character, marketItem);
+      onCharacterUpdated({ ...character, gold: result.gold });
       setMarkerPanelMessage("Item purchased.");
       await loadInventory();
       if (selectedMarker) {
-        setMarkerMarketItems(await getMarkerMarketItems(selectedMarker.id));
+        await loadMarkerMarketState(selectedMarker.id);
       }
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to buy item."));
@@ -1300,7 +1310,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const sellPrice = marketItem.sell_price;
 
     try {
-      await sellMarketInventoryItem(character, entry, sellPrice);
+      const result = await sellMarketInventoryItem(character, entry, sellPrice);
+      onCharacterUpdated({ ...character, gold: result.gold });
       setMarkerPanelMessage("Item sold.");
       await loadInventory();
     } catch (error) {
@@ -3545,7 +3556,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     return (
       <MarkerSceneScreen
         marker={selectedMarker}
+        characterGold={character.gold}
         marketItems={markerMarketItems}
+        marketPurchaseCounts={marketPurchaseCounts}
         routeLinks={markerRouteLinks}
         routes={routes}
         routeProgressRows={routeProgressRows}
@@ -6531,7 +6544,9 @@ function MiniMapMarkerAdminForm({
 
 function MarkerSceneScreen({
   marker,
+  characterGold,
   marketItems,
+  marketPurchaseCounts,
   routeLinks,
   routes,
   routeProgressRows,
@@ -6548,7 +6563,9 @@ function MarkerSceneScreen({
   onEnterArea,
 }: {
   marker: MapMarker;
+  characterGold: number;
   marketItems: MarkerMarketItem[];
+  marketPurchaseCounts: Record<string, number>;
   routeLinks: MarkerRouteLink[];
   routes: MapRoute[];
   routeProgressRows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>;
@@ -6669,13 +6686,20 @@ function MarkerSceneScreen({
           </View>
         ) : marker.type === "Market" ? (
           <View style={styles.storyEditor}>
-            <Text style={styles.selectedTitle}>Market</Text>
+            <View style={styles.marketHeaderRow}>
+              <Text style={styles.selectedTitle}>Market</Text>
+              <View style={styles.marketGoldPill}>
+                <Text style={styles.marketPriceLabel}>Your Gold</Text>
+                <Text style={styles.marketBuyPrice}>{characterGold.toLocaleString()}</Text>
+              </View>
+            </View>
             <View style={styles.marketGrid}>
-              {marketItems.filter(canMarketItemBeBought).length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
-              {marketItems.filter(canMarketItemBeBought).map((marketItem) => (
+              {marketItems.filter((item) => canMarketItemBeBought(item) && getRemainingMarketStock(item, marketPurchaseCounts) > 0).length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
+              {marketItems.filter((item) => canMarketItemBeBought(item) && getRemainingMarketStock(item, marketPurchaseCounts) > 0).map((marketItem) => (
                 <MarketBuyCard
                   key={marketItem.id}
                   marketItem={marketItem}
+                  purchasedCount={marketPurchaseCounts[marketItem.id] ?? 0}
                   item={getItemDefinition(itemDefinitions, marketItem.item_id)}
                   onBuy={() => onBuy(marketItem)}
                 />
@@ -6745,9 +6769,10 @@ function ItemPicker({ label, items, selectedId, onSelect }: { label: string; ite
   );
 }
 
-function MarketBuyCard({ marketItem, item, onBuy }: { marketItem: MarkerMarketItem; item: ItemDefinition | null; onBuy: () => void }) {
+function MarketBuyCard({ marketItem, purchasedCount, item, onBuy }: { marketItem: MarkerMarketItem; purchasedCount: number; item: ItemDefinition | null; onBuy: () => void }) {
   const imageUri = resolveInventoryImageUri(item?.image_path);
-  const outOfStock = !marketItem.unlimited_stock && Number(marketItem.stock_quantity) <= 0;
+  const remainingStock = getRemainingMarketStock(marketItem, { [marketItem.id]: purchasedCount });
+  const outOfStock = remainingStock <= 0;
 
   return (
     <View style={[styles.marketCard, outOfStock && styles.lockedCard]}>
@@ -6761,7 +6786,7 @@ function MarketBuyCard({ marketItem, item, onBuy }: { marketItem: MarkerMarketIt
           <Text style={styles.marketPriceLabel}>Buy</Text>
           <Text style={styles.marketBuyPrice}>{marketItem.buy_price} gold</Text>
         </View>
-        <Text style={styles.marketStockText}>{marketItem.unlimited_stock ? "Unlimited stock" : `${Math.max(0, Number(marketItem.stock_quantity) || 0)} left`}</Text>
+        <Text style={styles.marketStockText}>{marketItem.unlimited_stock ? "Unlimited stock" : `${remainingStock} available for you`}</Text>
       </View>
       <Pressable style={[styles.marketActionButton, outOfStock && styles.disabledAction]} onPress={onBuy} disabled={outOfStock}>
         <Text style={styles.primaryText}>{outOfStock ? "Sold Out" : "Buy"}</Text>
@@ -7047,6 +7072,16 @@ function getItemName(items: ItemDefinition[], itemId: string | null) {
 
 function getItemDefinition(items: ItemDefinition[], itemId: string | null) {
   return items.find((item) => item.id === itemId) ?? null;
+}
+
+function getRemainingMarketStock(marketItem: MarkerMarketItem, purchaseCounts: Record<string, number>) {
+  if (marketItem.unlimited_stock) {
+    return Number.POSITIVE_INFINITY;
+  }
+
+  const stockLimit = Math.max(0, Number(marketItem.stock_quantity) || 0);
+  const purchased = Math.max(0, Number(purchaseCounts[marketItem.id]) || 0);
+  return Math.max(0, stockLimit - purchased);
 }
 
 function formatMarketListingMode(mode: MarkerMarketItem["listing_mode"] | null | undefined) {
@@ -8059,6 +8094,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
+  },
+  marketHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  marketGoldPill: {
+    minWidth: 128,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "rgba(218,164,65,0.1)",
+    alignItems: "flex-end",
   },
   marketCard: {
     flexGrow: 1,
