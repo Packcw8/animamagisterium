@@ -12,6 +12,7 @@ import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel
 import { LegendEditor } from "../components/map/LegendEditor";
 import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
+import { WalkingPathAdminPanel } from "../components/map/WalkingPathAdminPanel";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
@@ -3892,34 +3893,19 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 </View>
               ))}
             </View>
-            <View style={styles.modeRow}>
-              {editorModes.map((mode) => (
-                <Pressable key={mode} style={[styles.modeButton, editorMode === mode && styles.typeSelected]} onPress={() => setEditorMode(mode)}>
-                  <Text style={styles.typeText}>{mode}</Text>
-                </Pressable>
-              ))}
-            </View>
-            {editorMode === "Walking Path" ? (
-              <View style={styles.routeList}>
-                <Text style={styles.selectedTitle}>Mini Map Walking Paths</Text>
-                {adminMiniMapRoutes.length === 0 ? <Text style={styles.copy}>No walking paths created in this mini map yet.</Text> : null}
-                {adminMiniMapRoutes.map((item) => (
-                  <View key={item.id} style={[styles.routeRow, route.id === item.id && styles.routeRowActive]}>
-                    <Text style={styles.routeNumber}>{item.sort_order}</Text>
-                    <Pressable style={styles.routeRowText} onPress={() => void selectRoute(item, true)}>
-                      <Text style={styles.markerName}>{item.name}</Text>
-                      <Text style={styles.copy}>{item.is_active ? "Active" : "Hidden"} / {metersToMiles(item.distance_required_meters)} mi / {item.terrain}</Text>
-                    </Pressable>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void editWalkingPath(item)}>
-                      <Text style={styles.secondaryText}>Edit</Text>
-                    </Pressable>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeWalkingPath(item.id)}>
-                      <Text style={styles.dangerText}>Delete</Text>
-                    </Pressable>
-                  </View>
-                ))}
-              </View>
-            ) : null}
+            <WalkingPathAdminPanel
+              title="Mini Map Walking Paths"
+              emptyText="No walking paths created in this mini map yet."
+              routes={adminMiniMapRoutes}
+              selectedRouteId={route.id}
+              modes={editorModes}
+              activeMode={editorMode}
+              showList={editorMode === "Walking Path"}
+              onSelectMode={setEditorMode}
+              onSelectRoute={(item) => void selectRoute(item, true)}
+              onEditRoute={(item) => void editWalkingPath(item)}
+              onDeleteRoute={(routeId) => void removeWalkingPath(routeId)}
+            />
             {editorMode === "Marker" ? <MiniMapMarkerAdminForm
               activeSectionMarkerTypes={miniMapMarkerTypes}
               draftType={draftType}
@@ -4324,31 +4310,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               onUploadMessage={setAdminMessage}
             />
           ) : null}
-          {adminSection === "Walking Paths" ? <View style={styles.routeList}>
-            <Text style={styles.selectedTitle}>Walking Path Order</Text>
-            {adminWorldRoutes.map((item) => (
-              <View key={item.id} style={[styles.routeRow, route.id === item.id && styles.routeRowActive]}>
-                <Text style={styles.routeNumber}>{item.sort_order}</Text>
-                <Pressable style={styles.routeRowText} onPress={() => void selectRoute(item, true)}>
-                  <Text style={styles.markerName}>{item.name}</Text>
-                  <Text style={styles.copy}>{item.is_active ? "Active" : "Hidden"} · {metersToMiles(item.distance_required_meters)} mi · {item.terrain}</Text>
-                </Pressable>
-                <Pressable style={styles.secondaryButtonFlex} onPress={() => void editWalkingPath(item)}>
-                  <Text style={styles.secondaryText}>Edit</Text>
-                </Pressable>
-                <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeWalkingPath(item.id)}>
-                  <Text style={styles.dangerText}>Delete</Text>
-                </Pressable>
-              </View>
-            ))}
-          </View> : null}
-          {adminSection === "Walking Paths" ? <View style={styles.modeRow}>
-            {editorModes.map((mode) => (
-              <Pressable key={mode} style={[styles.modeButton, editorMode === mode && styles.typeSelected]} onPress={() => setEditorMode(mode)}>
-                <Text style={styles.typeText}>{mode}</Text>
-              </Pressable>
-            ))}
-          </View> : null}
+          {adminSection === "Walking Paths" ? (
+            <WalkingPathAdminPanel
+              title="Walking Path Order"
+              emptyText="No walking paths created yet."
+              routes={adminWorldRoutes}
+              selectedRouteId={route.id}
+              modes={editorModes}
+              activeMode={editorMode}
+              onSelectMode={setEditorMode}
+              onSelectRoute={(item) => void selectRoute(item, true)}
+              onEditRoute={(item) => void editWalkingPath(item)}
+              onDeleteRoute={(routeId) => void removeWalkingPath(routeId)}
+            />
+          ) : null}
           {["World Markers", "Area/Town Markers"].includes(adminSection) ? <View style={styles.routeList}>
             <Text style={styles.selectedTitle}>Existing Markers</Text>
             {getAdminSectionMarkers(adminSection, adminWorldMarkers, adminMiniMapMarkers).length === 0 ? <Text style={styles.copy}>No markers created yet.</Text> : null}
@@ -6528,35 +6503,6 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     borderBottomWidth: 1,
     borderColor: "rgba(255,255,255,0.08)",
-  },
-  routeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    padding: 10,
-    backgroundColor: "rgba(0,0,0,0.22)",
-  },
-  routeRowActive: {
-    borderColor: colors.blue,
-    backgroundColor: "rgba(20, 61, 86, 0.55)",
-  },
-  routeNumber: {
-    minWidth: 30,
-    minHeight: 30,
-    borderRadius: 15,
-    overflow: "hidden",
-    textAlign: "center",
-    textAlignVertical: "center",
-    color: "#120e08",
-    backgroundColor: colors.gold,
-    fontWeight: "900",
-  },
-  routeRowText: {
-    flex: 1,
-    gap: 2,
   },
   markerTableRow: {
     gap: 10,
