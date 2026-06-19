@@ -1,16 +1,19 @@
 import { distance as turfDistance } from "@turf/turf";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { BattleActionCard, CombatIndicatorStack, ResourceMeter, type CombatIndicator } from "../components/battle/BattleDisplay";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
+import { MarkerIcon } from "../components/map/MarkerIcon";
+import { MarkerLegend } from "../components/map/MarkerLegend";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { pickAndUploadAdminImage } from "../services/adminImageService";
 import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
-import { AbilityDefinition, CharacterResources, clampHealth, getAbilityCostLabel, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
+import { AbilityDefinition, CharacterResources, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, EnemyWithLoadout, getEnemies, getEnemyLoadout, getNpcLoadout, getNpcs, NpcDefinition, NpcWithLoadout, resolveEnemyImageUri } from "../services/combatAdminService";
-import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../services/inventoryService";
+import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveInventoryImageUri } from "../services/inventoryService";
 import { recordEnemyKill } from "../services/progressionService";
 import { chooseWeightedEnemyAbility, classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph, rollD20Attack } from "../utils/combatMath";
 import { clamp, getPercentDistance, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, roundPercent } from "../utils/mapGeometry";
@@ -168,12 +171,6 @@ type MovementStatus = {
 };
 
 type PlayerMovementState = "IDLE" | "MOVING";
-type CombatIndicator = {
-  id: string;
-  target: "enemy" | "player";
-  text: string;
-  color: string;
-};
 
 export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
@@ -5695,96 +5692,6 @@ function BattleEventScreen({
   );
 }
 
-function ResourceMeter({ label, value, max, color, compact = false }: { label: string; value: number; max: number; color: string; compact?: boolean }) {
-  const safeMax = Math.max(1, max);
-
-  return (
-    <View style={[styles.resourceMeter, compact && styles.resourceMeterCompact]}>
-      <View style={styles.resourceMeterHeader}>
-        <Text style={styles.resourceMeterLabel}>{label}</Text>
-        <Text style={styles.resourceMeterValue}>{Math.max(0, value)} / {safeMax}</Text>
-      </View>
-      <ProgressBar value={value} max={safeMax} color={color} height={compact ? 5 : 8} />
-    </View>
-  );
-}
-
-function BattleActionCard({
-  ability,
-  slotNumber,
-  disabled,
-  unavailableReason,
-  onPress,
-}: {
-  ability: AbilityDefinition | null;
-  slotNumber: number;
-  disabled: boolean;
-  unavailableReason: string | null;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.battleActionCard, pressed && !disabled && styles.battleActionPressed, disabled && styles.disabledAction]}
-      onPress={onPress}
-      disabled={disabled}
-    >
-      <View style={styles.battleActionIconWrap}>
-        {ability ? <BattleAbilityIcon ability={ability} /> : <Text style={styles.battleActionFallback}>{slotNumber}</Text>}
-      </View>
-      <View style={styles.battleActionInfo}>
-        <Text style={styles.battleActionName}>{ability?.name ?? `Empty Slot ${slotNumber}`}</Text>
-        {ability ? <Text style={styles.battleActionMeta}>{getAbilityPowerLabel(ability)}</Text> : <Text style={styles.battleActionMeta}>Equip an ability on Home</Text>}
-        {ability ? <Text style={styles.actionCost}>{getAbilityCostLabel(ability)}</Text> : null}
-        {unavailableReason ? <Text style={styles.battleActionWarning}>{unavailableReason}</Text> : null}
-      </View>
-    </Pressable>
-  );
-}
-
-function CombatIndicatorStack({ indicators }: { indicators: CombatIndicator[] }) {
-  return (
-    <View style={styles.combatIndicatorStack} pointerEvents="none">
-      {indicators.map((indicator, index) => (
-        <Text key={indicator.id} style={[styles.combatIndicator, { color: indicator.color, top: -10 - index * 24 } as object]}>
-          {indicator.text}
-        </Text>
-      ))}
-    </View>
-  );
-}
-
-function BattleAbilityIcon({ ability }: { ability: AbilityDefinition }) {
-  const imageUri = ability.adminAbility?.image_path
-    ? resolveAbilityImageUri(ability.adminAbility.image_path)
-    : ability.sourceWeapon?.image_path
-      ? resolveInventoryImageUri(ability.sourceWeapon.image_path)
-      : null;
-
-  if (!imageUri) {
-    return <Text style={styles.battleActionFallback}>{ability.name.slice(0, 1).toUpperCase()}</Text>;
-  }
-
-  return <Image source={{ uri: imageUri }} style={styles.battleAbilityIcon} />;
-}
-
-function getAbilityPowerLabel(ability: AbilityDefinition) {
-  if (ability.adminAbility) {
-    const parts = [
-      ability.adminAbility.damage > 0 ? `${ability.adminAbility.damage} damage` : null,
-      ability.adminAbility.healing > 0 ? `${ability.adminAbility.healing} healing` : null,
-      ability.adminAbility.defense_amount > 0 ? `${ability.adminAbility.defense_amount} defense` : null,
-    ].filter(Boolean);
-
-    return parts.length > 0 ? parts.join(" / ") : ability.adminAbility.type;
-  }
-
-  if (ability.baseDamage > 0) {
-    return `${ability.baseDamage} damage${ability.scaling > 0 ? ` + ${ability.attribute ?? "stat"}` : ""}`;
-  }
-
-  return ability.description;
-}
-
 function getEnemyIntent(enemy: EnemyWithLoadout | NpcWithLoadout | null, event: MapEvent) {
   const strongestAbility = enemy?.abilities
     ?.filter((entry) => entry.ability)
@@ -5801,62 +5708,6 @@ function getEnemyIntent(enemy: EnemyWithLoadout | NpcWithLoadout | null, event: 
 
 function getBattleEnemyLevel(enemyMaxHp: number) {
   return Math.max(1, Math.round(enemyMaxHp / 25));
-}
-
-type MarkerIconSource = Pick<MapMarker, "type" | "icon_label" | "icon_image_url" | "icon_color">;
-
-function MarkerIcon({ marker, compact = false, mini = false }: { marker: MarkerIconSource; compact?: boolean; mini?: boolean }) {
-  const iconUri = resolveMapImageUri(marker.icon_image_url);
-  const iconText = (marker.icon_label?.trim() || getDefaultMarkerIconLabel(marker.type)).slice(0, 3).toUpperCase();
-  const iconColor = marker.icon_color?.trim() || getDefaultMarkerIconColor(marker.type);
-  const iconStyle = mini ? styles.miniMapMarkerIcon : compact ? styles.legendIcon : styles.markerIcon;
-  const imageStyle = mini ? styles.miniMapMarkerIconImage : compact ? styles.legendIconImage : styles.markerIconImage;
-  const textStyle = mini ? styles.miniMapMarkerIconText : compact ? styles.legendIconText : styles.markerIconText;
-
-  return (
-    <View style={[iconStyle, { borderColor: iconColor } as object]}>
-      {iconUri ? (
-        <Image source={{ uri: iconUri }} style={imageStyle} />
-      ) : (
-        <Text style={[textStyle, { color: iconColor } as object]}>{iconText}</Text>
-      )}
-    </View>
-  );
-}
-
-function MarkerLegend({ items, open, onToggle }: { items: MarkerLegendItem[]; open: boolean; onToggle: () => void }) {
-  const visibleItems = items.filter((item) => item.is_active).sort((a, b) => a.sort_order - b.sort_order);
-
-  return (
-    <Frame style={styles.legendPanel}>
-      <Pressable style={styles.legendHeader} onPress={onToggle}>
-        <Text style={styles.sectionTitle}>Map Legend</Text>
-        <Text style={styles.secondaryText}>{open ? "Hide" : "Show"}</Text>
-      </Pressable>
-      {open ? (
-        <View style={styles.legendList}>
-          {visibleItems.length === 0 ? <Text style={styles.copy}>No legend entries yet.</Text> : null}
-          {visibleItems.map((item) => (
-            <View key={item.id} style={styles.legendItem}>
-              <MarkerIcon
-                marker={{
-                  type: item.marker_type,
-                  icon_label: item.icon_label,
-                  icon_image_url: item.icon_image_url,
-                  icon_color: item.icon_color,
-                }}
-                compact
-              />
-              <View style={styles.markerTableInfo}>
-                <Text style={styles.markerName}>{item.title}</Text>
-                {item.description ? <Text style={styles.copy}>{item.description}</Text> : <Text style={styles.copy}>{item.marker_type}</Text>}
-              </View>
-            </View>
-          ))}
-        </View>
-      ) : null}
-    </Frame>
-  );
 }
 
 function MiniMapMarkerAdminForm({
@@ -6774,36 +6625,6 @@ function isQuestMarkerType(type: string) {
   return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
 }
 
-function getDefaultMarkerIconLabel(type: string) {
-  if (type === "Market") return "MKT";
-  if (type === "Sign Post") return "SIG";
-  if (type === "Player Spawn") return "SPN";
-  if (type === "Area/Town Entrance") return "IN";
-  if (type === "Battle" || type === "Battle Zone") return "BTL";
-  if (type === "Quest" || type === "Side Quest" || type === "Story") return "!";
-  if (type === "Training" || type === "Training Spot") return "TRN";
-  if (type === "Dungeon Room") return "DGN";
-  if (type === "Exit") return "EXT";
-  if (type === "Exit/Leave") return "OUT";
-  if (type === "Point of Interest") return "POI";
-  return "*";
-}
-
-function getDefaultMarkerIconColor(type: string) {
-  if (type === "Market") return colors.gold;
-  if (type === "Sign Post") return "#f0d28a";
-  if (type === "Player Spawn") return colors.blue;
-  if (type === "Area/Town Entrance") return colors.blue;
-  if (type === "Battle" || type === "Battle Zone") return "#e0574f";
-  if (type === "Quest" || type === "Side Quest" || type === "Story") return "#8fe8a1";
-  if (type === "Training" || type === "Training Spot") return "#7fe7ff";
-  if (type === "Dungeon Room") return "#b889ff";
-  if (type === "Exit") return "#f0d28a";
-  if (type === "Exit/Leave") return colors.muted;
-  if (type === "Point of Interest") return "#f0d28a";
-  return colors.goldSoft;
-}
-
 const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
@@ -7020,48 +6841,6 @@ const styles = StyleSheet.create({
     borderColor: colors.gold,
     backgroundColor: colors.blue,
   },
-  markerIcon: {
-    width: 25,
-    height: 25,
-    borderRadius: 13,
-    borderWidth: 2,
-    backgroundColor: "rgba(4, 6, 6, 0.94)",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    shadowColor: "#7fe7ff",
-    shadowOpacity: 0.55,
-    shadowRadius: 8,
-  },
-  markerIconImage: {
-    width: "100%",
-    height: "100%",
-  },
-  markerIconText: {
-    fontSize: 8,
-    fontWeight: "900",
-  },
-  miniMapMarkerIcon: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    backgroundColor: "rgba(4, 6, 6, 0.94)",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    shadowColor: "#7fe7ff",
-    shadowOpacity: 0.42,
-    shadowRadius: 5,
-  },
-  miniMapMarkerIconImage: {
-    width: "100%",
-    height: "100%",
-  },
-  miniMapMarkerIconText: {
-    fontSize: 6,
-    fontWeight: "900",
-  },
   markerType: {
     color: colors.goldSoft,
     fontSize: 10,
@@ -7113,52 +6892,10 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 10,
   },
-  legendPanel: {
-    marginHorizontal: 12,
-    marginTop: 12,
-    padding: 12,
-    gap: 10,
-  },
-  legendHeader: {
-    minHeight: 42,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-  },
-  legendList: {
-    gap: 8,
-  },
-  legendItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderTopWidth: 1,
-    borderColor: colors.borderSoft,
-    paddingTop: 8,
-  },
   legendPreviewRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-  },
-  legendIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 2,
-    backgroundColor: "rgba(4, 6, 6, 0.94)",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-  },
-  legendIconImage: {
-    width: "100%",
-    height: "100%",
-  },
-  legendIconText: {
-    fontSize: 11,
-    fontWeight: "900",
   },
   panelHeader: {
     flexDirection: "row",
@@ -7643,13 +7380,6 @@ const styles = StyleSheet.create({
   disabledAction: {
     opacity: 0.45,
   },
-  actionCost: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: "800",
-    marginTop: 2,
-    textTransform: "capitalize",
-  },
   resourceBars: {
     gap: 6,
     borderWidth: 1,
@@ -7657,28 +7387,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
     backgroundColor: "rgba(0,0,0,0.22)",
-  },
-  resourceMeter: {
-    gap: 5,
-  },
-  resourceMeterCompact: {
-    gap: 3,
-  },
-  resourceMeterHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  resourceMeterLabel: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  resourceMeterValue: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: "900",
   },
   battleInventory: {
     gap: 8,
@@ -8167,22 +7875,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.48,
     shadowRadius: 14,
   },
-  combatIndicatorStack: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    alignItems: "center",
-  },
-  combatIndicator: {
-    position: "absolute",
-    fontWeight: "900",
-    fontSize: 16,
-    textShadowColor: "rgba(0,0,0,0.9)",
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 6,
-    opacity: 0.96,
-  },
   enemyImage: {
     width: 126,
     height: 126,
@@ -8232,70 +7924,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-  },
-  battleActionCard: {
-    flex: 1,
-    minWidth: 150,
-    flexBasis: "48%",
-    minHeight: 78,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(232, 181, 94, 0.36)",
-    padding: 9,
-    backgroundColor: "rgba(8, 12, 13, 0.72)",
-  },
-  battleActionPressed: {
-    borderColor: colors.gold,
-    backgroundColor: "rgba(232, 181, 94, 0.14)",
-    transform: [{ scale: 0.99 }],
-  },
-  battleActionIconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 9,
-    borderWidth: 1,
-    borderColor: "rgba(54, 171, 224, 0.34)",
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    backgroundColor: "rgba(0,0,0,0.34)",
-  },
-  battleActionInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-  battleActionName: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: "900",
-    lineHeight: 16,
-  },
-  battleActionMeta: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-  battleActionWarning: {
-    color: "#ffb4aa",
-    fontSize: 10,
-    fontWeight: "900",
-    marginTop: 2,
-  },
-  battleActionFallback: {
-    color: colors.gold,
-    fontFamily: fonts.title,
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  battleAbilityIcon: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 8,
-    backgroundColor: "rgba(0,0,0,0.28)",
   },
   battleUtilityRow: {
     flexDirection: "row",
