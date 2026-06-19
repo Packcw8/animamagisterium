@@ -6670,31 +6670,32 @@ function MarkerSceneScreen({
         ) : marker.type === "Market" ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Market</Text>
-            {marketItems.filter(canMarketItemBeBought).length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
-            {marketItems.filter(canMarketItemBeBought).map((marketItem) => (
-              <View key={marketItem.id} style={styles.storyCard}>
-                <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
-                <Text style={styles.copy}>{marketItem.buy_price} gold / {marketItem.unlimited_stock ? "Unlimited stock" : `${marketItem.stock_quantity ?? 0} left`}</Text>
-                <Pressable style={styles.primaryButton} onPress={() => onBuy(marketItem)}>
-                  <Text style={styles.primaryText}>Buy</Text>
-                </Pressable>
-              </View>
-            ))}
+            <View style={styles.marketGrid}>
+              {marketItems.filter(canMarketItemBeBought).length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
+              {marketItems.filter(canMarketItemBeBought).map((marketItem) => (
+                <MarketBuyCard
+                  key={marketItem.id}
+                  marketItem={marketItem}
+                  item={getItemDefinition(itemDefinitions, marketItem.item_id)}
+                  onBuy={() => onBuy(marketItem)}
+                />
+              ))}
+            </View>
             <Text style={styles.selectedTitle}>Sell</Text>
-            {inventoryItems.filter((entry) => entry.item.sellable && marketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item))).length === 0 ? <Text style={styles.copy}>This market is not buying anything in your inventory.</Text> : null}
-            {inventoryItems.filter((entry) => entry.item.sellable && marketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item))).map((entry) => {
-              const marketItem = marketItems.find((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item));
-              const price = marketItem?.sell_price ?? 0;
-              return (
-                <View key={entry.id} style={styles.storyCard}>
-                  <Text style={styles.markerName}>{entry.item.name} x{entry.quantity}</Text>
-                  <Text style={styles.copy}>Sell for {price} gold</Text>
-                  <Pressable style={styles.secondaryButton} onPress={() => onSell(entry)}>
-                    <Text style={styles.secondaryText}>Sell One</Text>
-                  </Pressable>
-                </View>
-              );
-            })}
+            <View style={styles.marketGrid}>
+              {inventoryItems.filter((entry) => entry.item.sellable && marketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item))).length === 0 ? <Text style={styles.copy}>This market is not buying anything in your inventory.</Text> : null}
+              {inventoryItems.filter((entry) => entry.item.sellable && marketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item))).map((entry) => {
+                const marketItem = marketItems.find((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item));
+                return (
+                  <MarketSellCard
+                    key={entry.id}
+                    entry={entry}
+                    sellPrice={marketItem?.sell_price ?? 0}
+                    onSell={() => onSell(entry)}
+                  />
+                );
+              })}
+            </View>
           </View>
         ) : (
           <View style={styles.storyEditor}>
@@ -6740,6 +6741,55 @@ function ItemPicker({ label, items, selectedId, onSelect }: { label: string; ite
           </Pressable>
         ))}
       </View>
+    </View>
+  );
+}
+
+function MarketBuyCard({ marketItem, item, onBuy }: { marketItem: MarkerMarketItem; item: ItemDefinition | null; onBuy: () => void }) {
+  const imageUri = resolveInventoryImageUri(item?.image_path);
+  const outOfStock = !marketItem.unlimited_stock && Number(marketItem.stock_quantity) <= 0;
+
+  return (
+    <View style={[styles.marketCard, outOfStock && styles.lockedCard]}>
+      <View style={styles.marketImageBox}>
+        {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} /> : <Text style={styles.marketItemFallback}>{(item?.name ?? "?").slice(0, 1).toUpperCase()}</Text>}
+      </View>
+      <View style={styles.marketCardBody}>
+        <Text style={styles.marketItemName} numberOfLines={1}>{item?.name ?? "Unknown Item"}</Text>
+        <Text style={styles.marketItemType} numberOfLines={1}>{item?.type ?? "item"} / {item?.rarity ?? "common"}</Text>
+        <View style={styles.marketPriceRow}>
+          <Text style={styles.marketPriceLabel}>Buy</Text>
+          <Text style={styles.marketBuyPrice}>{marketItem.buy_price} gold</Text>
+        </View>
+        <Text style={styles.marketStockText}>{marketItem.unlimited_stock ? "Unlimited stock" : `${Math.max(0, Number(marketItem.stock_quantity) || 0)} left`}</Text>
+      </View>
+      <Pressable style={[styles.marketActionButton, outOfStock && styles.disabledAction]} onPress={onBuy} disabled={outOfStock}>
+        <Text style={styles.primaryText}>{outOfStock ? "Sold Out" : "Buy"}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function MarketSellCard({ entry, sellPrice, onSell }: { entry: InventoryItem; sellPrice: number; onSell: () => void }) {
+  const imageUri = resolveInventoryImageUri(entry.item.image_path);
+
+  return (
+    <View style={styles.marketCard}>
+      <View style={styles.marketImageBox}>
+        {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} /> : <Text style={styles.marketItemFallback}>{entry.item.name.slice(0, 1).toUpperCase()}</Text>}
+      </View>
+      <View style={styles.marketCardBody}>
+        <Text style={styles.marketItemName} numberOfLines={1}>{entry.item.name}</Text>
+        <Text style={styles.marketItemType} numberOfLines={1}>{entry.item.type} / owned x{entry.quantity}</Text>
+        <View style={styles.marketPriceRow}>
+          <Text style={styles.marketPriceLabel}>Sell</Text>
+          <Text style={styles.marketSellPrice}>{sellPrice} gold</Text>
+        </View>
+        <Text style={styles.marketStockText}>{entry.item.description || "Marketable inventory item"}</Text>
+      </View>
+      <Pressable style={styles.marketSellButton} onPress={onSell}>
+        <Text style={styles.secondaryText}>Sell One</Text>
+      </Pressable>
     </View>
   );
 }
@@ -6993,6 +7043,10 @@ function NpcPicker({ label, npcs, selectedId, onSelect, battleOnly = false }: { 
 
 function getItemName(items: ItemDefinition[], itemId: string | null) {
   return items.find((item) => item.id === itemId)?.name ?? "Unknown Item";
+}
+
+function getItemDefinition(items: ItemDefinition[], itemId: string | null) {
+  return items.find((item) => item.id === itemId) ?? null;
 }
 
 function formatMarketListingMode(mode: MarkerMarketItem["listing_mode"] | null | undefined) {
@@ -8000,6 +8054,102 @@ const styles = StyleSheet.create({
   storyCardActive: {
     borderColor: colors.blue,
     backgroundColor: "rgba(20, 61, 86, 0.35)",
+  },
+  marketGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  marketCard: {
+    flexGrow: 1,
+    flexBasis: 260,
+    minWidth: 240,
+    maxWidth: "100%",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 10,
+    gap: 10,
+    backgroundColor: "rgba(0,0,0,0.34)",
+  },
+  marketImageBox: {
+    width: "100%",
+    aspectRatio: 1.45,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "rgba(218,164,65,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  marketItemImage: {
+    width: "100%",
+    height: "100%",
+  },
+  marketItemFallback: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 30,
+  },
+  marketCardBody: {
+    gap: 5,
+  },
+  marketItemName: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 17,
+  },
+  marketItemType: {
+    color: colors.muted,
+    fontSize: 12,
+    textTransform: "capitalize",
+  },
+  marketPriceRow: {
+    minHeight: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingHorizontal: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(218,164,65,0.08)",
+  },
+  marketPriceLabel: {
+    color: colors.muted,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    fontSize: 11,
+  },
+  marketBuyPrice: {
+    color: colors.gold,
+    fontWeight: "900",
+  },
+  marketSellPrice: {
+    color: colors.blue,
+    fontWeight: "900",
+  },
+  marketStockText: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  marketActionButton: {
+    minHeight: 42,
+    borderRadius: 8,
+    backgroundColor: colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  marketSellButton: {
+    minHeight: 42,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(20,61,86,0.28)",
   },
   lockedCard: {
     borderStyle: "dashed",
