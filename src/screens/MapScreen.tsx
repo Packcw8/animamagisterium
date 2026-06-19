@@ -10,6 +10,7 @@ import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef } from "../compo
 import { MarkerIcon } from "../components/map/MarkerIcon";
 import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel";
 import { LegendEditor } from "../components/map/LegendEditor";
+import { MarkerAdminList } from "../components/map/MarkerAdminList";
 import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { MiniMapEditor } from "../components/map/MiniMapEditor";
@@ -4325,34 +4326,19 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               onDeleteRoute={(routeId) => void removeWalkingPath(routeId)}
             />
           ) : null}
-          {["World Markers", "Area/Town Markers"].includes(adminSection) ? <View style={styles.routeList}>
-            <Text style={styles.selectedTitle}>Existing Markers</Text>
-            {getAdminSectionMarkers(adminSection, adminWorldMarkers, adminMiniMapMarkers).length === 0 ? <Text style={styles.copy}>No markers created yet.</Text> : null}
-            {getAdminSectionMarkers(adminSection, adminWorldMarkers, adminMiniMapMarkers).map((marker) => (
-              <View key={marker.id} style={styles.markerTableRow}>
-                <View style={styles.markerTableInfo}>
-                  <Text style={styles.markerName}>{marker.title}</Text>
-                  <Text style={styles.copy}>
-                    {marker.type} / X {Number(marker.x_percent).toFixed(2)}% / Y {Number(marker.y_percent).toFixed(2)}% / Radius {Number(marker.interaction_radius_percent ?? 4).toFixed(2)}%
-                  </Text>
-                  <Text style={styles.debugLine}>
-                    Interactable: {marker.is_interactable ? "true" : "false"} / Visible: {marker.is_active ? "true" : "false"} / Unlocked: {marker.is_unlocked ? "true" : "false"}
-                  </Text>
-                </View>
-                <View style={styles.markerTableActions}>
-                  <Pressable style={styles.secondaryButtonFlex} onPress={() => { setEditorMode("Marker"); void selectMarker(marker); }}>
-                    <Text style={styles.secondaryText}>Edit</Text>
-                  </Pressable>
-                  <Pressable style={styles.secondaryButtonFlex} onPress={() => void previewMarker(marker)}>
-                    <Text style={styles.secondaryText}>Preview/Test</Text>
-                  </Pressable>
-                  <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeMarker(marker)}>
-                    <Text style={styles.dangerText}>Delete</Text>
-                  </Pressable>
-                </View>
-              </View>
-            ))}
-          </View> : null}
+          {["World Markers", "Area/Town Markers"].includes(adminSection) ? (
+            <MarkerAdminList
+              title="Existing Markers"
+              emptyText="No markers created yet."
+              markers={getAdminSectionMarkers(adminSection, adminWorldMarkers, adminMiniMapMarkers)}
+              onEdit={(marker) => {
+                setEditorMode("Marker");
+                void selectMarker(marker);
+              }}
+              onPreview={(marker) => void previewMarker(marker)}
+              onDelete={(marker) => void removeMarker(marker)}
+            />
+          ) : null}
           {["World Markers", "Area/Town Markers", "Walking Paths"].includes(adminSection) ? <>
           <Info label="Clicked Coordinates" value={clickedPercent ? `X ${clickedPercent.x}% / Y ${clickedPercent.y}%` : "Tap the map"} />
           <Text style={styles.debugLine}>Last click: x: {clickedPercent ? `${clickedPercent.x}%` : "--"}, y: {clickedPercent ? `${clickedPercent.y}%` : "--"}</Text>
