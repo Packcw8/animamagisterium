@@ -4,6 +4,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-nativ
 import { BattleActionCard, CombatIndicatorStack, ResourceMeter, type CombatIndicator } from "../components/battle/BattleDisplay";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
+import { AdminMapEditorHeader } from "../components/map/AdminMapEditorHeader";
 import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef } from "../components/map/MapCanvas";
 import { MarkerIcon } from "../components/map/MarkerIcon";
 import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel";
@@ -4261,54 +4262,39 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
       {isAdmin ? (
         <Frame style={styles.panel}>
-          <Text style={styles.sectionTitle}>Admin Map Editor</Text>
-          <Text style={styles.copy}>Choose a mode, then click the map. All map content uses percentage coordinates, never pixels or GPS coordinates.</Text>
-          <View style={styles.storyEditor}>
-            <Text style={styles.selectedTitle}>Season / Chapter</Text>
-            <View style={styles.modeRow}>
-              {availableSeasons.map((season) => (
-                <Pressable key={season.season_number} style={[styles.routeChip, selectedSeason === season.season_number && styles.routeChipActive]} onPress={() => { setSelectedSeason(season.season_number); setSelectedChapter(1); }}>
-                  <Text style={styles.routeChipText}>{season.name}</Text>
-                </Pressable>
-              ))}
-              <TextInput value={newSeasonName} onChangeText={setNewSeasonName} placeholder="New season name" placeholderTextColor={colors.muted} style={[styles.input, styles.inlineInput]} />
-              <TextInput value={newSeasonDescription} onChangeText={setNewSeasonDescription} placeholder="Season note optional" placeholderTextColor={colors.muted} style={[styles.input, styles.inlineInput]} />
-              <Pressable style={styles.secondaryButtonFlex} onPress={() => void createSeasonFromAdmin()}>
-                <Text style={styles.secondaryText}>Add Season</Text>
-              </Pressable>
-            </View>
-            <View style={styles.modeRow}>
-              {availableChapters.map((chapter) => (
-                <Pressable key={`${chapter.season_number}-${chapter.chapter_number}`} style={[styles.routeChip, selectedChapter === chapter.chapter_number && styles.routeChipActive]} onPress={() => setSelectedChapter(chapter.chapter_number)}>
-                  <Text style={styles.routeChipText}>{chapter.name}</Text>
-                </Pressable>
-              ))}
-              <TextInput value={newChapterName} onChangeText={setNewChapterName} placeholder="New chapter/area name" placeholderTextColor={colors.muted} style={[styles.input, styles.inlineInput]} />
-              <TextInput value={newChapterDescription} onChangeText={setNewChapterDescription} placeholder="Chapter note optional" placeholderTextColor={colors.muted} style={[styles.input, styles.inlineInput]} />
-              <Pressable style={styles.secondaryButtonFlex} onPress={() => void createChapterFromAdmin()}>
-                <Text style={styles.secondaryText}>Add Chapter</Text>
-              </Pressable>
-            </View>
-            <Text style={styles.debugLine}>Working in {getSeasonLabel(mapSeasons, selectedSeason)} / {getChapterLabel(mapChapters, selectedSeason, selectedChapter)}. New map content is automatically assigned here.</Text>
-          </View>
-          <View style={styles.adminSectionTabs}>
-            {adminSections.map((section) => (
-              <Pressable
-                key={section}
-                style={[styles.modeButton, adminSection === section && styles.typeSelected]}
-                onPress={() => {
-                  setAdminSection(section);
-                  if (section === "Area/Town Markers") setDraftType("Area/Town Entrance");
-                  if (section === "World Markers") setDraftType("Story");
-                  if (section === "Walking Paths") setEditorMode("Walking Path");
-                  if (section !== "Walking Paths") setEditorMode("Marker");
-                }}
-              >
-                <Text style={styles.typeText}>{section}</Text>
-              </Pressable>
-            ))}
-          </View>
-          {adminMessage ? <Text style={styles.adminMessage}>{adminMessage}</Text> : null}
+          <AdminMapEditorHeader
+            availableSeasons={availableSeasons}
+            availableChapters={availableChapters}
+            mapSeasons={mapSeasons}
+            mapChapters={mapChapters}
+            selectedSeason={selectedSeason}
+            selectedChapter={selectedChapter}
+            newSeasonName={newSeasonName}
+            newSeasonDescription={newSeasonDescription}
+            newChapterName={newChapterName}
+            newChapterDescription={newChapterDescription}
+            sections={adminSections}
+            activeSection={adminSection}
+            message={adminMessage}
+            onSelectSeason={(seasonNumber) => {
+              setSelectedSeason(seasonNumber);
+              setSelectedChapter(1);
+            }}
+            onSelectChapter={setSelectedChapter}
+            onChangeSeasonName={setNewSeasonName}
+            onChangeSeasonDescription={setNewSeasonDescription}
+            onChangeChapterName={setNewChapterName}
+            onChangeChapterDescription={setNewChapterDescription}
+            onCreateSeason={() => void createSeasonFromAdmin()}
+            onCreateChapter={() => void createChapterFromAdmin()}
+            onSelectSection={(section) => {
+              setAdminSection(section);
+              if (section === "Area/Town Markers") setDraftType("Area/Town Entrance");
+              if (section === "World Markers") setDraftType("Story");
+              if (section === "Walking Paths") setEditorMode("Walking Path");
+              if (section !== "Walking Paths") setEditorMode("Marker");
+            }}
+          />
           {adminSection === "Legend" ? (
             <View style={styles.storyEditor}>
               <Text style={styles.selectedTitle}>Map Legend Builder</Text>
@@ -6621,14 +6607,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   routeList: {
-    gap: 8,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-  adminSectionTabs: {
-    flexDirection: "row",
-    flexWrap: "wrap",
     gap: 8,
     paddingBottom: 10,
     borderBottomWidth: 1,
