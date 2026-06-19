@@ -22,7 +22,7 @@ import { WalkingPathAdminPanel } from "../components/map/WalkingPathAdminPanel";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
-import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
+import { CharacterWithDetails } from "../services/characterService";
 import { AbilityDefinition, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition, resolveEnemyImageUri } from "../services/combatAdminService";
 import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, isReviveBattleItem, resolveInventoryImageUri } from "../services/inventoryService";
@@ -232,7 +232,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setBattleInventoryOpen,
     resetBattleState,
     startBattle: startBattleEncounter,
-  } = useBattleEncounter(character);
+    pushCombatIndicator,
+    savePlayerHealth,
+  } = useBattleEncounter(character, onCharacterUpdated);
   const [enemyDefinitions, setEnemyDefinitions] = useState<EnemyDefinition[]>([]);
   const [npcDefinitions, setNpcDefinitions] = useState<NpcDefinition[]>([]);
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
@@ -2213,25 +2215,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
-  function pushCombatIndicator(target: CombatIndicator["target"], text: string, color: string) {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setCombatIndicators((current) => [...current, { id, target, text, color }].slice(-8));
-    setTimeout(() => {
-      setCombatIndicators((current) => current.filter((indicator) => indicator.id !== id));
-    }, 1150);
-  }
-
-  async function savePlayerHealth(nextHealth: number) {
-    const safeHealth = clampHealth(nextHealth, combatResources.maxHp);
-    setBattlePlayerHp(safeHealth);
-    if (adminPreviewMode) {
-      return safeHealth;
-    }
-    await updateCharacterHealth(character.id, safeHealth);
-    onCharacterUpdated({ ...character, current_health: safeHealth });
-    return safeHealth;
-  }
-
   function handleStoryChoice(action: MapEvent["choices"][number]["action"]) {
     if (!activeEvent) {
       return;
@@ -2354,7 +2337,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     } else if (ability.resource === "magicka") {
       setBattleMagicka((current) => Math.max(0, current - ability.cost));
     } else if (ability.resource === "health") {
-      await savePlayerHealth(Math.max(1, battlePlayerHp - ability.cost));
+      await savePlayerHealth(Math.max(1, battlePlayerHp - ability.cost), Boolean(adminPreviewMode));
     }
 
     const healthRestore = Math.max(0, Number(ability.adminAbility?.healing ?? 0));
@@ -2384,7 +2367,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const counter = resolveEnemyCounterAttack();
       const nextPlayerHp = Math.max(0, Math.min(combatResources.maxHp, battlePlayerHp + healthRestore) - counter.damage);
       nextLog.push(...counter.log);
-      await savePlayerHealth(nextPlayerHp);
+      await savePlayerHealth(nextPlayerHp, Boolean(adminPreviewMode));
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog);
       }
@@ -2402,7 +2385,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const counter = resolveEnemyCounterAttack();
       const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
       nextLog.push(...counter.log);
-      await savePlayerHealth(nextPlayerHp);
+      await savePlayerHealth(nextPlayerHp, Boolean(adminPreviewMode));
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog);
       }
@@ -2436,7 +2419,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     if (nextEnemyHp <= 0) {
       if (healthRestore > 0) {
-        await savePlayerHealth(postAbilityPlayerHp);
+        await savePlayerHealth(postAbilityPlayerHp, Boolean(adminPreviewMode));
       }
       setBattleEnemyHp(0);
       setBattleFinished("victory");
@@ -2449,7 +2432,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     nextLog.push(...counter.log);
 
     setBattleEnemyHp(nextEnemyHp);
-    await savePlayerHealth(nextPlayerHp);
+    await savePlayerHealth(nextPlayerHp, Boolean(adminPreviewMode));
 
     if (nextPlayerHp <= 0) {
       await resolvePlayerDefeat(nextLog);
@@ -2480,7 +2463,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (costType === "health") {
-      await savePlayerHealth(Math.max(1, battlePlayerHp - cost));
+      await savePlayerHealth(Math.max(1, battlePlayerHp - cost), Boolean(adminPreviewMode));
     } else if (costType === "stamina") {
       setBattleStamina((current) => Math.max(0, current - cost));
     } else if (costType === "magika") {
@@ -2499,7 +2482,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const counter = resolveEnemyCounterAttack(bonuses.defense);
       const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
       nextLog.push(...counter.log);
-      await savePlayerHealth(nextPlayerHp);
+      await savePlayerHealth(nextPlayerHp, Boolean(adminPreviewMode));
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog);
       }
@@ -2514,7 +2497,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     nextLog.push(`${actionName} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} damage${weapon.elemental_damage_type !== "none" ? ` with ${weapon.elemental_damage_type}` : ""}.`);
 
     if (weapon.on_hit_effect === "restore health per hit") {
-      await savePlayerHealth(Math.min(combatResources.maxHp, battlePlayerHp + Math.max(1, weapon.buff_amount || 2)));
+      await savePlayerHealth(Math.min(combatResources.maxHp, battlePlayerHp + Math.max(1, weapon.buff_amount || 2)), Boolean(adminPreviewMode));
       nextLog.push("On-hit effect restores Health.");
     } else if (weapon.on_hit_effect === "restore stamina per hit") {
       setBattleStamina((current) => Math.min(combatResources.maxStamina, current + Math.max(1, weapon.buff_amount || 2)));
@@ -2537,7 +2520,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
     nextLog.push(...counter.log);
     setBattleEnemyHp(nextEnemyHp);
-    await savePlayerHealth(nextPlayerHp);
+    await savePlayerHealth(nextPlayerHp, Boolean(adminPreviewMode));
 
     if (nextPlayerHp <= 0) {
       await resolvePlayerDefeat(nextLog);
@@ -2553,7 +2536,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     const fleeDamage = Math.max(1, Math.ceil((Number(activeEnemy?.health ?? activeBattle.enemy_hp ?? 30) || 30) * 0.12));
     const nextHp = Math.max(1, battlePlayerHp - fleeDamage);
-    await savePlayerHealth(nextHp);
+    await savePlayerHealth(nextHp, Boolean(adminPreviewMode));
     pushCombatIndicator("player", `-${fleeDamage}`, "#ff5c5c");
     if (adminPreviewMode) {
       setBattleLog((current) => ["Preview flee. No route progress was changed.", ...current].slice(0, 8));
@@ -2704,7 +2687,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function resolvePlayerDefeat(log: string[]) {
     setBattleFinished("defeat");
-    await savePlayerHealth(1);
+    await savePlayerHealth(1, Boolean(adminPreviewMode));
     log.push(activeBattle?.defeat_text || "Defeat.");
 
     if (adminPreviewMode) {
@@ -2757,7 +2740,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const amount = Math.max(item.restore_amount, restoreFromPercent, defeated ? Math.ceil(combatResources.maxHp * 0.5) : 0);
 
     if (target === "health") {
-      await savePlayerHealth(Math.min(combatResources.maxHp, battlePlayerHp + amount));
+      await savePlayerHealth(Math.min(combatResources.maxHp, battlePlayerHp + amount), Boolean(adminPreviewMode));
       pushCombatIndicator("player", `+${amount}`, "#42d77d");
       if (defeated) {
         setBattleFinished(null);

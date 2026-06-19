@@ -1,6 +1,6 @@
 import { Dispatch, SetStateAction, useState } from "react";
-import { AbilityDefinition, CharacterResources, getCharacterResources } from "../../services/abilityService";
-import { CharacterWithDetails } from "../../services/characterService";
+import { AbilityDefinition, CharacterResources, clampHealth, getCharacterResources } from "../../services/abilityService";
+import { CharacterWithDetails, updateCharacterHealth } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout, getEnemyLoadout, getNpcLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
 import { ItemDefinition } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
@@ -17,7 +17,7 @@ type StartBattleOptions = {
   setAdminMessage: Dispatch<SetStateAction<string | null>>;
 };
 
-export function useBattleEncounter(character: CharacterWithDetails) {
+export function useBattleEncounter(character: CharacterWithDetails, onCharacterUpdated: (character: CharacterWithDetails) => void) {
   const [activeBattle, setActiveBattle] = useState<MapEvent | null>(null);
   const [battlePlayerHp, setBattlePlayerHp] = useState(100);
   const [battleStamina, setBattleStamina] = useState(0);
@@ -91,6 +91,26 @@ export function useBattleEncounter(character: CharacterWithDetails) {
     }
   }
 
+  function pushCombatIndicator(target: CombatIndicator["target"], text: string, color: string) {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setCombatIndicators((current) => [...current, { id, target, text, color }].slice(-8));
+    setTimeout(() => {
+      setCombatIndicators((current) => current.filter((indicator) => indicator.id !== id));
+    }, 1150);
+  }
+
+  async function savePlayerHealth(nextHealth: number, previewMode = false) {
+    const safeHealth = clampHealth(nextHealth, combatResources.maxHp);
+    setBattlePlayerHp(safeHealth);
+    if (previewMode) {
+      return safeHealth;
+    }
+
+    await updateCharacterHealth(character.id, safeHealth);
+    onCharacterUpdated({ ...character, current_health: safeHealth });
+    return safeHealth;
+  }
+
   return {
     activeBattle,
     setActiveBattle,
@@ -124,5 +144,7 @@ export function useBattleEncounter(character: CharacterWithDetails) {
     setBattleInventoryOpen,
     resetBattleState,
     startBattle,
+    pushCombatIndicator,
+    savePlayerHealth,
   };
 }
