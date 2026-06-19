@@ -2681,11 +2681,26 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function resetCurrentRouteAfterDefeat() {
     const startPoint = route.path_points[0] ?? { x: 33.8, y: 73.81 };
+    const resetProgress = await resetRouteProgress(route.id, startPoint);
+
+    if (!resetProgress) {
+      setBattleLog((current) => ["Unable to save trail reset. Please check your connection and try Return to Trail Start again.", ...current].slice(0, 8));
+      return;
+    }
+
     distanceWalkedRef.current = 0;
     setDistanceWalked(0);
     setSavedPlayerPosition(startPoint);
-    setRouteProgressRows((current) => upsertRouteProgressRow(current, route.id, 0));
-    await resetRouteProgress(route.id, startPoint);
+    setRouteDirection("forward");
+    routeDirectionRef.current = "forward";
+    setCompletedRouteId(null);
+    setRouteProgressRows((current) => upsertRouteProgressRow(current, route.id, 0, true));
+    setActiveBattle(null);
+    setActiveEnemy(null);
+    setBattleFinished(null);
+    setRevivePromptOpen(false);
+    setBattleInventoryOpen(false);
+    setCombatIndicators([]);
     setGpsMessage("Defeated. Route progress reset to the start of this path.");
   }
 
@@ -3519,6 +3534,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         onUseItem={(item) => void useBattleItem(item)}
         onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
         onDeclineRevive={() => void declineReviveAfterDefeat()}
+        onReturnToStart={() => void resetCurrentRouteAfterDefeat()}
         onComplete={() => void finishEvent(activeBattle)}
         onExitPreview={closeAdminPreview}
       />
@@ -5575,14 +5591,14 @@ function getChapterLabel(chapters: MapChapter[], seasonNumber: number, chapterNu
   return chapters.find((chapter) => chapter.season_number === seasonNumber && chapter.chapter_number === chapterNumber)?.name ?? `Chapter ${chapterNumber}`;
 }
 
-function upsertRouteProgressRow(rows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>, routeId: string, progressPercent: number) {
+function upsertRouteProgressRow(rows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>, routeId: string, progressPercent: number, isCurrent?: boolean) {
   const existing = rows.some((row) => row.route_id === routeId);
 
   if (existing) {
-    return rows.map((row) => (row.route_id === routeId ? { ...row, progress_percent: progressPercent } : row));
+    return rows.map((row) => (row.route_id === routeId ? { ...row, progress_percent: progressPercent, ...(isCurrent !== undefined ? { is_current: isCurrent } : {}) } : row));
   }
 
-  return [...rows, { route_id: routeId, progress_percent: progressPercent }];
+  return [...rows, { route_id: routeId, progress_percent: progressPercent, ...(isCurrent !== undefined ? { is_current: isCurrent } : {}) }];
 }
 
 function getNextRouteOrder(routes: MapRoute[]) {
@@ -5814,6 +5830,7 @@ function BattleEventScreen({
   onUseItem,
   onToggleInventory,
   onDeclineRevive,
+  onReturnToStart,
   onComplete,
   onExitPreview,
 }: {
@@ -5840,6 +5857,7 @@ function BattleEventScreen({
   onUseItem: (item: InventoryItem) => void;
   onToggleInventory: () => void;
   onDeclineRevive: () => void;
+  onReturnToStart: () => void;
   onComplete: () => void;
   onExitPreview?: () => void;
 }) {
@@ -5983,7 +6001,15 @@ function BattleEventScreen({
             </Pressable>
           </View>
         ) : null}
-        {result === "defeat" && !revivePromptOpen ? <Text style={styles.feedItem}>Defeat is final for this attempt. Return to the trail start to continue.</Text> : null}
+        {result === "defeat" && !revivePromptOpen ? (
+          <View style={styles.battleResultPanel}>
+            <Text style={styles.selectedTitle}>Defeated</Text>
+            <Text style={styles.copy}>Defeat is final for this attempt. Return to the trail start to continue.</Text>
+            <Pressable style={styles.primaryButton} onPress={onReturnToStart}>
+              <Text style={styles.primaryText}>Return to Trail Start</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <View style={styles.battleLogPanel}>
           <Text style={styles.battleLogTitle}>Battle Log</Text>
           {battleLog.slice(0, 5).map((line, index) => (
