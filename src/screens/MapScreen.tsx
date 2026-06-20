@@ -186,6 +186,7 @@ type PlayerMovementState = "IDLE" | "MOVING";
 export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [mapReady, setMapReady] = useState(false);
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
+  const [hasActiveRoute, setHasActiveRoute] = useState(false);
   const [routes, setRoutes] = useState<MapRoute[]>([fallbackRoute]);
   const [markers, setMarkers] = useState<MapMarker[]>([]);
   const [legendItems, setLegendItems] = useState<MarkerLegendItem[]>([]);
@@ -434,8 +435,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const activeRouteScopeRoutes = activeMiniMap ? adminMiniMapRoutes : adminWorldRoutes;
   const routeProgressPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
   const playerPosition = savedPlayerPosition ?? routeProgressPosition;
-  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminWorldRoutes : route.mini_map_id ? [] : [route], route.id), [adminWorldRoutes, isAdmin, route]);
-  const miniMapRouteSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminMiniMapRoutes : route.mini_map_id === activeMiniMap?.id ? [route] : [], route.id), [activeMiniMap?.id, adminMiniMapRoutes, isAdmin, route]);
+  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminWorldRoutes : hasActiveRoute && !route.mini_map_id ? [route] : [], route.id), [adminWorldRoutes, hasActiveRoute, isAdmin, route]);
+  const miniMapRouteSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminMiniMapRoutes : hasActiveRoute && route.mini_map_id === activeMiniMap?.id ? [route] : [], route.id), [activeMiniMap?.id, adminMiniMapRoutes, hasActiveRoute, isAdmin, route]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [pathDraft]);
   const worldMarkers = useMemo(() => markers.filter((marker) => !marker.mini_map_id), [markers]);
   const miniMapMarkers = useMemo(() => markers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [markers, activeMiniMap?.id]);
@@ -712,7 +713,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         .filter((row) => row.is_current)
         .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0] ?? null;
     const currentRoute = nextRoutes.find((item) => item.id === currentProgressRow?.route_id) ?? null;
-    const firstRoute = currentRoute ?? nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
+    const firstRoute = nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
     setRouteProgressRows(progressRows);
     setCompletedStoryMarkerIds(new Set(storyCompletions.map((completion) => completion.marker_id)));
     setRoutes(nextRoutes);
@@ -728,7 +729,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setAllMarkerRouteLinks(loadedMarkerRouteLinks);
     const currentMiniMap = currentRoute?.mini_map_id ? loadedMiniMaps.find((item) => item.id === currentRoute.mini_map_id) ?? null : null;
     const savedMiniMap = !currentMiniMap && playerMapState?.active_mini_map_id ? loadedMiniMaps.find((item) => item.id === playerMapState.active_mini_map_id) ?? null : null;
-    const restoredMiniMap = currentMiniMap ?? savedMiniMap;
+    const startingMiniMap = !currentMiniMap && !savedMiniMap ? getStartingMiniMap(loadedMiniMaps) : null;
+    const restoredMiniMap = currentMiniMap ?? savedMiniMap ?? startingMiniMap;
     if (restoredMiniMap) {
       setActiveMiniMap(restoredMiniMap);
       setSelectedMiniMapId(restoredMiniMap.id);
@@ -737,13 +739,45 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (savedMiniMap && playerMapState && playerMapState.current_x_percent !== null && playerMapState.current_y_percent !== null) {
       setSavedMiniMapPosition({ x: Number(playerMapState.current_x_percent), y: Number(playerMapState.current_y_percent) });
     } else if (restoredMiniMap && !currentMiniMap) {
-      setSavedMiniMapPosition(getMiniMapSpawnPosition(restoredMiniMap.id, loadedMarkers));
+      const spawnPosition = getMiniMapSpawnPosition(restoredMiniMap.id, loadedMarkers);
+      setSavedMiniMapPosition(spawnPosition);
+      if (startingMiniMap) {
+        void savePlayerMapState({
+          active_mini_map_id: startingMiniMap.id,
+          current_x_percent: spawnPosition.x,
+          current_y_percent: spawnPosition.y,
+        });
+      }
     } else {
       setSavedMiniMapPosition(null);
     }
-    await selectRoute(firstRoute, true);
-    if (!currentRoute) {
-      setGpsMessage("Choose a path from a Sign Post to begin travel.");
+    if (currentRoute) {
+      setHasActiveRoute(true);
+      await selectRoute(currentRoute, true);
+    } else {
+      setHasActiveRoute(false);
+      setRoute(firstRoute);
+      setRouteName(firstRoute.name);
+      setRouteOrder(String(firstRoute.sort_order));
+      setRouteTerrain(firstRoute.terrain);
+      setRouteDanger(firstRoute.danger_level);
+      setRouteDistance(String(Math.round(firstRoute.distance_required_meters)));
+      setRouteImage(firstRoute.image_url ?? "");
+      setRouteLockType(firstRoute.lock_type ?? "public");
+      setRouteLockMessage(firstRoute.lock_message ?? "");
+      setPathDraft([]);
+      distanceWalkedRef.current = 0;
+      setSavedPlayerPosition(null);
+      setDistanceWalked(0);
+      setRouteDirection("forward");
+      setLastPosition(null);
+      setMapEvents([]);
+      setCompletedEventIds(new Set());
+      if (startingMiniMap) {
+        setGpsMessage(`Welcome to ${startingMiniMap.name}. Talk to a story marker or use a sign post to begin travel.`);
+      } else {
+        setGpsMessage("Choose a path from a Sign Post to begin travel.");
+      }
     }
     setMapReady(true);
   }
@@ -751,6 +785,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   function getMiniMapSpawnPosition(miniMapId: string, markerSource = markers) {
     const spawnMarker = markerSource.find((marker) => marker.mini_map_id === miniMapId && marker.type === "Player Spawn");
     return spawnMarker ? { x: Number(spawnMarker.x_percent), y: Number(spawnMarker.y_percent) } : { x: 50, y: 50 };
+  }
+
+  function getStartingMiniMap(miniMapSource: MiniMap[]) {
+    const activeMiniMaps = miniMapSource.filter((miniMap) => miniMap.is_active !== false);
+    return (
+      activeMiniMaps.find((miniMap) => /raven'?s?\s+rest/i.test(miniMap.name)) ??
+      activeMiniMaps.find((miniMap) => miniMap.type === "town") ??
+      activeMiniMaps[0] ??
+      null
+    );
   }
 
   function switchAdminMapViewMode(mode: "admin" | "player") {
@@ -807,6 +851,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   function startGpsTracking() {
+    if (!hasActiveRoute) {
+      setGpsMessage("Choose a story path or sign post path before tracking a walk.");
+      return;
+    }
+
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setGpsMessage("Geolocation is not available in this browser.");
       return;
@@ -1535,6 +1584,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const startPoint = linkedRoute.path_points[0] ?? { x: 33.8, y: 73.81 };
       const targetMiniMap = linkedRoute.mini_map_id ? miniMaps.find((item) => item.id === linkedRoute.mini_map_id) ?? null : null;
       await setCurrentRoute(linkedRoute.id);
+      setHasActiveRoute(true);
       setActiveMiniMap(targetMiniMap);
       setSelectedMiniMapId(targetMiniMap?.id ?? null);
       setSavedMiniMapPosition(null);
@@ -1640,6 +1690,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const nextPoint = getPointOnRoute(nextRoute.path_points, nextProgress);
 
     await setCurrentRoute(nextRoute.id);
+    setHasActiveRoute(true);
     setRouteDirection("forward");
     routeDirectionRef.current = "forward";
     distanceWalkedRef.current = existingDistance;
@@ -1679,6 +1730,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   async function startLinkedStoryRoute(sourceMarker: MapMarker, nextRoute: MapRoute) {
     const startPoint = nextRoute.path_points[0] ?? { x: 33.8, y: 73.81 };
     await setCurrentRoute(nextRoute.id);
+    setHasActiveRoute(true);
     setRouteDirection("forward");
     routeDirectionRef.current = "forward";
     distanceWalkedRef.current = 0;
@@ -3329,6 +3381,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   function renderJourneyPanel() {
+    if (!hasActiveRoute) {
+      return null;
+    }
+
     const remainingMeters = Math.max(0, route.distance_required_meters - distanceWalked);
     const routeImageUri = route.image_url ? resolveMapImageUri(route.image_url) : null;
     const sourceMarker = currentRouteProgress?.source_marker_id ? markers.find((marker) => marker.id === currentRouteProgress.source_marker_id) ?? null : null;
