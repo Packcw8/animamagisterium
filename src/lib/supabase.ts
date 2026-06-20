@@ -499,6 +499,8 @@ export type Tables = {
     unlock_after_marker_id: string | null;
     hide_when_completed: boolean;
     require_all_linked_routes: boolean;
+    dialogue_event_id: string | null;
+    battle_event_id: string | null;
     season_number: number;
     chapter_number: number;
     created_by: string | null;

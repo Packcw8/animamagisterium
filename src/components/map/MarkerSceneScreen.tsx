@@ -38,6 +38,8 @@ export function MarkerSceneScreen({
   onStartPath,
   onUseExit,
   onEnterArea,
+  onOpenDialogueEvent,
+  onStartBattleEvent,
 }: {
   marker: MapMarker;
   characterGold: number;
@@ -57,6 +59,8 @@ export function MarkerSceneScreen({
   onStartPath: (route: MapRoute) => void;
   onUseExit: () => void;
   onEnterArea: () => void;
+  onOpenDialogueEvent: () => void;
+  onStartBattleEvent: () => void;
 }) {
   const backgroundUri = resolveSceneImageUri(marker.scene_background_image_url || marker.shop_background_image_url);
   const npcUri = resolveSceneImageUri(marker.scene_npc_image_url || marker.shop_image_url || marker.quest_image_url);
@@ -152,6 +156,26 @@ export function MarkerSceneScreen({
             onBuy={onBuy}
             onSell={onSell}
           />
+        ) : isBattleMarkerType(marker.type) ? (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Battle</Text>
+            <Text style={styles.copy}>{marker.battle_event_id ? "This marker starts its linked Battle Event without changing trail progress." : "No Battle Event is linked to this marker yet."}</Text>
+            <Pressable style={[styles.primaryButton, !marker.battle_event_id && styles.disabledAction]} onPress={onStartBattleEvent} disabled={!marker.battle_event_id}>
+              <Text style={styles.primaryText}>Start Battle</Text>
+            </Pressable>
+          </View>
+        ) : marker.dialogue_event_id ? (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Dialogue</Text>
+            <Text style={styles.copy}>Open the linked dialogue tree for this marker.</Text>
+            <Pressable style={styles.primaryButton} onPress={onOpenDialogueEvent}>
+              <Text style={styles.primaryText}>Start Dialogue</Text>
+            </Pressable>
+            <Text style={styles.copy}>
+              Rewards: {marker.reward_xp ?? 0} XP / {marker.reward_gold ?? 0} gold
+              {marker.reward_item_id ? ` / ${marker.reward_item_quantity ?? 1} ${getItemName(itemDefinitions, marker.reward_item_id)}` : ""}
+            </Text>
+          </View>
         ) : (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Options</Text>
@@ -348,6 +372,10 @@ function getItemName(items: ItemDefinition[], itemId: string | null) {
 
 function getItemDefinition(items: ItemDefinition[], itemId: string | null) {
   return items.find((item) => item.id === itemId) ?? null;
+}
+
+function isBattleMarkerType(type: string) {
+  return type === "Battle" || type === "Battle Zone";
 }
 
 function getRemainingMarketStock(marketItem: MarkerMarketItem, purchaseCounts: Record<string, number>) {

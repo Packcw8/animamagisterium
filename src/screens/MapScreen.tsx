@@ -196,6 +196,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [completedStoryMarkerIds, setCompletedStoryMarkerIds] = useState<Set<string>>(new Set());
   const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
+  const [activeMarkerEventId, setActiveMarkerEventId] = useState<string | null>(null);
   const [adminPreviewMode, setAdminPreviewMode] = useState<"story" | "battle" | null>(null);
   const [dialogueNodes, setDialogueNodes] = useState<StoryDialogueNode[]>([]);
   const [dialogueChoices, setDialogueChoices] = useState<StoryDialogueChoice[]>([]);
@@ -321,6 +322,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerUnlockAfterId, setMarkerUnlockAfterId] = useState<string | null>(null);
   const [markerHideWhenCompleted, setMarkerHideWhenCompleted] = useState(true);
   const [markerRequireAllLinkedRoutes, setMarkerRequireAllLinkedRoutes] = useState(true);
+  const [markerDialogueEventId, setMarkerDialogueEventId] = useState<string | null>(null);
+  const [markerBattleEventId, setMarkerBattleEventId] = useState<string | null>(null);
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
   const [marketPurchaseCounts, setMarketPurchaseCounts] = useState<Record<string, number>>({});
   const [markerRouteLinks, setMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
@@ -1220,6 +1223,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         unlock_after_marker_id: markerUnlockAfterId,
         hide_when_completed: markerHideWhenCompleted,
         require_all_linked_routes: markerRequireAllLinkedRoutes,
+        dialogue_event_id: supportsMarkerDialogue(draftType) ? markerDialogueEventId : null,
+        battle_event_id: isBattleMarkerType(draftType) ? markerBattleEventId : null,
         season_number: selectedSeason,
         chapter_number: selectedChapter,
       });
@@ -1265,6 +1270,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       unlock_after_marker_id: markerUnlockAfterId,
       hide_when_completed: markerHideWhenCompleted,
       require_all_linked_routes: markerRequireAllLinkedRoutes,
+      dialogue_event_id: supportsMarkerDialogue(draftType) ? markerDialogueEventId : null,
+      battle_event_id: isBattleMarkerType(draftType) ? markerBattleEventId : null,
       interaction_radius_percent: Math.max(0.5, Number(markerInteractionRadius) || 4),
       reward_xp: Number(markerRewardXp) || 0,
       reward_gold: Number(markerRewardGold) || 0,
@@ -1312,6 +1319,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerUnlockAfterId(marker.unlock_after_marker_id ?? null);
     setMarkerHideWhenCompleted(marker.hide_when_completed ?? true);
     setMarkerRequireAllLinkedRoutes(marker.require_all_linked_routes ?? true);
+    setMarkerDialogueEventId(marker.dialogue_event_id ?? null);
+    setMarkerBattleEventId(marker.battle_event_id ?? null);
     setMarkerInteractionRadius(String(marker.interaction_radius_percent ?? 4));
     setMarkerInteractable(marker.is_interactable ?? true);
     setMarkerRewardXp(String(marker.reward_xp ?? 0));
@@ -1699,6 +1708,52 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to start linked walking path."));
     }
+  }
+
+  async function openSelectedMarkerDialogue() {
+    if (!selectedMarker?.dialogue_event_id) {
+      setMarkerPanelMessage("No dialogue event is linked to this marker yet.");
+      return;
+    }
+
+    const event = allMapEvents.find((item) => item.id === selectedMarker.dialogue_event_id);
+
+    if (!event) {
+      setMarkerPanelMessage("The linked dialogue event could not be found.");
+      return;
+    }
+
+    try {
+      setActiveMarkerEventId(selectedMarker.id);
+      setSelectedMarker(null);
+      setPreviewMarkerScene(false);
+      setMarkerPanelMessage(null);
+      setActiveBattle(null);
+      setActiveEvent(event);
+      await loadDialogueForEvent(event);
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to open dialogue."));
+    }
+  }
+
+  async function startSelectedMarkerBattle() {
+    if (!selectedMarker?.battle_event_id) {
+      setMarkerPanelMessage("No battle event is linked to this marker yet.");
+      return;
+    }
+
+    const event = allMapEvents.find((item) => item.id === selectedMarker.battle_event_id);
+
+    if (!event || event.event_type !== "battle") {
+      setMarkerPanelMessage("The linked battle event could not be found.");
+      return;
+    }
+
+    setActiveMarkerEventId(selectedMarker.id);
+    setSelectedMarker(null);
+    setPreviewMarkerScene(false);
+    setMarkerPanelMessage(null);
+    await startBattle(event, false, { saveRoutePosition: false });
   }
 
   async function grantPathCompletionMarkerReward(routeId: string) {
@@ -2340,8 +2395,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setNodeIsStart(dialogueNodes.length === 0);
   }
 
-  async function startBattle(event: MapEvent, preview = false) {
-    if (!preview) {
+  async function startBattle(event: MapEvent, preview = false, options: { saveRoutePosition?: boolean } = {}) {
+    if (!preview && options.saveRoutePosition !== false) {
       await saveCurrentRoutePositionBeforeBattle();
     }
 
@@ -2432,6 +2487,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       await completeMapEvent(event.id);
       setCompletedEventIds((current) => new Set([...current, event.id]));
       setActiveEvent(null);
+      setActiveMarkerEventId(null);
       setActiveBattle(null);
       setActiveEnemy(null);
       setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}`);
@@ -2487,9 +2543,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (choice.action === "start_battle") {
-      const battle = mapEvents.find((event) => event.id === choice.battle_event_id) ?? mapEvents.find((event) => event.event_type === "battle" && event.route_id === activeEvent.route_id);
+      const battle =
+        allMapEvents.find((event) => event.id === choice.battle_event_id) ??
+        mapEvents.find((event) => event.event_type === "battle" && event.route_id === activeEvent.route_id);
       if (battle) {
-        void startBattle(battle, adminPreviewMode === "story");
+        void startBattle(battle, adminPreviewMode === "story", { saveRoutePosition: !activeMarkerEventId });
         return;
       }
       setDialogueLog((current) => ["No battle is linked yet.", ...current].slice(0, 4));
@@ -2525,6 +2583,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     setActiveEvent(null);
+    setActiveMarkerEventId(null);
   }
 
   async function endDialogueChat(completeEvent: boolean) {
@@ -2539,6 +2598,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     setActiveEvent(null);
+    setActiveMarkerEventId(null);
   }
 
   function getBattleActionContext() {
@@ -3446,6 +3506,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             setMarkerPanelMessage("No mini map is linked to this entrance yet.");
           }
         }}
+        onOpenDialogueEvent={() => void openSelectedMarkerDialogue()}
+        onStartBattleEvent={() => void startSelectedMarkerBattle()}
       />
     );
   }
@@ -3879,6 +3941,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerHideWhenCompleted={setMarkerHideWhenCompleted}
               markerRequireAllLinkedRoutes={markerRequireAllLinkedRoutes}
               setMarkerRequireAllLinkedRoutes={setMarkerRequireAllLinkedRoutes}
+              markerDialogueEventId={markerDialogueEventId}
+              setMarkerDialogueEventId={setMarkerDialogueEventId}
+              markerBattleEventId={markerBattleEventId}
+              setMarkerBattleEventId={setMarkerBattleEventId}
+              reusableMapEvents={reusableMapEvents}
               routes={activeRouteScopeRoutes}
               storyRoutes={adminRoutes}
               selectedMarkerRouteIds={selectedMarkerRouteIds}
@@ -4334,6 +4401,22 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
                 <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
               </Pressable>
+              {supportsMarkerDialogue(draftType) ? (
+                <EventPicker
+                  label="Linked Dialogue Event"
+                  events={reusableMapEvents.filter((event) => event.event_type !== "battle")}
+                  selectedId={markerDialogueEventId}
+                  onSelect={setMarkerDialogueEventId}
+                />
+              ) : null}
+              {isBattleMarkerType(draftType) ? (
+                <EventPicker
+                  label="Linked Battle Event"
+                  events={reusableMapEvents.filter((event) => event.event_type === "battle")}
+                  selectedId={markerBattleEventId}
+                  onSelect={setMarkerBattleEventId}
+                />
+              ) : null}
               {(draftType === "Side Quest" || draftType === "Story" || draftType === "Point of Interest") ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>Marker Rewards / Quest Settings</Text>
@@ -5113,6 +5196,11 @@ function MiniMapMarkerAdminForm({
   setMarkerHideWhenCompleted,
   markerRequireAllLinkedRoutes,
   setMarkerRequireAllLinkedRoutes,
+  markerDialogueEventId,
+  setMarkerDialogueEventId,
+  markerBattleEventId,
+  setMarkerBattleEventId,
+  reusableMapEvents,
   routes,
   storyRoutes,
   selectedMarkerRouteIds,
@@ -5204,6 +5292,11 @@ function MiniMapMarkerAdminForm({
   setMarkerHideWhenCompleted: (value: boolean | ((current: boolean) => boolean)) => void;
   markerRequireAllLinkedRoutes: boolean;
   setMarkerRequireAllLinkedRoutes: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerDialogueEventId: string | null;
+  setMarkerDialogueEventId: (value: string | null) => void;
+  markerBattleEventId: string | null;
+  setMarkerBattleEventId: (value: string | null) => void;
+  reusableMapEvents: MapEvent[];
   routes: MapRoute[];
   storyRoutes: MapRoute[];
   selectedMarkerRouteIds: string[];
@@ -5242,6 +5335,7 @@ function MiniMapMarkerAdminForm({
   const supportsMarket = draftType === "Market" || selectedMarker?.type === "Market";
   const supportsExit = isExitMarkerType(draftType);
   const supportsSignPost = draftType === "Sign Post";
+  const supportsBattle = isBattleMarkerType(draftType);
 
   return (
     <View style={styles.storyEditor}>
@@ -5261,6 +5355,22 @@ function MiniMapMarkerAdminForm({
       <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
         <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
       </Pressable>
+      {supportsMarkerDialogue(draftType) ? (
+        <EventPicker
+          label="Linked Dialogue Event"
+          events={reusableMapEvents.filter((event) => event.event_type !== "battle")}
+          selectedId={markerDialogueEventId}
+          onSelect={setMarkerDialogueEventId}
+        />
+      ) : null}
+      {supportsBattle ? (
+        <EventPicker
+          label="Linked Battle Event"
+          events={reusableMapEvents.filter((event) => event.event_type === "battle")}
+          selectedId={markerBattleEventId}
+          onSelect={setMarkerBattleEventId}
+        />
+      ) : null}
       {supportsSignPost ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
@@ -5590,6 +5700,25 @@ function RoutePicker({ routes, selectedId, onSelect }: { routes: MapRoute[]; sel
   );
 }
 
+function EventPicker({ label, events, selectedId, onSelect }: { label: string; events: MapEvent[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>{label}</Text>
+      <View style={styles.storyRoutePicker}>
+        <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
+          <Text style={styles.routeChipText}>None</Text>
+        </Pressable>
+        {events.map((event) => (
+          <Pressable key={event.id} style={[styles.routeChip, selectedId === event.id && styles.routeChipActive]} onPress={() => onSelect(event.id)}>
+            <Text style={styles.routeChipText}>{event.title}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {events.length === 0 ? <Text style={styles.copy}>Create a reusable event first, then link it here.</Text> : null}
+    </View>
+  );
+}
+
 function getAdminSectionMarkers(section: (typeof adminSections)[number], worldMarkers: MapMarker[], miniMapMarkers: MapMarker[]) {
   if (section === "Area/Town Markers") {
     return worldMarkers.filter((marker) => marker.type === "Area/Town Entrance");
@@ -5727,6 +5856,14 @@ function compareEventsByRouteAndDistance(a: MapEvent, b: MapEvent) {
 
 function isQuestMarkerType(type: string) {
   return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
+}
+
+function supportsMarkerDialogue(type: string) {
+  return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
+}
+
+function isBattleMarkerType(type: string) {
+  return type === "Battle" || type === "Battle Zone";
 }
 
 const styles = StyleSheet.create({

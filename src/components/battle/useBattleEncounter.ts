@@ -342,21 +342,16 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
 
-    const fleeDamage = Math.max(1, Math.ceil((Number(activeEnemy?.health ?? activeBattle.enemy_hp ?? 30) || 30) * 0.12));
-    const nextHp = Math.max(1, battlePlayerHp - fleeDamage);
-    await savePlayerHealth(nextHp, context.previewMode);
-    pushCombatIndicator("player", `-${fleeDamage}`, "#ff5c5c");
     if (context.previewMode) {
-      setBattleLog((current) => ["Preview flee. No route progress was changed.", ...current].slice(0, 8));
+      setBattleLog((current) => ["Preview flee. Battle ended and no rewards were granted.", ...current].slice(0, 8));
       context.closePreview();
       return;
     }
-    await context.reduceRouteProgress(3);
-    setBattleLog((current) => ["You escaped, but took damage and lost ground.", ...current].slice(0, 8));
+    setBattleLog((current) => ["You escaped. No rewards were granted.", ...current].slice(0, 8));
     setActiveBattle(null);
     setBattleFinished(null);
     setRevivePromptOpen(false);
-    context.setGpsMessage("You escaped, but took damage and lost ground.");
+    context.setGpsMessage("You escaped. No rewards were granted.");
   }
 
   function resolveEnemyCounterAttack(context: BattleActionContext, extraPlayerDefense = 0) {
