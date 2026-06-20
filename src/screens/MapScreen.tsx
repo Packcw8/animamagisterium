@@ -3334,6 +3334,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const sourceMarker = currentRouteProgress?.source_marker_id ? markers.find((marker) => marker.id === currentRouteProgress.source_marker_id) ?? null : null;
     const sourceRouteLinks = sourceMarker ? getOrderedMarkerRouteLinks(allMarkerRouteLinks.filter((link) => link.marker_id === sourceMarker.id)) : [];
     const sourceRouteIndex = sourceRouteLinks.findIndex((link) => link.route_id === route.id);
+    const destinationMarker = getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, sourceMarker?.id ?? null);
     const hasStoryContext = Boolean(sourceMarker && isStoryQuestMarker(sourceMarker));
     const journeyMode = hasStoryContext ? (sourceMarker?.type === "Side Quest" || sourceMarker?.type === "Quest" ? "Quest Journey" : "Story Journey") : "Road Sign Travel";
     const journeyTitle = hasStoryContext ? sourceMarker?.quest_title || sourceMarker?.title || route.name : route.name;
@@ -3380,6 +3381,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </View>
           <Text style={styles.journeyQuestTitle}>{route.name}</Text>
           <Text style={styles.journeyQuestText}>{routeDirection === "reverse" ? "Progress is moving back toward the start of this path." : "Walking progress moves you toward the next story point."}</Text>
+          {destinationMarker ? (
+            <View style={styles.journeyDestination}>
+              <MarkerIcon marker={destinationMarker} compact />
+              <View style={styles.journeyDestinationCopy}>
+                <Text style={styles.journeyDestinationLabel}>Destination Marker</Text>
+                <Text style={styles.journeyDestinationTitle}>{destinationMarker.title}</Text>
+                <Text style={styles.journeyDestinationType}>{destinationMarker.type}</Text>
+              </View>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.journeyProgressRow}>
@@ -4154,7 +4165,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <Text style={styles.copy}>
                     {isStoryQuestMarker({ type: draftType })
                       ? "These paths belong to this story marker and can run in order."
-                      : "Players must complete these linked paths before this marker becomes interactable. Reverse walking counts when the path reaches 0%."}
+                      : draftType === "Area/Town Entrance"
+                        ? "Players can enter after completing any one linked path that leads to this entrance. Reverse walking counts when the path reaches 0%."
+                        : "Players must complete linked paths before this marker becomes interactable. Reverse walking counts when the path reaches 0%."}
                   </Text>
                   <View style={styles.storyRoutePicker}>
                     {activeRouteScopeRoutes.map((item) => (
@@ -5118,7 +5131,7 @@ function MiniMapMarkerAdminForm({
       {!supportsSignPost && !supportsQuest ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>Required Completed Paths</Text>
-          <Text style={styles.copy}>Players must complete these linked paths before this marker becomes interactable. Reverse walking counts when the path reaches 0%.</Text>
+          <Text style={styles.copy}>{draftType === "Area/Town Entrance" ? "Players can enter after completing any one linked path that leads to this entrance. Reverse walking counts when the path reaches 0%." : "Players must complete linked paths before this marker becomes interactable. Reverse walking counts when the path reaches 0%."}</Text>
           <View style={styles.storyRoutePicker}>
             {routes.map((item) => (
               <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
@@ -5535,6 +5548,27 @@ function getJourneyObjective(marker: MapMarker | null | undefined, route: MapRou
   return marker.description?.trim() || route.terrain || "Continue the story path.";
 }
 
+function getJourneyDestinationMarker(route: MapRoute, markers: MapMarker[], routeLinks: MarkerRouteLink[], sourceMarkerId: string | null) {
+  const linkedMarkerIds = new Set(
+    routeLinks
+      .filter((link) => link.route_id === route.id && link.marker_id !== sourceMarkerId)
+      .map((link) => link.marker_id),
+  );
+
+  if (linkedMarkerIds.size === 0) {
+    return null;
+  }
+
+  const candidates = markers.filter((marker) => linkedMarkerIds.has(marker.id) && marker.type !== "Player Spawn" && marker.type !== "Sign Post" && !isStoryQuestMarker(marker));
+  const rankedTypes = ["Area/Town Entrance", "Exit", "Exit/Leave", "Market", "Quest", "Side Quest", "Point of Interest", "Training", "Battle", "Battle Zone"];
+
+  return candidates.sort((a, b) => {
+    const aRank = rankedTypes.indexOf(a.type);
+    const bRank = rankedTypes.indexOf(b.type);
+    return (aRank === -1 ? 99 : aRank) - (bRank === -1 ? 99 : bRank) || a.title.localeCompare(b.title);
+  })[0] ?? null;
+}
+
 function compareEventsByRouteAndDistance(a: MapEvent, b: MapEvent) {
   return String(a.route_id ?? "").localeCompare(String(b.route_id ?? "")) || Number(a.distance_marker_percent) - Number(b.distance_marker_percent) || a.title.localeCompare(b.title);
 }
@@ -5807,6 +5841,37 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     lineHeight: 17,
+  },
+  journeyDestination: {
+    marginTop: 6,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.24)",
+    backgroundColor: "rgba(0,0,0,0.22)",
+    padding: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  journeyDestinationCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  journeyDestinationLabel: {
+    color: colors.gold,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  journeyDestinationTitle: {
+    color: colors.text,
+    fontWeight: "900",
+    marginTop: 1,
+  },
+  journeyDestinationType: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 1,
   },
   journeyPercent: {
     color: colors.gold,

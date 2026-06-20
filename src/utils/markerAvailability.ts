@@ -36,13 +36,15 @@ export function getMarkerAvailability({
   }
 
   const requirements = getMarkerPathRequirements(marker, routeLinks);
+  const metRequirements = requirements.filter((link) => isRouteLinkRequirementMet(link, routeProgressRows));
   const unmetRequirements = requirements.filter((link) => !isRouteLinkRequirementMet(link, routeProgressRows));
+  const requiresAll = markerRequiresAllLinkedPaths(marker);
 
-  if (unmetRequirements.length > 0) {
+  if (requirements.length > 0 && ((!requiresAll && metRequirements.length === 0) || (requiresAll && unmetRequirements.length > 0))) {
     return {
       visible: true,
       interactable: false,
-      reason: getRequirementMessage(unmetRequirements.length),
+      reason: getRequirementMessage(marker, requirements.length, unmetRequirements.length),
       distance,
       radius,
     };
@@ -73,6 +75,14 @@ export function getMarkerPathRequirements(marker: MapMarker, routeLinks: MarkerR
   return routeLinks.filter((link) => link.marker_id === marker.id);
 }
 
+function markerRequiresAllLinkedPaths(marker: MapMarker) {
+  if (marker.type === "Area/Town Entrance") {
+    return false;
+  }
+
+  return marker.require_all_linked_routes !== false;
+}
+
 export function isRouteLinkRequirementMet(link: MarkerRouteLink, routeProgressRows: RouteProgress[]) {
   const progress = routeProgressRows.find((row) => row.route_id === link.route_id);
 
@@ -84,8 +94,14 @@ export function isRouteLinkRequirementMet(link: MarkerRouteLink, routeProgressRo
   return percent >= 100 || (percent <= 0 && progress.travel_direction === "reverse");
 }
 
-function getRequirementMessage(count: number) {
-  return count === 1
+function getRequirementMessage(marker: MapMarker, totalCount: number, unmetCount: number) {
+  if (marker.type === "Area/Town Entrance") {
+    return totalCount === 1
+      ? "Complete the linked walking path to enter this area."
+      : "Complete one linked walking path to enter this area.";
+  }
+
+  return unmetCount === 1
     ? "A linked walking path must be completed before this marker can be used."
-    : `${count} linked walking paths must be completed before this marker can be used.`;
+    : `${unmetCount} linked walking paths must be completed before this marker can be used.`;
 }
