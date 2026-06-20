@@ -2029,6 +2029,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMiniMapActive(miniMap.is_active);
   }
 
+  function clearMiniMapEditForm() {
+    setEditingMiniMapId(null);
+    setSelectedMiniMapId(null);
+    setMiniMapName("");
+    setMiniMapType("town");
+    setMiniMapBackground("");
+    setMiniMapDescription("");
+    setMiniMapActive(true);
+  }
+
   async function removeMiniMap(miniMapId: string) {
     try {
       await deleteMiniMap(miniMapId);
@@ -4243,12 +4253,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               onChangeDescription={setMiniMapDescription}
               onToggleActive={() => setMiniMapActive((value) => !value)}
               onSave={() => void saveMiniMapForm()}
+              onEdit={editMiniMap}
+              onCancelEdit={clearMiniMapEditForm}
               onOpen={(miniMap) => {
                 setSelectedMiniMapId(miniMap.id);
                 openMiniMap(miniMap);
               }}
               onDelete={(miniMapId) => void removeMiniMap(miniMapId)}
               onUploadMessage={setAdminMessage}
+              editingMiniMapId={editingMiniMapId}
             />
           ) : null}
           {editorMode === "Marker" && ["World Markers", "Area/Town Markers"].includes(adminSection) ? (

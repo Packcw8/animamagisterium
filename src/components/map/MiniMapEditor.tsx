@@ -17,9 +17,12 @@ type MiniMapEditorProps<MiniMapType extends string> = {
   onChangeDescription: (value: string) => void;
   onToggleActive: () => void;
   onSave: () => void;
+  onEdit: (miniMap: MiniMap) => void;
+  onCancelEdit: () => void;
   onOpen: (miniMap: MiniMap) => void;
   onDelete: (miniMapId: string) => void;
   onUploadMessage: (message: string) => void;
+  editingMiniMapId: string | null;
 };
 
 export function MiniMapEditor<MiniMapType extends string>({
@@ -36,14 +39,19 @@ export function MiniMapEditor<MiniMapType extends string>({
   onChangeDescription,
   onToggleActive,
   onSave,
+  onEdit,
+  onCancelEdit,
   onOpen,
   onDelete,
   onUploadMessage,
+  editingMiniMapId,
 }: MiniMapEditorProps<MiniMapType>) {
+  const isEditing = Boolean(editingMiniMapId);
+
   return (
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Mini Maps</Text>
-      <Text style={styles.copy}>Create maps for towns, forests, dungeons, areas, or tutorials. Link one to an Area/Town Entrance marker to let players enter it.</Text>
+      <Text style={styles.copy}>{isEditing ? "Editing an existing mini map. Save changes or cancel to return to creation." : "Create maps for towns, forests, dungeons, areas, or tutorials. Link one to an Area/Town Entrance marker to let players enter it."}</Text>
       <TextInput value={name} onChangeText={onChangeName} placeholder="Mini map name" placeholderTextColor={colors.muted} style={styles.input} />
       <View style={styles.storyRoutePicker}>
         {miniMapTypes.map((item) => (
@@ -59,8 +67,13 @@ export function MiniMapEditor<MiniMapType extends string>({
         <Text style={styles.secondaryText}>Active: {active ? "true" : "false"}</Text>
       </Pressable>
       <Pressable style={styles.primaryButton} onPress={onSave} disabled={!name.trim()}>
-        <Text style={styles.primaryText}>Create Mini Map</Text>
+        <Text style={styles.primaryText}>{isEditing ? "Update Mini Map" : "Create Mini Map"}</Text>
       </Pressable>
+      {isEditing ? (
+        <Pressable style={styles.secondaryButton} onPress={onCancelEdit}>
+          <Text style={styles.secondaryText}>Cancel Edit</Text>
+        </Pressable>
+      ) : null}
       <Text style={styles.selectedTitle}>Existing Mini Maps</Text>
       {miniMaps.length === 0 ? <Text style={styles.copy}>No mini maps created yet.</Text> : null}
       {miniMaps.map((miniMap) => (
@@ -68,6 +81,9 @@ export function MiniMapEditor<MiniMapType extends string>({
           <Text style={styles.markerName}>{miniMap.name}</Text>
           <Text style={styles.copy}>{miniMap.type} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
           <View style={styles.modeRow}>
+            <Pressable style={[styles.secondaryButtonFlex, editingMiniMapId === miniMap.id && styles.typeSelected]} onPress={() => onEdit(miniMap)}>
+              <Text style={styles.secondaryText}>Edit</Text>
+            </Pressable>
             <Pressable style={styles.secondaryButtonFlex} onPress={() => onOpen(miniMap)}>
               <Text style={styles.secondaryText}>Open</Text>
             </Pressable>
