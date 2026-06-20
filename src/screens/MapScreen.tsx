@@ -812,6 +812,35 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
+  function renderAdminViewTool() {
+    if (!actualIsAdmin) {
+      return null;
+    }
+
+    return (
+      <Frame style={styles.adminViewTool}>
+        <View style={styles.adminViewToolHeader}>
+          <View style={styles.adminViewToolCopy}>
+            <Text style={styles.markerName}>Admin View Tool</Text>
+            <Text style={styles.copy}>
+              {isAdminPlayerPreview
+                ? "Player View is active. The map uses player proximity, lock, and visibility rules."
+                : "Admin View is active. Editor tools, all markers, and admin previews are available."}
+            </Text>
+          </View>
+          <View style={styles.viewModeControls}>
+            <Pressable style={[styles.viewModeButton, adminMapViewMode === "admin" && styles.typeSelected]} onPress={() => switchAdminMapViewMode("admin")}>
+              <Text style={styles.secondaryText}>Admin</Text>
+            </Pressable>
+            <Pressable style={[styles.viewModeButton, adminMapViewMode === "player" && styles.typeSelected]} onPress={() => switchAdminMapViewMode("player")}>
+              <Text style={styles.secondaryText}>Player View</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Frame>
+    );
+  }
+
   async function selectRoute(nextRoute: MapRoute, force = false) {
     if (!force && !isAdmin && isRouteLocked(nextRoute)) {
       setGpsMessage(getRouteLockMessage(nextRoute));
@@ -1307,6 +1336,55 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setSelectedMarkerRouteIds(links.map((link) => link.route_id));
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to load marker market."));
+    }
+  }
+
+  async function reuseStoryMarkerInMiniMap(marker: MapMarker) {
+    if (!activeMiniMap) {
+      setAdminMessage("Open a mini map before reusing a story marker.");
+      return;
+    }
+
+    setEditorMode("Marker");
+    setAdminSection("Mini Maps");
+    setSelectedMarker(null);
+    setPreviewMarkerScene(false);
+    setDraftType(marker.type === "Quest" ? "Quest" : "Story");
+    setDraftTitle(marker.title);
+    setDraftDescription(marker.description ?? "");
+    setMarkerQuestTitle(marker.quest_title ?? marker.title);
+    setMarkerQuestDialogue(marker.quest_dialogue ?? "");
+    setMarkerQuestImage(marker.quest_image_url ?? "");
+    setMarkerSceneBackground(marker.scene_background_image_url ?? "");
+    setMarkerNpcImage(marker.scene_npc_image_url ?? "");
+    setMarkerIconLabel(marker.icon_label ?? "");
+    setMarkerIconImage(marker.icon_image_url ?? "");
+    setMarkerIconColor(marker.icon_color ?? "");
+    setMarkerLockType(marker.lock_type ?? "public");
+    setMarkerLockMessage(marker.lock_message ?? "");
+    setMarkerStoryOrder(String(marker.story_order ?? 0));
+    setMarkerUnlockAfterId(null);
+    setMarkerHideWhenCompleted(marker.hide_when_completed ?? true);
+    setMarkerRequireAllLinkedRoutes(marker.require_all_linked_routes ?? true);
+    setMarkerInteractionRadius(String(marker.interaction_radius_percent ?? 4));
+    setMarkerInteractable(marker.is_interactable ?? true);
+    setMarkerRewardXp(String(marker.reward_xp ?? 0));
+    setMarkerRewardGold(String(marker.reward_gold ?? 0));
+    setMarkerRewardItemId(marker.reward_item_id ?? null);
+    setMarkerRewardQuantity(String(marker.reward_item_quantity ?? 1));
+    setMarkerRewardTiming(marker.reward_timing ?? "on_interact");
+    setMarkerRepeatable(Boolean(marker.repeatable));
+    setMarkerRewardOnce(marker.reward_once_per_player ?? true);
+    setMarkerLinkedRouteId(marker.linked_route_id ?? null);
+    setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
+
+    try {
+      const links = await getMarkerRouteLinks(marker.id);
+      setMarkerRouteLinks(links);
+      setSelectedMarkerRouteIds(links.map((link) => link.route_id));
+      setAdminMessage(clickedPercent ? `Loaded ${marker.title}. Save it to place a copy in ${activeMiniMap.name}.` : `Loaded ${marker.title}. Tap the mini map to choose its new position, then save.`);
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Story loaded, but linked paths could not be copied."));
     }
   }
 
@@ -3601,6 +3679,30 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     );
   }
 
+  function renderReuseStoryMarkerPanel() {
+    const reusableStoryMarkers = adminStoryMarkers.filter((marker) => marker.id !== selectedMarker?.id);
+
+    return (
+      <View style={styles.storyEditor}>
+        <View style={styles.panelHeader}>
+          <View>
+            <Text style={styles.selectedTitle}>Reuse Existing Story Marker</Text>
+            <Text style={styles.copy}>Copy an existing story or quest marker into this mini map, then tap the mini map to place it.</Text>
+          </View>
+        </View>
+        {reusableStoryMarkers.length === 0 ? <Text style={styles.copy}>No reusable story markers found for this season and chapter.</Text> : null}
+        <View style={styles.storyRoutePicker}>
+          {reusableStoryMarkers.map((marker) => (
+            <Pressable key={marker.id} style={styles.routeChip} onPress={() => void reuseStoryMarkerInMiniMap(marker)}>
+              <Text style={styles.routeChipText}>{marker.story_order || 0}. {marker.title}</Text>
+              <Text style={styles.debugLine}>{marker.type}{marker.mini_map_id ? " / Mini Map" : " / World"}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </View>
+    );
+  }
+
   if (activeMiniMap) {
     const miniMapImage = resolveMapImageUri(activeMiniMap.background_image_url);
 
@@ -3613,6 +3715,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <Text style={styles.subtitle}>Mini Map / {activeMiniMap.type}</Text>
           </View>
         </View>
+        {renderAdminViewTool()}
         {route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
         <Frame style={styles.panel}>
           <View style={styles.panelHeader}>
@@ -3707,6 +3810,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               onEditRoute={(item) => void editWalkingPath(item)}
               onDeleteRoute={(routeId) => void removeWalkingPath(routeId)}
             />
+            {editorMode === "Marker" ? renderReuseStoryMarkerPanel() : null}
             {editorMode === "Marker" ? <MiniMapMarkerAdminForm
               activeSectionMarkerTypes={miniMapMarkerTypes}
               draftType={draftType}
@@ -3971,28 +4075,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         <Pressable style={[styles.toolButton, followPlayer && styles.toolActive]} onPress={() => setFollowPlayer((value) => !value)}><Text style={styles.toolText}>Follow {followPlayer ? "On" : "Off"}</Text></Pressable>
       </View>
 
-      {actualIsAdmin ? (
-        <Frame style={styles.adminViewTool}>
-          <View style={styles.adminViewToolHeader}>
-            <View style={styles.adminViewToolCopy}>
-              <Text style={styles.markerName}>Admin View Tool</Text>
-              <Text style={styles.copy}>
-                {isAdminPlayerPreview
-                  ? "Player View is active. The map uses player proximity, lock, and visibility rules."
-                  : "Admin View is active. Editor tools, all markers, and admin previews are available."}
-              </Text>
-            </View>
-            <View style={styles.viewModeControls}>
-              <Pressable style={[styles.viewModeButton, adminMapViewMode === "admin" && styles.typeSelected]} onPress={() => switchAdminMapViewMode("admin")}>
-                <Text style={styles.secondaryText}>Admin</Text>
-              </Pressable>
-              <Pressable style={[styles.viewModeButton, adminMapViewMode === "player" && styles.typeSelected]} onPress={() => switchAdminMapViewMode("player")}>
-                <Text style={styles.secondaryText}>Player View</Text>
-              </Pressable>
-            </View>
-          </View>
-        </Frame>
-      ) : null}
+      {renderAdminViewTool()}
 
       {renderJourneyPanel()}
 
