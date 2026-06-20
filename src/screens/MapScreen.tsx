@@ -182,6 +182,7 @@ type MovementStatus = {
 type PlayerMovementState = "IDLE" | "MOVING";
 
 export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
+  const [mapReady, setMapReady] = useState(false);
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
   const [routes, setRoutes] = useState<MapRoute[]>([fallbackRoute]);
   const [markers, setMarkers] = useState<MapMarker[]>([]);
@@ -486,7 +487,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   );
 
   useEffect(() => {
-    void loadMap();
+    void loadMap().catch((error) => {
+      setGpsMessage(getErrorMessage(error, "Unable to load map data."));
+      setMapReady(true);
+    });
     void loadCombatLoadout();
     void loadInventory();
     void loadEnemies();
@@ -675,6 +679,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }, [activeEvent]);
 
   async function loadMap() {
+    setMapReady(false);
     const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedSeasons, loadedChapters, loadedRole, loadedEvents] = await Promise.all([
       getMapRoutes(),
       getMapMarkers(),
@@ -729,6 +734,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (!currentRoute) {
       setGpsMessage("Choose a path from a Sign Post to begin travel.");
     }
+    setMapReady(true);
   }
 
   function getMiniMapSpawnPosition(miniMapId: string, markerSource = markers) {
@@ -3290,6 +3296,24 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           }
         }}
       />
+    );
+  }
+
+  if (!mapReady) {
+    return (
+      <Screen>
+        <View style={styles.header}>
+          <BrandLogo size={54} />
+          <View style={styles.headerText}>
+            <Text style={styles.brand}>Anima Magisterium</Text>
+            <Text style={styles.subtitle}>Map / Battles</Text>
+          </View>
+        </View>
+        <Frame style={styles.panel}>
+          <Text style={styles.sectionTitle}>Loading Map</Text>
+          <Text style={styles.copy}>Restoring your current trail and saved position...</Text>
+        </Frame>
+      </Screen>
     );
   }
 
