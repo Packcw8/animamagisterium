@@ -1,0 +1,107 @@
+alter table public.characters
+  add column if not exists total_distance_walked_meters numeric default 0;
+
+update public.characters c
+set total_distance_walked_meters = greatest(coalesce(c.total_distance_walked_meters, 0), coalesce(rt.total_distance_walked_meters, 0))
+from (
+  select
+    user_id,
+    sum(distance_walked_meters)::numeric as total_distance_walked_meters
+  from public.route_progress
+  group by user_id
+) rt
+where rt.user_id = c.user_id;
+
+create or replace function public.increment_character_distance_walked(
+  p_character_id uuid,
+  p_meters numeric
+)
+returns numeric
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  next_total numeric;
+begin
+  if p_meters is null or p_meters <= 0 then
+    select coalesce(total_distance_walked_meters, 0)
+      into next_total
+      from public.characters
+      where id = p_character_id
+        and user_id = auth.uid();
+
+    return coalesce(next_total, 0);
+  end if;
+
+  update public.characters
+  set total_distance_walked_meters = coalesce(total_distance_walked_meters, 0) + p_meters
+  where id = p_character_id
+    and user_id = auth.uid()
+  returning total_distance_walked_meters into next_total;
+
+  return coalesce(next_total, 0);
+end;
+$$;
+
+grant execute on function public.increment_character_distance_walked(uuid, numeric) to authenticated;
+
+create or replace view public.player_leaderboards as
+with training_totals as (
+  select
+    character_id,
+    count(*)::integer as training_sessions_completed
+  from public.training_sessions
+  group by character_id
+),
+event_totals as (
+  select
+    user_id,
+    count(*)::integer as event_completions
+  from public.map_event_completions
+  group by user_id
+),
+enemy_kill_totals as (
+  select
+    character_id,
+    sum(kill_count)::integer as total_enemy_kills
+  from public.player_enemy_kill_stats
+  group by character_id
+)
+select
+  c.id as character_id,
+  c.user_id,
+  coalesce(p.username, c.name, 'Adventurer') as display_name,
+  c.name as character_name,
+  c.portrait_url,
+  c.level,
+  c.xp,
+  c.gold,
+  coalesce(a.strength, 0) as strength,
+  coalesce(a.endurance, 0) as endurance,
+  coalesce(a.agility, 0) as agility,
+  coalesce(a.intelligence, 0) as intelligence,
+  coalesce(a.wisdom, 0) as wisdom,
+  coalesce(a.charisma, 0) as charisma,
+  coalesce(a.spirit, 0) as spirit,
+  (
+    coalesce(a.strength, 0) +
+    coalesce(a.endurance, 0) +
+    coalesce(a.agility, 0) +
+    coalesce(a.intelligence, 0) +
+    coalesce(a.wisdom, 0) +
+    coalesce(a.charisma, 0) +
+    coalesce(a.spirit, 0)
+  ) as attribute_total,
+  coalesce(c.total_distance_walked_meters, 0) as total_distance_walked_meters,
+  coalesce(tt.training_sessions_completed, 0) as training_sessions_completed,
+  coalesce(et.event_completions, 0) as event_completions,
+  coalesce(ekt.total_enemy_kills, 0) as total_enemy_kills
+from public.characters c
+left join public.profiles p on p.id = c.user_id
+left join public.attributes a on a.character_id = c.id
+left join training_totals tt on tt.character_id = c.id
+left join event_totals et on et.user_id = c.user_id
+left join enemy_kill_totals ekt on ekt.character_id = c.id;
+
+grant select on public.player_leaderboards to authenticated;

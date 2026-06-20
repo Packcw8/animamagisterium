@@ -213,6 +213,10 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     void getCurrentRole().then(setRole);
   }, [character.id, character.attributes]);
 
+  useEffect(() => {
+    setDistanceWalkedMeters(Number(character.total_distance_walked_meters ?? 0));
+  }, [character.total_distance_walked_meters]);
+
   async function loadProgressionSettings() {
     try {
       setProgressionSettings(await getProgressionSettings());

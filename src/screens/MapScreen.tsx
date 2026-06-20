@@ -731,13 +731,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setAllMapEvents(loadedEvents);
     setAllMarkerRouteLinks(loadedMarkerRouteLinks);
     const currentMiniMap = currentRoute?.mini_map_id ? loadedMiniMaps.find((item) => item.id === currentRoute.mini_map_id) ?? null : null;
-    const savedMiniMap = !currentMiniMap && playerMapState?.active_mini_map_id ? loadedMiniMaps.find((item) => item.id === playerMapState.active_mini_map_id) ?? null : null;
-    const startingMiniMap = !currentMiniMap && !savedMiniMap ? getStartingMiniMap(loadedMiniMaps) : null;
+    const savedMiniMap = !currentRoute && playerMapState?.active_mini_map_id ? loadedMiniMaps.find((item) => item.id === playerMapState.active_mini_map_id) ?? null : null;
+    const startingMiniMap = !currentRoute && !savedMiniMap ? getStartingMiniMap(loadedMiniMaps) : null;
     const restoredMiniMap = currentMiniMap ?? savedMiniMap ?? startingMiniMap;
     if (restoredMiniMap) {
       setActiveMiniMap(restoredMiniMap);
       setSelectedMiniMapId(restoredMiniMap.id);
       editMiniMap(restoredMiniMap);
+    } else {
+      setActiveMiniMap(null);
+      setSelectedMiniMapId(null);
     }
     if (savedMiniMap && playerMapState && playerMapState.current_x_percent !== null && playerMapState.current_y_percent !== null) {
       setSavedMiniMapPosition({ x: Number(playerMapState.current_x_percent), y: Number(playerMapState.current_y_percent) });
@@ -860,9 +863,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setRouteLockType(nextRoute.lock_type ?? "public");
     setRouteLockMessage(nextRoute.lock_message ?? "");
     setPathDraft([]);
-    distanceWalkedRef.current = 0;
-    setSavedPlayerPosition(null);
-    setDistanceWalked(0);
     setRouteDirection("forward");
     setLastPosition(null);
 
@@ -879,6 +879,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       if (progress.current_x_percent !== null && progress.current_y_percent !== null) {
         setSavedPlayerPosition({ x: Number(progress.current_x_percent), y: Number(progress.current_y_percent) });
       }
+    } else {
+      distanceWalkedRef.current = 0;
+      setSavedPlayerPosition(null);
+      setDistanceWalked(0);
     }
   }
 
@@ -985,7 +989,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             travel_direction: direction,
             is_current: true,
           });
-          void incrementCharacterDistanceWalked(character.id, cleanMeters);
+          void incrementCharacterDistanceWalked(character.id, cleanMeters).then((nextTotal) => {
+            if (nextTotal !== null) {
+              onCharacterUpdated({
+                ...character,
+                total_distance_walked_meters: nextTotal,
+              });
+            }
+          });
           if (activeRoute.mini_map_id) {
             void savePlayerMapState({
               active_mini_map_id: activeRoute.mini_map_id,
