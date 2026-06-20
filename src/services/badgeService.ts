@@ -104,22 +104,21 @@ export async function getBadgeState(character: CharacterWithDetails) {
     return [];
   }
 
-  const [existingResult, routeResult, enemyNameResult, enemyTypeResult, storyResult, trainingResult] = await Promise.all([
+  const [existingResult, enemyNameResult, enemyTypeResult, storyResult, trainingResult] = await Promise.all([
     supabase.from("player_badges").select("*").eq("character_id", character.id),
-    supabase.from("route_progress").select("distance_walked_meters").eq("user_id", character.user_id),
     supabase.from("player_enemy_kill_stats").select("enemy_key, kill_count").eq("character_id", character.id),
     supabase.from("player_enemy_type_kill_stats").select("enemy_type, kill_count").eq("character_id", character.id),
     supabase.from("story_marker_completions").select("marker_id").eq("user_id", character.user_id),
     supabase.from("training_sessions").select("attribute_key").eq("user_id", character.user_id).eq("character_id", character.id),
   ]);
 
-  const firstError = existingResult.error ?? routeResult.error ?? enemyNameResult.error ?? enemyTypeResult.error ?? storyResult.error ?? trainingResult.error;
+  const firstError = existingResult.error ?? enemyNameResult.error ?? enemyTypeResult.error ?? storyResult.error ?? trainingResult.error;
   if (firstError) {
     throw firstError;
   }
 
   const existing = new Map(((existingResult.data ?? []) as PlayerBadge[]).map((row) => [row.badge_id, row]));
-  const distanceWalked = (routeResult.data ?? []).reduce((sum, row) => sum + Number(row.distance_walked_meters ?? 0), 0);
+  const distanceWalked = Number(character.total_distance_walked_meters ?? 0);
   const enemyNameCounts = new Map((enemyNameResult.data ?? []).map((row) => [String(row.enemy_key ?? "").toLowerCase(), Number(row.kill_count ?? 0)]));
   const enemyTypeCounts = new Map((enemyTypeResult.data ?? []).map((row) => [String(row.enemy_type ?? "").toLowerCase(), Number(row.kill_count ?? 0)]));
   const completedStories = new Set((storyResult.data ?? []).map((row) => String(row.marker_id)));

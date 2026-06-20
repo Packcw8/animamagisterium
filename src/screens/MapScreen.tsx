@@ -21,7 +21,7 @@ import { WalkingPathAdminPanel } from "../components/map/WalkingPathAdminPanel";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
-import { CharacterWithDetails } from "../services/characterService";
+import { CharacterWithDetails, incrementCharacterDistanceWalked } from "../services/characterService";
 import { AbilityDefinition, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition, resolveEnemyImageUri } from "../services/combatAdminService";
 import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri } from "../services/inventoryService";
@@ -887,6 +887,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             travel_direction: direction,
             is_current: true,
           });
+          void incrementCharacterDistanceWalked(character.id, cleanMeters);
+          if (activeRoute.mini_map_id) {
+            void savePlayerMapState({
+              active_mini_map_id: activeRoute.mini_map_id,
+              current_x_percent: nextMapPosition.x,
+              current_y_percent: nextMapPosition.y,
+            });
+          }
           setGpsMessage(direction === "reverse" && nextDistance <= 0
             ? "You returned to the starting sign post."
             : `State: MOVING. ${direction === "reverse" ? "Backtracked" : "Counted"} ${Math.round(cleanMeters)}m at ${speedMph.toFixed(1)} mph.`);
@@ -1769,6 +1777,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       travel_direction: routeDirectionRef.current,
       is_current: true,
     });
+    if (route.mini_map_id) {
+      void savePlayerMapState({
+        active_mini_map_id: route.mini_map_id,
+        current_x_percent: nextPoint.x,
+        current_y_percent: nextPoint.y,
+      });
+    }
   }
 
   async function moveSelectedMarker() {

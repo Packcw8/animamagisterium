@@ -76,7 +76,8 @@ import {
   usageContexts as itemUsageContexts,
   ItemDefinition,
 } from "../services/inventoryService";
-import { getCurrentRole, getCurrentRouteProgress, Role } from "../services/mapService";
+import { getCurrentRole, Role } from "../services/mapService";
+import { getLeaderboardProfileForCharacter } from "../services/leaderboardService";
 import { getInboxUnreadCount } from "../services/inboxService";
 import { defaultProgressionSettings, GameProgressionSettings, getCharacterXpProgress, getProgressionSettings } from "../services/progressionService";
 
@@ -230,10 +231,10 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
   async function loadTravelProgress() {
     try {
-      const progress = await getCurrentRouteProgress();
-      setDistanceWalkedMeters(Number(progress?.distance_walked_meters ?? 0));
+      const profile = await getLeaderboardProfileForCharacter(character.id);
+      setDistanceWalkedMeters(Number(profile?.total_distance_walked_meters ?? character.total_distance_walked_meters ?? 0));
     } catch {
-      setDistanceWalkedMeters(0);
+      setDistanceWalkedMeters(Number(character.total_distance_walked_meters ?? 0));
     }
   }
 

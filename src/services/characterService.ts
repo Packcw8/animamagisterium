@@ -273,6 +273,26 @@ export async function updateCharacterHealth(characterId: string, currentHealth: 
   return data as Tables["characters"];
 }
 
+export async function incrementCharacterDistanceWalked(characterId: string, meters: number) {
+  const safeMeters = Math.max(0, Number(meters) || 0);
+
+  if (safeMeters <= 0) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc("increment_character_distance_walked", {
+    p_character_id: characterId,
+    p_meters: safeMeters,
+  });
+
+  if (error) {
+    console.warn("[character] could not increment lifetime distance", error.message);
+    return null;
+  }
+
+  return Number(data ?? 0);
+}
+
 export async function saveCharacterAppearance(
   characterId: string,
   appearance: CharacterCreationInput["appearance"],

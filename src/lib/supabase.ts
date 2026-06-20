@@ -50,6 +50,7 @@ export type Tables = {
     portrait_url: string | null;
     original_photo_url: string | null;
     current_health: number | null;
+    total_distance_walked_meters: number;
     level: number;
     xp: number;
     gold: number;
