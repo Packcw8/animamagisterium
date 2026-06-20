@@ -27,9 +27,9 @@ import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition, res
 import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri } from "../services/inventoryService";
 import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
-import { clamp, getPercentDistance, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, roundPercent } from "../utils/mapGeometry";
+import { getMarkerAvailability } from "../utils/markerAvailability";
+import { clamp, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, roundPercent } from "../utils/mapGeometry";
 import {
-  canPlayerSeeMarker,
   canPlayerSeeStoryMarker,
   getOrderedMarkerRouteLinks,
   isExitMarker,
@@ -85,6 +85,7 @@ import {
   getPlayerMapState,
   getMarkerLegendItems,
   getMarkerRouteLinks,
+  getAllMarkerRouteLinks,
   getMiniMaps,
   getTutorialSteps,
   getDialogueChoices,
@@ -104,6 +105,7 @@ import {
   MarkerRouteLink,
   MiniMap,
   Role,
+  RouteProgress,
   StoryDialogueChoice,
   StoryDialogueNode,
   saveMarkerMarketItem,
@@ -250,7 +252,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     countedMeters: 0,
     blockedReason: null,
   });
-  const [routeProgressRows, setRouteProgressRows] = useState<Array<{ route_id: string; progress_percent: number; is_current?: boolean }>>([]);
+  const [routeProgressRows, setRouteProgressRows] = useState<RouteProgress[]>([]);
+  const [allMarkerRouteLinks, setAllMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [routeDirection, setRouteDirection] = useState<"forward" | "reverse">("forward");
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
   const [activeMiniMap, setActiveMiniMap] = useState<MiniMap | null>(null);
@@ -456,17 +459,22 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     ),
     [legendItems, mapChapters, mapEvents, markers, miniMaps, routes, selectedSeason, tutorialSteps],
   );
-  const visibleMarkers = isAdmin ? worldMarkers : worldMarkers.filter((marker) => canPlayerSeeMarker(marker, playerPosition) && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
-  const visibleMiniMapMarkers = isAdmin ? adminMiniMapMarkers : miniMapMarkers.filter((marker) => canPlayerSeeMarker(marker, miniMapPlayerPosition) && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
+  const visibleMarkers = isAdmin
+    ? worldMarkers
+    : worldMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
+  const visibleMiniMapMarkers = isAdmin
+    ? adminMiniMapMarkers
+    : miniMapMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedNodeChoices = useMemo(
     () => (choiceNodeId ? dialogueChoices.filter((choice) => choice.node_id === choiceNodeId).sort((a, b) => a.sort_order - b.sort_order) : []),
     [choiceNodeId, dialogueChoices],
   );
-  const selectedMarkerDistance = selectedMarker ? getPercentDistance(currentInteractionPosition, { x: Number(selectedMarker.x_percent), y: Number(selectedMarker.y_percent) }) : 0;
-  const selectedMarkerRadius = Number(selectedMarker?.interaction_radius_percent ?? 4) || 4;
-  const canUseSelectedMarker = isAdmin || Boolean(selectedMarker && canPlayerSeeMarker(selectedMarker, currentInteractionPosition));
+  const selectedMarkerAvailability = selectedMarker ? getMarkerAvailability({ marker: selectedMarker, playerPosition: currentInteractionPosition, routeLinks: allMarkerRouteLinks, routeProgressRows }) : null;
+  const selectedMarkerDistance = selectedMarkerAvailability?.distance ?? 0;
+  const selectedMarkerRadius = selectedMarkerAvailability?.radius ?? 4;
+  const canUseSelectedMarker = isAdmin || Boolean(selectedMarkerAvailability?.interactable);
   const selectedMarkerLocked = !isAdmin && Boolean(selectedMarker && isMarkerLocked(selectedMarker));
   const selectedMiniMap = useMemo(() => miniMaps.find((miniMap) => miniMap.id === selectedMiniMapId) ?? null, [miniMaps, selectedMiniMapId]);
   const activeSectionMarkerTypes = adminSection === "Area/Town Markers" ? ["Area/Town Entrance"] : markerTypes;
@@ -680,7 +688,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function loadMap() {
     setMapReady(false);
-    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedSeasons, loadedChapters, loadedRole, loadedEvents] = await Promise.all([
+    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks] = await Promise.all([
       getMapRoutes(),
       getMapMarkers(),
       getMiniMaps(),
@@ -690,6 +698,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       getMapChapters(),
       getCurrentRole(),
       getMapEvents(),
+      getAllMarkerRouteLinks(),
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const [progressRows, playerMapState] = await Promise.all([
@@ -715,6 +724,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMapChapters(loadedChapters);
     setRole(loadedRole);
     setAllMapEvents(loadedEvents);
+    setAllMarkerRouteLinks(loadedMarkerRouteLinks);
     const currentMiniMap = currentRoute?.mini_map_id ? loadedMiniMaps.find((item) => item.id === currentRoute.mini_map_id) ?? null : null;
     const savedMiniMap = !currentMiniMap && playerMapState?.active_mini_map_id ? loadedMiniMaps.find((item) => item.id === playerMapState.active_mini_map_id) ?? null : null;
     const restoredMiniMap = currentMiniMap ?? savedMiniMap;
@@ -1138,10 +1148,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       if (activeMiniMapId && configured.mini_map_id !== activeMiniMapId) {
         throw new Error("Mini-map marker was saved without the open mini map id. Try again after reopening the mini map.");
       }
-      if (draftType === "Sign Post" || isStoryQuestMarker(configured)) {
-        const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter);
-        setMarkerRouteLinks(links);
-      }
+      const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter);
+      setMarkerRouteLinks(links);
+      setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== configured.id), ...links]);
       setMarkers((current) => [...current, configured]);
       setSelectedMarker(configured);
       setDraftTitle("");
@@ -1243,14 +1252,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     try {
       await loadMarkerMarketState(marker.id);
-      if (marker.type === "Sign Post" || isStoryQuestMarker(marker)) {
-        const links = await getMarkerRouteLinks(marker.id);
-        setMarkerRouteLinks(links);
-        setSelectedMarkerRouteIds(links.map((link) => link.route_id));
-      } else {
-        setMarkerRouteLinks([]);
-        setSelectedMarkerRouteIds([]);
-      }
+      const links = await getMarkerRouteLinks(marker.id);
+      setMarkerRouteLinks(links);
+      setSelectedMarkerRouteIds(links.map((link) => link.route_id));
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to load marker market."));
     }
@@ -1296,10 +1300,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           })
         : selectedMarker;
       const updated = await updateMarkerSettings(moved.id, getMarkerSettingsPayload());
-      if (updated.type === "Sign Post" || isStoryQuestMarker(updated)) {
-        const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter);
-        setMarkerRouteLinks(links);
-      }
+      const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter);
+      setMarkerRouteLinks(links);
+      setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== updated.id), ...links]);
       setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
       setSelectedMarker(updated);
       setClickedPercent(null);
@@ -3507,6 +3510,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <Text style={styles.subtitle}>Mini Map / {activeMiniMap.type}</Text>
           </View>
         </View>
+        {route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
         <Frame style={styles.panel}>
           <View style={styles.panelHeader}>
             <View>
@@ -3537,7 +3541,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           />
         </Frame>
         <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
-        {route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
         {isAdmin ? (
           <Frame style={styles.panel}>
             <Text style={styles.sectionTitle}>Mini Map Admin Preview</Text>
@@ -3888,6 +3891,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         </Frame>
       ) : null}
 
+      {renderJourneyPanel()}
+
       <OverworldMapCanvas
         viewportRef={viewportRef}
         scaledMapSize={scaledMapSize}
@@ -3911,14 +3916,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
       <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
 
-      {renderJourneyPanel()}
-
       {selectedMarker && !isAdmin ? (
         <MarkerInteractionPanel
           marker={selectedMarker}
           message={markerPanelMessage}
           locked={selectedMarkerLocked}
           canUse={canUseSelectedMarker}
+          unavailableReason={selectedMarkerAvailability?.reason ?? null}
           distance={selectedMarkerDistance}
           radius={selectedMarkerRadius}
           isTracking={isTracking}
@@ -4106,6 +4110,24 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   ) : (
                     <Text style={styles.debugLine}>Selected paths will be linked when the Sign Post marker is created.</Text>
                   )}
+                </View>
+              ) : null}
+              {draftType !== "Sign Post" ? (
+                <View style={styles.storyEditor}>
+                  <Text style={styles.selectedTitle}>{isStoryQuestMarker({ type: draftType }) ? "Story Path Sequence" : "Required Completed Paths"}</Text>
+                  <Text style={styles.copy}>
+                    {isStoryQuestMarker({ type: draftType })
+                      ? "These paths belong to this story marker and can run in order."
+                      : "Players must complete these linked paths before this marker becomes interactable. Reverse walking counts when the path reaches 0%."}
+                  </Text>
+                  <View style={styles.storyRoutePicker}>
+                    {activeRouteScopeRoutes.map((item) => (
+                      <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
+                        <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  {activeRouteScopeRoutes.length === 0 ? <Text style={styles.debugLine}>Create a walking path in this map area before linking requirements.</Text> : null}
                 </View>
               ) : null}
               <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
@@ -5055,6 +5077,20 @@ function MiniMapMarkerAdminForm({
           ) : (
             <Text style={styles.debugLine}>Selected paths will be linked when the Sign Post marker is created.</Text>
           )}
+        </View>
+      ) : null}
+      {!supportsSignPost && !supportsQuest ? (
+        <View style={styles.storyEditor}>
+          <Text style={styles.selectedTitle}>Required Completed Paths</Text>
+          <Text style={styles.copy}>Players must complete these linked paths before this marker becomes interactable. Reverse walking counts when the path reaches 0%.</Text>
+          <View style={styles.storyRoutePicker}>
+            {routes.map((item) => (
+              <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
+                <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+          {routes.length === 0 ? <Text style={styles.copy}>No walking paths exist in this mini map yet.</Text> : null}
         </View>
       ) : null}
       {supportsExit ? (

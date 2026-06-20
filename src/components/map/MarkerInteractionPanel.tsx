@@ -12,12 +12,13 @@ type MarkerInteractionPanelProps = {
   message: string | null;
   locked: boolean;
   canUse: boolean;
+  unavailableReason: string | null;
   distance: number;
   radius: number;
   isTracking: boolean;
   routeLinks: MarkerRouteLink[];
   routes: MapRoute[];
-  routeProgressRows: Array<{ route_id: string; progress_percent: number }>;
+  routeProgressRows: Array<{ route_id: string; progress_percent: number; travel_direction?: "forward" | "reverse" }>;
   marketItems: MarkerMarketItem[];
   inventoryItems: InventoryItem[];
   itemDefinitions: ItemDefinition[];
@@ -35,6 +36,7 @@ export function MarkerInteractionPanel({
   message,
   locked,
   canUse,
+  unavailableReason,
   distance,
   radius,
   isTracking,
@@ -69,9 +71,7 @@ export function MarkerInteractionPanel({
         <View style={styles.storyEditor}>
           {marker.quest_image_url || marker.shop_image_url ? <Image source={{ uri: marker.shop_image_url || marker.quest_image_url || "" }} style={styles.eventImage} /> : null}
           <Text style={styles.selectedTitle}>Travel Required</Text>
-          <Text style={styles.copy}>
-            You need to travel closer before entering. Distance: {distance.toFixed(2)}% / Required: {radius.toFixed(2)}%.
-          </Text>
+          <Text style={styles.copy}>{unavailableReason ?? `You need to travel closer before entering. Distance: ${distance.toFixed(2)}% / Required: ${radius.toFixed(2)}%.`}</Text>
           <Pressable style={styles.primaryButton} onPress={isTracking ? undefined : onStartTracking}>
             <Text style={styles.primaryText}>{isTracking ? "Tracking Walk" : "Start Tracking Walk"}</Text>
           </Pressable>

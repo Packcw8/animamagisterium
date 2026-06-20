@@ -97,14 +97,19 @@ export function getChapterLabel(chapters: MapChapter[], seasonNumber: number, ch
   return chapters.find((chapter) => chapter.season_number === seasonNumber && chapter.chapter_number === chapterNumber)?.name ?? `Chapter ${chapterNumber}`;
 }
 
-export function upsertRouteProgressRow(rows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>, routeId: string, progressPercent: number, isCurrent?: boolean) {
+export function upsertRouteProgressRow<T extends { route_id: string; progress_percent: number; is_current?: boolean }>(
+  rows: T[],
+  routeId: string,
+  progressPercent: number,
+  isCurrent?: boolean,
+): T[] {
   const existing = rows.some((row) => row.route_id === routeId);
 
   if (existing) {
     return rows.map((row) => (row.route_id === routeId ? { ...row, progress_percent: progressPercent, ...(isCurrent !== undefined ? { is_current: isCurrent } : {}) } : row));
   }
 
-  return [...rows, { route_id: routeId, progress_percent: progressPercent, ...(isCurrent !== undefined ? { is_current: isCurrent } : {}) }];
+  return [...rows, { route_id: routeId, progress_percent: progressPercent, ...(isCurrent !== undefined ? { is_current: isCurrent } : {}) } as T];
 }
 
 export function getNextRouteOrder(routes: MapRoute[]) {

@@ -588,6 +588,21 @@ export async function getMarkerRouteLinks(markerId: string) {
   return (data ?? []) as MarkerRouteLink[];
 }
 
+export async function getAllMarkerRouteLinks() {
+  const { data, error } = await supabase
+    .from("marker_route_links")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("[map] all marker route links unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as MarkerRouteLink[];
+}
+
 export async function saveMarkerRouteLinks(markerId: string, routeIds: string[], seasonNumber = 1, chapterNumber = 1) {
   const {
     data: { user },
