@@ -324,6 +324,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerRequireAllLinkedRoutes, setMarkerRequireAllLinkedRoutes] = useState(true);
   const [markerDialogueEventId, setMarkerDialogueEventId] = useState<string | null>(null);
   const [markerBattleEventId, setMarkerBattleEventId] = useState<string | null>(null);
+  const [markerEnemyId, setMarkerEnemyId] = useState<string | null>(null);
+  const [markerNpcId, setMarkerNpcId] = useState<string | null>(null);
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
   const [marketPurchaseCounts, setMarketPurchaseCounts] = useState<Record<string, number>>({});
   const [markerRouteLinks, setMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
@@ -1235,7 +1237,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         hide_when_completed: markerHideWhenCompleted,
         require_all_linked_routes: markerRequireAllLinkedRoutes,
         dialogue_event_id: supportsMarkerDialogue(draftType) ? markerDialogueEventId : null,
-        battle_event_id: isBattleMarkerType(draftType) ? markerBattleEventId : null,
+        battle_event_id: null,
+        enemy_id: isBattleMarkerType(draftType) ? markerEnemyId : null,
+        npc_id: isBattleMarkerType(draftType) ? markerNpcId : null,
         season_number: selectedSeason,
         chapter_number: selectedChapter,
       });
@@ -1282,7 +1286,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       hide_when_completed: markerHideWhenCompleted,
       require_all_linked_routes: markerRequireAllLinkedRoutes,
       dialogue_event_id: supportsMarkerDialogue(draftType) ? markerDialogueEventId : null,
-      battle_event_id: isBattleMarkerType(draftType) ? markerBattleEventId : null,
+      battle_event_id: null,
+      enemy_id: isBattleMarkerType(draftType) ? markerEnemyId : null,
+      npc_id: isBattleMarkerType(draftType) ? markerNpcId : null,
       interaction_radius_percent: Math.max(0.5, Number(markerInteractionRadius) || 4),
       reward_xp: Number(markerRewardXp) || 0,
       reward_gold: Number(markerRewardGold) || 0,
@@ -1332,6 +1338,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerRequireAllLinkedRoutes(marker.require_all_linked_routes ?? true);
     setMarkerDialogueEventId(marker.dialogue_event_id ?? null);
     setMarkerBattleEventId(marker.battle_event_id ?? null);
+    setMarkerEnemyId(marker.enemy_id ?? null);
+    setMarkerNpcId(marker.npc_id ?? null);
     setMarkerInteractionRadius(String(marker.interaction_radius_percent ?? 4));
     setMarkerInteractable(marker.is_interactable ?? true);
     setMarkerRewardXp(String(marker.reward_xp ?? 0));
@@ -1748,17 +1756,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function startSelectedMarkerBattle() {
-    if (!selectedMarker?.battle_event_id) {
-      setMarkerPanelMessage("No battle event is linked to this marker yet.");
+    if (!selectedMarker?.enemy_id && !selectedMarker?.npc_id) {
+      setMarkerPanelMessage("No Enemy or NPC is linked to this battle marker yet.");
       return;
     }
 
-    const event = allMapEvents.find((item) => item.id === selectedMarker.battle_event_id);
-
-    if (!event || event.event_type !== "battle") {
-      setMarkerPanelMessage("The linked battle event could not be found.");
-      return;
-    }
+    const event = createMarkerBattleEvent(selectedMarker, enemyDefinitions, npcDefinitions);
 
     setActiveMarkerEventId(selectedMarker.id);
     setSelectedMarker(null);
@@ -2458,6 +2461,54 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     try {
+      if (activeMarkerEventId && event.event_type === "battle") {
+        const marker = markers.find((item) => item.id === activeMarkerEventId) ?? null;
+        const rewardResult = await applyRewards(character, {
+          xp: (marker?.reward_xp ?? 0) + (activeEnemy?.xp_reward ?? 0),
+          gold: (marker?.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
+          itemId: marker?.reward_item_id ?? null,
+          itemQuantity: marker?.reward_item_quantity ?? 1,
+          repeatable: marker?.repeatable,
+          rewardOncePerPlayer: marker?.reward_once_per_player,
+          markerId: marker?.id ?? null,
+        });
+        const drops: string[] = [];
+        for (const drop of activeEnemy?.drops ?? []) {
+          if (Math.random() * 100 <= Number(drop.drop_chance)) {
+            await grantItemToCharacter(character.id, drop.item_id, drop.quantity);
+            drops.push(`item x${drop.quantity}`);
+          }
+        }
+        let killMessage = "";
+        try {
+          const enemySource = event.npc_id ? "npc" : event.enemy_id ? "enemy" : "manual";
+          const kill = await recordEnemyKill({
+            userId: character.user_id,
+            characterId: character.id,
+            enemyId: enemySource === "enemy" ? event.enemy_id : null,
+            npcId: enemySource === "npc" ? event.npc_id : null,
+            enemyName: activeEnemy?.name || event.enemy_name || "Unknown Enemy",
+            enemyType: activeEnemy?.type || "Marker",
+            enemySource,
+            routeId: null,
+            mapEventId: null,
+            seasonNumber: event.season_number,
+            chapterNumber: event.chapter_number,
+          });
+          killMessage = ` ${kill.enemyName} defeated ${kill.enemyKillCount} time${kill.enemyKillCount === 1 ? "" : "s"}. ${kill.enemyType} kills: ${kill.typeKillCount}.`;
+        } catch (killError) {
+          console.warn("[battle] unable to record marker enemy kill", killError);
+          killMessage = " Kill tracking could not be saved.";
+        }
+        setActiveEvent(null);
+        setActiveMarkerEventId(null);
+        setActiveBattle(null);
+        setActiveEnemy(null);
+        setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}`);
+        await loadInventory();
+        return;
+      }
+
       const rewardResult = await applyRewards(character, {
         xp: (event.reward_xp ?? 0) + (activeEnemy?.xp_reward ?? 0),
         gold: (event.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
@@ -3956,7 +4007,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerDialogueEventId={setMarkerDialogueEventId}
               markerBattleEventId={markerBattleEventId}
               setMarkerBattleEventId={setMarkerBattleEventId}
+              markerEnemyId={markerEnemyId}
+              setMarkerEnemyId={setMarkerEnemyId}
+              markerNpcId={markerNpcId}
+              setMarkerNpcId={setMarkerNpcId}
               reusableMapEvents={reusableMapEvents}
+              enemyDefinitions={enemyDefinitions}
+              npcDefinitions={npcDefinitions}
               routes={activeRouteScopeRoutes}
               storyRoutes={adminRoutes}
               selectedMarkerRouteIds={selectedMarkerRouteIds}
@@ -4421,12 +4478,28 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 />
               ) : null}
               {isBattleMarkerType(draftType) ? (
-                <EventPicker
-                  label="Linked Battle Event"
-                  events={reusableMapEvents.filter((event) => event.event_type === "battle")}
-                  selectedId={markerBattleEventId}
-                  onSelect={setMarkerBattleEventId}
-                />
+                <View style={styles.storyEditor}>
+                  <Text style={styles.selectedTitle}>Battle Enemy</Text>
+                  <Text style={styles.copy}>Battle markers start a standalone battle against the selected Enemy or NPC. They do not use trail progress.</Text>
+                  <EnemyPicker
+                    enemies={enemyDefinitions}
+                    selectedId={markerEnemyId}
+                    onSelect={(id) => {
+                      setMarkerEnemyId(id);
+                      if (id) setMarkerNpcId(null);
+                    }}
+                  />
+                  <NpcPicker
+                    label="Battle NPC"
+                    npcs={npcDefinitions}
+                    selectedId={markerNpcId}
+                    onSelect={(id) => {
+                      setMarkerNpcId(id);
+                      if (id) setMarkerEnemyId(null);
+                    }}
+                    battleOnly
+                  />
+                </View>
               ) : null}
               {(draftType === "Side Quest" || draftType === "Story" || draftType === "Point of Interest") ? (
                 <View style={styles.storyEditor}>
@@ -5211,7 +5284,13 @@ function MiniMapMarkerAdminForm({
   setMarkerDialogueEventId,
   markerBattleEventId,
   setMarkerBattleEventId,
+  markerEnemyId,
+  setMarkerEnemyId,
+  markerNpcId,
+  setMarkerNpcId,
   reusableMapEvents,
+  enemyDefinitions,
+  npcDefinitions,
   routes,
   storyRoutes,
   selectedMarkerRouteIds,
@@ -5307,7 +5386,13 @@ function MiniMapMarkerAdminForm({
   setMarkerDialogueEventId: (value: string | null) => void;
   markerBattleEventId: string | null;
   setMarkerBattleEventId: (value: string | null) => void;
+  markerEnemyId: string | null;
+  setMarkerEnemyId: (value: string | null) => void;
+  markerNpcId: string | null;
+  setMarkerNpcId: (value: string | null) => void;
   reusableMapEvents: MapEvent[];
+  enemyDefinitions: EnemyDefinition[];
+  npcDefinitions: NpcDefinition[];
   routes: MapRoute[];
   storyRoutes: MapRoute[];
   selectedMarkerRouteIds: string[];
@@ -5375,12 +5460,28 @@ function MiniMapMarkerAdminForm({
         />
       ) : null}
       {supportsBattle ? (
-        <EventPicker
-          label="Linked Battle Event"
-          events={reusableMapEvents.filter((event) => event.event_type === "battle")}
-          selectedId={markerBattleEventId}
-          onSelect={setMarkerBattleEventId}
-        />
+        <View style={styles.storyEditor}>
+          <Text style={styles.selectedTitle}>Battle Enemy</Text>
+          <Text style={styles.copy}>Battle markers start a standalone battle against the selected Enemy or NPC. They do not use trail progress.</Text>
+          <EnemyPicker
+            enemies={enemyDefinitions}
+            selectedId={markerEnemyId}
+            onSelect={(id) => {
+              setMarkerEnemyId(id);
+              if (id) setMarkerNpcId(null);
+            }}
+          />
+          <NpcPicker
+            label="Battle NPC"
+            npcs={npcDefinitions}
+            selectedId={markerNpcId}
+            onSelect={(id) => {
+              setMarkerNpcId(id);
+              if (id) setMarkerEnemyId(null);
+            }}
+            battleOnly
+          />
+        </View>
       ) : null}
       {supportsSignPost ? (
         <View style={styles.storyEditor}>
@@ -5875,6 +5976,50 @@ function supportsMarkerDialogue(type: string) {
 
 function isBattleMarkerType(type: string) {
   return type === "Battle" || type === "Battle Zone";
+}
+
+function createMarkerBattleEvent(marker: MapMarker, enemies: EnemyDefinition[], npcs: NpcDefinition[]): MapEvent {
+  const enemy = marker.enemy_id ? enemies.find((item) => item.id === marker.enemy_id) ?? null : null;
+  const npc = marker.npc_id ? npcs.find((item) => item.id === marker.npc_id) ?? null : null;
+  const opponent = enemy ?? npc;
+  const now = new Date().toISOString();
+
+  return {
+    id: marker.id,
+    event_type: "battle",
+    title: marker.quest_title || marker.title,
+    route_id: null,
+    distance_marker_percent: 0,
+    background_image_url: marker.scene_background_image_url ?? null,
+    npc_name: null,
+    npc_portrait_url: null,
+    dialogue_npc_id: null,
+    npc_id: npc?.id ?? null,
+    dialogue_text: null,
+    choices: [],
+    enemy_name: opponent?.name ?? marker.title,
+    enemy_id: enemy?.id ?? null,
+    enemy_image_url: opponent?.image_url ?? marker.scene_npc_image_url ?? null,
+    enemy_hp: Number(opponent?.health ?? 30) || 30,
+    enemy_attack_damage: 0,
+    battle_intro_text: marker.quest_dialogue || marker.description || `${opponent?.name ?? marker.title} blocks your path.`,
+    victory_text: "Victory.",
+    defeat_text: "Defeat.",
+    reward_xp: Number(marker.reward_xp ?? 0) || 0,
+    reward_gold: Number(marker.reward_gold ?? 0) || 0,
+    reward_item: null,
+    reward_item_id: marker.reward_item_id ?? null,
+    reward_item_quantity: Number(marker.reward_item_quantity ?? 1) || 1,
+    trigger_mode: "fixed",
+    random_chance_percent: 0,
+    linked_only: true,
+    season_number: Number(marker.season_number ?? 1) || 1,
+    chapter_number: Number(marker.chapter_number ?? 1) || 1,
+    is_active: true,
+    created_by: marker.created_by,
+    created_at: marker.created_at ?? now,
+    updated_at: marker.updated_at ?? now,
+  };
 }
 
 const styles = StyleSheet.create({

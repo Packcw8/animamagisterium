@@ -501,6 +501,8 @@ export type Tables = {
     require_all_linked_routes: boolean;
     dialogue_event_id: string | null;
     battle_event_id: string | null;
+    enemy_id: string | null;
+    npc_id: string | null;
     season_number: number;
     chapter_number: number;
     created_by: string | null;

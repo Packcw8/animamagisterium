@@ -159,8 +159,8 @@ export function MarkerSceneScreen({
         ) : isBattleMarkerType(marker.type) ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Battle</Text>
-            <Text style={styles.copy}>{marker.battle_event_id ? "This marker starts its linked Battle Event without changing trail progress." : "No Battle Event is linked to this marker yet."}</Text>
-            <Pressable style={[styles.primaryButton, !marker.battle_event_id && styles.disabledAction]} onPress={onStartBattleEvent} disabled={!marker.battle_event_id}>
+            <Text style={styles.copy}>{marker.enemy_id || marker.npc_id ? "This marker starts a standalone battle without changing trail progress." : "No Enemy or NPC is linked to this marker yet."}</Text>
+            <Pressable style={[styles.primaryButton, !marker.enemy_id && !marker.npc_id && styles.disabledAction]} onPress={onStartBattleEvent} disabled={!marker.enemy_id && !marker.npc_id}>
               <Text style={styles.primaryText}>Start Battle</Text>
             </Pressable>
           </View>
