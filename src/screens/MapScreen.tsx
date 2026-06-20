@@ -483,6 +483,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const completedRouteEvents = useMemo(() => routeEvents.filter((event) => completedEventIds.has(event.id)).length, [completedEventIds, routeEvents]);
   const routePotentialXp = useMemo(() => routeEvents.reduce((total, event) => total + Number(event.reward_xp ?? 0), 0), [routeEvents]);
   const routePotentialGold = useMemo(() => routeEvents.reduce((total, event) => total + Number(event.reward_gold ?? 0), 0), [routeEvents]);
+  const currentRouteProgress = useMemo(() => routeProgressRows.find((row) => row.route_id === route.id) ?? null, [route.id, routeProgressRows]);
   const mapConsumables = useMemo(
     () =>
       inventoryItems.filter(
@@ -1545,13 +1546,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setSelectedMarker(null);
       setPreviewMarkerScene(false);
       setMarkerPanelMessage(null);
-      setRouteProgressRows((current) =>
-        upsertRouteProgressRow(current, linkedRoute.id, 0).map((row) => ({
-          ...row,
-          is_current: row.route_id === linkedRoute.id,
-        })),
-      );
-      await saveRouteProgress(linkedRoute.id, {
+      const savedProgress = await saveRouteProgress(linkedRoute.id, {
         distance_walked_meters: 0,
         progress_percent: 0,
         current_x_percent: startPoint.x,
@@ -1559,6 +1554,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         last_lat: null,
         last_lng: null,
         source_marker_id: selectedMarker.id,
+      });
+      setRouteProgressRows((current) => {
+        const rows = upsertRouteProgressRow(current, linkedRoute.id, 0).map((row) => ({
+          ...row,
+          is_current: row.route_id === linkedRoute.id,
+          ...(row.route_id === linkedRoute.id ? { source_marker_id: selectedMarker.id, travel_direction: "forward" as const } : {}),
+        }));
+        return savedProgress ? rows.map((row) => (row.route_id === linkedRoute.id ? savedProgress : row)) : rows;
       });
       await selectRoute(linkedRoute, true);
       setSavedPlayerPosition(startPoint);
@@ -1681,10 +1684,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     distanceWalkedRef.current = 0;
     setDistanceWalked(0);
     setSavedPlayerPosition(startPoint);
-    setRouteProgressRows((current) =>
-      upsertRouteProgressRow(current, nextRoute.id, 0).map((row) => ({ ...row, is_current: row.route_id === nextRoute.id })),
-    );
-    await saveRouteProgress(nextRoute.id, {
+    const savedProgress = await saveRouteProgress(nextRoute.id, {
       distance_walked_meters: 0,
       progress_percent: 0,
       current_x_percent: startPoint.x,
@@ -1694,6 +1694,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       travel_direction: "forward",
       is_current: true,
       source_marker_id: sourceMarker.id,
+    });
+    setRouteProgressRows((current) => {
+      const rows = upsertRouteProgressRow(current, nextRoute.id, 0).map((row) => ({
+        ...row,
+        is_current: row.route_id === nextRoute.id,
+        ...(row.route_id === nextRoute.id ? { source_marker_id: sourceMarker.id, travel_direction: "forward" as const } : {}),
+      }));
+      return savedProgress ? rows.map((row) => (row.route_id === nextRoute.id ? savedProgress : row)) : rows;
     });
     const nextMiniMap = nextRoute.mini_map_id ? miniMaps.find((item) => item.id === nextRoute.mini_map_id) ?? null : null;
     setActiveMiniMap(nextMiniMap);
@@ -3323,21 +3331,55 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   function renderJourneyPanel() {
     const remainingMeters = Math.max(0, route.distance_required_meters - distanceWalked);
     const routeImageUri = route.image_url ? resolveMapImageUri(route.image_url) : null;
-    const travelTitle = routeDirection === "reverse" ? "Returning" : "To Destination";
+    const sourceMarker = currentRouteProgress?.source_marker_id ? markers.find((marker) => marker.id === currentRouteProgress.source_marker_id) ?? null : null;
+    const sourceRouteLinks = sourceMarker ? getOrderedMarkerRouteLinks(allMarkerRouteLinks.filter((link) => link.marker_id === sourceMarker.id)) : [];
+    const sourceRouteIndex = sourceRouteLinks.findIndex((link) => link.route_id === route.id);
+    const hasStoryContext = Boolean(sourceMarker && isStoryQuestMarker(sourceMarker));
+    const journeyMode = hasStoryContext ? (sourceMarker?.type === "Side Quest" || sourceMarker?.type === "Quest" ? "Quest Journey" : "Story Journey") : "Road Sign Travel";
+    const journeyTitle = hasStoryContext ? sourceMarker?.quest_title || sourceMarker?.title || route.name : route.name;
+    const journeyObjective = hasStoryContext
+      ? getJourneyObjective(sourceMarker, route, sourceRouteLinks[sourceRouteIndex])
+      : routeDirection === "reverse"
+        ? "Return to the previous sign post."
+        : "Follow the selected trail.";
+    const stepLabel = hasStoryContext && sourceRouteIndex >= 0
+      ? `Path ${sourceRouteIndex + 1} of ${sourceRouteLinks.length}`
+      : routeDirection === "reverse"
+        ? "Returning"
+        : "Active Path";
+    const travelTitle = routeDirection === "reverse" ? "Returning" : journeyMode;
     const primaryLabel = isTracking ? "Pause GPS" : "Continue Walking";
     const turnLabel = routeDirection === "reverse" ? "Travel Forward" : "Turn Back";
 
     return (
       <Frame style={[styles.panel, styles.journeyHud]}>
+        <View style={styles.journeyActionBar}>
+          <Pressable style={[styles.journeyPrimary, isTracking && styles.gpsActive]} onPress={isTracking ? stopGpsTracking : startGpsTracking}>
+            <Text style={styles.journeyPrimaryText}>{primaryLabel}</Text>
+          </Pressable>
+          <Pressable style={[styles.journeySecondary, routeDirection === "reverse" && styles.gpsActive, progressPercent <= 0 && styles.disabledAction]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0}>
+            <Text style={styles.journeySecondaryText}>{turnLabel}</Text>
+          </Pressable>
+        </View>
+
         <View style={styles.journeyTop}>
           <View style={styles.journeyTitleBlock}>
             <Text style={styles.journeyOverline}>{travelTitle}</Text>
-            <Text style={styles.journeyTitle}>{route.name}</Text>
-            <Text style={styles.journeySub}>{metersToMiles(remainingMeters)} miles remaining</Text>
+            <Text style={styles.journeyTitle}>{journeyTitle}</Text>
+            <Text style={styles.journeySub}>{journeyObjective}</Text>
           </View>
           <View style={styles.journeyRouteImage}>
             {routeImageUri ? <Image source={{ uri: routeImageUri }} style={styles.journeyRoutePhoto} /> : <Text style={styles.journeyRouteInitial}>{route.name.slice(0, 1).toUpperCase()}</Text>}
           </View>
+        </View>
+
+        <View style={styles.journeyQuestCard}>
+          <View style={styles.journeyQuestHeader}>
+            <Text style={styles.journeyQuestLabel}>{stepLabel}</Text>
+            <Text style={styles.journeyQuestMeta}>{metersToMiles(remainingMeters)} mi left</Text>
+          </View>
+          <Text style={styles.journeyQuestTitle}>{route.name}</Text>
+          <Text style={styles.journeyQuestText}>{routeDirection === "reverse" ? "Progress is moving back toward the start of this path." : "Walking progress moves you toward the next story point."}</Text>
         </View>
 
         <View style={styles.journeyProgressRow}>
@@ -3389,12 +3431,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         </View>
 
         <View style={styles.journeyActions}>
-          <Pressable style={[styles.journeyPrimary, isTracking && styles.gpsActive]} onPress={isTracking ? stopGpsTracking : startGpsTracking}>
-            <Text style={styles.journeyPrimaryText}>{primaryLabel}</Text>
-          </Pressable>
-          <Pressable style={[styles.journeySecondary, routeDirection === "reverse" && styles.gpsActive, progressPercent <= 0 && styles.disabledAction]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0}>
-            <Text style={styles.journeySecondaryText}>{turnLabel}</Text>
-          </Pressable>
           <Pressable style={[styles.journeySecondary, mapInventoryOpen && styles.gpsActive]} onPress={() => setMapInventoryOpen((value) => !value)}>
             <Text style={styles.journeySecondaryText}>{mapInventoryOpen ? "Hide Items" : `Inventory (${mapConsumables.length})`}</Text>
           </Pressable>
@@ -5479,6 +5515,26 @@ function getRouteName(routes: MapRoute[], routeId: string) {
   return routes.find((route) => route.id === routeId)?.name ?? "Unknown Path";
 }
 
+function getJourneyObjective(marker: MapMarker | null | undefined, route: MapRoute, link?: MarkerRouteLink) {
+  if (!marker) {
+    return route.terrain || "Follow the selected trail.";
+  }
+
+  if (link?.destination_label) {
+    return `Travel toward ${link.destination_label}.`;
+  }
+
+  const dialogue = marker.quest_dialogue?.trim();
+  if (dialogue) {
+    const firstLine = dialogue.split(/\n+/).map((line) => line.trim()).find(Boolean);
+    if (firstLine) {
+      return firstLine.length > 92 ? `${firstLine.slice(0, 89)}...` : firstLine;
+    }
+  }
+
+  return marker.description?.trim() || route.terrain || "Continue the story path.";
+}
+
 function compareEventsByRouteAndDistance(a: MapEvent, b: MapEvent) {
   return String(a.route_id ?? "").localeCompare(String(b.route_id ?? "")) || Number(a.distance_marker_percent) - Number(b.distance_marker_percent) || a.title.localeCompare(b.title);
 }
@@ -5655,7 +5711,15 @@ const styles = StyleSheet.create({
   },
   journeyHud: {
     borderColor: "rgba(218, 164, 65, 0.42)",
-    backgroundColor: "rgba(5, 8, 9, 0.94)",
+    backgroundColor: "rgba(5, 8, 9, 0.96)",
+    shadowColor: colors.blue,
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+  },
+  journeyActionBar: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   journeyTop: {
     flexDirection: "row",
@@ -5683,6 +5747,7 @@ const styles = StyleSheet.create({
     color: colors.goldSoft,
     fontSize: 12,
     marginTop: 2,
+    lineHeight: 17,
   },
   journeyRouteImage: {
     width: 86,
@@ -5708,6 +5773,40 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+  },
+  journeyQuestCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(24, 178, 242, 0.25)",
+    backgroundColor: "rgba(24, 178, 242, 0.075)",
+    padding: 11,
+    gap: 5,
+  },
+  journeyQuestHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  journeyQuestLabel: {
+    color: colors.blue,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  journeyQuestMeta: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  journeyQuestTitle: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 16,
+  },
+  journeyQuestText: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 17,
   },
   journeyPercent: {
     color: colors.gold,
