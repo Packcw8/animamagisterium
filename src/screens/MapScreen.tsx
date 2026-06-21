@@ -704,6 +704,28 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }, [route]);
 
   useEffect(() => {
+    if (!hasActiveRoute || !route.mini_map_id || activeMiniMap?.id === route.mini_map_id) {
+      return;
+    }
+
+    const routeMiniMap = miniMaps.find((item) => item.id === route.mini_map_id);
+    if (!routeMiniMap) {
+      return;
+    }
+
+    setActiveMiniMap(routeMiniMap);
+    setSelectedMiniMapId(routeMiniMap.id);
+    setSavedMiniMapPosition(null);
+    if (!isAdmin) {
+      void savePlayerMapState({
+        active_mini_map_id: routeMiniMap.id,
+        current_x_percent: playerPosition.x,
+        current_y_percent: playerPosition.y,
+      });
+    }
+  }, [activeMiniMap?.id, hasActiveRoute, isAdmin, miniMaps, playerPosition.x, playerPosition.y, route.mini_map_id]);
+
+  useEffect(() => {
     routeDirectionRef.current = routeDirection;
   }, [routeDirection]);
 
