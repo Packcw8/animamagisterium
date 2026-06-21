@@ -68,7 +68,7 @@ export function getMarkerAvailability({
 }
 
 export function getMarkerPathRequirements(marker: MapMarker, routeLinks: MarkerRouteLink[]) {
-  if (marker.type === "Sign Post" || isStoryQuestMarker(marker)) {
+  if (marker.type === "Sign Post" || marker.type === "Battle" || marker.type === "Battle Zone" || isStoryQuestMarker(marker)) {
     return [];
   }
 

@@ -4690,7 +4690,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   )}
                 </View>
               ) : null}
-              {draftType !== "Sign Post" ? (
+              {draftType !== "Sign Post" && !isBattleMarkerType(draftType) ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>{isStoryQuestMarker({ type: draftType }) ? "Story Path Sequence" : "Required Completed Paths"}</Text>
                   <Text style={styles.copy}>
@@ -4730,7 +4730,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               {isBattleMarkerType(draftType) ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>Battle Enemy</Text>
-                  <Text style={styles.copy}>Battle markers start a standalone battle against the selected Enemy or NPC. They do not use trail progress.</Text>
+                  <Text style={styles.copy}>Battle markers start a standalone battle against the selected Enemy or NPC. They do not require a linked trail or use trail progress.</Text>
                   <EnemyPicker
                     enemies={enemyDefinitions}
                     selectedId={markerEnemyId}
@@ -5717,7 +5717,7 @@ function MiniMapMarkerAdminForm({
       {supportsBattle ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>Battle Enemy</Text>
-          <Text style={styles.copy}>Battle markers start a standalone battle against the selected Enemy or NPC. They do not use trail progress.</Text>
+          <Text style={styles.copy}>Battle markers start a standalone battle against the selected Enemy or NPC. They do not require a linked trail or use trail progress.</Text>
           <EnemyPicker
             enemies={enemyDefinitions}
             selectedId={markerEnemyId}
@@ -5757,7 +5757,7 @@ function MiniMapMarkerAdminForm({
           )}
         </View>
       ) : null}
-      {!supportsSignPost && !supportsQuest ? (
+      {!supportsSignPost && !supportsQuest && !supportsBattle ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>Required Completed Paths</Text>
           <Text style={styles.copy}>{draftType === "Area/Town Entrance" ? "Players can enter after completing any one linked path that leads to this entrance. Reverse walking counts when the path reaches 0%." : "Players must complete linked paths before this marker becomes interactable. Reverse walking counts when the path reaches 0%."}</Text>
