@@ -13,6 +13,7 @@ import { MarkerIcon } from "../components/map/MarkerIcon";
 import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel";
 import { LegendEditor } from "../components/map/LegendEditor";
 import { MarkerAdminList } from "../components/map/MarkerAdminList";
+import { GameToast, type GameToastData, type GameToastReward } from "../components/map/GameToast";
 import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
@@ -239,6 +240,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
   const [mapInventoryOpen, setMapInventoryOpen] = useState(false);
   const [mapItemMessage, setMapItemMessage] = useState<string | null>(null);
+  const [gameToast, setGameToast] = useState<GameToastData | null>(null);
   const [role, setRole] = useState<Role>("player");
   const [adminMapViewMode, setAdminMapViewMode] = useState<"admin" | "player">("admin");
   const currentHealth = getCurrentHealth(character, combatResources);
@@ -551,6 +553,59 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
+  function buildRewardToastItems(reward: { xp?: number | null; gold?: number | null; itemId?: string | null; itemQuantity?: number | null }, extraRewards: GameToastReward[] = []) {
+    const rewards: GameToastReward[] = [];
+    const xp = Number(reward.xp ?? 0) || 0;
+    const gold = Number(reward.gold ?? 0) || 0;
+
+    if (xp > 0) {
+      rewards.push({ label: `${xp} XP` });
+    }
+
+    if (gold > 0) {
+      rewards.push({ label: `${gold} Gold` });
+    }
+
+    if (reward.itemId) {
+      rewards.push({
+        label: getItemName(itemDefinitions, reward.itemId),
+        quantity: Math.max(1, Number(reward.itemQuantity ?? 1) || 1),
+      });
+    }
+
+    return [...rewards, ...extraRewards];
+  }
+
+  function showGameToast(toast: GameToastData) {
+    setGameToast(toast);
+  }
+
+  function getNextStoryMarkerAfter(marker: MapMarker | null) {
+    if (!marker || !isStoryQuestMarker(marker)) {
+      return null;
+    }
+
+    const currentOrder = Number(marker.story_order ?? 0);
+    return markers
+      .filter((item) => isStoryQuestMarker(item))
+      .filter((item) => item.id !== marker.id)
+      .filter((item) => Number(item.season_number ?? 1) === Number(marker.season_number ?? 1))
+      .filter((item) => Number(item.chapter_number ?? 1) === Number(marker.chapter_number ?? 1))
+      .filter((item) => (marker.mini_map_id ? item.mini_map_id === marker.mini_map_id : !item.mini_map_id))
+      .filter((item) => Number(item.story_order ?? 0) > currentOrder)
+      .sort((a, b) => Number(a.story_order ?? 0) - Number(b.story_order ?? 0))[0] ?? null;
+  }
+
+  function showJourneyToast(input: { title: string; message: string; rewards?: GameToastReward[]; nextMarker?: MapMarker | null }) {
+    showGameToast({
+      title: input.title,
+      message: input.message,
+      rewards: input.rewards,
+      nextMarker: input.nextMarker ?? null,
+      actionLabel: "OK",
+    });
+  }
+
   async function loadEnemies() {
     try {
       const [enemies, npcs] = await Promise.all([getEnemies(), getNpcs()]);
@@ -651,8 +706,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     setCompletedRouteId(route.id);
     setGpsMessage(`${route.name} completed. Return to a Sign Post to choose your next path.`);
+    showJourneyToast({
+      title: "Trail Complete",
+      message: "You reached the end of this path. Open the destination marker or return to a Sign Post to choose another trail.",
+      nextMarker: getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
+    });
     void grantPathCompletionMarkerReward(route.id);
-  }, [completedRouteId, progressPercent, route, routeDirection]);
+  }, [allMarkerRouteLinks, completedRouteId, currentRouteProgress?.source_marker_id, markers, progressPercent, route, routeDirection]);
 
   useEffect(() => {
     if (activeEvent || activeBattle || routeDirection === "reverse" || playerMovementState !== "MOVING") {
@@ -1578,6 +1638,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const result = await buyMarketItem(character, marketItem);
       onCharacterUpdated({ ...character, gold: result.gold });
       setMarkerPanelMessage("Item purchased.");
+      showGameToast({
+        title: "Item Added",
+        message: "Your purchase was added to Inventory.",
+        rewards: [{ label: getItemName(itemDefinitions, marketItem.item_id) }],
+        actionLabel: "OK",
+      });
       await loadInventory();
       if (selectedMarker) {
         await loadMarkerMarketState(selectedMarker.id);
@@ -1628,16 +1694,42 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         markerId: selectedMarker.id,
       });
       if (isStoryQuestMarker(selectedMarker)) {
+        const completedMarker = selectedMarker;
+        const nextMarker = getNextStoryMarkerAfter(completedMarker);
         await completeStoryMarker(selectedMarker.id);
         setCompletedStoryMarkerIds((current) => new Set([...current, selectedMarker.id]));
         setSelectedMarker(null);
         setPreviewMarkerScene(false);
         setMarkerPanelMessage(null);
         setGpsMessage(result.claimed ? `${selectedMarker.quest_title || selectedMarker.title} completed. ${result.message}` : `${selectedMarker.quest_title || selectedMarker.title} completed.`);
+        showJourneyToast({
+          title: `${completedMarker.quest_title || completedMarker.title} Complete`,
+          message: nextMarker ? "Your story continues at the next marker." : "This story step is complete.",
+          rewards: result.claimed ? buildRewardToastItems({
+            xp: completedMarker.reward_xp,
+            gold: completedMarker.reward_gold,
+            itemId: completedMarker.reward_item_id,
+            itemQuantity: completedMarker.reward_item_quantity,
+          }) : [],
+          nextMarker,
+        });
         await loadInventory();
         return;
       }
       setMarkerPanelMessage(result.message);
+      if (result.claimed) {
+        showGameToast({
+          title: selectedMarker.quest_title || selectedMarker.title,
+          message: "Reward claimed.",
+          rewards: buildRewardToastItems({
+            xp: selectedMarker.reward_xp,
+            gold: selectedMarker.reward_gold,
+            itemId: selectedMarker.reward_item_id,
+            itemQuantity: selectedMarker.reward_item_quantity,
+          }),
+          actionLabel: "OK",
+        });
+      }
       await loadInventory();
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to claim marker reward."));
@@ -1661,6 +1753,17 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setPreviewMarkerScene(false);
       setMarkerPanelMessage(null);
       setGpsMessage(result.claimed ? `${marker.quest_title || marker.title} completed. ${result.message}` : `${marker.quest_title || marker.title} completed.`);
+      showJourneyToast({
+        title: `${marker.quest_title || marker.title} Complete`,
+        message: getNextStoryMarkerAfter(marker) ? "Your story continues at the next marker." : "This story quest is complete.",
+        rewards: result.claimed ? buildRewardToastItems({
+          xp: marker.reward_xp,
+          gold: marker.reward_gold,
+          itemId: marker.reward_item_id,
+          itemQuantity: marker.reward_item_quantity,
+        }) : [],
+        nextMarker: getNextStoryMarkerAfter(marker),
+      });
       await loadInventory();
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to complete story quest."));
@@ -1802,6 +1905,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       if (nextRoute && sourceMarker.require_all_linked_routes !== false) {
         await startLinkedStoryRoute(sourceMarker, nextRoute);
         setGpsMessage(`${route.name} completed. Next story path started: ${nextRoute.name}.`);
+        showJourneyToast({
+          title: "Path Complete",
+          message: `Next story path started: ${nextRoute.name}.`,
+          nextMarker: getJourneyDestinationMarker(nextRoute, markers, allMarkerRouteLinks, sourceMarker.id),
+        });
         return;
       }
 
@@ -1821,6 +1929,19 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
 
       setGpsMessage(result.claimed ? `${route.name} completed. ${result.message}` : `${route.name} completed. ${sourceMarker.quest_title || sourceMarker.title} is now complete.`);
+      showJourneyToast({
+        title: `${route.name} Complete`,
+        message: isStoryQuestMarker(sourceMarker)
+          ? "This story path is complete. Look for the next story marker."
+          : "Path complete. Your rewards were added.",
+        rewards: result.claimed ? buildRewardToastItems({
+          xp: sourceMarker.reward_xp,
+          gold: sourceMarker.reward_gold,
+          itemId: sourceMarker.reward_item_id,
+          itemQuantity: sourceMarker.reward_item_quantity,
+        }) : [],
+        nextMarker: getNextStoryMarkerAfter(sourceMarker),
+      });
       await loadInventory();
     } catch (error) {
       setGpsMessage(getErrorMessage(error, "Path completed, but the linked quest reward could not be granted."));
@@ -2517,10 +2638,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           markerId: marker?.id ?? null,
         });
         const drops: string[] = [];
+        const dropRewards: GameToastReward[] = [];
         for (const drop of activeEnemy?.drops ?? []) {
           if (Math.random() * 100 <= Number(drop.drop_chance)) {
             await grantItemToCharacter(character.id, drop.item_id, drop.quantity);
-            drops.push(`item x${drop.quantity}`);
+            const itemName = getItemName(itemDefinitions, drop.item_id);
+            drops.push(`${itemName} x${drop.quantity}`);
+            dropRewards.push({ label: itemName, quantity: drop.quantity });
           }
         }
         let killMessage = "";
@@ -2550,6 +2674,17 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         setActiveEnemy(null);
         activeBattleRouteRef.current = null;
         setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}`);
+        showGameToast({
+          title: `${event.title} Complete`,
+          message: drops.length ? "Battle rewards and drops were added to Inventory." : "Battle complete. Rewards were saved.",
+          rewards: rewardResult.claimed ? buildRewardToastItems({
+            xp: (marker?.reward_xp ?? 0) + (activeEnemy?.xp_reward ?? 0),
+            gold: (marker?.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
+            itemId: marker?.reward_item_id ?? null,
+            itemQuantity: marker?.reward_item_quantity ?? 1,
+          }, dropRewards) : dropRewards,
+          actionLabel: "OK",
+        });
         await loadInventory();
         return;
       }
@@ -2562,10 +2697,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         eventId: event.id,
       });
       const drops: string[] = [];
+      const dropRewards: GameToastReward[] = [];
       for (const drop of activeEnemy?.drops ?? []) {
         if (Math.random() * 100 <= Number(drop.drop_chance)) {
           await grantItemToCharacter(character.id, drop.item_id, drop.quantity);
-          drops.push(`item x${drop.quantity}`);
+          const itemName = getItemName(itemDefinitions, drop.item_id);
+          drops.push(`${itemName} x${drop.quantity}`);
+          dropRewards.push({ label: itemName, quantity: drop.quantity });
         }
       }
       let killMessage = "";
@@ -2599,6 +2737,18 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setActiveEnemy(null);
       activeBattleRouteRef.current = null;
       setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}`);
+      showGameToast({
+        title: `${event.title} Complete`,
+        message: drops.length ? "Rewards and drops were added to Inventory." : "Event complete. Rewards were saved.",
+        rewards: rewardResult.claimed ? buildRewardToastItems({
+          xp: (event.reward_xp ?? 0) + (activeEnemy?.xp_reward ?? 0),
+          gold: (event.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
+          itemId: event.reward_item_id,
+          itemQuantity: event.reward_item_quantity,
+        }, dropRewards) : dropRewards,
+        nextMarker: getJourneyDestinationMarker(routeRef.current, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
+        actionLabel: "OK",
+      });
       await loadInventory();
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to complete event."));
@@ -2681,6 +2831,19 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         choiceId: choice.id,
       });
       setDialogueLog((current) => [rewardResult.message, ...current].slice(0, 4));
+      if (rewardResult.claimed) {
+        showGameToast({
+          title: "Reward Received",
+          message: "Your dialogue choice granted a reward.",
+          rewards: buildRewardToastItems({
+            xp: choice.reward_xp,
+            gold: choice.reward_gold,
+            itemId: choice.reward_item_id,
+            itemQuantity: choice.reward_item_quantity,
+          }),
+          actionLabel: "OK",
+        });
+      }
       await loadInventory();
       return;
     }
@@ -3545,86 +3708,95 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   if (activeEvent) {
     return (
-      <StoryInstanceScreen
-        event={activeEvent}
-        nodes={dialogueNodes}
-        choices={dialogueChoices}
-        npcs={npcDefinitions}
-        activeNodeId={activeNodeId}
-        dialogueLog={dialogueLog}
-        previewMode={adminPreviewMode === "story"}
-        onLegacyChoice={handleStoryChoice}
-        onChoice={(choice) => void handleDialogueChoice(choice)}
-        onEndChat={(completeEvent) => void endDialogueChat(completeEvent)}
-        onExitPreview={closeAdminPreview}
-      />
+      <>
+        <StoryInstanceScreen
+          event={activeEvent}
+          nodes={dialogueNodes}
+          choices={dialogueChoices}
+          npcs={npcDefinitions}
+          activeNodeId={activeNodeId}
+          dialogueLog={dialogueLog}
+          previewMode={adminPreviewMode === "story"}
+          onLegacyChoice={handleStoryChoice}
+          onChoice={(choice) => void handleDialogueChoice(choice)}
+          onEndChat={(completeEvent) => void endDialogueChat(completeEvent)}
+          onExitPreview={closeAdminPreview}
+        />
+        <GameToast toast={gameToast} onDismiss={() => setGameToast(null)} />
+      </>
     );
   }
 
   if (activeBattle) {
     return (
-      <BattleEventScreen
-        character={character}
-        event={activeBattle}
-        playerHp={battlePlayerHp}
-        stamina={battleStamina}
-        magicka={battleMagicka}
-        resources={combatResources}
-        enemyHp={battleEnemyHp}
-        activeEnemy={activeEnemy}
-        equippedAbilities={equippedAbilities}
-        weapon={equippedItems.weapon ?? null}
-        battleItems={getBattleUsableItems(inventoryItems, battlePlayerHp <= 0 || battleFinished === "defeat")}
-        inventoryOpen={battleInventoryOpen}
-        battleLog={battleLog}
-        combatIndicators={combatIndicators}
-        revivePromptOpen={revivePromptOpen}
-        result={battleFinished}
-        previewMode={adminPreviewMode === "battle"}
-        onAction={(ability) => void handleBattleAction(ability)}
-        onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
-        onFlee={() => void fleeBattle()}
-        onUseItem={(item) => void useBattleItem(item)}
-        onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
-        onDeclineRevive={() => void declineReviveAfterDefeat()}
-        onReturnToStart={() => void resetCurrentRouteAfterDefeat()}
-        onComplete={() => void finishEvent(activeBattle)}
-        onExitPreview={closeAdminPreview}
-      />
+      <>
+        <BattleEventScreen
+          character={character}
+          event={activeBattle}
+          playerHp={battlePlayerHp}
+          stamina={battleStamina}
+          magicka={battleMagicka}
+          resources={combatResources}
+          enemyHp={battleEnemyHp}
+          activeEnemy={activeEnemy}
+          equippedAbilities={equippedAbilities}
+          weapon={equippedItems.weapon ?? null}
+          battleItems={getBattleUsableItems(inventoryItems, battlePlayerHp <= 0 || battleFinished === "defeat")}
+          inventoryOpen={battleInventoryOpen}
+          battleLog={battleLog}
+          combatIndicators={combatIndicators}
+          revivePromptOpen={revivePromptOpen}
+          result={battleFinished}
+          previewMode={adminPreviewMode === "battle"}
+          onAction={(ability) => void handleBattleAction(ability)}
+          onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
+          onFlee={() => void fleeBattle()}
+          onUseItem={(item) => void useBattleItem(item)}
+          onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
+          onDeclineRevive={() => void declineReviveAfterDefeat()}
+          onReturnToStart={() => void resetCurrentRouteAfterDefeat()}
+          onComplete={() => void finishEvent(activeBattle)}
+          onExitPreview={closeAdminPreview}
+        />
+        <GameToast toast={gameToast} onDismiss={() => setGameToast(null)} />
+      </>
     );
   }
 
   if (selectedMarker && (previewMarkerScene || (!isAdmin && canUseSelectedMarker && !selectedMarkerLocked))) {
     return (
-      <MarkerSceneScreen
-        marker={selectedMarker}
-        characterGold={character.gold}
-        marketItems={markerMarketItems}
-        marketPurchaseCounts={marketPurchaseCounts}
-        routeLinks={markerRouteLinks}
-        routes={routes}
-        routeProgressRows={routeProgressRows}
-        inventoryItems={inventoryItems}
-        itemDefinitions={itemDefinitions}
-        message={markerPanelMessage}
-        onExit={closeMarkerScene}
-        onBuy={(marketItem) => void buyFromMarker(marketItem)}
-        onSell={(entry) => void sellToMarker(entry)}
-        onClaimReward={() => void claimSelectedMarkerReward()}
-        onAcceptQuest={() => void acceptSelectedMarkerQuest()}
-        onStartPath={(nextRoute) => void startPathFromSignPost(nextRoute)}
-        onUseExit={() => void openExitMarker(selectedMarker)}
-        onEnterArea={() => {
-          const miniMap = miniMaps.find((item) => item.id === selectedMarker.linked_mini_map_id);
-          if (miniMap) {
-            openMiniMap(miniMap);
-          } else {
-            setMarkerPanelMessage("No mini map is linked to this entrance yet.");
-          }
-        }}
-        onOpenDialogueEvent={() => void openSelectedMarkerDialogue()}
-        onStartBattleEvent={() => void startSelectedMarkerBattle()}
-      />
+      <>
+        <MarkerSceneScreen
+          marker={selectedMarker}
+          characterGold={character.gold}
+          marketItems={markerMarketItems}
+          marketPurchaseCounts={marketPurchaseCounts}
+          routeLinks={markerRouteLinks}
+          routes={routes}
+          routeProgressRows={routeProgressRows}
+          inventoryItems={inventoryItems}
+          itemDefinitions={itemDefinitions}
+          message={markerPanelMessage}
+          onExit={closeMarkerScene}
+          onBuy={(marketItem) => void buyFromMarker(marketItem)}
+          onSell={(entry) => void sellToMarker(entry)}
+          onClaimReward={() => void claimSelectedMarkerReward()}
+          onAcceptQuest={() => void acceptSelectedMarkerQuest()}
+          onStartPath={(nextRoute) => void startPathFromSignPost(nextRoute)}
+          onUseExit={() => void openExitMarker(selectedMarker)}
+          onEnterArea={() => {
+            const miniMap = miniMaps.find((item) => item.id === selectedMarker.linked_mini_map_id);
+            if (miniMap) {
+              openMiniMap(miniMap);
+            } else {
+              setMarkerPanelMessage("No mini map is linked to this entrance yet.");
+            }
+          }}
+          onOpenDialogueEvent={() => void openSelectedMarkerDialogue()}
+          onStartBattleEvent={() => void startSelectedMarkerBattle()}
+        />
+        <GameToast toast={gameToast} onDismiss={() => setGameToast(null)} />
+      </>
     );
   }
 
@@ -3670,14 +3842,29 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       : routeDirection === "reverse"
         ? "Returning"
         : "Active Path";
-    const travelTitle = routeDirection === "reverse" ? "Returning" : journeyMode;
-    const primaryLabel = isTracking ? "Pause GPS" : "Continue Walking";
+    const arrivedAtEnd = routeDirection !== "reverse" && progressPercent >= 100;
+    const arrivedAtStart = routeDirection === "reverse" && progressPercent <= 0;
+    const arrived = arrivedAtEnd || arrivedAtStart;
+    const travelTitle = arrived ? "Arrived" : routeDirection === "reverse" ? "Returning" : journeyMode;
+    const primaryLabel = arrived && destinationMarker ? `Open ${destinationMarker.type}` : isTracking ? "Pause GPS" : "Continue Walking";
     const turnLabel = routeDirection === "reverse" ? "Travel Forward" : "Turn Back";
+    const handlePrimaryJourneyAction = () => {
+      if (arrived && destinationMarker) {
+        void selectMarker(destinationMarker);
+        return;
+      }
+
+      if (isTracking) {
+        stopGpsTracking();
+      } else {
+        startGpsTracking();
+      }
+    };
 
     return (
       <Frame style={[styles.panel, styles.journeyHud]}>
         <View style={styles.journeyActionBar}>
-          <Pressable style={[styles.journeyPrimary, isTracking && styles.gpsActive]} onPress={isTracking ? stopGpsTracking : startGpsTracking}>
+          <Pressable style={[styles.journeyPrimary, (isTracking || arrived) && styles.gpsActive]} onPress={handlePrimaryJourneyAction}>
             <Text style={styles.journeyPrimaryText}>{primaryLabel}</Text>
           </Pressable>
           <Pressable style={[styles.journeySecondary, routeDirection === "reverse" && styles.gpsActive, progressPercent <= 0 && styles.disabledAction]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0}>
@@ -4254,6 +4441,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             </View>
           </Frame>
         ) : null}
+        <GameToast toast={gameToast} onDismiss={() => setGameToast(null)} />
       </Screen>
     );
   }
@@ -5024,6 +5212,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           ) : null}
         </Frame>
       ) : null}
+      <GameToast toast={gameToast} onDismiss={() => setGameToast(null)} />
     </Screen>
   );
 }
