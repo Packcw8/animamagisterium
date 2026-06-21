@@ -2252,7 +2252,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       .find((item): item is { progress: RouteProgress; route: MapRoute } => Boolean(item.route && !item.route.mini_map_id));
     const selectedWorldRoute = !route.mini_map_id ? route : currentWorldProgress?.route ?? null;
     const displayWorldRoute = selectedWorldRoute ?? orderedRoutes.find((item) => !item.mini_map_id && item.is_active) ?? orderedRoutes.find((item) => !item.mini_map_id) ?? fallbackRoute;
-    const shouldRestoreWorldRoute = Boolean(selectedWorldRoute && (route.mini_map_id || targetPosition));
+    const shouldRestoreWorldRoute = Boolean(selectedWorldRoute && route.mini_map_id && !targetPosition);
 
     setActiveMiniMap(null);
     setEditingMiniMapId(null);
@@ -2267,10 +2267,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setPathDraft([]);
     setSavedMiniMapPosition(null);
 
-    if (selectedWorldRoute && shouldRestoreWorldRoute) {
-      await setCurrentRoute(selectedWorldRoute.id);
-      await selectRoute(selectedWorldRoute, true);
-    } else if (targetPosition) {
+    if (targetPosition) {
       await clearCurrentRoute();
       setHasActiveRoute(false);
       setRoute(displayWorldRoute);
@@ -2292,29 +2289,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         current_x_percent: targetPosition.x,
         current_y_percent: targetPosition.y,
       });
+    } else if (selectedWorldRoute && shouldRestoreWorldRoute) {
+      await setCurrentRoute(selectedWorldRoute.id);
+      await selectRoute(selectedWorldRoute, true);
     } else {
       void clearPlayerMapState();
-    }
-
-    if (targetPosition && selectedWorldRoute) {
-      const existingProgress = await getRouteProgress(selectedWorldRoute.id);
-      const nextDistance = Number(existingProgress?.distance_walked_meters ?? 0);
-      const nextProgress = Number(existingProgress?.progress_percent ?? 0);
-      await saveRouteProgress(selectedWorldRoute.id, {
-        distance_walked_meters: nextDistance,
-        progress_percent: nextProgress,
-        current_x_percent: targetPosition.x,
-        current_y_percent: targetPosition.y,
-        last_lat: null,
-        last_lng: null,
-        travel_direction: existingProgress?.travel_direction ?? "forward",
-        is_current: true,
-        source_marker_id: null,
-      });
-      distanceWalkedRef.current = nextDistance;
-      setDistanceWalked(nextDistance);
-      setRouteProgressRows((current) => upsertRouteProgressRow(current, selectedWorldRoute.id, nextProgress).map((row) => ({ ...row, is_current: row.route_id === selectedWorldRoute.id })));
-      setSavedPlayerPosition(targetPosition);
     }
   }
 
