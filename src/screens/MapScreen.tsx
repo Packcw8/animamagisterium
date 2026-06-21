@@ -712,6 +712,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    const pendingReachedFixedEvent = mapEvents.some(
+      (event) =>
+        event.is_active &&
+        !event.linked_only &&
+        event.route_id === route.id &&
+        (event.trigger_mode ?? "fixed") !== "random" &&
+        !completedEventIds.has(event.id) &&
+        Number(event.distance_marker_percent) <= progressPercent,
+    );
+
+    if (pendingReachedFixedEvent) {
+      return;
+    }
+
     setCompletedRouteId(route.id);
     setGpsMessage(`${route.name} completed. Return to a Sign Post to choose your next path.`);
     showJourneyToast({
@@ -720,14 +734,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       nextMarker: getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
     });
     void grantPathCompletionMarkerReward(route.id);
-  }, [allMarkerRouteLinks, completedRouteId, currentRouteProgress?.source_marker_id, markers, progressPercent, route, routeDirection]);
+  }, [allMarkerRouteLinks, completedEventIds, completedRouteId, currentRouteProgress?.source_marker_id, mapEvents, markers, progressPercent, route, routeDirection]);
 
   useEffect(() => {
-    if (activeEvent || activeBattle || routeDirection === "reverse" || playerMovementState !== "MOVING") {
+    if (activeEvent || activeBattle || routeDirection === "reverse") {
       return;
     }
 
-    const eligibleEvents = mapEvents.filter(
+    const eligibleFixedEvents = mapEvents.filter(
       (event) =>
         event.is_active &&
         !event.linked_only &&
@@ -735,8 +749,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         !completedEventIds.has(event.id) &&
         Number(event.distance_marker_percent) <= progressPercent,
     );
-    const fixedEvent = eligibleEvents.find((event) => (event.trigger_mode ?? "fixed") !== "random");
-    const randomEvents = eligibleEvents.filter((event) => (event.trigger_mode ?? "fixed") === "random");
+    const fixedEvent = eligibleFixedEvents.find((event) => (event.trigger_mode ?? "fixed") !== "random");
+    const randomEvents = playerMovementState === "MOVING"
+      ? eligibleFixedEvents.filter((event) => (event.trigger_mode ?? "fixed") === "random")
+      : [];
     const randomEvent = randomEvents.find((event) => Math.random() * 100 < Number(event.random_chance_percent ?? 0));
     const nextEvent = fixedEvent ?? randomEvent;
 
@@ -2270,6 +2286,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (targetPosition) {
       await clearCurrentRoute();
       setHasActiveRoute(false);
+      setRouteProgressRows((current) => current.map((row) => ({ ...row, is_current: false })));
       setRoute(displayWorldRoute);
       setRouteName(displayWorldRoute.name);
       setRouteOrder(String(displayWorldRoute.sort_order));
@@ -2284,7 +2301,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setSavedPlayerPosition(targetPosition);
       setMapEvents([]);
       setCompletedEventIds(new Set());
-      void savePlayerMapState({
+      await savePlayerMapState({
         active_mini_map_id: null,
         current_x_percent: targetPosition.x,
         current_y_percent: targetPosition.y,
