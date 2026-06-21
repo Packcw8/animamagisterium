@@ -585,13 +585,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return null;
     }
 
-    const currentOrder = Number(marker.story_order ?? 0);
-    return markers
+    const storyScope = markers
       .filter((item) => isStoryQuestMarker(item))
       .filter((item) => item.id !== marker.id)
       .filter((item) => Number(item.season_number ?? 1) === Number(marker.season_number ?? 1))
-      .filter((item) => Number(item.chapter_number ?? 1) === Number(marker.chapter_number ?? 1))
-      .filter((item) => (marker.mini_map_id ? item.mini_map_id === marker.mini_map_id : !item.mini_map_id))
+      .filter((item) => Number(item.chapter_number ?? 1) === Number(marker.chapter_number ?? 1));
+    const explicitNextMarker = storyScope
+      .filter((item) => item.unlock_after_marker_id === marker.id)
+      .sort((a, b) => Number(a.story_order ?? 0) - Number(b.story_order ?? 0))[0] ?? null;
+
+    if (explicitNextMarker) {
+      return explicitNextMarker;
+    }
+
+    const currentOrder = Number(marker.story_order ?? 0);
+    return storyScope
       .filter((item) => Number(item.story_order ?? 0) > currentOrder)
       .sort((a, b) => Number(a.story_order ?? 0) - Number(b.story_order ?? 0))[0] ?? null;
   }
@@ -1903,12 +1911,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const nextRoute = linkedRoutes.find((item) => !completedRouteIds.has(item.id));
 
       if (nextRoute && sourceMarker.require_all_linked_routes !== false) {
-        await startLinkedStoryRoute(sourceMarker, nextRoute);
-        setGpsMessage(`${route.name} completed. Next story path started: ${nextRoute.name}.`);
+        setGpsMessage(`${route.name} completed. Return to ${sourceMarker.quest_title || sourceMarker.title} to choose the next story path.`);
         showJourneyToast({
           title: "Path Complete",
-          message: `Next story path started: ${nextRoute.name}.`,
-          nextMarker: getJourneyDestinationMarker(nextRoute, markers, allMarkerRouteLinks, sourceMarker.id),
+          message: `The next story path is available, but it will not start automatically. Return to ${sourceMarker.quest_title || sourceMarker.title} when you are ready.`,
+          nextMarker: sourceMarker,
         });
         return;
       }
@@ -2003,46 +2010,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
     await selectRoute(nextRoute, true);
     setGpsMessage(`${nextRoute.name} is now your active walking path.`);
-  }
-
-  async function startLinkedStoryRoute(sourceMarker: MapMarker, nextRoute: MapRoute) {
-    const startPoint = nextRoute.path_points[0] ?? { x: 33.8, y: 73.81 };
-    await setCurrentRoute(nextRoute.id);
-    setHasActiveRoute(true);
-    setRouteDirection("forward");
-    routeDirectionRef.current = "forward";
-    distanceWalkedRef.current = 0;
-    setDistanceWalked(0);
-    setSavedPlayerPosition(startPoint);
-    const savedProgress = await saveRouteProgress(nextRoute.id, {
-      distance_walked_meters: 0,
-      progress_percent: 0,
-      current_x_percent: startPoint.x,
-      current_y_percent: startPoint.y,
-      last_lat: null,
-      last_lng: null,
-      travel_direction: "forward",
-      is_current: true,
-      source_marker_id: sourceMarker.id,
-    });
-    setRouteProgressRows((current) => {
-      const rows = upsertRouteProgressRow(current, nextRoute.id, 0).map((row) => ({
-        ...row,
-        is_current: row.route_id === nextRoute.id,
-        ...(row.route_id === nextRoute.id ? { source_marker_id: sourceMarker.id, travel_direction: "forward" as const } : {}),
-      }));
-      return savedProgress ? rows.map((row) => (row.route_id === nextRoute.id ? savedProgress : row)) : rows;
-    });
-    const nextMiniMap = nextRoute.mini_map_id ? miniMaps.find((item) => item.id === nextRoute.mini_map_id) ?? null : null;
-    setActiveMiniMap(nextMiniMap);
-    setSelectedMiniMapId(nextMiniMap?.id ?? null);
-    setSavedMiniMapPosition(null);
-    if (nextMiniMap) {
-      void savePlayerMapState({ active_mini_map_id: nextMiniMap.id, current_x_percent: startPoint.x, current_y_percent: startPoint.y });
-    } else {
-      void clearPlayerMapState();
-    }
-    await selectRoute(nextRoute, true);
   }
 
   async function turnBackOnCurrentPath() {
