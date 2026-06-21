@@ -515,6 +515,23 @@ export async function setCurrentRoute(routeId: string) {
   );
 }
 
+export async function clearCurrentRoute() {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return;
+  }
+
+  const { error } = await supabase.from("route_progress").update({ is_current: false }).eq("user_id", user.id);
+
+  if (error) {
+    console.warn("[map] could not clear current route", error.message);
+  }
+}
+
 export async function saveRouteProgress(routeId: string, values: Pick<RouteProgress, "distance_walked_meters" | "progress_percent" | "current_x_percent" | "current_y_percent" | "last_lat" | "last_lng"> & Partial<Pick<RouteProgress, "travel_direction" | "is_current" | "source_marker_id">>) {
   const {
     data: { user },
