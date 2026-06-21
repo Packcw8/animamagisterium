@@ -532,6 +532,7 @@ export type Tables = {
     sort_order: number;
     destination_label: string | null;
     starts_on_select: boolean;
+    completion_condition: "start" | "end" | "either";
     season_number: number;
     chapter_number: number;
     created_by: string | null;

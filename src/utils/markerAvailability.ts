@@ -91,7 +91,19 @@ export function isRouteLinkRequirementMet(link: MarkerRouteLink, routeProgressRo
   }
 
   const percent = Number(progress.progress_percent ?? 0);
-  return percent >= 100 || (percent <= 0 && progress.travel_direction === "reverse");
+  const atEnd = percent >= 100;
+  const atStartAfterReverse = percent <= 0 && progress.travel_direction === "reverse";
+  const condition = link.completion_condition ?? "either";
+
+  if (condition === "end") {
+    return atEnd;
+  }
+
+  if (condition === "start") {
+    return atStartAfterReverse;
+  }
+
+  return atEnd || atStartAfterReverse;
 }
 
 function getRequirementMessage(marker: MapMarker, totalCount: number, unmetCount: number) {

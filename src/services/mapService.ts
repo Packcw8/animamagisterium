@@ -620,7 +620,7 @@ export async function getAllMarkerRouteLinks() {
   return (data ?? []) as MarkerRouteLink[];
 }
 
-export async function saveMarkerRouteLinks(markerId: string, routeIds: string[], seasonNumber = 1, chapterNumber = 1) {
+export async function saveMarkerRouteLinks(markerId: string, routeIds: string[], seasonNumber = 1, chapterNumber = 1, completionCondition: MarkerRouteLink["completion_condition"] = "either") {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -640,6 +640,7 @@ export async function saveMarkerRouteLinks(markerId: string, routeIds: string[],
     route_id: routeId,
     sort_order: index + 1,
     starts_on_select: true,
+    completion_condition: completionCondition,
     season_number: Number(seasonNumber) || 1,
     chapter_number: Number(chapterNumber) || 1,
     created_by: user?.id ?? null,

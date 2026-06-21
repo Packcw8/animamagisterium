@@ -323,6 +323,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerUnlockAfterId, setMarkerUnlockAfterId] = useState<string | null>(null);
   const [markerHideWhenCompleted, setMarkerHideWhenCompleted] = useState(true);
   const [markerRequireAllLinkedRoutes, setMarkerRequireAllLinkedRoutes] = useState(true);
+  const [markerRouteCompletionCondition, setMarkerRouteCompletionCondition] = useState<MarkerRouteLink["completion_condition"]>("either");
   const [markerDialogueEventId, setMarkerDialogueEventId] = useState<string | null>(null);
   const [markerBattleEventId, setMarkerBattleEventId] = useState<string | null>(null);
   const [markerEnemyId, setMarkerEnemyId] = useState<string | null>(null);
@@ -1254,7 +1255,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       if (activeMiniMapId && configured.mini_map_id !== activeMiniMapId) {
         throw new Error("Mini-map marker was saved without the open mini map id. Try again after reopening the mini map.");
       }
-      const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter);
+      const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition);
       setMarkerRouteLinks(links);
       setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== configured.id), ...links]);
       setMarkers((current) => [...current, configured]);
@@ -1369,6 +1370,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const links = await getMarkerRouteLinks(marker.id);
       setMarkerRouteLinks(links);
       setSelectedMarkerRouteIds(links.map((link) => link.route_id));
+      setMarkerRouteCompletionCondition(links[0]?.completion_condition ?? "either");
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to load marker market."));
     }
@@ -1417,6 +1419,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const links = await getMarkerRouteLinks(marker.id);
       setMarkerRouteLinks(links);
       setSelectedMarkerRouteIds(links.map((link) => link.route_id));
+      setMarkerRouteCompletionCondition(links[0]?.completion_condition ?? "either");
       setAdminMessage(clickedPercent ? `Loaded ${marker.title}. Save it to place a copy in ${activeMiniMap.name}.` : `Loaded ${marker.title}. Tap the mini map to choose its new position, then save.`);
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Story loaded, but linked paths could not be copied."));
@@ -1463,7 +1466,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           })
         : selectedMarker;
       const updated = await updateMarkerSettings(moved.id, getMarkerSettingsPayload());
-      const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter);
+      const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition);
       setMarkerRouteLinks(links);
       setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== updated.id), ...links]);
       setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
@@ -4054,6 +4057,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerHideWhenCompleted={setMarkerHideWhenCompleted}
               markerRequireAllLinkedRoutes={markerRequireAllLinkedRoutes}
               setMarkerRequireAllLinkedRoutes={setMarkerRequireAllLinkedRoutes}
+              markerRouteCompletionCondition={markerRouteCompletionCondition}
+              setMarkerRouteCompletionCondition={setMarkerRouteCompletionCondition}
               markerDialogueEventId={markerDialogueEventId}
               setMarkerDialogueEventId={setMarkerDialogueEventId}
               markerBattleEventId={markerBattleEventId}
@@ -4515,6 +4520,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                     ))}
                   </View>
                   {activeRouteScopeRoutes.length === 0 ? <Text style={styles.debugLine}>Create a walking path in this map area before linking requirements.</Text> : null}
+                  {!isStoryQuestMarker({ type: draftType }) ? (
+                    <RouteCompletionConditionPicker
+                      value={markerRouteCompletionCondition}
+                      onSelect={setMarkerRouteCompletionCondition}
+                    />
+                  ) : null}
                 </View>
               ) : null}
               <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
@@ -5331,6 +5342,8 @@ function MiniMapMarkerAdminForm({
   setMarkerHideWhenCompleted,
   markerRequireAllLinkedRoutes,
   setMarkerRequireAllLinkedRoutes,
+  markerRouteCompletionCondition,
+  setMarkerRouteCompletionCondition,
   markerDialogueEventId,
   setMarkerDialogueEventId,
   markerBattleEventId,
@@ -5433,6 +5446,8 @@ function MiniMapMarkerAdminForm({
   setMarkerHideWhenCompleted: (value: boolean | ((current: boolean) => boolean)) => void;
   markerRequireAllLinkedRoutes: boolean;
   setMarkerRequireAllLinkedRoutes: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerRouteCompletionCondition: MarkerRouteLink["completion_condition"];
+  setMarkerRouteCompletionCondition: (value: MarkerRouteLink["completion_condition"]) => void;
   markerDialogueEventId: string | null;
   setMarkerDialogueEventId: (value: string | null) => void;
   markerBattleEventId: string | null;
@@ -5565,6 +5580,10 @@ function MiniMapMarkerAdminForm({
             ))}
           </View>
           {routes.length === 0 ? <Text style={styles.copy}>No walking paths exist in this mini map yet.</Text> : null}
+          <RouteCompletionConditionPicker
+            value={markerRouteCompletionCondition}
+            onSelect={setMarkerRouteCompletionCondition}
+          />
         </View>
       ) : null}
       {supportsExit ? (
@@ -5722,6 +5741,29 @@ function LockPicker({ label, value, onSelect }: { label: string; value: (typeof 
           </Pressable>
         ))}
       </View>
+    </View>
+  );
+}
+
+function RouteCompletionConditionPicker({ value, onSelect }: { value: MarkerRouteLink["completion_condition"]; onSelect: (value: MarkerRouteLink["completion_condition"]) => void }) {
+  const options: Array<{ value: MarkerRouteLink["completion_condition"]; label: string; description: string }> = [
+    { value: "end", label: "Path End Only", description: "Unlock when this path reaches 100%." },
+    { value: "start", label: "Path Start Only", description: "Unlock when reverse travel returns this path to 0%." },
+    { value: "either", label: "Either End", description: "Unlock at 100%, or at 0% after reverse travel." },
+  ];
+
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Linked Path Unlock Point</Text>
+      <Text style={styles.copy}>Choose which end of the linked path can activate this marker.</Text>
+      <View style={styles.storyRoutePicker}>
+        {options.map((option) => (
+          <Pressable key={option.value} style={[styles.routeChip, value === option.value && styles.routeChipActive]} onPress={() => onSelect(option.value)}>
+            <Text style={styles.routeChipText}>{option.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={styles.debugLine}>{options.find((option) => option.value === value)?.description}</Text>
     </View>
   );
 }
