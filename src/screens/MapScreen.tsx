@@ -425,6 +425,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const distanceWalkedRef = useRef(0);
   const routeRef = useRef(fallbackRoute);
   const routeDirectionRef = useRef<"forward" | "reverse">("forward");
+  const activeBattleRouteRef = useRef<MapRoute | null>(null);
   const movementStateRef = useRef<PlayerMovementState>("IDLE");
   const movementCandidateRef = useRef<{ state: PlayerMovementState; since: number } | null>(null);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
@@ -1981,15 +1982,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function reduceCurrentRouteProgress(percent: number) {
-    const meters = route.distance_required_meters * (percent / 100);
+    const targetRoute = activeBattleRouteRef.current ?? routeRef.current;
+    const meters = targetRoute.distance_required_meters * (percent / 100);
     const nextDistance = Math.max(0, distanceWalkedRef.current - meters);
-    const nextProgress = Math.max(0, (nextDistance / route.distance_required_meters) * 100);
-    const nextPoint = getPointOnRoute(route.path_points, nextProgress);
+    const nextProgress = Math.max(0, (nextDistance / targetRoute.distance_required_meters) * 100);
+    const nextPoint = getPointOnRoute(targetRoute.path_points, nextProgress);
     distanceWalkedRef.current = nextDistance;
     setDistanceWalked(nextDistance);
     setSavedPlayerPosition(nextPoint);
-    setRouteProgressRows((current) => upsertRouteProgressRow(current, route.id, nextProgress));
-    await saveRouteProgress(route.id, {
+    setRouteProgressRows((current) => upsertRouteProgressRow(current, targetRoute.id, nextProgress, true).map((row) => ({ ...row, is_current: row.route_id === targetRoute.id })));
+    await saveRouteProgress(targetRoute.id, {
       distance_walked_meters: nextDistance,
       progress_percent: nextProgress,
       current_x_percent: nextPoint.x,
@@ -1999,9 +2001,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       travel_direction: routeDirectionRef.current,
       is_current: true,
     });
-    if (route.mini_map_id) {
+    if (targetRoute.mini_map_id) {
       void savePlayerMapState({
-        active_mini_map_id: route.mini_map_id,
+        active_mini_map_id: targetRoute.mini_map_id,
         current_x_percent: nextPoint.x,
         current_y_percent: nextPoint.y,
       });
@@ -2435,6 +2437,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   function closeAdminPreview() {
     setActiveEvent(null);
     setAdminPreviewMode(null);
+    activeBattleRouteRef.current = null;
     resetBattleState();
     setDialogueLog([]);
   }
@@ -2446,6 +2449,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function startBattle(event: MapEvent, preview = false, options: { saveRoutePosition?: boolean } = {}) {
+    activeBattleRouteRef.current = preview ? null : routeRef.current;
     if (!preview && options.saveRoutePosition !== false) {
       await saveCurrentRoutePositionBeforeBattle();
     }
@@ -2461,15 +2465,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function saveCurrentRoutePositionBeforeBattle() {
+    const targetRoute = activeBattleRouteRef.current ?? routeRef.current;
     const currentDistance = distanceWalkedRef.current;
-    const currentProgress = Math.min(100, Math.max(0, (currentDistance / route.distance_required_meters) * 100 || progressPercent));
-    const currentPoint = getPointOnRoute(route.path_points, currentProgress);
+    const currentProgress = Math.min(100, Math.max(0, (currentDistance / targetRoute.distance_required_meters) * 100 || progressPercent));
+    const currentPoint = getPointOnRoute(targetRoute.path_points, currentProgress);
 
     setDistanceWalked(currentDistance);
     setSavedPlayerPosition(currentPoint);
-    setRouteProgressRows((current) => upsertRouteProgressRow(current, route.id, currentProgress, true));
+    setRouteProgressRows((current) => upsertRouteProgressRow(current, targetRoute.id, currentProgress, true));
 
-    await saveRouteProgress(route.id, {
+    await saveRouteProgress(targetRoute.id, {
       distance_walked_meters: currentDistance,
       progress_percent: currentProgress,
       current_x_percent: currentPoint.x,
@@ -2480,9 +2485,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       is_current: true,
     });
 
-    if (route.mini_map_id) {
+    if (targetRoute.mini_map_id) {
       void savePlayerMapState({
-        active_mini_map_id: route.mini_map_id,
+        active_mini_map_id: targetRoute.mini_map_id,
         current_x_percent: currentPoint.x,
         current_y_percent: currentPoint.y,
       });
@@ -2540,6 +2545,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         setActiveMarkerEventId(null);
         setActiveBattle(null);
         setActiveEnemy(null);
+        activeBattleRouteRef.current = null;
         setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}`);
         await loadInventory();
         return;
@@ -2588,6 +2594,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setActiveMarkerEventId(null);
       setActiveBattle(null);
       setActiveEnemy(null);
+      activeBattleRouteRef.current = null;
       setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}`);
       await loadInventory();
     } catch (error) {
@@ -2643,7 +2650,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (choice.action === "start_battle") {
       const battle =
         allMapEvents.find((event) => event.id === choice.battle_event_id) ??
-        mapEvents.find((event) => event.event_type === "battle" && event.route_id === activeEvent.route_id);
+        mapEvents.find((event) => event.event_type === "battle" && event.route_id === routeRef.current.id);
       if (battle) {
         void startBattle(battle, adminPreviewMode === "story", { saveRoutePosition: !activeMarkerEventId });
         return;
@@ -2722,6 +2729,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function fleeBattle() {
     await runFleeBattle(getBattleActionContext());
+    activeBattleRouteRef.current = null;
   }
 
   async function declineReviveAfterDefeat() {
@@ -2733,8 +2741,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function resetCurrentRouteAfterDefeat() {
+    const defeatedRoute = activeBattleRouteRef.current ?? routeRef.current;
     await reduceCurrentRouteProgress(5);
     setCompletedRouteId(null);
+    activeBattleRouteRef.current = null;
+    setHasActiveRoute(true);
+    const nextMiniMap = defeatedRoute.mini_map_id ? miniMaps.find((item) => item.id === defeatedRoute.mini_map_id) ?? null : null;
+    setActiveMiniMap(nextMiniMap);
+    setSelectedMiniMapId(nextMiniMap?.id ?? null);
+    await selectRoute(defeatedRoute, true);
     resetBattleState();
     setGpsMessage("Defeated. You lost 5% progress on this path.");
   }
