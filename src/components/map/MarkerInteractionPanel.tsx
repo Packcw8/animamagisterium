@@ -26,6 +26,7 @@ type MarkerInteractionPanelProps = {
   onStartTracking: () => void;
   onStartPath: (route: MapRoute) => void;
   onEnterArea: () => void;
+  onStartBattleEvent: () => void;
   onBuy: (marketItem: MarkerMarketItem) => void;
   onSell: (entry: InventoryItem) => void;
   onClaimReward: () => void;
@@ -50,6 +51,7 @@ export function MarkerInteractionPanel({
   onStartTracking,
   onStartPath,
   onEnterArea,
+  onStartBattleEvent,
   onBuy,
   onSell,
   onClaimReward,
@@ -128,6 +130,24 @@ export function MarkerInteractionPanel({
     );
   }
 
+  if (isBattleMarkerType(marker.type)) {
+    const hasOpponent = Boolean(marker.enemy_id || marker.npc_id);
+
+    return (
+      <PanelShell marker={marker} message={message} onClose={onClose}>
+        <View style={styles.storyEditor}>
+          {marker.scene_npc_image_url || marker.quest_image_url ? <Image source={{ uri: marker.scene_npc_image_url || marker.quest_image_url || "" }} style={styles.eventImage} /> : null}
+          <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
+          {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
+          <Text style={styles.copy}>{hasOpponent ? "This marker starts a standalone battle." : "No Enemy or NPC is linked to this battle marker yet."}</Text>
+          <Pressable style={[styles.primaryButton, !hasOpponent && styles.disabledAction]} onPress={onStartBattleEvent} disabled={!hasOpponent}>
+            <Text style={styles.primaryText}>Start Battle</Text>
+          </Pressable>
+        </View>
+      </PanelShell>
+    );
+  }
+
   if (marker.type === "Market") {
     const buyableItems = marketItems.filter(canMarketItemBeBought);
     const sellableItems = inventoryItems.filter((entry) => entry.item.sellable && marketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item)));
@@ -185,6 +205,10 @@ export function MarkerInteractionPanel({
       </View>
     </PanelShell>
   );
+}
+
+function isBattleMarkerType(type: string) {
+  return type === "Battle" || type === "Battle Zone";
 }
 
 function PanelShell({ marker, message, onClose, children }: { marker: MapMarker; message: string | null; onClose: () => void; children: ReactNode }) {

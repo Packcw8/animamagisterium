@@ -18,6 +18,11 @@ type StartBattleOptions = {
   setAdminMessage: Dispatch<SetStateAction<string | null>>;
 };
 
+type StartBattleResult = {
+  ok: boolean;
+  message?: string;
+};
+
 type BattleActionContext = {
   previewMode: boolean;
   equippedItems: Record<string, ItemDefinition | null>;
@@ -56,7 +61,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setCombatIndicators([]);
   }
 
-  async function startBattle(event: MapEvent, options: StartBattleOptions) {
+  async function startBattle(event: MapEvent, options: StartBattleOptions): Promise<StartBattleResult> {
     const { preview = false, currentHealth, combatResources: nextCombatResources, setActiveEvent, setAdminPreviewMode, setAdminMessage } = options;
 
     try {
@@ -65,15 +70,17 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const opponent = enemy ?? npcEnemy;
 
       if (event.enemy_id && !enemy) {
-        setAdminMessage("Battle enemy could not be loaded from Enemy Admin. Check the selected enemy.");
-        setBattleLog(["Battle enemy could not be loaded from Enemy Admin. Check the selected enemy."]);
-        return;
+        const message = "Battle enemy could not be loaded from Enemy Admin. Check that the selected enemy is active and readable by players.";
+        setAdminMessage(message);
+        setBattleLog([message]);
+        return { ok: false, message };
       }
 
       if (event.npc_id && !npcEnemy) {
-        setAdminMessage("Battle NPC could not be loaded from NPC Admin. Check the selected NPC.");
-        setBattleLog(["Battle NPC could not be loaded from NPC Admin. Check the selected NPC."]);
-        return;
+        const message = "Battle NPC could not be loaded from NPC Admin. Check that the selected NPC is active, battle-enabled, and readable by players.";
+        setAdminMessage(message);
+        setBattleLog([message]);
+        return { ok: false, message };
       }
 
       const enemyImage = resolveEnemyImageUri(opponent?.image_url ?? event.enemy_image_url);
@@ -96,10 +103,12 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         opponent?.id ? `Loaded ${opponent.abilities.length} abilities and ${opponent.drops.length} drop entries from Admin.` : "Using manual battle enemy data.",
         enemyImage ? "Enemy image ready." : "Enemy image missing. A placeholder will be shown.",
       ]);
+      return { ok: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to load battle enemy data.";
       setAdminMessage(message);
       setBattleLog([message]);
+      return { ok: false, message };
     }
   }
 

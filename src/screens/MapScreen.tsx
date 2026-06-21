@@ -1921,12 +1921,17 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     const event = createMarkerBattleEvent(selectedMarker, enemyDefinitions, npcDefinitions);
+    const result = await startBattle(event, false, { saveRoutePosition: false });
+
+    if (!result.ok) {
+      setMarkerPanelMessage(result.message ?? "Unable to start this battle marker. Check the selected Enemy or NPC.");
+      return;
+    }
 
     setActiveMarkerEventId(selectedMarker.id);
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setMarkerPanelMessage(null);
-    await startBattle(event, false, { saveRoutePosition: false });
   }
 
   async function grantPathCompletionMarkerReward(routeId: string) {
@@ -2563,7 +2568,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       await saveCurrentRoutePositionBeforeBattle();
     }
 
-    await startBattleEncounter(event, {
+    return startBattleEncounter(event, {
       preview,
       currentHealth,
       combatResources,
@@ -4503,6 +4508,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerPanelMessage("No mini map is linked to this entrance yet.");
             }
           }}
+          onStartBattleEvent={() => void startSelectedMarkerBattle()}
           onBuy={(marketItem) => void buyFromMarker(marketItem)}
           onSell={(entry) => void sellToMarker(entry)}
           onClaimReward={() => void claimSelectedMarkerReward()}
