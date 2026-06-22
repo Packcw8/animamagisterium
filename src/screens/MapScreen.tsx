@@ -17,6 +17,25 @@ import { GameToast, type GameToastData, type GameToastReward } from "../componen
 import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
+import {
+  EnemyPicker,
+  EventPicker,
+  ExitTargetEditor,
+  formatMarketListingMode,
+  getEnemyName,
+  getItemName,
+  getNpcName,
+  getRouteName,
+  ItemPicker,
+  LockPicker,
+  MarketListingModePicker,
+  MarkerPicker,
+  MiniMapPicker,
+  NpcPicker,
+  RewardTimingPicker,
+  RouteCompletionConditionPicker,
+  RoutePicker,
+} from "../components/map/MarkerEditorControls";
 import { MiniMapEditor } from "../components/map/MiniMapEditor";
 import { WalkingPathAdminPanel } from "../components/map/WalkingPathAdminPanel";
 import { ProgressBar } from "../components/ProgressBar";
@@ -103,7 +122,6 @@ import {
   MapChapter,
   MapSeason,
   MarkerMarketItem,
-  marketListingModes,
   MarkerLegendItem,
   MarkerRouteLink,
   MiniMap,
@@ -134,7 +152,6 @@ import {
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post", "Player Spawn"];
 const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "Point of Interest", "Market", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
-const exitTargetTypes = ["world_marker", "mini_map"] as const;
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const editorModes = ["Marker", "Walking Path"] as const;
 const adminSections = ["World Markers", "Area/Town Markers", "Mini Maps", "Walking Paths", "Tutorials", "Rewards/Interactions", "Legend"] as const;
@@ -142,16 +159,7 @@ const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
 const eventTriggerModes = ["fixed", "random"] as const;
 const lockTypes = ["public", "story_locked", "quest_locked"] as const;
-const lockTypeLabels: Record<(typeof lockTypes)[number], string> = {
-  public: "Public",
-  story_locked: "Story Locked",
-  quest_locked: "Quest Locked",
-};
 const rewardTimings = ["on_interact", "on_path_complete"] as const;
-const rewardTimingLabels: Record<(typeof rewardTimings)[number], string> = {
-  on_interact: "When Interacted",
-  on_path_complete: "After Linked Path Completion",
-};
 const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle", "Complete Event"] as const;
 const eventTypeLabels: Record<(typeof eventTypes)[number], string> = {
   dialogue: "Dialogue Event",
@@ -5935,218 +5943,6 @@ function Info({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ItemPicker({ label, items, selectedId, onSelect }: { label: string; items: ItemDefinition[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.selectedTitle}>{label}</Text>
-      <View style={styles.storyRoutePicker}>
-        <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
-          <Text style={styles.routeChipText}>None</Text>
-        </Pressable>
-        {items.map((item) => (
-          <Pressable key={item.id} style={[styles.routeChip, selectedId === item.id && styles.routeChipActive]} onPress={() => onSelect(item.id)}>
-            <Text style={styles.routeChipText}>{item.name}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function LockPicker({ label, value, onSelect }: { label: string; value: (typeof lockTypes)[number]; onSelect: (value: (typeof lockTypes)[number]) => void }) {
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.selectedTitle}>{label}</Text>
-      <View style={styles.storyRoutePicker}>
-        {lockTypes.map((type) => (
-          <Pressable key={type} style={[styles.routeChip, value === type && styles.routeChipActive]} onPress={() => onSelect(type)}>
-            <Text style={styles.routeChipText}>{lockTypeLabels[type]}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function RouteCompletionConditionPicker({ value, onSelect }: { value: MarkerRouteLink["completion_condition"]; onSelect: (value: MarkerRouteLink["completion_condition"]) => void }) {
-  const options: Array<{ value: MarkerRouteLink["completion_condition"]; label: string; description: string }> = [
-    { value: "end", label: "Path End Only", description: "Unlock when this path reaches 100%." },
-    { value: "start", label: "Path Start Only", description: "Unlock when reverse travel returns this path to 0%." },
-    { value: "either", label: "Either End", description: "Unlock at 100%, or at 0% after reverse travel." },
-  ];
-
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.selectedTitle}>Linked Path Unlock Point</Text>
-      <Text style={styles.copy}>Choose which end of the linked path can activate this marker.</Text>
-      <View style={styles.storyRoutePicker}>
-        {options.map((option) => (
-          <Pressable key={option.value} style={[styles.routeChip, value === option.value && styles.routeChipActive]} onPress={() => onSelect(option.value)}>
-            <Text style={styles.routeChipText}>{option.label}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={styles.debugLine}>{options.find((option) => option.value === value)?.description}</Text>
-    </View>
-  );
-}
-
-function RewardTimingPicker({ value, onSelect }: { value: (typeof rewardTimings)[number]; onSelect: (value: (typeof rewardTimings)[number]) => void }) {
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.selectedTitle}>Reward Timing</Text>
-      <View style={styles.storyRoutePicker}>
-        {rewardTimings.map((timing) => (
-          <Pressable key={timing} style={[styles.routeChip, value === timing && styles.routeChipActive]} onPress={() => onSelect(timing)}>
-            <Text style={styles.routeChipText}>{rewardTimingLabels[timing]}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function ExitTargetEditor({
-  targetType,
-  setTargetType,
-  targetMarkerId,
-  setTargetMarkerId,
-  targetMiniMapId,
-  setTargetMiniMapId,
-  worldMarkers,
-  miniMaps,
-}: {
-  targetType: MapMarker["exit_target_type"];
-  setTargetType: (value: MapMarker["exit_target_type"]) => void;
-  targetMarkerId: string | null;
-  setTargetMarkerId: (value: string | null) => void;
-  targetMiniMapId: string | null;
-  setTargetMiniMapId: (value: string | null) => void;
-  worldMarkers: MapMarker[];
-  miniMaps: MiniMap[];
-}) {
-  const safeType = targetType ?? "world_marker";
-  const worldTargets = worldMarkers.filter((marker) => !marker.mini_map_id);
-
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.selectedTitle}>Exit Target</Text>
-      <View style={styles.storyRoutePicker}>
-        {exitTargetTypes.map((type) => (
-          <Pressable
-            key={type}
-            style={[styles.routeChip, safeType === type && styles.routeChipActive]}
-            onPress={() => {
-              setTargetType(type);
-              if (type === "world_marker") {
-                setTargetMiniMapId(null);
-              } else {
-                setTargetMarkerId(null);
-              }
-            }}
-          >
-            <Text style={styles.routeChipText}>{type === "world_marker" ? "Return To World Marker" : "Open Another Mini Map"}</Text>
-          </Pressable>
-        ))}
-      </View>
-      {safeType === "world_marker" ? (
-        <MarkerPicker label="World return marker" markers={worldTargets} selectedId={targetMarkerId} onSelect={setTargetMarkerId} />
-      ) : (
-        <MiniMapPicker miniMaps={miniMaps} selectedId={targetMiniMapId} onSelect={setTargetMiniMapId} />
-      )}
-    </View>
-  );
-}
-
-function MarketListingModePicker({ value, onSelect }: { value: MarkerMarketItem["listing_mode"]; onSelect: (value: MarkerMarketItem["listing_mode"]) => void }) {
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.selectedTitle}>Listing Mode</Text>
-      <View style={styles.storyRoutePicker}>
-        {marketListingModes.map((mode) => (
-          <Pressable key={mode} style={[styles.routeChip, value === mode && styles.routeChipActive]} onPress={() => onSelect(mode)}>
-            <Text style={styles.routeChipText}>{formatMarketListingMode(mode)}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <Text style={styles.copy}>Sell Only means this market buys the item from players but does not sell it as stock.</Text>
-    </View>
-  );
-}
-
-function MiniMapPicker({ miniMaps, selectedId, onSelect }: { miniMaps: MiniMap[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.selectedTitle}>Linked Mini Map</Text>
-      <View style={styles.storyRoutePicker}>
-        <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
-          <Text style={styles.routeChipText}>None</Text>
-        </Pressable>
-        {miniMaps.map((miniMap) => (
-          <Pressable key={miniMap.id} style={[styles.routeChip, selectedId === miniMap.id && styles.routeChipActive]} onPress={() => onSelect(miniMap.id)}>
-            <Text style={styles.routeChipText}>{miniMap.name}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function MarkerPicker({ label, markers, selectedId, onSelect }: { label: string; markers: MapMarker[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.selectedTitle}>{label}</Text>
-      <View style={styles.storyRoutePicker}>
-        <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
-          <Text style={styles.routeChipText}>None</Text>
-        </Pressable>
-        {markers.map((marker) => (
-          <Pressable key={marker.id} style={[styles.routeChip, selectedId === marker.id && styles.routeChipActive]} onPress={() => onSelect(marker.id)}>
-            <Text style={styles.routeChipText}>{marker.title}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function RoutePicker({ routes, selectedId, onSelect }: { routes: MapRoute[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.selectedTitle}>Linked Walking Path</Text>
-      <View style={styles.storyRoutePicker}>
-        <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
-          <Text style={styles.routeChipText}>None</Text>
-        </Pressable>
-        {routes.map((route) => (
-          <Pressable key={route.id} style={[styles.routeChip, selectedId === route.id && styles.routeChipActive]} onPress={() => onSelect(route.id)}>
-            <Text style={styles.routeChipText}>{route.sort_order}. {route.name}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function EventPicker({ label, events, selectedId, onSelect }: { label: string; events: MapEvent[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.selectedTitle}>{label}</Text>
-      <View style={styles.storyRoutePicker}>
-        <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
-          <Text style={styles.routeChipText}>None</Text>
-        </Pressable>
-        {events.map((event) => (
-          <Pressable key={event.id} style={[styles.routeChip, selectedId === event.id && styles.routeChipActive]} onPress={() => onSelect(event.id)}>
-            <Text style={styles.routeChipText}>{event.title}</Text>
-          </Pressable>
-        ))}
-      </View>
-      {events.length === 0 ? <Text style={styles.copy}>Create a reusable event first, then link it here.</Text> : null}
-    </View>
-  );
-}
-
 function getAdminSectionMarkers(section: (typeof adminSections)[number], worldMarkers: MapMarker[], miniMapMarkers: MapMarker[]) {
   if (section === "Area/Town Markers") {
     return worldMarkers.filter((marker) => marker.type === "Area/Town Entrance");
@@ -6172,69 +5968,6 @@ function resolveMapImageUri(imagePath?: string | null) {
 
   const normalized = trimmed.replaceAll("\\", "/");
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
-}
-
-function EnemyPicker({ enemies, selectedId, onSelect }: { enemies: EnemyDefinition[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.copy}>Select an enemy created in Home / Abilities / Enemy Admin.</Text>
-      <View style={styles.storyRoutePicker}>
-        <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
-          <Text style={styles.routeChipText}>Manual Enemy</Text>
-        </Pressable>
-        {enemies.map((enemy) => (
-          <Pressable key={enemy.id} style={[styles.routeChip, selectedId === enemy.id && styles.routeChipActive]} onPress={() => onSelect(enemy.id)}>
-            <Text style={styles.routeChipText}>{enemy.name}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function NpcPicker({ label, npcs, selectedId, onSelect, battleOnly = false }: { label: string; npcs: NpcDefinition[]; selectedId: string | null; onSelect: (id: string | null) => void; battleOnly?: boolean }) {
-  const options = battleOnly ? npcs.filter((npc) => npc.can_battle) : npcs;
-  return (
-    <View style={styles.storyEditor}>
-      <Text style={styles.copy}>{label}</Text>
-      <View style={styles.storyRoutePicker}>
-        <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
-          <Text style={styles.routeChipText}>None</Text>
-        </Pressable>
-        {options.map((npc) => (
-          <Pressable key={npc.id} style={[styles.routeChip, selectedId === npc.id && styles.routeChipActive]} onPress={() => onSelect(npc.id)}>
-            <Text style={styles.routeChipText}>{npc.name}</Text>
-          </Pressable>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function getItemName(items: ItemDefinition[], itemId: string | null) {
-  return items.find((item) => item.id === itemId)?.name ?? "Unknown Item";
-}
-
-function formatMarketListingMode(mode: MarkerMarketItem["listing_mode"] | null | undefined) {
-  if (mode === "buy_only") {
-    return "Buy Only";
-  }
-  if (mode === "sell_only") {
-    return "Sell Only";
-  }
-  return "Buy and Sell";
-}
-
-function getEnemyName(enemies: EnemyDefinition[], enemyId: string | null) {
-  return enemies.find((enemy) => enemy.id === enemyId)?.name ?? "Unknown Enemy";
-}
-
-function getNpcName(npcs: NpcDefinition[], npcId: string | null) {
-  return npcs.find((npc) => npc.id === npcId)?.name ?? "Unknown NPC";
-}
-
-function getRouteName(routes: MapRoute[], routeId: string) {
-  return routes.find((route) => route.id === routeId)?.name ?? "Unknown Path";
 }
 
 function getJourneyObjective(marker: MapMarker | null | undefined, route: MapRoute, link?: MarkerRouteLink) {
