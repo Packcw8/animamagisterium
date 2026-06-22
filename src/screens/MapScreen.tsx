@@ -423,6 +423,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [scale, setScale] = useState(0.86);
   const [followPlayer, setFollowPlayer] = useState(true);
   const [completedRouteId, setCompletedRouteId] = useState<string | null>(null);
+  const [miniMapExitInProgress, setMiniMapExitInProgress] = useState(false);
   const viewportRef = useRef<MapViewportRef | null>(null);
   const watchId = useRef<number | null>(null);
   const distanceWalkedRef = useRef(0);
@@ -705,7 +706,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }, [route]);
 
   useEffect(() => {
-    if (exitingMiniMapRef.current || !hasActiveRoute || !route.mini_map_id || activeMiniMap?.id === route.mini_map_id) {
+    if (miniMapExitInProgress || exitingMiniMapRef.current || !hasActiveRoute || !route.mini_map_id || activeMiniMap?.id === route.mini_map_id) {
       return;
     }
 
@@ -724,7 +725,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         current_y_percent: playerPosition.y,
       });
     }
-  }, [activeMiniMap?.id, hasActiveRoute, isAdmin, miniMaps, playerPosition.x, playerPosition.y, route.mini_map_id]);
+  }, [activeMiniMap?.id, hasActiveRoute, isAdmin, miniMapExitInProgress, miniMaps, playerPosition.x, playerPosition.y, route.mini_map_id]);
+
+  useEffect(() => {
+    if (!miniMapExitInProgress || (hasActiveRoute && route.mini_map_id)) {
+      return;
+    }
+
+    exitingMiniMapRef.current = false;
+    setMiniMapExitInProgress(false);
+  }, [hasActiveRoute, miniMapExitInProgress, route.mini_map_id]);
 
   useEffect(() => {
     routeDirectionRef.current = routeDirection;
@@ -2291,6 +2301,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function leaveMiniMap(targetPosition?: { x: number; y: number }) {
     exitingMiniMapRef.current = Boolean(targetPosition);
+    if (targetPosition) {
+      setMiniMapExitInProgress(true);
+    }
     try {
       const currentWorldProgress = routeProgressRows
         .filter((row) => row.is_current)
@@ -2343,7 +2356,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         void clearPlayerMapState();
       }
     } finally {
-      exitingMiniMapRef.current = false;
+      if (!targetPosition) {
+        exitingMiniMapRef.current = false;
+        setMiniMapExitInProgress(false);
+      }
     }
   }
 
