@@ -472,19 +472,43 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     ),
     [legendItems, mapChapters, mapEvents, markers, miniMaps, routes, selectedSeason, tutorialSteps],
   );
+  const effectiveRouteProgressRows = useMemo(() => {
+    if (!hasActiveRoute) {
+      return routeProgressRows;
+    }
+
+    const savedProgress = routeProgressRows.find((row) => row.route_id === route.id);
+    const activeProgress = {
+      id: savedProgress?.id ?? `active-${route.id}`,
+      user_id: savedProgress?.user_id ?? "",
+      route_id: route.id,
+      distance_walked_meters: distanceWalked,
+      progress_percent: progressPercent,
+      current_x_percent: playerPosition.x,
+      current_y_percent: playerPosition.y,
+      last_lat: savedProgress?.last_lat ?? null,
+      last_lng: savedProgress?.last_lng ?? null,
+      travel_direction: routeDirection,
+      is_current: true,
+      source_marker_id: savedProgress?.source_marker_id ?? null,
+      updated_at: savedProgress?.updated_at ?? new Date().toISOString(),
+    } satisfies RouteProgress;
+
+    return [...routeProgressRows.filter((row) => row.route_id !== route.id), activeProgress];
+  }, [distanceWalked, hasActiveRoute, playerPosition.x, playerPosition.y, progressPercent, route.id, routeDirection, routeProgressRows]);
   const visibleMarkers = isAdmin
     ? worldMarkers
-    : worldMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
+    : worldMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
   const visibleMiniMapMarkers = isAdmin
     ? adminMiniMapMarkers
-    : miniMapMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
+    : miniMapMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedNodeChoices = useMemo(
     () => (choiceNodeId ? dialogueChoices.filter((choice) => choice.node_id === choiceNodeId).sort((a, b) => a.sort_order - b.sort_order) : []),
     [choiceNodeId, dialogueChoices],
   );
-  const selectedMarkerAvailability = selectedMarker ? getMarkerAvailability({ marker: selectedMarker, playerPosition: currentInteractionPosition, routeLinks: allMarkerRouteLinks, routeProgressRows }) : null;
+  const selectedMarkerAvailability = selectedMarker ? getMarkerAvailability({ marker: selectedMarker, playerPosition: currentInteractionPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }) : null;
   const selectedMarkerDistance = selectedMarkerAvailability?.distance ?? 0;
   const selectedMarkerRadius = selectedMarkerAvailability?.radius ?? 4;
   const canUseSelectedMarker = isAdmin || Boolean(selectedMarkerAvailability?.interactable);
@@ -3810,7 +3834,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           marketPurchaseCounts={marketPurchaseCounts}
           routeLinks={markerRouteLinks}
           routes={routes}
-          routeProgressRows={routeProgressRows}
+          routeProgressRows={effectiveRouteProgressRows}
           inventoryItems={inventoryItems}
           itemDefinitions={itemDefinitions}
           message={markerPanelMessage}
