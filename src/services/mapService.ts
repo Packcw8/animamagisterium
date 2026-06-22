@@ -53,6 +53,21 @@ export const fallbackRoute: MapRoute = {
 };
 
 export const fallbackMarkers: MapMarker[] = [];
+let playerMapStateAvailable: boolean | null = null;
+
+function isMissingRelationError(error: { code?: string; message?: string } | null | undefined) {
+  const message = error?.message?.toLowerCase() ?? "";
+  return error?.code === "PGRST205" || error?.code === "42P01" || message.includes("could not find the table") || message.includes("schema cache");
+}
+
+function markPlayerMapStateUnavailable(error: { code?: string; message?: string } | null | undefined) {
+  if (isMissingRelationError(error)) {
+    playerMapStateAvailable = false;
+    return true;
+  }
+
+  return false;
+}
 
 const seededMarkerTitles = new Set([
   "Mirehold Crossing",
@@ -420,6 +435,10 @@ export async function getCurrentRouteProgress() {
 }
 
 export async function getPlayerMapState() {
+  if (playerMapStateAvailable === false) {
+    return null;
+  }
+
   const {
     data: { user },
     error: userError,
@@ -436,14 +455,24 @@ export async function getPlayerMapState() {
     .maybeSingle();
 
   if (error) {
+    if (markPlayerMapStateUnavailable(error)) {
+      console.warn("[map] player map state table is unavailable; run the player_map_state migration to enable saved mini-map positions.");
+      return null;
+    }
+
     console.warn("[map] player map state unavailable", error.message);
     return null;
   }
 
+  playerMapStateAvailable = true;
   return data as PlayerMapState | null;
 }
 
 export async function savePlayerMapState(values: Pick<PlayerMapState, "active_mini_map_id" | "current_x_percent" | "current_y_percent">) {
+  if (playerMapStateAvailable === false) {
+    return null;
+  }
+
   const {
     data: { user },
     error: userError,
@@ -469,14 +498,23 @@ export async function savePlayerMapState(values: Pick<PlayerMapState, "active_mi
     .single();
 
   if (error) {
+    if (markPlayerMapStateUnavailable(error)) {
+      return null;
+    }
+
     console.warn("[map] could not save player map state", error.message);
     return null;
   }
 
+  playerMapStateAvailable = true;
   return data as PlayerMapState;
 }
 
 export async function clearPlayerMapState() {
+  if (playerMapStateAvailable === false) {
+    return;
+  }
+
   const {
     data: { user },
     error: userError,
@@ -489,6 +527,10 @@ export async function clearPlayerMapState() {
   const { error } = await supabase.from("player_map_state").delete().eq("user_id", user.id);
 
   if (error) {
+    if (markPlayerMapStateUnavailable(error)) {
+      return;
+    }
+
     console.warn("[map] could not clear player map state", error.message);
   }
 }
