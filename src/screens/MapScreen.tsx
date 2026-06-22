@@ -429,6 +429,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const routeRef = useRef(fallbackRoute);
   const routeDirectionRef = useRef<"forward" | "reverse">("forward");
   const activeBattleRouteRef = useRef<MapRoute | null>(null);
+  const exitingMiniMapRef = useRef(false);
   const movementStateRef = useRef<PlayerMovementState>("IDLE");
   const movementCandidateRef = useRef<{ state: PlayerMovementState; since: number } | null>(null);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
@@ -704,7 +705,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }, [route]);
 
   useEffect(() => {
-    if (!hasActiveRoute || !route.mini_map_id || activeMiniMap?.id === route.mini_map_id) {
+    if (exitingMiniMapRef.current || !hasActiveRoute || !route.mini_map_id || activeMiniMap?.id === route.mini_map_id) {
       return;
     }
 
@@ -2289,55 +2290,60 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function leaveMiniMap(targetPosition?: { x: number; y: number }) {
-    const currentWorldProgress = routeProgressRows
-      .filter((row) => row.is_current)
-      .map((row) => ({ progress: row, route: orderedRoutes.find((item) => item.id === row.route_id) ?? null }))
-      .find((item): item is { progress: RouteProgress; route: MapRoute } => Boolean(item.route && !item.route.mini_map_id));
-    const selectedWorldRoute = !route.mini_map_id ? route : currentWorldProgress?.route ?? null;
-    const displayWorldRoute = selectedWorldRoute ?? orderedRoutes.find((item) => !item.mini_map_id && item.is_active) ?? orderedRoutes.find((item) => !item.mini_map_id) ?? fallbackRoute;
-    const shouldRestoreWorldRoute = Boolean(selectedWorldRoute && route.mini_map_id && !targetPosition);
+    exitingMiniMapRef.current = Boolean(targetPosition);
+    try {
+      const currentWorldProgress = routeProgressRows
+        .filter((row) => row.is_current)
+        .map((row) => ({ progress: row, route: orderedRoutes.find((item) => item.id === row.route_id) ?? null }))
+        .find((item): item is { progress: RouteProgress; route: MapRoute } => Boolean(item.route && !item.route.mini_map_id));
+      const selectedWorldRoute = !route.mini_map_id ? route : currentWorldProgress?.route ?? null;
+      const displayWorldRoute = selectedWorldRoute ?? orderedRoutes.find((item) => !item.mini_map_id && item.is_active) ?? orderedRoutes.find((item) => !item.mini_map_id) ?? fallbackRoute;
+      const shouldRestoreWorldRoute = Boolean(selectedWorldRoute && route.mini_map_id && !targetPosition);
 
-    setActiveMiniMap(null);
-    setEditingMiniMapId(null);
-    setMiniMapName("");
-    setMiniMapBackground("");
-    setMiniMapDescription("");
-    setMiniMapActive(true);
-    setSelectedMarker(null);
-    setPreviewMarkerScene(false);
-    setMarkerPanelMessage(null);
-    setClickedPercent(null);
-    setPathDraft([]);
-    setSavedMiniMapPosition(null);
+      setActiveMiniMap(null);
+      setEditingMiniMapId(null);
+      setMiniMapName("");
+      setMiniMapBackground("");
+      setMiniMapDescription("");
+      setMiniMapActive(true);
+      setSelectedMarker(null);
+      setPreviewMarkerScene(false);
+      setMarkerPanelMessage(null);
+      setClickedPercent(null);
+      setPathDraft([]);
+      setSavedMiniMapPosition(null);
 
-    if (targetPosition) {
-      await clearCurrentRoute();
-      setHasActiveRoute(false);
-      setRouteProgressRows((current) => current.map((row) => ({ ...row, is_current: false })));
-      setRoute(displayWorldRoute);
-      setRouteName(displayWorldRoute.name);
-      setRouteOrder(String(displayWorldRoute.sort_order));
-      setRouteTerrain(displayWorldRoute.terrain);
-      setRouteDanger(displayWorldRoute.danger_level);
-      setRouteDistance(String(Math.round(displayWorldRoute.distance_required_meters)));
-      setRouteImage(displayWorldRoute.image_url ?? "");
-      setRouteLockType(displayWorldRoute.lock_type ?? "public");
-      setRouteLockMessage(displayWorldRoute.lock_message ?? "");
-      distanceWalkedRef.current = 0;
-      setDistanceWalked(0);
-      setSavedPlayerPosition(targetPosition);
-      setMapEvents([]);
-      setCompletedEventIds(new Set());
-      await savePlayerMapState({
-        active_mini_map_id: null,
-        current_x_percent: targetPosition.x,
-        current_y_percent: targetPosition.y,
-      });
-    } else if (selectedWorldRoute && shouldRestoreWorldRoute) {
-      await setCurrentRoute(selectedWorldRoute.id);
-      await selectRoute(selectedWorldRoute, true);
-    } else {
-      void clearPlayerMapState();
+      if (targetPosition) {
+        await clearCurrentRoute();
+        setHasActiveRoute(false);
+        setRouteProgressRows((current) => current.map((row) => ({ ...row, is_current: false })));
+        setRoute(displayWorldRoute);
+        setRouteName(displayWorldRoute.name);
+        setRouteOrder(String(displayWorldRoute.sort_order));
+        setRouteTerrain(displayWorldRoute.terrain);
+        setRouteDanger(displayWorldRoute.danger_level);
+        setRouteDistance(String(Math.round(displayWorldRoute.distance_required_meters)));
+        setRouteImage(displayWorldRoute.image_url ?? "");
+        setRouteLockType(displayWorldRoute.lock_type ?? "public");
+        setRouteLockMessage(displayWorldRoute.lock_message ?? "");
+        distanceWalkedRef.current = 0;
+        setDistanceWalked(0);
+        setSavedPlayerPosition(targetPosition);
+        setMapEvents([]);
+        setCompletedEventIds(new Set());
+        await savePlayerMapState({
+          active_mini_map_id: null,
+          current_x_percent: targetPosition.x,
+          current_y_percent: targetPosition.y,
+        });
+      } else if (selectedWorldRoute && shouldRestoreWorldRoute) {
+        await setCurrentRoute(selectedWorldRoute.id);
+        await selectRoute(selectedWorldRoute, true);
+      } else {
+        void clearPlayerMapState();
+      }
+    } finally {
+      exitingMiniMapRef.current = false;
     }
   }
 
