@@ -492,10 +492,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const selectedMiniMap = useMemo(() => miniMaps.find((miniMap) => miniMap.id === selectedMiniMapId) ?? null, [miniMaps, selectedMiniMapId]);
   const activeSectionMarkerTypes = adminSection === "Area/Town Markers" ? ["Area/Town Entrance"] : markerTypes;
   const routeEvents = useMemo(() => mapEvents.filter((event) => event.route_id === route.id), [mapEvents, route.id]);
+  const requiredRouteEvents = useMemo(() => routeEvents.filter((event) => !event.linked_only), [routeEvents]);
   const reusableMapEvents = useMemo(() => allMapEvents.filter((event) => isInSelectedChapter(event, selectedSeason, selectedChapter)), [allMapEvents, selectedChapter, selectedSeason]);
-  const completedRouteEvents = useMemo(() => routeEvents.filter((event) => completedEventIds.has(event.id)).length, [completedEventIds, routeEvents]);
-  const routePotentialXp = useMemo(() => routeEvents.reduce((total, event) => total + Number(event.reward_xp ?? 0), 0), [routeEvents]);
-  const routePotentialGold = useMemo(() => routeEvents.reduce((total, event) => total + Number(event.reward_gold ?? 0), 0), [routeEvents]);
+  const completedRouteEvents = useMemo(() => requiredRouteEvents.filter((event) => completedEventIds.has(event.id)).length, [completedEventIds, requiredRouteEvents]);
+  const routePotentialXp = useMemo(() => requiredRouteEvents.reduce((total, event) => total + Number(event.reward_xp ?? 0), 0), [requiredRouteEvents]);
+  const routePotentialGold = useMemo(() => requiredRouteEvents.reduce((total, event) => total + Number(event.reward_gold ?? 0), 0), [requiredRouteEvents]);
   const currentRouteProgress = useMemo(() => routeProgressRows.find((row) => row.route_id === route.id) ?? null, [route.id, routeProgressRows]);
   const mapConsumables = useMemo(
     () =>
@@ -3933,8 +3934,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <Text style={styles.journeyStatLabel}>Gold Potential</Text>
           </View>
           <View style={styles.journeyStat}>
-            <Text style={styles.journeyStatValue}>{completedRouteEvents}/{routeEvents.length}</Text>
-            <Text style={styles.journeyStatLabel}>Events Done</Text>
+            <Text style={styles.journeyStatValue}>{completedRouteEvents}/{requiredRouteEvents.length}</Text>
+            <Text style={styles.journeyStatLabel}>Required Events</Text>
           </View>
         </View>
 
