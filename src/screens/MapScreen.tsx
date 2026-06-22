@@ -336,7 +336,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerRequireAllLinkedRoutes, setMarkerRequireAllLinkedRoutes] = useState(true);
   const [markerRouteCompletionCondition, setMarkerRouteCompletionCondition] = useState<MarkerRouteLink["completion_condition"]>("either");
   const [markerDialogueEventId, setMarkerDialogueEventId] = useState<string | null>(null);
-  const [markerBattleEventId, setMarkerBattleEventId] = useState<string | null>(null);
   const [markerEnemyId, setMarkerEnemyId] = useState<string | null>(null);
   const [markerNpcId, setMarkerNpcId] = useState<string | null>(null);
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
@@ -1467,7 +1466,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerHideWhenCompleted(marker.hide_when_completed ?? true);
     setMarkerRequireAllLinkedRoutes(marker.require_all_linked_routes ?? true);
     setMarkerDialogueEventId(marker.dialogue_event_id ?? null);
-    setMarkerBattleEventId(marker.battle_event_id ?? null);
     setMarkerEnemyId(marker.enemy_id ?? null);
     setMarkerNpcId(marker.npc_id ?? null);
     setMarkerInteractionRadius(String(marker.interaction_radius_percent ?? 4));
@@ -4289,8 +4287,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerRouteCompletionCondition={setMarkerRouteCompletionCondition}
               markerDialogueEventId={markerDialogueEventId}
               setMarkerDialogueEventId={setMarkerDialogueEventId}
-              markerBattleEventId={markerBattleEventId}
-              setMarkerBattleEventId={setMarkerBattleEventId}
               markerEnemyId={markerEnemyId}
               setMarkerEnemyId={setMarkerEnemyId}
               markerNpcId={markerNpcId}
@@ -5577,8 +5573,6 @@ function MiniMapMarkerAdminForm({
   setMarkerRouteCompletionCondition,
   markerDialogueEventId,
   setMarkerDialogueEventId,
-  markerBattleEventId,
-  setMarkerBattleEventId,
   markerEnemyId,
   setMarkerEnemyId,
   markerNpcId,
@@ -5681,8 +5675,6 @@ function MiniMapMarkerAdminForm({
   setMarkerRouteCompletionCondition: (value: MarkerRouteLink["completion_condition"]) => void;
   markerDialogueEventId: string | null;
   setMarkerDialogueEventId: (value: string | null) => void;
-  markerBattleEventId: string | null;
-  setMarkerBattleEventId: (value: string | null) => void;
   markerEnemyId: string | null;
   setMarkerEnemyId: (value: string | null) => void;
   markerNpcId: string | null;
