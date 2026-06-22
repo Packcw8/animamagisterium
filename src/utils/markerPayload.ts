@@ -21,7 +21,6 @@ export type MarkerPayloadState = {
   markerUnlockAfterId: string | null;
   markerHideWhenCompleted: boolean;
   markerRequireAllLinkedRoutes: boolean;
-  markerDialogueEventId: string | null;
   markerEnemyId: string | null;
   markerNpcId: string | null;
   markerInteractable: boolean;
@@ -71,7 +70,6 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     unlock_after_marker_id: state.markerUnlockAfterId,
     hide_when_completed: state.markerHideWhenCompleted,
     require_all_linked_routes: state.markerRequireAllLinkedRoutes,
-    dialogue_event_id: supportsMarkerDialogueType(state.draftType) ? state.markerDialogueEventId : null,
     enemy_id: isBattle ? state.markerEnemyId : null,
     npc_id: isBattle ? state.markerNpcId : null,
     interaction_radius_percent: Math.max(0.5, Number(state.markerInteractionRadius) || 4),
@@ -122,7 +120,6 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     unlock_after_marker_id: settings.unlock_after_marker_id,
     hide_when_completed: settings.hide_when_completed,
     require_all_linked_routes: settings.require_all_linked_routes,
-    dialogue_event_id: settings.dialogue_event_id,
     enemy_id: settings.enemy_id,
     npc_id: settings.npc_id,
     season_number: state.selectedSeason,
@@ -152,8 +149,4 @@ function isExitType(type: string) {
 
 function isBattleType(type: string) {
   return type === "Battle" || type === "Battle Zone";
-}
-
-function supportsMarkerDialogueType(type: string) {
-  return ["Story", "Quest", "Side Quest", "Point of Interest"].includes(type);
 }

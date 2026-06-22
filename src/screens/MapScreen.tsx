@@ -1410,7 +1410,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markerUnlockAfterId,
       markerHideWhenCompleted,
       markerRequireAllLinkedRoutes,
-      markerDialogueEventId,
       markerEnemyId,
       markerNpcId,
       markerInteractable,
