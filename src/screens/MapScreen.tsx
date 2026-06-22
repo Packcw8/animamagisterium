@@ -30,6 +30,7 @@ import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { clamp, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, roundPercent } from "../utils/mapGeometry";
+import { buildCreateMarkerInput, buildMarkerSettingsPayload, type MarkerPayloadState } from "../utils/markerPayload";
 import {
   canPlayerSeeStoryMarker,
   getOrderedMarkerRouteLinks,
@@ -1360,40 +1361,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     try {
-      const created = await createMapMarker({
-        type: draftType,
-        title: draftTitle.trim(),
-        description: draftDescription.trim() || null,
-        x_percent: clickedPercent.x,
-        y_percent: clickedPercent.y,
-        is_active: true,
-        is_unlocked: true,
-        route_id: isMiniMapMarker ? null : route.id,
-        quest_key: null,
-        linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : (draftType === "Exit" || draftType === "Exit/Leave") && markerExitTargetType === "mini_map" ? markerExitTargetMiniMapId : null,
-        mini_map_id: activeMiniMapId,
-        parent_marker_id: isMiniMapMarker ? selectedMarker?.id ?? null : null,
-        exit_target_type: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetType : null,
-        exit_target_marker_id: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetMarkerId : null,
-        linked_route_id: isQuestMarkerType(draftType) ? markerLinkedRouteId : null,
-        starts_route_on_accept: isQuestMarkerType(draftType) && markerStartsRouteOnAccept,
-        icon_label: markerIconLabel.trim() || null,
-        icon_image_url: markerIconImage.trim() || null,
-        icon_color: markerIconColor.trim() || null,
-        lock_type: markerLockType,
-        lock_message: markerLockMessage.trim() || null,
-        story_order: Number(markerStoryOrder) || 0,
-        unlock_after_marker_id: markerUnlockAfterId,
-        hide_when_completed: markerHideWhenCompleted,
-        require_all_linked_routes: markerRequireAllLinkedRoutes,
-        dialogue_event_id: supportsMarkerDialogue(draftType) ? markerDialogueEventId : null,
-        battle_event_id: null,
-        enemy_id: isBattleMarkerType(draftType) ? markerEnemyId : null,
-        npc_id: isBattleMarkerType(draftType) ? markerNpcId : null,
-        season_number: selectedSeason,
-        chapter_number: selectedChapter,
-      });
-      const configured = await updateMarkerSettings(created.id, getMarkerSettingsPayload());
+      const markerState = getMarkerPayloadState(activeMiniMapId);
+      const created = await createMapMarker(buildCreateMarkerInput(markerState, clickedPercent));
+      const configured = await updateMarkerSettings(created.id, getMarkerSettingsPayload("create"));
       if (activeMiniMapId && configured.mini_map_id !== activeMiniMapId) {
         throw new Error("Mini-map marker was saved without the open mini map id. Try again after reopening the mini map.");
       }
@@ -1411,52 +1381,54 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
-  function getMarkerSettingsPayload() {
-    const activeMiniMapId = activeMiniMap?.id ?? null;
-
+  function getMarkerPayloadState(activeMiniMapId = activeMiniMap?.id ?? null): MarkerPayloadState {
     return {
-      type: draftType,
-      title: draftTitle.trim() || selectedMarker?.title || "Untitled Marker",
-      description: draftDescription.trim() || null,
-      is_interactable: markerInteractable,
-      quest_title: markerQuestTitle.trim() || null,
-      quest_dialogue: markerQuestDialogue.trim() || null,
-      quest_image_url: markerQuestImage.trim() || null,
-      shop_image_url: markerShopImage.trim() || null,
-      shop_background_image_url: markerShopBackground.trim() || null,
-      scene_background_image_url: markerSceneBackground.trim() || null,
-      scene_npc_image_url: markerNpcImage.trim() || null,
-      icon_label: markerIconLabel.trim() || null,
-      icon_image_url: markerIconImage.trim() || null,
-      icon_color: markerIconColor.trim() || null,
-      lock_type: markerLockType,
-      lock_message: markerLockMessage.trim() || null,
-      story_order: Number(markerStoryOrder) || 0,
-      unlock_after_marker_id: markerUnlockAfterId,
-      hide_when_completed: markerHideWhenCompleted,
-      require_all_linked_routes: markerRequireAllLinkedRoutes,
-      dialogue_event_id: supportsMarkerDialogue(draftType) ? markerDialogueEventId : null,
-      battle_event_id: null,
-      enemy_id: isBattleMarkerType(draftType) ? markerEnemyId : null,
-      npc_id: isBattleMarkerType(draftType) ? markerNpcId : null,
-      interaction_radius_percent: Math.max(0.5, Number(markerInteractionRadius) || 4),
-      reward_xp: Number(markerRewardXp) || 0,
-      reward_gold: Number(markerRewardGold) || 0,
-      reward_item_id: markerRewardItemId,
-      reward_item_quantity: Math.max(1, Number(markerRewardQuantity) || 1),
-      reward_timing: markerRewardTiming,
-      repeatable: markerRepeatable,
-      reward_once_per_player: markerRewardOnce,
-      linked_mini_map_id: draftType === "Area/Town Entrance" ? selectedMiniMapId : (draftType === "Exit" || draftType === "Exit/Leave") && markerExitTargetType === "mini_map" ? markerExitTargetMiniMapId : null,
-      mini_map_id: activeMiniMapId ?? selectedMarker?.mini_map_id ?? null,
-      parent_marker_id: activeMiniMapId ? null : selectedMarker?.parent_marker_id ?? null,
-      exit_target_type: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetType : null,
-      exit_target_marker_id: draftType === "Exit" || draftType === "Exit/Leave" ? markerExitTargetMarkerId : null,
-      linked_route_id: isQuestMarkerType(draftType) ? markerLinkedRouteId : null,
-      starts_route_on_accept: isQuestMarkerType(draftType) && markerStartsRouteOnAccept,
-      season_number: selectedSeason,
-      chapter_number: selectedChapter,
+      draftType,
+      draftTitle,
+      draftDescription,
+      activeMiniMapId,
+      selectedMarker,
+      selectedMiniMapId,
+      markerExitTargetType,
+      markerExitTargetMarkerId,
+      markerExitTargetMiniMapId,
+      markerLinkedRouteId,
+      markerStartsRouteOnAccept,
+      markerIconLabel,
+      markerIconImage,
+      markerIconColor,
+      markerLockType,
+      markerLockMessage,
+      markerStoryOrder,
+      markerUnlockAfterId,
+      markerHideWhenCompleted,
+      markerRequireAllLinkedRoutes,
+      markerDialogueEventId,
+      markerEnemyId,
+      markerNpcId,
+      markerInteractable,
+      markerQuestTitle,
+      markerQuestDialogue,
+      markerQuestImage,
+      markerShopImage,
+      markerShopBackground,
+      markerSceneBackground,
+      markerNpcImage,
+      markerInteractionRadius,
+      markerRewardXp,
+      markerRewardGold,
+      markerRewardItemId,
+      markerRewardQuantity,
+      markerRewardTiming,
+      markerRepeatable,
+      markerRewardOnce,
+      selectedSeason,
+      selectedChapter,
     };
+  }
+
+  function getMarkerSettingsPayload(mode: "create" | "update" = "update") {
+    return buildMarkerSettingsPayload(getMarkerPayloadState(), mode);
   }
 
   async function selectMarker(marker: MapMarker) {
