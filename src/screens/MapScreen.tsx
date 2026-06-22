@@ -2300,9 +2300,33 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
-  async function leaveMiniMap(targetPosition?: { x: number; y: number }) {
-    exitingMiniMapRef.current = Boolean(targetPosition);
-    if (targetPosition) {
+  function getMiniMapWorldReturnPosition(miniMapId?: string | null) {
+    const linkedWorldMarker = markers.find(
+      (marker) => !marker.mini_map_id && marker.linked_mini_map_id === miniMapId && Number.isFinite(Number(marker.x_percent)) && Number.isFinite(Number(marker.y_percent)),
+    );
+    if (linkedWorldMarker) {
+      return { x: Number(linkedWorldMarker.x_percent), y: Number(linkedWorldMarker.y_percent) };
+    }
+
+    const worldEntrance = markers.find(
+      (marker) =>
+        !marker.mini_map_id &&
+        marker.type === "Area/Town Entrance" &&
+        Number.isFinite(Number(marker.x_percent)) &&
+        Number.isFinite(Number(marker.y_percent)),
+    );
+    if (worldEntrance) {
+      return { x: Number(worldEntrance.x_percent), y: Number(worldEntrance.y_percent) };
+    }
+
+    return { x: 33.8, y: 73.81 };
+  }
+
+  async function leaveMiniMap(targetPosition?: { x: number; y: number }, options?: { forceExit?: boolean }) {
+    const forceExit = options?.forceExit ?? Boolean(targetPosition);
+    const returnPosition = targetPosition ?? (forceExit ? getMiniMapWorldReturnPosition(activeMiniMap?.id) : undefined);
+    exitingMiniMapRef.current = forceExit;
+    if (forceExit) {
       setMiniMapExitInProgress(true);
     }
     try {
@@ -2312,7 +2336,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         .find((item): item is { progress: RouteProgress; route: MapRoute } => Boolean(item.route && !item.route.mini_map_id));
       const selectedWorldRoute = !route.mini_map_id ? route : currentWorldProgress?.route ?? null;
       const displayWorldRoute = selectedWorldRoute ?? orderedRoutes.find((item) => !item.mini_map_id && item.is_active) ?? orderedRoutes.find((item) => !item.mini_map_id) ?? fallbackRoute;
-      const shouldRestoreWorldRoute = Boolean(selectedWorldRoute && route.mini_map_id && !targetPosition);
+      const shouldRestoreWorldRoute = Boolean(selectedWorldRoute && route.mini_map_id && !forceExit);
 
       setActiveMiniMap(null);
       setEditingMiniMapId(null);
@@ -2327,7 +2351,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setPathDraft([]);
       setSavedMiniMapPosition(null);
 
-      if (targetPosition) {
+      if (returnPosition) {
         await clearCurrentRoute();
         setHasActiveRoute(false);
         setRouteProgressRows((current) => current.map((row) => ({ ...row, is_current: false })));
@@ -2342,13 +2366,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         setRouteLockMessage(displayWorldRoute.lock_message ?? "");
         distanceWalkedRef.current = 0;
         setDistanceWalked(0);
-        setSavedPlayerPosition(targetPosition);
+        setSavedPlayerPosition(returnPosition);
         setMapEvents([]);
         setCompletedEventIds(new Set());
         await savePlayerMapState({
           active_mini_map_id: null,
-          current_x_percent: targetPosition.x,
-          current_y_percent: targetPosition.y,
+          current_x_percent: returnPosition.x,
+          current_y_percent: returnPosition.y,
         });
       } else if (selectedWorldRoute && shouldRestoreWorldRoute) {
         await setCurrentRoute(selectedWorldRoute.id);
@@ -2357,7 +2381,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         void clearPlayerMapState();
       }
     } finally {
-      if (!targetPosition) {
+      if (!forceExit) {
         exitingMiniMapRef.current = false;
         setMiniMapExitInProgress(false);
       }
@@ -2381,7 +2405,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
     }
 
-    await leaveMiniMap();
+    await leaveMiniMap(undefined, { forceExit: true });
   }
 
   async function saveTutorialForm() {
