@@ -17,6 +17,7 @@ import { GameToast, type GameToastData, type GameToastReward } from "../componen
 import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
+import { WorldMapSettingsPanel } from "../components/map/WorldMapSettingsPanel";
 import {
   EnemyPicker,
   EventPicker,
@@ -105,6 +106,7 @@ import {
   getMarkerMarketItems,
   getPlayerMarketPurchaseCounts,
   getPlayerMapState,
+  getWorldMapSettings,
   getMarkerLegendItems,
   getMarkerRouteLinks,
   getAllMarkerRouteLinks,
@@ -127,6 +129,7 @@ import {
   MiniMap,
   Role,
   RouteProgress,
+  WorldMapSetting,
   StoryDialogueChoice,
   StoryDialogueNode,
   saveMarkerMarketItem,
@@ -137,6 +140,7 @@ import {
   saveMapSeason,
   savePlayerMapState,
   saveRouteProgress,
+  saveWorldMapSetting,
   saveTutorialStep,
   setCurrentRoute,
   sellMarketInventoryItem,
@@ -154,7 +158,7 @@ const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Batt
 const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "Point of Interest", "Market", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const editorModes = ["Marker", "Walking Path"] as const;
-const adminSections = ["World Markers", "Area/Town Markers", "Mini Maps", "Walking Paths", "Tutorials", "Rewards/Interactions", "Legend"] as const;
+const adminSections = ["World Map", "World Markers", "Area/Town Markers", "Mini Maps", "Walking Paths", "Tutorials", "Rewards/Interactions", "Legend"] as const;
 const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
 const eventTriggerModes = ["fixed", "random"] as const;
@@ -276,6 +280,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [miniMaps, setMiniMaps] = useState<MiniMap[]>([]);
   const [mapSeasons, setMapSeasons] = useState<MapSeason[]>([]);
   const [mapChapters, setMapChapters] = useState<MapChapter[]>([]);
+  const [worldMapSettings, setWorldMapSettings] = useState<WorldMapSetting[]>([]);
+  const [worldMapName, setWorldMapName] = useState("The Forgotten Marches");
+  const [worldMapDraftImage, setWorldMapDraftImage] = useState("");
+  const [worldMapNotes, setWorldMapNotes] = useState("");
+  const [worldMapAspectRatio, setWorldMapAspectRatio] = useState("current");
+  const [worldMapActive, setWorldMapActive] = useState(true);
   const [newSeasonName, setNewSeasonName] = useState("");
   const [newSeasonDescription, setNewSeasonDescription] = useState("");
   const [newChapterName, setNewChapterName] = useState("");
@@ -471,14 +481,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
   const adminMapEvents = useMemo(() => mapEvents.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [mapEvents, selectedChapter, selectedSeason]);
-  const availableSeasons = useMemo(() => mergeSeasonRecords(mapSeasons, getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents].flat(), "season_number")), [legendItems, mapEvents, mapSeasons, markers, miniMaps, routes, tutorialSteps]);
+  const activeWorldMapSetting = useMemo(
+    () => worldMapSettings.find((item) => Number(item.season_number) === selectedSeason && Number(item.chapter_number) === selectedChapter) ?? null,
+    [selectedChapter, selectedSeason, worldMapSettings],
+  );
+  const publishedWorldMapUri = resolveMapImageUri(activeWorldMapSetting?.image_url);
+  const overworldImageSource = publishedWorldMapUri ? { uri: publishedWorldMapUri } : forgottenMarches;
+  const availableSeasons = useMemo(() => mergeSeasonRecords(mapSeasons, getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents, worldMapSettings].flat(), "season_number")), [legendItems, mapEvents, mapSeasons, markers, miniMaps, routes, tutorialSteps, worldMapSettings]);
   const availableChapters = useMemo(
     () => mergeChapterRecords(
       mapChapters.filter((chapter) => Number(chapter.season_number) === selectedSeason),
-      getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents].flat().filter((item) => Number(item.season_number ?? 1) === selectedSeason), "chapter_number"),
+      getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents, worldMapSettings].flat().filter((item) => Number(item.season_number ?? 1) === selectedSeason), "chapter_number"),
       selectedSeason,
     ),
-    [legendItems, mapChapters, mapEvents, markers, miniMaps, routes, selectedSeason, tutorialSteps],
+    [legendItems, mapChapters, mapEvents, markers, miniMaps, routes, selectedSeason, tutorialSteps, worldMapSettings],
   );
   const effectiveRouteProgressRows = useMemo(() => {
     if (!hasActiveRoute) {
@@ -724,6 +740,62 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
+  function syncWorldMapForm(setting: WorldMapSetting | null) {
+    setWorldMapName(setting?.name ?? "The Forgotten Marches");
+    setWorldMapDraftImage(setting?.draft_image_url ?? "");
+    setWorldMapNotes(setting?.notes ?? "");
+    setWorldMapAspectRatio(setting?.aspect_ratio ?? "current");
+    setWorldMapActive(setting?.is_active ?? true);
+  }
+
+  async function saveWorldMapDraftSettings(nextValues?: Partial<WorldMapSetting>) {
+    try {
+      const saved = await saveWorldMapSetting({
+        id: activeWorldMapSetting?.id,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
+        name: nextValues?.name ?? worldMapName,
+        image_url: nextValues?.image_url ?? activeWorldMapSetting?.image_url ?? null,
+        draft_image_url: nextValues?.draft_image_url ?? worldMapDraftImage,
+        notes: nextValues?.notes ?? worldMapNotes,
+        aspect_ratio: nextValues?.aspect_ratio ?? worldMapAspectRatio,
+        is_active: nextValues?.is_active ?? worldMapActive,
+      });
+      setWorldMapSettings((current) => [saved, ...current.filter((item) => item.id !== saved.id)].sort((a, b) => a.season_number - b.season_number || a.chapter_number - b.chapter_number));
+      syncWorldMapForm(saved);
+      setAdminMessage("World map settings saved.");
+      return saved;
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save world map settings. Confirm the Supabase migration has run."));
+      return null;
+    }
+  }
+
+  async function publishWorldMapDraft() {
+    const draft = worldMapDraftImage.trim();
+    if (!draft) {
+      setAdminMessage("Add a draft image URL before publishing.");
+      return;
+    }
+
+    await saveWorldMapDraftSettings({
+      image_url: draft,
+      draft_image_url: null,
+    });
+  }
+
+  async function clearWorldMapDraft() {
+    await saveWorldMapDraftSettings({ draft_image_url: null });
+  }
+
+  async function restoreDefaultWorldMap() {
+    await saveWorldMapDraftSettings({
+      image_url: null,
+      draft_image_url: null,
+      name: worldMapName.trim() || "The Forgotten Marches",
+    });
+  }
+
   useEffect(() => {
     if (followPlayer) {
       centerOn(playerPosition.x, playerPosition.y);
@@ -737,6 +809,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   useEffect(() => {
     routeRef.current = route;
   }, [route]);
+
+  useEffect(() => {
+    syncWorldMapForm(activeWorldMapSetting);
+  }, [activeWorldMapSetting?.id, selectedChapter, selectedSeason]);
 
   useEffect(() => {
     if (miniMapExitInProgress || exitingMiniMapRef.current || !hasActiveRoute || !route.mini_map_id || activeMiniMap?.id === route.mini_map_id) {
@@ -848,12 +924,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   async function loadMap() {
     setMapReady(false);
-    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks] = await Promise.all([
+    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks] = await Promise.all([
       getMapRoutes(),
       getMapMarkers(),
       getMiniMaps(),
       getTutorialSteps(),
       getMarkerLegendItems(),
+      getWorldMapSettings(),
       getMapSeasons(),
       getMapChapters(),
       getCurrentRole(),
@@ -880,6 +957,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMiniMaps(loadedMiniMaps);
     setTutorialSteps(loadedTutorials);
     setLegendItems(loadedLegendItems);
+    setWorldMapSettings(loadedWorldMapSettings);
     setMapSeasons(loadedSeasons);
     setMapChapters(loadedChapters);
     setRole(loadedRole);
@@ -4516,7 +4594,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       <OverworldMapCanvas
         viewportRef={viewportRef}
         scaledMapSize={scaledMapSize}
-        imageSource={forgottenMarches}
+        imageSource={overworldImageSource}
         onWheel={handleWheel}
         onPinchZoom={handlePinchZoom}
         canCapturePointer={isAdmin}
@@ -4605,6 +4683,27 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               if (section !== "Walking Paths") setEditorMode("Marker");
             }}
           />
+          {adminSection === "World Map" ? (
+            <WorldMapSettingsPanel
+              setting={activeWorldMapSetting}
+              name={worldMapName}
+              draftImageUrl={worldMapDraftImage}
+              notes={worldMapNotes}
+              aspectRatio={worldMapAspectRatio}
+              isActive={worldMapActive}
+              activeImageUrl={publishedWorldMapUri}
+              onChangeName={setWorldMapName}
+              onChangeDraftImageUrl={setWorldMapDraftImage}
+              onChangeNotes={setWorldMapNotes}
+              onChangeAspectRatio={setWorldMapAspectRatio}
+              onToggleActive={() => setWorldMapActive((value) => !value)}
+              onSaveDraft={() => void saveWorldMapDraftSettings()}
+              onPublishDraft={() => void publishWorldMapDraft()}
+              onClearDraft={() => void clearWorldMapDraft()}
+              onRestoreDefault={() => void restoreDefaultWorldMap()}
+              onUploadMessage={setAdminMessage}
+            />
+          ) : null}
           {adminSection === "Legend" ? (
             <LegendEditor
               markerTypes={legendMarkerTypes}

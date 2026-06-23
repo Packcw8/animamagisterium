@@ -10,6 +10,7 @@ export type RouteProgress = Tables["route_progress"];
 export type PlayerMapState = Tables["player_map_state"];
 export type MapMarker = Tables["map_markers"];
 export type MarkerLegendItem = Tables["marker_legend_items"];
+export type WorldMapSetting = Tables["world_map_settings"];
 export type MarkerRouteLink = Tables["marker_route_links"];
 export type MiniMap = Tables["mini_maps"];
 export type TutorialStep = Tables["tutorial_steps"];
@@ -232,6 +233,49 @@ export async function getMarkerLegendItems() {
   }
 
   return (data ?? []) as MarkerLegendItem[];
+}
+
+export async function getWorldMapSettings() {
+  const { data, error } = await supabase
+    .from("world_map_settings")
+    .select("*")
+    .order("season_number", { ascending: true })
+    .order("chapter_number", { ascending: true });
+
+  if (error) {
+    console.warn("[map] world map settings unavailable", error.message);
+    return [] as WorldMapSetting[];
+  }
+
+  return (data ?? []) as WorldMapSetting[];
+}
+
+export async function saveWorldMapSetting(input: Partial<WorldMapSetting>) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const values = {
+    season_number: Number(input.season_number) || 1,
+    chapter_number: Number(input.chapter_number) || 1,
+    name: input.name?.trim() || "Overworld Map",
+    image_url: input.image_url?.trim() || null,
+    draft_image_url: input.draft_image_url?.trim() || null,
+    notes: input.notes?.trim() || null,
+    aspect_ratio: input.aspect_ratio?.trim() || "current",
+    is_active: input.is_active ?? true,
+    created_by: input.id ? input.created_by ?? user?.id ?? null : user?.id ?? null,
+    updated_at: new Date().toISOString(),
+  };
+  const request = input.id
+    ? supabase.from("world_map_settings").update(values).eq("id", input.id).select().single()
+    : supabase.from("world_map_settings").upsert(values, { onConflict: "season_number,chapter_number" }).select().single();
+  const { data, error } = await request;
+
+  if (error) {
+    throw error;
+  }
+
+  return data as WorldMapSetting;
 }
 
 export async function saveMarkerLegendItem(input: Partial<MarkerLegendItem>) {

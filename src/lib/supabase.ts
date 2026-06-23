@@ -525,6 +525,20 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  world_map_settings: {
+    id: string;
+    season_number: number;
+    chapter_number: number;
+    name: string;
+    image_url: string | null;
+    draft_image_url: string | null;
+    notes: string | null;
+    aspect_ratio: string;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
   marker_route_links: {
     id: string;
     marker_id: string;
