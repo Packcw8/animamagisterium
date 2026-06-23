@@ -2843,6 +2843,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         allMapEvents.find((event) => event.id === choice.battle_event_id) ??
         mapEvents.find((event) => event.event_type === "battle" && event.route_id === routeRef.current.id);
       if (battle) {
+        if (!adminPreviewMode) {
+          try {
+            await completeMapEvent(activeEvent.id);
+            setCompletedEventIds((current) => new Set([...current, activeEvent.id]));
+          } catch (error) {
+            setDialogueLog((current) => [getErrorMessage(error, "Unable to save story progress before battle."), ...current].slice(0, 4));
+            return;
+          }
+        }
         void startBattle(battle, adminPreviewMode === "story", { saveRoutePosition: !activeMarkerEventId });
         return;
       }
