@@ -46,7 +46,6 @@ export type MarkerPayloadState = {
 export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "create" | "update") {
   const isExit = isExitType(state.draftType);
   const isQuest = isQuestType(state.draftType);
-  const isBattle = isBattleType(state.draftType);
   const linkedMiniMapId = getLinkedMiniMapId(state);
 
   return {
@@ -70,7 +69,6 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     unlock_after_marker_id: state.markerUnlockAfterId,
     hide_when_completed: state.markerHideWhenCompleted,
     require_all_linked_routes: state.markerRequireAllLinkedRoutes,
-    ...(isBattle ? { enemy_id: state.markerEnemyId, npc_id: state.markerNpcId } : {}),
     interaction_radius_percent: Math.max(0.5, Number(state.markerInteractionRadius) || 4),
     reward_xp: Number(state.markerRewardXp) || 0,
     reward_gold: Number(state.markerRewardGold) || 0,
@@ -119,7 +117,6 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     unlock_after_marker_id: settings.unlock_after_marker_id,
     hide_when_completed: settings.hide_when_completed,
     require_all_linked_routes: settings.require_all_linked_routes,
-    ...(isBattleType(state.draftType) ? { enemy_id: settings.enemy_id, npc_id: settings.npc_id } : {}),
     season_number: state.selectedSeason,
     chapter_number: state.selectedChapter,
   };
@@ -143,8 +140,4 @@ function isQuestType(type: string) {
 
 function isExitType(type: string) {
   return type === "Exit" || type === "Exit/Leave";
-}
-
-function isBattleType(type: string) {
-  return type === "Battle" || type === "Battle Zone";
 }
