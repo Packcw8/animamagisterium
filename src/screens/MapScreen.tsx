@@ -58,7 +58,7 @@ import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
-import { clamp, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, roundPercent } from "../utils/mapGeometry";
+import { clamp, getPathSegmentMetaAtProgress, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, normalizePathSegments, roundPercent, type PathSegmentMeta } from "../utils/mapGeometry";
 import { evaluateDialogueChoiceRequirement, eventTriggerModeName, eventTypeName, formatResourceName, rollDialogueAttributeCheck } from "../utils/dialogueFlow";
 import { buildCreateMarkerInput, buildMarkerSettingsPayload, type MarkerPayloadState } from "../utils/markerPayload";
 import {
@@ -404,6 +404,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [previewMarkerScene, setPreviewMarkerScene] = useState(false);
   const [editorMode, setEditorMode] = useState<(typeof editorModes)[number]>("Marker");
   const [pathDraft, setPathDraft] = useState<Array<{ x: number; y: number }>>([]);
+  const [pathSegmentDraft, setPathSegmentDraft] = useState<PathSegmentMeta[]>([]);
   const [routeName, setRouteName] = useState("");
   const [routeOrder, setRouteOrder] = useState("1");
   const [routeTerrain, setRouteTerrain] = useState("");
@@ -552,9 +553,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const activeRouteScopeRoutes = activeMiniMap ? adminMiniMapRoutes : adminWorldRoutes;
   const routeProgressPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
   const playerPosition = savedPlayerPosition ?? routeProgressPosition;
-  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminWorldRoutes : hasActiveRoute && !route.mini_map_id ? [route] : [], route.id, worldMapDimensions), [adminWorldRoutes, hasActiveRoute, isAdmin, route, worldMapDimensions]);
-  const miniMapRouteSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminMiniMapRoutes : hasActiveRoute && route.mini_map_id === activeMiniMap?.id ? [route] : [], route.id), [activeMiniMap?.id, adminMiniMapRoutes, hasActiveRoute, isAdmin, route]);
+  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminWorldRoutes : hasActiveRoute && !route.mini_map_id ? [route] : [], route.id, worldMapDimensions, isAdmin), [adminWorldRoutes, hasActiveRoute, isAdmin, route, worldMapDimensions]);
+  const miniMapRouteSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminMiniMapRoutes : hasActiveRoute && route.mini_map_id === activeMiniMap?.id ? [route] : [], route.id, mapSize, isAdmin), [activeMiniMap?.id, adminMiniMapRoutes, hasActiveRoute, isAdmin, route]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft, activeMiniMap ? mapSize : worldMapDimensions).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [activeMiniMap, pathDraft, worldMapDimensions]);
+  const playerPathVisibility = useMemo(() => (hasActiveRoute ? getPathSegmentMetaAtProgress(route.path_points, route.path_segments ?? [], progressPercent).visibility : "visible"), [hasActiveRoute, progressPercent, route.path_points, route.path_segments]);
   const worldMarkers = useMemo(() => markers.filter((marker) => !marker.mini_map_id), [markers]);
   const miniMapMarkers = useMemo(() => markers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [markers, activeMiniMap?.id]);
   const miniMapSpawnMarker = useMemo(() => miniMapMarkers.find((marker) => marker.type === "Player Spawn") ?? null, [miniMapMarkers]);
@@ -1050,6 +1052,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setCompletedEventIds(new Set(allEventCompletions.map((completion) => completion.event_id)));
     setRoutes(nextRoutes);
     setPathDraft([]);
+    setPathSegmentDraft([]);
     setMarkers(loadedMarkers);
     setMiniMaps(loadedMiniMaps);
     setTutorialSteps(loadedTutorials);
@@ -1107,6 +1110,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setRouteLockType(firstRoute.lock_type ?? "public");
       setRouteLockMessage(firstRoute.lock_message ?? "");
       setPathDraft([]);
+      setPathSegmentDraft([]);
       distanceWalkedRef.current = 0;
       setSavedPlayerPosition(savedWorldPosition);
       setDistanceWalked(0);
@@ -1279,6 +1283,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setRouteLockType(nextRoute.lock_type ?? "public");
     setRouteLockMessage(nextRoute.lock_message ?? "");
     setPathDraft([]);
+    setPathSegmentDraft([]);
     setRouteDirection("forward");
     setLastPosition(null);
 
@@ -2631,6 +2636,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setMarkerPanelMessage(null);
       setClickedPercent(null);
       setPathDraft([]);
+      setPathSegmentDraft([]);
       setSavedMiniMapPosition(null);
 
       if (returnPosition) {
@@ -2778,6 +2784,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         danger_level: routeDanger.trim() || route.danger_level,
         distance_required_meters: Number(routeDistance) || route.distance_required_meters,
         path_points: pathDraft,
+        path_segments: normalizePathSegments(pathSegmentDraft, pathDraft.length),
         image_url: routeImage.trim() || null,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
@@ -2808,6 +2815,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         distance_required_meters: Number(routeDistance) || 1000,
         estimated_encounters: route.estimated_encounters,
         path_points: pathDraft,
+        path_segments: normalizePathSegments(pathSegmentDraft, pathDraft.length),
         image_url: routeImage.trim() || null,
         is_active: true,
         lock_type: routeLockType,
@@ -3954,10 +3962,17 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   function undoPathPoint() {
     setPathDraft((current) => current.slice(0, -1));
+    setPathSegmentDraft((current) => normalizePathSegments(current, Math.max(0, pathDraft.length - 1)));
+  }
+
+  function clearPathDraft() {
+    setPathDraft([]);
+    setPathSegmentDraft([]);
   }
 
   function loadSelectedPathIntoDraft() {
     setPathDraft(route.path_points);
+    setPathSegmentDraft(normalizePathSegments(route.path_segments ?? [], route.path_points.length));
     setAdminMessage(`Loaded ${route.name} into the walking path editor.`);
   }
 
@@ -3965,6 +3980,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setEditorMode("Walking Path");
     await selectRoute(nextRoute, true);
     setPathDraft(nextRoute.path_points);
+    setPathSegmentDraft(normalizePathSegments(nextRoute.path_segments ?? [], nextRoute.path_points.length));
     setAdminMessage(`Editing ${nextRoute.name}. Change the fields below, then Save Walking Path.`);
   }
 
@@ -4610,6 +4626,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             playerPosition={miniMapPlayerPosition}
             playerName={character.name}
             playerPortraitUrl={character.portrait_url}
+            playerPathVisibility={route.mini_map_id === activeMiniMap.id ? playerPathVisibility : "visible"}
             onSelectMarker={(marker) => void selectMarker(marker)}
           />
         </Frame>
@@ -4676,6 +4693,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               onSelectRoute={(item) => void selectRoute(item, true)}
               onEditRoute={(item) => void editWalkingPath(item)}
               onDeleteRoute={(routeId) => void removeWalkingPath(routeId)}
+              pathDraft={pathDraft}
+              pathSegments={pathSegmentDraft}
+              onChangePathSegments={(segments) => setPathSegmentDraft(normalizePathSegments(segments, pathDraft.length))}
             />
             {editorMode === "Marker" ? renderReuseStoryMarkerPanel() : null}
             {editorMode === "Marker" ? <MiniMapMarkerAdminForm
@@ -4799,11 +4819,24 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
                 {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
                 <Info label="Path Points" value={String(pathDraft.length)} />
+                <WalkingPathAdminPanel
+                  title="Mini Map Trail Visibility"
+                  emptyText=""
+                  routes={[]}
+                  selectedRouteId={route.id}
+                  showList={false}
+                  onSelectRoute={() => undefined}
+                  onEditRoute={() => undefined}
+                  onDeleteRoute={() => undefined}
+                  pathDraft={pathDraft}
+                  pathSegments={pathSegmentDraft}
+                  onChangePathSegments={(segments) => setPathSegmentDraft(normalizePathSegments(segments, pathDraft.length))}
+                />
                 <View style={styles.modeRow}>
                   <Pressable style={styles.secondaryButtonFlex} onPress={loadSelectedPathIntoDraft}>
                     <Text style={styles.secondaryText}>Load Selected Path</Text>
                   </Pressable>
-                  <Pressable style={styles.secondaryButtonFlex} onPress={() => setPathDraft([])}>
+                  <Pressable style={styles.secondaryButtonFlex} onPress={clearPathDraft}>
                     <Text style={styles.secondaryText}>Clear Path</Text>
                   </Pressable>
                   <Pressable style={styles.secondaryButtonFlex} onPress={undoPathPoint}>
@@ -4981,6 +5014,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         playerPosition={playerPosition}
         playerName={character.name}
         playerPortraitUrl={character.portrait_url}
+        playerPathVisibility={!route.mini_map_id ? playerPathVisibility : "visible"}
         onSelectMarker={(marker) => void selectMarker(marker)}
       />
 
@@ -5407,7 +5441,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <Pressable style={styles.secondaryButtonFlex} onPress={loadSelectedPathIntoDraft}>
                   <Text style={styles.secondaryText}>Load Selected Path</Text>
                 </Pressable>
-                <Pressable style={styles.secondaryButtonFlex} onPress={() => setPathDraft([])}>
+                <Pressable style={styles.secondaryButtonFlex} onPress={clearPathDraft}>
                   <Text style={styles.secondaryText}>Clear Path</Text>
                 </Pressable>
                 <Pressable style={styles.secondaryButtonFlex} onPress={undoPathPoint}>
@@ -5601,15 +5635,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   );
 }
 
-function getRouteSegmentsForRoutes(routes: MapRoute[], activeRouteId: string, dimensions = mapSize) {
+function getRouteSegmentsForRoutes(routes: MapRoute[], activeRouteId: string, dimensions = mapSize, revealConcealed = false) {
   return routes.flatMap((mapRoute) =>
     getRouteSegments(mapRoute.path_points, dimensions).map((segment, index) => ({
       ...segment,
       id: `${mapRoute.id}-${index}`,
       isActive: mapRoute.id === activeRouteId,
       isDraft: false,
+      visibility: getRouteSegmentVisibility(mapRoute, index),
+      revealConcealed,
     })),
   );
+}
+
+function getRouteSegmentVisibility(route: MapRoute, index: number) {
+  return (route.path_segments ?? []).find((segment) => Number(segment.from_index) === index && Number(segment.to_index) === index + 1)?.visibility ?? "visible";
 }
 
 function resolveSceneImageUri(imagePath?: string | null) {

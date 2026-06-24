@@ -225,6 +225,12 @@ export type Tables = {
     distance_required_meters: number;
     estimated_encounters: number;
     path_points: Array<{ x: number; y: number }>;
+    path_segments: Array<{
+      from_index: number;
+      to_index: number;
+      visibility: "visible" | "hidden" | "cave" | "fog";
+      label?: string | null;
+    }>;
     image_url: string | null;
     mini_map_id: string | null;
     parent_marker_id: string | null;

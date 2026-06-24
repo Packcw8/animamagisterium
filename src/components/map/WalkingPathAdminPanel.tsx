@@ -1,5 +1,6 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { MapRoute } from "../../services/mapService";
+import type { PathSegmentMeta, PathSegmentVisibility } from "../../utils/mapGeometry";
 import { colors, fonts } from "../theme";
 
 type WalkingPathAdminPanelProps<Mode extends string> = {
@@ -14,7 +15,17 @@ type WalkingPathAdminPanelProps<Mode extends string> = {
   onSelectRoute: (route: MapRoute) => void;
   onEditRoute: (route: MapRoute) => void;
   onDeleteRoute: (routeId: string) => void;
+  pathDraft?: Array<{ x: number; y: number }>;
+  pathSegments?: PathSegmentMeta[];
+  onChangePathSegments?: (segments: PathSegmentMeta[]) => void;
 };
+
+const visibilityOptions: Array<{ value: PathSegmentVisibility; label: string; hint: string }> = [
+  { value: "visible", label: "Visible", hint: "White trail dots show to players." },
+  { value: "hidden", label: "Hidden", hint: "Trail and player fade behind terrain." },
+  { value: "cave", label: "Cave", hint: "Trail disappears for interior/underground travel." },
+  { value: "fog", label: "Fog", hint: "Trail stays faint and player is dimmed." },
+];
 
 export function WalkingPathAdminPanel<Mode extends string>({
   title,
@@ -28,7 +39,32 @@ export function WalkingPathAdminPanel<Mode extends string>({
   onSelectRoute,
   onEditRoute,
   onDeleteRoute,
+  pathDraft = [],
+  pathSegments = [],
+  onChangePathSegments,
 }: WalkingPathAdminPanelProps<Mode>) {
+  function updateSegment(segmentIndex: number, visibility: PathSegmentVisibility, label?: string | null) {
+    if (!onChangePathSegments) {
+      return;
+    }
+
+    const next = pathSegments.filter((segment) => Number(segment.from_index) !== segmentIndex);
+    if (visibility !== "visible") {
+      next.push({
+        from_index: segmentIndex,
+        to_index: segmentIndex + 1,
+        visibility,
+        label: label ?? pathSegments.find((segment) => Number(segment.from_index) === segmentIndex)?.label ?? null,
+      });
+    }
+    onChangePathSegments(next.sort((a, b) => a.from_index - b.from_index));
+  }
+
+  function updateSegmentLabel(segmentIndex: number, label: string) {
+    const current = pathSegments.find((segment) => Number(segment.from_index) === segmentIndex);
+    updateSegment(segmentIndex, current?.visibility ?? "hidden", label);
+  }
+
   return (
     <>
       {showList ? (
@@ -61,6 +97,40 @@ export function WalkingPathAdminPanel<Mode extends string>({
           ))}
         </View>
       ) : null}
+      {onChangePathSegments && pathDraft.length >= 2 ? (
+        <View style={styles.segmentPanel}>
+          <Text style={styles.selectedTitle}>Trail Visibility</Text>
+          <Text style={styles.copy}>Choose how each segment appears to players. Hidden and Cave sections make the trail disappear and dim the player while they travel through that stretch.</Text>
+          {pathDraft.slice(1).map((_, index) => {
+            const segment = pathSegments.find((item) => Number(item.from_index) === index);
+            const selected = segment?.visibility ?? "visible";
+            return (
+              <View key={`segment-${index}`} style={styles.segmentRow}>
+                <View style={styles.segmentHeader}>
+                  <Text style={styles.markerName}>Point {index + 1} to {index + 2}</Text>
+                  <Text style={styles.copy}>{visibilityOptions.find((option) => option.value === selected)?.hint}</Text>
+                </View>
+                <View style={styles.modeRow}>
+                  {visibilityOptions.map((option) => (
+                    <Pressable key={option.value} style={[styles.visibilityChip, selected === option.value && styles.typeSelected]} onPress={() => updateSegment(index, option.value)}>
+                      <Text style={styles.typeText}>{option.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                {selected !== "visible" ? (
+                  <TextInput
+                    value={segment?.label ?? ""}
+                    onChangeText={(value) => updateSegmentLabel(index, value)}
+                    placeholder="Optional note, example Behind ridge"
+                    placeholderTextColor={colors.muted}
+                    style={styles.input}
+                  />
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
     </>
   );
 }
@@ -81,6 +151,14 @@ const styles = StyleSheet.create({
   markerName: {
     color: colors.text,
     fontFamily: fonts.title,
+  },
+  input: {
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    color: colors.text,
+    minHeight: 44,
+    padding: 10,
   },
   modeButton: {
     borderColor: colors.border,
@@ -148,9 +226,33 @@ const styles = StyleSheet.create({
     fontFamily: fonts.title,
     fontSize: 16,
   },
+  segmentHeader: {
+    gap: 2,
+  },
+  segmentPanel: {
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 10,
+    padding: 10,
+  },
+  segmentRow: {
+    borderColor: "rgba(255,255,255,0.08)",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 10,
+  },
   typeSelected: {
     backgroundColor: "rgba(21, 157, 220, 0.25)",
     borderColor: colors.blue,
+  },
+  visibilityChip: {
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
   },
   typeText: {
     color: colors.text,

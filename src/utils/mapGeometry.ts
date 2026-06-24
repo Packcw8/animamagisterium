@@ -6,6 +6,15 @@ export type PercentPoint = {
   y: number;
 };
 
+export type PathSegmentVisibility = "visible" | "hidden" | "cave" | "fog";
+
+export type PathSegmentMeta = {
+  from_index: number;
+  to_index: number;
+  visibility: PathSegmentVisibility;
+  label?: string | null;
+};
+
 export function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -70,4 +79,62 @@ export function getRouteSegments(points: PercentPoint[], dimensions: MapDimensio
       angle: Math.atan2(dy * dimensions.height, dx * dimensions.width) * (180 / Math.PI),
     };
   });
+}
+
+export function normalizePathSegments(segments: PathSegmentMeta[] | null | undefined, pointCount: number): PathSegmentMeta[] {
+  const maxSegmentIndex = Math.max(0, pointCount - 2);
+  return (segments ?? [])
+    .map((segment) => ({
+      from_index: Math.max(0, Math.min(maxSegmentIndex, Math.trunc(Number(segment.from_index) || 0))),
+      to_index: Math.max(1, Math.min(pointCount - 1, Math.trunc(Number(segment.to_index) || 1))),
+      visibility: isPathSegmentVisibility(segment.visibility) ? segment.visibility : "visible",
+      label: segment.label?.trim() || null,
+    }))
+    .filter((segment) => pointCount >= 2 && segment.to_index === segment.from_index + 1 && segment.visibility !== "visible")
+    .filter((segment, index, all) => all.findIndex((item) => item.from_index === segment.from_index && item.to_index === segment.to_index) === index);
+}
+
+export function getPathSegmentMeta(segments: PathSegmentMeta[] | null | undefined, segmentIndex: number): PathSegmentMeta {
+  return (segments ?? []).find((segment) => Number(segment.from_index) === segmentIndex && Number(segment.to_index) === segmentIndex + 1) ?? {
+    from_index: segmentIndex,
+    to_index: segmentIndex + 1,
+    visibility: "visible",
+    label: null,
+  };
+}
+
+export function getRouteSegmentIndexAtProgress(points: PercentPoint[], progressPercent: number) {
+  if (points.length < 2) {
+    return 0;
+  }
+
+  const target = clamp(progressPercent, 0, 100) / 100;
+  const segmentLengths = points.slice(1).map((point, index) => {
+    const previous = points[index];
+    return Math.hypot(point.x - previous.x, point.y - previous.y);
+  });
+  const total = segmentLengths.reduce((sum, value) => sum + value, 0);
+  let traveled = 0;
+
+  for (let index = 0; index < segmentLengths.length; index += 1) {
+    const nextTraveled = traveled + segmentLengths[index];
+    if (target * total <= nextTraveled) {
+      return index;
+    }
+    traveled = nextTraveled;
+  }
+
+  return segmentLengths.length - 1;
+}
+
+export function getPathSegmentMetaAtProgress(points: PercentPoint[], segments: PathSegmentMeta[] | null | undefined, progressPercent: number) {
+  return getPathSegmentMeta(segments, getRouteSegmentIndexAtProgress(points, progressPercent));
+}
+
+export function isConcealedPathSegment(segment: PathSegmentMeta | null | undefined) {
+  return segment?.visibility === "hidden" || segment?.visibility === "cave";
+}
+
+function isPathSegmentVisibility(value: unknown): value is PathSegmentVisibility {
+  return value === "visible" || value === "hidden" || value === "cave" || value === "fog";
 }

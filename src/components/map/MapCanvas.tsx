@@ -29,6 +29,8 @@ export type RouteSegmentView = {
   angle: number;
   isActive: boolean;
   isDraft?: boolean;
+  visibility?: "visible" | "hidden" | "cave" | "fog";
+  revealConcealed?: boolean;
 };
 
 type PercentPoint = {
@@ -49,6 +51,7 @@ type SharedCanvasProps = {
   playerPortraitUrl?: string | null;
   onMapPointer?: (event: unknown) => void;
   onSelectMarker: (marker: MapMarker) => void;
+  playerPathVisibility?: "visible" | "hidden" | "cave" | "fog";
 };
 
 export function OverworldMapCanvas({
@@ -137,6 +140,7 @@ function MapCanvasLayers({
   playerPosition,
   playerName,
   playerPortraitUrl,
+  playerPathVisibility,
   onSelectMarker,
   markerSize,
   mini = false,
@@ -158,6 +162,8 @@ function MapCanvasLayers({
         style={[
           styles.playerPin,
           mini && styles.miniMapPlayerPin,
+          isPlayerConcealed(playerPathVisibility) && styles.playerPinConcealed,
+          playerPathVisibility === "fog" && styles.playerPinFogged,
           {
             left: `${playerPosition.x}%`,
             top: `${playerPosition.y}%`,
@@ -195,6 +201,32 @@ function MapCanvasLayers({
 }
 
 function RouteSegment({ segment, draft = false }: { segment: RouteSegmentView; draft?: boolean }) {
+  if (!draft && !segment.revealConcealed && (segment.visibility === "hidden" || segment.visibility === "cave")) {
+    return null;
+  }
+
+  if (!draft && segment.isActive) {
+    return (
+      <View
+        pointerEvents="none"
+        style={[
+          styles.routeDotLayer,
+          segment.visibility === "fog" && styles.routeDotLayerFog,
+          {
+            left: `${segment.left}%`,
+            top: `${segment.top}%`,
+            width: `${segment.length}%`,
+            transform: [{ rotate: `${segment.angle}deg` }],
+          },
+        ]}
+      >
+        {Array.from({ length: Math.max(2, Math.ceil(segment.length / 1.35)) }).map((_, index, dots) => (
+          <View key={index} style={[styles.routeDot, { left: `${dots.length === 1 ? 0 : (index / (dots.length - 1)) * 100}%` }]} />
+        ))}
+      </View>
+    );
+  }
+
   return (
     <View
       pointerEvents="none"
@@ -202,6 +234,8 @@ function RouteSegment({ segment, draft = false }: { segment: RouteSegmentView; d
         styles.routeSegment,
         !segment.isActive && styles.routeSegmentInactive,
         draft && styles.routeSegmentDraft,
+        !draft && segment.visibility === "fog" && styles.routeSegmentFog,
+        !draft && (segment.visibility === "hidden" || segment.visibility === "cave") && styles.routeSegmentHiddenAdmin,
         {
           left: `${segment.left}%`,
           top: `${segment.top}%`,
@@ -211,6 +245,10 @@ function RouteSegment({ segment, draft = false }: { segment: RouteSegmentView; d
       ]}
     />
   );
+}
+
+function isPlayerConcealed(visibility?: "visible" | "hidden" | "cave" | "fog") {
+  return visibility === "hidden" || visibility === "cave";
 }
 
 type TouchLike = {
@@ -355,6 +393,33 @@ const styles = StyleSheet.create({
     height: 6,
     backgroundColor: "rgba(127, 231, 255, 0.88)",
   },
+  routeSegmentFog: {
+    backgroundColor: "rgba(255, 255, 255, 0.24)",
+  },
+  routeSegmentHiddenAdmin: {
+    backgroundColor: "rgba(255, 255, 255, 0.16)",
+    borderStyle: "dashed",
+  },
+  routeDotLayer: {
+    position: "absolute",
+    height: 12,
+    transformOrigin: "0 50%",
+  } as object,
+  routeDotLayerFog: {
+    opacity: 0.38,
+  },
+  routeDot: {
+    position: "absolute",
+    top: 3,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "rgba(255, 255, 255, 0.92)",
+    shadowColor: "#ffffff",
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+    transform: [{ translateX: -3 }],
+  },
   pathPoint: {
     position: "absolute",
     width: 28,
@@ -431,6 +496,13 @@ const styles = StyleSheet.create({
     transform: [{ translateX: -28 }, { translateY: -28 }],
     alignItems: "center",
     justifyContent: "center",
+  },
+  playerPinConcealed: {
+    opacity: 0.2,
+    borderColor: "rgba(255,255,255,0.42)",
+  },
+  playerPinFogged: {
+    opacity: 0.58,
   },
   miniMapPlayerPin: {
     width: 35,
