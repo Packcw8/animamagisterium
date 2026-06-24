@@ -115,6 +115,14 @@ export function MarkerSceneScreen({
             routeProgressRows={routeProgressRows}
             onStartPath={onStartPath}
           />
+        ) : marker.dialogue_event_id && isDialogueMarkerType(marker.type) ? (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Dialogue</Text>
+            <Text style={styles.copy}>Open the linked dialogue tree for this marker.</Text>
+            <Pressable style={styles.primaryButton} onPress={onOpenDialogueEvent}>
+              <Text style={styles.primaryText}>Start Dialogue</Text>
+            </Pressable>
+          </View>
         ) : isStoryQuestMarker(marker) && storyLinkedRoutes.length > 0 ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Story Quest Paths</Text>
@@ -164,18 +172,6 @@ export function MarkerSceneScreen({
               <Text style={styles.primaryText}>Start Battle</Text>
             </Pressable>
           </View>
-        ) : marker.dialogue_event_id ? (
-          <View style={styles.storyEditor}>
-            <Text style={styles.selectedTitle}>Dialogue</Text>
-            <Text style={styles.copy}>Open the linked dialogue tree for this marker.</Text>
-            <Pressable style={styles.primaryButton} onPress={onOpenDialogueEvent}>
-              <Text style={styles.primaryText}>Start Dialogue</Text>
-            </Pressable>
-            <Text style={styles.copy}>
-              Rewards: {marker.reward_xp ?? 0} XP / {marker.reward_gold ?? 0} gold
-              {marker.reward_item_id ? ` / ${marker.reward_item_quantity ?? 1} ${getItemName(itemDefinitions, marker.reward_item_id)}` : ""}
-            </Text>
-          </View>
         ) : (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Options</Text>
@@ -195,6 +191,10 @@ export function MarkerSceneScreen({
       </Frame>
     </Screen>
   );
+}
+
+function isDialogueMarkerType(type: string) {
+  return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
 }
 
 function SignPostScene({

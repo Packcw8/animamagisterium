@@ -1501,6 +1501,35 @@ export async function updateDialogueChoice(choiceId: string, values: Partial<Omi
   return data as StoryDialogueChoice;
 }
 
+export async function getClaimedDialogueRewardChoiceIds(choiceIds: string[]) {
+  const uniqueChoiceIds = Array.from(new Set(choiceIds.filter(Boolean)));
+
+  if (uniqueChoiceIds.length === 0) {
+    return new Set<string>();
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to load claimed dialogue rewards.");
+  }
+
+  const { data, error } = await supabase
+    .from("marker_reward_claims")
+    .select("choice_id")
+    .eq("user_id", user.id)
+    .in("choice_id", uniqueChoiceIds);
+
+  if (error) {
+    throw error;
+  }
+
+  return new Set((data ?? []).map((row) => row.choice_id).filter(Boolean) as string[]);
+}
+
 export async function recordPlayerAttributeCheck(input: {
   characterId: string;
   dialogueNodeId: string | null;

@@ -38,6 +38,10 @@ export function DialogueSceneScreen({
 }: DialogueSceneScreenProps) {
   const { activeNode, nodeChoices, legacyChoices, npcName, npcPortrait, backgroundImageUrl, dialogueText } =
     getDialogueSceneState({ event, nodes, choices, npcs, activeNodeId });
+  const visibleNodeChoices = nodeChoices.filter((choice) => {
+    const availability = choiceAvailability[choice.id] ?? { met: true, hidden: false, disabled: false, message: null };
+    return !availability.hidden;
+  });
 
   return (
     <Screen>
@@ -67,11 +71,8 @@ export function DialogueSceneScreen({
         <View style={styles.choiceStack}>
           {activeNode ? (
             <>
-              {nodeChoices.map((choice) => {
+              {visibleNodeChoices.map((choice) => {
                 const availability = choiceAvailability[choice.id] ?? { met: true, hidden: false, disabled: false, message: null };
-                if (availability.hidden) {
-                  return null;
-                }
                 return (
                   <Pressable
                     key={choice.id}
@@ -85,7 +86,7 @@ export function DialogueSceneScreen({
                   </Pressable>
                 );
               })}
-              {nodeChoices.length === 0 || activeNode.is_ending ? (
+              {visibleNodeChoices.length === 0 || activeNode.is_ending ? (
                 <Pressable style={styles.primaryButton} onPress={() => onEndChat(activeNode.end_completes_event)}>
                   <Text style={styles.primaryText}>{activeNode.end_completes_event ? "Complete Event" : "Return to Map"}</Text>
                 </Pressable>

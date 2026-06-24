@@ -124,6 +124,7 @@ import {
   getMiniMaps,
   getTutorialSteps,
   getDialogueChoices,
+  getClaimedDialogueRewardChoiceIds,
   getDialogueNodes,
   getEventCompletions,
   getStoryMarkerCompletions,
@@ -233,6 +234,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [adminPreviewMode, setAdminPreviewMode] = useState<"story" | "battle" | null>(null);
   const [dialogueNodes, setDialogueNodes] = useState<StoryDialogueNode[]>([]);
   const [dialogueChoices, setDialogueChoices] = useState<StoryDialogueChoice[]>([]);
+  const [claimedChoiceRewardIds, setClaimedChoiceRewardIds] = useState<Set<string>>(new Set());
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [dialogueLog, setDialogueLog] = useState<string[]>([]);
   const {
@@ -504,9 +506,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const adminWorldRoutes = useMemo(() => adminRoutes.filter((item) => !item.mini_map_id), [adminRoutes]);
   const adminMiniMapRoutes = useMemo(() => adminRoutes.filter((item) => item.mini_map_id === activeMiniMap?.id), [activeMiniMap?.id, adminRoutes]);
   const dialogueChoiceAvailability = useMemo(
-    () => Object.fromEntries(dialogueChoices.map((choice) => [
-      choice.id,
-      evaluateDialogueChoiceRequirement(choice, {
+    () => Object.fromEntries(dialogueChoices.map((choice) => {
+      const baseAvailability = evaluateDialogueChoiceRequirement(choice, {
         character,
         inventoryItems,
         itemDefinitions,
@@ -515,9 +516,23 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         completedTutorialStepIds,
         storyFlags,
         knownAbilities,
-      }),
-    ])),
-    [character, completedEventIds, completedStoryMarkerIds, completedTutorialStepIds, dialogueChoices, inventoryItems, itemDefinitions, knownAbilities, storyFlags],
+      });
+
+      if (choice.action === "give_reward" && claimedChoiceRewardIds.has(choice.id)) {
+        return [
+          choice.id,
+          {
+            met: false,
+            hidden: true,
+            disabled: true,
+            message: "Already claimed.",
+          },
+        ];
+      }
+
+      return [choice.id, baseAvailability];
+    })),
+    [character, claimedChoiceRewardIds, completedEventIds, completedStoryMarkerIds, completedTutorialStepIds, dialogueChoices, inventoryItems, itemDefinitions, knownAbilities, storyFlags],
   );
   const activeWorldMapSetting = useMemo(
     () => worldMapSettings.find((item) => Number(item.season_number) === selectedSeason && Number(item.chapter_number) === selectedChapter) ?? null,
@@ -2802,9 +2817,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   async function loadDialogueForEvent(event: MapEvent) {
     const nodes = await getDialogueNodes(event.id);
     const choices = await getDialogueChoices(nodes.map((node) => node.id));
+    const claimedRewardChoices = await getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id));
     const startNode = nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
     setDialogueNodes(nodes);
     setDialogueChoices(choices);
+    setClaimedChoiceRewardIds(claimedRewardChoices);
     setActiveNodeId(startNode?.id ?? null);
     setDialogueLog([]);
   }
@@ -2815,6 +2832,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const choices = await getDialogueChoices(nodes.map((node) => node.id));
     setDialogueNodes(nodes);
     setDialogueChoices(choices);
+    setClaimedChoiceRewardIds(new Set());
     setChoiceNodeId(nodes[0]?.id ?? null);
     clearDialogueNodeForm();
     clearDialogueChoiceForm();
@@ -2964,6 +2982,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         return;
       }
 
+      const completedMarker = activeMarkerEventId ? markers.find((item) => item.id === activeMarkerEventId) ?? null : null;
       const rewardResult = await applyRewards(character, {
         xp: (event.reward_xp ?? 0) + (activeEnemy?.xp_reward ?? 0),
         gold: (event.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
@@ -3006,6 +3025,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
       await completeMapEvent(event.id);
       setCompletedEventIds((current) => new Set([...current, event.id]));
+      if (completedMarker && isStoryQuestMarker(completedMarker)) {
+        await completeStoryMarker(completedMarker.id);
+        setCompletedStoryMarkerIds((current) => new Set([...current, completedMarker.id]));
+      }
       setActiveEvent(null);
       setActiveMarkerEventId(null);
       setActiveBattle(null);
@@ -3021,7 +3044,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           itemId: event.reward_item_id,
           itemQuantity: event.reward_item_quantity,
         }, dropRewards) : dropRewards,
-        nextMarker: getJourneyDestinationMarker(routeRef.current, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
+        nextMarker: completedMarker ? getNextStoryMarkerAfter(completedMarker) : getJourneyDestinationMarker(routeRef.current, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
         actionLabel: "OK",
       });
       await loadInventory();
@@ -3152,6 +3175,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         choiceId: choice.id,
       });
       setDialogueLog((current) => [rewardResult.message, ...current].slice(0, 4));
+      setClaimedChoiceRewardIds((current) => new Set([...current, choice.id]));
       if (rewardResult.claimed) {
         showGameToast({
           title: "Reward Received",
