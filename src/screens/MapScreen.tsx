@@ -5,7 +5,13 @@ import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButt
 import { BattleEventScreen } from "../components/battle/BattleEventScreen";
 import { useBattleEncounter } from "../components/battle/useBattleEncounter";
 import { BrandLogo } from "../components/BrandLogo";
+import { DialogueCheckEditor } from "../components/dialogue/DialogueCheckEditor";
+import { DialogueChoiceEditor } from "../components/dialogue/DialogueChoiceEditor";
+import { DialogueChoiceEffectEditor } from "../components/dialogue/DialogueChoiceEffectEditor";
+import { DialogueChoiceRequirementEditor } from "../components/dialogue/DialogueChoiceRequirementEditor";
+import { DialogueNodeEditor } from "../components/dialogue/DialogueNodeEditor";
 import { DialogueSceneScreen } from "../components/dialogue/DialogueSceneScreen";
+import { DialogueTreeAdmin } from "../components/dialogue/DialogueTreeAdmin";
 import { Frame } from "../components/Frame";
 import { AdminCoordinatePanel } from "../components/map/AdminCoordinatePanel";
 import { AdminMapEditorHeader } from "../components/map/AdminMapEditorHeader";
@@ -51,7 +57,7 @@ import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { clamp, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, roundPercent } from "../utils/mapGeometry";
-import { choiceActionLabel, evaluateDialogueChoiceRequirement, eventTriggerModeName, eventTypeName, formatAttributeName, formatResourceName, getAttributeCheckSummary, getChoiceTargetSummary, getRequirementSummary, requirementTypeLabel, rollDialogueAttributeCheck } from "../utils/dialogueFlow";
+import { evaluateDialogueChoiceRequirement, eventTriggerModeName, eventTypeName, formatResourceName, rollDialogueAttributeCheck } from "../utils/dialogueFlow";
 import { buildCreateMarkerInput, buildMarkerSettingsPayload, type MarkerPayloadState } from "../utils/markerPayload";
 import {
   canPlayerSeeStoryMarker,
@@ -3828,122 +3834,53 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   function renderDialogueChoiceRequirementEditor() {
-    const showQuantity = choiceRequirementType === "gold" || choiceRequirementType === "item" || choiceRequirementType === "attribute_level";
-    const showOperator = choiceRequirementType === "gold" || choiceRequirementType === "attribute_level";
-
     return (
-      <View style={styles.storyEditor}>
-        <Text style={styles.selectedTitle}>Choice Requirement</Text>
-        <Text style={styles.copy}>Gate this choice behind gold, items, story progress, tutorial completion, known abilities, or attribute levels.</Text>
-        <View style={styles.typeGrid}>
-          {dialogueRequirementTypes.map((type) => (
-            <Pressable key={type} style={[styles.typeButton, choiceRequirementType === type && styles.typeSelected]} onPress={() => setChoiceRequirementType(type)}>
-              <Text style={styles.typeText}>{requirementTypeLabel(type)}</Text>
-            </Pressable>
-          ))}
-        </View>
-        {choiceRequirementType === "item" ? (
-          <ItemPicker label="Required item" items={itemDefinitions} selectedId={choiceRequirementValue || null} onSelect={(id) => setChoiceRequirementValue(id ?? "")} />
-        ) : null}
-        {choiceRequirementType === "completed_marker" ? (
-          <MarkerPicker label="Required completed marker" markers={markers.filter(isStoryQuestMarker)} selectedId={choiceRequirementValue || null} onSelect={(id) => setChoiceRequirementValue(id ?? "")} />
-        ) : null}
-        {choiceRequirementType === "completed_event" ? (
-          <EventPicker label="Required completed event" events={allMapEvents} selectedId={choiceRequirementValue || null} onSelect={(id) => setChoiceRequirementValue(id ?? "")} />
-        ) : null}
-        {choiceRequirementType === "tutorial_step" ? (
-          <View style={styles.storyRoutePicker}>
-            {tutorialSteps.map((step) => (
-              <Pressable key={step.id} style={[styles.routeChip, choiceRequirementValue === step.id && styles.routeChipActive]} onPress={() => setChoiceRequirementValue(step.id)}>
-                <Text style={styles.routeChipText}>{step.title}</Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-        {choiceRequirementType === "attribute_level" ? (
-          <View style={styles.storyRoutePicker}>
-            {attributeRequirementKeys.map((attribute) => (
-              <Pressable key={attribute} style={[styles.routeChip, choiceRequirementValue === attribute && styles.routeChipActive]} onPress={() => setChoiceRequirementValue(attribute)}>
-                <Text style={styles.routeChipText}>{attribute}</Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-        {choiceRequirementType !== "none" && !["item", "completed_marker", "completed_event", "tutorial_step", "attribute_level"].includes(choiceRequirementType) ? (
-          <TextInput value={choiceRequirementValue} onChangeText={setChoiceRequirementValue} placeholder="Requirement value, key, ability id/name, or amount" placeholderTextColor={colors.muted} style={styles.input} />
-        ) : null}
-        {showQuantity ? (
-          <TextInput value={choiceRequirementQuantity} onChangeText={setChoiceRequirementQuantity} placeholder={choiceRequirementType === "gold" ? "Required gold amount" : choiceRequirementType === "attribute_level" ? "Required attribute level" : "Required quantity"} placeholderTextColor={colors.muted} style={styles.input} />
-        ) : null}
-        {showOperator ? (
-          <View style={styles.storyRoutePicker}>
-            {dialogueRequirementOperators.map((operator) => (
-              <Pressable key={operator} style={[styles.routeChip, choiceRequirementOperator === operator && styles.routeChipActive]} onPress={() => setChoiceRequirementOperator(operator)}>
-                <Text style={styles.routeChipText}>{operator}</Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-        {choiceRequirementType !== "none" ? (
-          <>
-            <TextInput value={choiceRequirementFailureMessage} onChangeText={setChoiceRequirementFailureMessage} placeholder="Failure message, example: Requires 100 Gold" placeholderTextColor={colors.muted} style={styles.input} />
-            <Pressable style={[styles.secondaryButton, choiceHideIfUnmet && styles.typeSelected]} onPress={() => setChoiceHideIfUnmet((value) => !value)}>
-              <Text style={styles.secondaryText}>Hide If Not Met: {choiceHideIfUnmet ? "Yes" : "No"}</Text>
-            </Pressable>
-            <Pressable style={[styles.secondaryButton, choiceDisableIfUnmet && styles.typeSelected]} onPress={() => setChoiceDisableIfUnmet((value) => !value)}>
-              <Text style={styles.secondaryText}>Disable If Not Met: {choiceDisableIfUnmet ? "Yes" : "No"}</Text>
-            </Pressable>
-          </>
-        ) : null}
-      </View>
+      <DialogueChoiceRequirementEditor
+        requirementTypes={dialogueRequirementTypes}
+        operators={dialogueRequirementOperators}
+        attributeKeys={attributeRequirementKeys}
+        requirementType={choiceRequirementType}
+        requirementValue={choiceRequirementValue}
+        requirementQuantity={choiceRequirementQuantity}
+        requirementOperator={choiceRequirementOperator}
+        hideIfUnmet={choiceHideIfUnmet}
+        disableIfUnmet={choiceDisableIfUnmet}
+        failureMessage={choiceRequirementFailureMessage}
+        itemDefinitions={itemDefinitions}
+        markers={markers}
+        events={allMapEvents}
+        tutorialSteps={tutorialSteps}
+        onChangeType={setChoiceRequirementType}
+        onChangeValue={setChoiceRequirementValue}
+        onChangeQuantity={setChoiceRequirementQuantity}
+        onChangeOperator={setChoiceRequirementOperator}
+        onToggleHide={() => setChoiceHideIfUnmet((value) => !value)}
+        onToggleDisable={() => setChoiceDisableIfUnmet((value) => !value)}
+        onChangeFailureMessage={setChoiceRequirementFailureMessage}
+      />
     );
   }
 
   function renderDialogueAttributeCheckEditor() {
     return (
-      <View style={styles.storyEditor}>
-        <Text style={styles.selectedTitle}>Attribute Check</Text>
-        <Text style={styles.copy}>Optional d20 + attribute roll. Success and failure can branch to different dialogue steps.</Text>
-        <Pressable style={[styles.secondaryButton, choiceCheckEnabled && styles.typeSelected]} onPress={() => setChoiceCheckEnabled((value) => !value)}>
-          <Text style={styles.secondaryText}>Check Enabled: {choiceCheckEnabled ? "Yes" : "No"}</Text>
-        </Pressable>
-        {choiceCheckEnabled ? (
-          <>
-            <View style={styles.storyRoutePicker}>
-              {dialogueCheckAttributes.map((attribute) => (
-                <Pressable key={attribute} style={[styles.routeChip, choiceCheckAttribute === attribute && styles.routeChipActive]} onPress={() => setChoiceCheckAttribute(attribute)}>
-                  <Text style={styles.routeChipText}>{formatAttributeName(attribute)}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <TextInput value={choiceCheckDc} onChangeText={setChoiceCheckDc} placeholder="Difficulty Class (DC), example 15" placeholderTextColor={colors.muted} style={styles.input} />
-            <Text style={styles.copy}>Success branch</Text>
-            <View style={styles.storyRoutePicker}>
-              <Pressable style={[styles.routeChip, !choiceCheckSuccessNodeId && styles.routeChipActive]} onPress={() => setChoiceCheckSuccessNodeId(null)}>
-                <Text style={styles.routeChipText}>Continue action</Text>
-              </Pressable>
-              {dialogueNodes.map((node) => (
-                <Pressable key={node.id} style={[styles.routeChip, choiceCheckSuccessNodeId === node.id && styles.routeChipActive]} onPress={() => setChoiceCheckSuccessNodeId(node.id)}>
-                  <Text style={styles.routeChipText}>{node.sort_order}. {node.title}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text style={styles.copy}>Failure branch</Text>
-            <View style={styles.storyRoutePicker}>
-              <Pressable style={[styles.routeChip, !choiceCheckFailureNodeId && styles.routeChipActive]} onPress={() => setChoiceCheckFailureNodeId(null)}>
-                <Text style={styles.routeChipText}>Stay here</Text>
-              </Pressable>
-              {dialogueNodes.map((node) => (
-                <Pressable key={node.id} style={[styles.routeChip, choiceCheckFailureNodeId === node.id && styles.routeChipActive]} onPress={() => setChoiceCheckFailureNodeId(node.id)}>
-                  <Text style={styles.routeChipText}>{node.sort_order}. {node.title}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <TextInput value={choiceCheckSuccessText} onChangeText={setChoiceCheckSuccessText} placeholder="Success text, example: Success! The guard steps aside." placeholderTextColor={colors.muted} style={styles.input} />
-            <TextInput value={choiceCheckFailureText} onChangeText={setChoiceCheckFailureText} placeholder="Failure text, example: Failure. The guard refuses." placeholderTextColor={colors.muted} style={styles.input} />
-          </>
-        ) : null}
-      </View>
+      <DialogueCheckEditor
+        enabled={choiceCheckEnabled}
+        attribute={choiceCheckAttribute}
+        dc={choiceCheckDc}
+        successNodeId={choiceCheckSuccessNodeId}
+        failureNodeId={choiceCheckFailureNodeId}
+        successText={choiceCheckSuccessText}
+        failureText={choiceCheckFailureText}
+        attributes={dialogueCheckAttributes}
+        nodes={dialogueNodes}
+        onToggleEnabled={() => setChoiceCheckEnabled((value) => !value)}
+        onChangeAttribute={setChoiceCheckAttribute}
+        onChangeDc={setChoiceCheckDc}
+        onChangeSuccessNodeId={setChoiceCheckSuccessNodeId}
+        onChangeFailureNodeId={setChoiceCheckFailureNodeId}
+        onChangeSuccessText={setChoiceCheckSuccessText}
+        onChangeFailureText={setChoiceCheckFailureText}
+      />
     );
   }
 
@@ -3963,165 +3900,101 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   function renderBranchingDialogueEditor() {
     return (
-      <View style={styles.storyEditor}>
-        <Text style={styles.selectedTitle}>Branching Dialogue Editor</Text>
-        <Text style={styles.copy}>Select a dialogue, clue, or reward event, then add dialogue steps and player choices. Start Battle choices can create or link a battle event from here.</Text>
-        <View style={styles.storyRoutePicker}>
-          {adminMapEvents.filter((event) => event.event_type !== "battle").map((event) => (
-            <Pressable
-              key={event.id}
-              style={[styles.routeChip, selectedDialogueEventId === event.id && styles.routeChipActive]}
-              onPress={() => void loadDialogueEditor(event.id)}
-            >
-              <Text style={styles.routeChipText}>{event.title}</Text>
-            </Pressable>
-          ))}
-        </View>
-        {selectedDialogueEvent ? (
-          <View style={styles.builderStatus}>
-            <Text style={styles.selectedTitle}>Editing: {selectedDialogueEvent.title}</Text>
-            <Text style={styles.copy}>{dialogueNodes.length} dialogue steps - {dialogueChoices.length} player choices</Text>
-          </View>
-        ) : (
-          <Text style={styles.adminMessage}>Select a dialogue, clue, or reward event before adding steps.</Text>
-        )}
-        <Pressable style={styles.secondaryButton} onPress={startNewDialogueStep} disabled={!selectedDialogueEventId}>
-          <Text style={styles.secondaryText}>New Dialogue Step</Text>
-        </Pressable>
-        {selectedDialogueEvent ? (
-          <View style={styles.flowPreview}>
-            <Text style={styles.selectedTitle}>Dialogue Link Preview</Text>
-            {dialogueNodes.length === 0 ? (
-              <Text style={styles.copy}>No dialogue steps yet. Add a start step first.</Text>
-            ) : (
-              dialogueNodes.map((node) => {
-                const nodeChoices = dialogueChoices.filter((choice) => choice.node_id === node.id).sort((a, b) => a.sort_order - b.sort_order);
-                return (
-                  <View key={`preview-${node.id}`} style={styles.flowStep}>
-                    <Text style={styles.flowStepTitle}>{node.sort_order}. {node.title}{node.is_start ? " - Start" : ""}{node.is_ending ? " - Ending" : ""}</Text>
-                    <Text style={styles.flowDialogue}>{node.npc_name ? `${node.npc_name}: ` : ""}{node.dialogue_text || "No NPC dialogue entered."}</Text>
-                    {nodeChoices.length === 0 ? (
-                      <Text style={styles.flowWarning}>No choices connected to this step.</Text>
-                    ) : (
-                      nodeChoices.map((choice) => {
-                        const target = getChoiceTargetSummary(choice, dialogueNodes, mapEvents);
-                        return (
-                          <Pressable key={`preview-choice-${choice.id}`} style={styles.flowChoice} onPress={() => editDialogueChoice(choice)}>
-                            <Text style={styles.flowChoiceText}>If player chooses: {choice.button_text}</Text>
-                            {choice.player_dialogue_text ? <Text style={styles.flowDialogue}>Player says: {choice.player_dialogue_text}</Text> : null}
-                            <Text style={[styles.flowTarget, target.isBroken && styles.flowWarning]}>{target.label}</Text>
-                          </Pressable>
-                        );
-                      })
-                    )}
-                  </View>
-                );
-              })
-            )}
-          </View>
-        ) : null}
-        <TextInput value={nodeTitle} onChangeText={setNodeTitle} placeholder="Dialogue step title / internal label" placeholderTextColor={colors.muted} style={styles.input} />
-        <TextInput value={nodeKey} onChangeText={setNodeKey} placeholder="Optional node key" placeholderTextColor={colors.muted} style={styles.input} />
-        <NpcPicker label="Reuse NPC for this dialogue step" npcs={npcDefinitions} selectedId={nodeNpcId} onSelect={selectNodeDialogueNpc} />
-        <TextInput value={nodeNpcName} onChangeText={setNodeNpcName} placeholder="NPC name" placeholderTextColor={colors.muted} style={styles.input} />
-        <TextInput value={nodeNpcPortrait} onChangeText={setNodeNpcPortrait} placeholder="NPC portrait URL optional" placeholderTextColor={colors.muted} style={styles.input} />
-        <AdminImageUploadButton folder="dialogue-npcs" onUploaded={setNodeNpcPortrait} onMessage={setAdminMessage} />
-        <TextInput value={nodeBackgroundImage} onChangeText={setNodeBackgroundImage} placeholder="Background image URL optional" placeholderTextColor={colors.muted} style={styles.input} />
-        <AdminImageUploadButton folder="dialogue-backgrounds" onUploaded={setNodeBackgroundImage} onMessage={setAdminMessage} />
-        <TextInput value={nodeDialogue} onChangeText={setNodeDialogue} placeholder="NPC dialogue text" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
-        <TextInput value={nodeSortOrder} onChangeText={setNodeSortOrder} placeholder="Dialogue step order" placeholderTextColor={colors.muted} style={styles.input} />
-        <View style={styles.typeGrid}>
-          <Pressable style={[styles.typeButton, nodeIsStart && styles.typeSelected]} onPress={() => setNodeIsStart((value) => !value)}><Text style={styles.typeText}>Start Step</Text></Pressable>
-          <Pressable style={[styles.typeButton, nodeIsEnding && styles.typeSelected]} onPress={() => setNodeIsEnding((value) => !value)}><Text style={styles.typeText}>Ending Step</Text></Pressable>
-          <Pressable style={[styles.typeButton, nodeAllowEndChat && styles.typeSelected]} onPress={() => setNodeAllowEndChat((value) => !value)}><Text style={styles.typeText}>Allow End Chat</Text></Pressable>
-          <Pressable style={[styles.typeButton, nodeEndCompletesEvent && styles.typeSelected]} onPress={() => setNodeEndCompletesEvent((value) => !value)}><Text style={styles.typeText}>End Completes</Text></Pressable>
-        </View>
-        <Pressable style={styles.primaryButton} onPress={() => void saveDialogueNode()} disabled={!selectedDialogueEventId || !nodeTitle.trim()}>
-          <Text style={styles.primaryText}>{editingNode ? "Update Dialogue Step" : "Add Dialogue Step"}</Text>
-        </Pressable>
-        {editingNode ? <Pressable style={styles.secondaryButton} onPress={clearDialogueNodeForm}><Text style={styles.secondaryText}>Cancel Step Edit</Text></Pressable> : null}
-        {dialogueNodes.map((node) => {
-          const nodeChoices = dialogueChoices.filter((choice) => choice.node_id === node.id).sort((a, b) => a.sort_order - b.sort_order);
-          return (
-            <View key={node.id} style={[styles.storyCard, choiceNodeId === node.id && styles.storyCardActive]}>
-              <Text style={styles.markerName}>{node.sort_order}. {node.title}{node.is_start ? " - Start" : ""}{node.is_ending ? " - Ending" : ""}</Text>
-              <Text style={styles.copy}>{node.dialogue_text || "No dialogue yet."}</Text>
-              {nodeChoices.length > 0 ? (
-                <View style={styles.choicePreviewList}>
-                  {nodeChoices.map((choice) => (
-                    <Pressable key={choice.id} style={styles.choicePreview} onPress={() => editDialogueChoice(choice)}>
-                      <Text style={styles.choicePreviewTitle}>{choice.sort_order}. {choice.button_text}</Text>
-                      <Text style={styles.choicePreviewAction}>{choiceActionLabel(choice.action)}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : <Text style={styles.debugLine}>No player choices yet.</Text>}
-              <View style={styles.modeRow}>
-                <Pressable style={styles.secondaryButtonFlex} onPress={() => selectDialogueNode(node.id)}><Text style={styles.secondaryText}>Select Step</Text></Pressable>
-                <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueNode(node)}><Text style={styles.secondaryText}>Edit Step</Text></Pressable>
-                <Pressable style={styles.secondaryButtonFlex} onPress={() => startChoiceForNode(node)}><Text style={styles.secondaryText}>Add Choice</Text></Pressable>
-                <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueNode(node.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
-              </View>
-            </View>
-          );
-        })}
-        <Text style={styles.selectedTitle}>Player Choices{selectedChoiceNode ? ` for ${selectedChoiceNode.title}` : ""}</Text>
-        <Text style={styles.copy}>{selectedChoiceNode ? "Create choices for the selected dialogue step. Choices can move the conversation, start battle, reward the player, or return to the map." : "Select a dialogue step first."}</Text>
-        <View style={styles.storyRoutePicker}>
-          {dialogueNodes.map((node) => (
-            <Pressable key={node.id} style={[styles.routeChip, choiceNodeId === node.id && styles.routeChipActive]} onPress={() => selectDialogueNode(node.id)}>
-              <Text style={styles.routeChipText}>{node.sort_order}. {node.title}</Text>
-            </Pressable>
-          ))}
-        </View>
-        <TextInput value={choiceButtonText} onChangeText={setChoiceButtonText} placeholder="Player button text" placeholderTextColor={colors.muted} style={styles.input} />
-        <TextInput value={choicePlayerText} onChangeText={setChoicePlayerText} placeholder="Optional player dialogue text" placeholderTextColor={colors.muted} style={styles.input} />
-        <View style={styles.typeGrid}>
-          {(["go_to_node", "start_battle", "complete_event", "unlock_next_event", "give_reward", "end_conversation", "return_to_map"] as const).map((action) => (
-            <Pressable key={action} style={[styles.typeButton, choiceAction === action && styles.typeSelected]} onPress={() => setChoiceAction(action)}>
-              <Text style={styles.typeText}>{choiceActionLabel(action)}</Text>
-            </Pressable>
-          ))}
-        </View>
-        {choiceAction === "go_to_node" ? (
-          <View style={styles.storyRoutePicker}>
-            {dialogueNodes.map((node) => (
-              <Pressable key={node.id} style={[styles.routeChip, choiceNextNodeId === node.id && styles.routeChipActive]} onPress={() => setChoiceNextNodeId(node.id)}>
-                <Text style={styles.routeChipText}>Next: {node.title}</Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-        {choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
-        {choiceAction === "give_reward" ? (
-          <>
-            <TextInput value={choiceRewardXp} onChangeText={setChoiceRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
-            <TextInput value={choiceRewardGold} onChangeText={setChoiceRewardGold} placeholder="Reward gold" placeholderTextColor={colors.muted} style={styles.input} />
-            <ItemPicker label="Reward item" items={itemDefinitions} selectedId={choiceRewardItemId} onSelect={setChoiceRewardItemId} />
-            <TextInput value={choiceRewardItemQuantity} onChangeText={setChoiceRewardItemQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
-            <TextInput value={choiceRewardItem} onChangeText={setChoiceRewardItem} placeholder="Legacy reward item text optional" placeholderTextColor={colors.muted} style={styles.input} />
-          </>
-        ) : null}
-        {renderDialogueChoiceRequirementEditor()}
-        {renderDialogueAttributeCheckEditor()}
-        <TextInput value={choiceSortOrder} onChangeText={setChoiceSortOrder} placeholder="Choice order" placeholderTextColor={colors.muted} style={styles.input} />
-        <Pressable style={styles.primaryButton} onPress={() => void saveDialogueChoice()} disabled={!choiceNodeId || !choiceButtonText.trim()}>
-          <Text style={styles.primaryText}>{editingChoice ? "Update Player Choice" : "Add Player Choice"}</Text>
-        </Pressable>
-        {editingChoice ? <Pressable style={styles.secondaryButton} onPress={clearDialogueChoiceForm}><Text style={styles.secondaryText}>Cancel Choice Edit</Text></Pressable> : null}
-        {selectedNodeChoices.map((choice) => (
-          <View key={choice.id} style={styles.storyCard}>
-            <Text style={styles.markerName}>{choice.button_text}</Text>
-            <Text style={styles.copy}>{choiceActionLabel(choice.action)}{choice.player_dialogue_text ? ` - "${choice.player_dialogue_text}"` : ""}</Text>
-            {(choice.requirement_type ?? "none") !== "none" ? <Text style={styles.debugLine}>{getRequirementSummary(choice, itemDefinitions)}</Text> : null}
-            {getAttributeCheckSummary(choice) ? <Text style={styles.debugLine}>{getAttributeCheckSummary(choice)}</Text> : null}
-            <View style={styles.modeRow}>
-              <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueChoice(choice)}><Text style={styles.secondaryText}>Edit Choice</Text></Pressable>
-              <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueChoice(choice.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
-            </View>
-          </View>
-        ))}
-      </View>
+      <DialogueTreeAdmin
+        events={adminMapEvents}
+        selectedEventId={selectedDialogueEventId}
+        selectedEvent={selectedDialogueEvent}
+        nodes={dialogueNodes}
+        choices={dialogueChoices}
+        itemDefinitions={itemDefinitions}
+        onSelectEvent={(eventId) => void loadDialogueEditor(eventId)}
+        onStartNewNode={startNewDialogueStep}
+        onEditChoice={editDialogueChoice}
+        nodeEditor={
+          <DialogueNodeEditor
+            nodes={dialogueNodes}
+            editingNode={editingNode}
+            selectedNodeId={choiceNodeId}
+            title={nodeTitle}
+            nodeKey={nodeKey}
+            npcName={nodeNpcName}
+            npcPortrait={nodeNpcPortrait}
+            backgroundImage={nodeBackgroundImage}
+            dialogue={nodeDialogue}
+            sortOrder={nodeSortOrder}
+            isStart={nodeIsStart}
+            isEnding={nodeIsEnding}
+            allowEndChat={nodeAllowEndChat}
+            endCompletesEvent={nodeEndCompletesEvent}
+            selectedDialogueEventId={selectedDialogueEventId}
+            renderNpcPicker={<NpcPicker label="Reuse NPC for this dialogue step" npcs={npcDefinitions} selectedId={nodeNpcId} onSelect={selectNodeDialogueNpc} />}
+            renderNpcPortraitUploader={<AdminImageUploadButton folder="dialogue-npcs" onUploaded={setNodeNpcPortrait} onMessage={setAdminMessage} />}
+            renderBackgroundUploader={<AdminImageUploadButton folder="dialogue-backgrounds" onUploaded={setNodeBackgroundImage} onMessage={setAdminMessage} />}
+            onChangeTitle={setNodeTitle}
+            onChangeNodeKey={setNodeKey}
+            onChangeNpcName={setNodeNpcName}
+            onChangeNpcPortrait={setNodeNpcPortrait}
+            onChangeBackgroundImage={setNodeBackgroundImage}
+            onChangeDialogue={setNodeDialogue}
+            onChangeSortOrder={setNodeSortOrder}
+            onToggleStart={() => setNodeIsStart((value) => !value)}
+            onToggleEnding={() => setNodeIsEnding((value) => !value)}
+            onToggleAllowEndChat={() => setNodeAllowEndChat((value) => !value)}
+            onToggleEndCompletesEvent={() => setNodeEndCompletesEvent((value) => !value)}
+            onSave={() => void saveDialogueNode()}
+            onCancelEdit={clearDialogueNodeForm}
+            onSelectNode={selectDialogueNode}
+            onEditNode={editDialogueNode}
+            onStartChoice={startChoiceForNode}
+            onDeleteNode={(nodeId) => void removeDialogueNode(nodeId)}
+            getNodeChoiceCount={(nodeId) => dialogueChoices.filter((choice) => choice.node_id === nodeId).length}
+          />
+        }
+        choiceEditor={
+          <DialogueChoiceEditor
+            nodes={dialogueNodes}
+            selectedChoiceNode={selectedChoiceNode}
+            selectedNodeChoices={selectedNodeChoices}
+            editingChoice={editingChoice}
+            nodeId={choiceNodeId}
+            buttonText={choiceButtonText}
+            playerText={choicePlayerText}
+            action={choiceAction}
+            nextNodeId={choiceNextNodeId}
+            sortOrder={choiceSortOrder}
+            itemDefinitions={itemDefinitions}
+            effectEditor={
+              <DialogueChoiceEffectEditor
+                action={choiceAction}
+                rewardXp={choiceRewardXp}
+                rewardGold={choiceRewardGold}
+                rewardItemId={choiceRewardItemId}
+                rewardItemQuantity={choiceRewardItemQuantity}
+                legacyRewardItem={choiceRewardItem}
+                itemDefinitions={itemDefinitions}
+                linkedBattleBuilder={choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
+                onChangeRewardXp={setChoiceRewardXp}
+                onChangeRewardGold={setChoiceRewardGold}
+                onChangeRewardItemId={setChoiceRewardItemId}
+                onChangeRewardItemQuantity={setChoiceRewardItemQuantity}
+                onChangeLegacyRewardItem={setChoiceRewardItem}
+              />
+            }
+            requirementEditor={renderDialogueChoiceRequirementEditor()}
+            checkEditor={renderDialogueAttributeCheckEditor()}
+            onSelectNode={selectDialogueNode}
+            onChangeButtonText={setChoiceButtonText}
+            onChangePlayerText={setChoicePlayerText}
+            onChangeAction={setChoiceAction}
+            onChangeNextNodeId={setChoiceNextNodeId}
+            onChangeSortOrder={setChoiceSortOrder}
+            onSave={() => void saveDialogueChoice()}
+            onCancelEdit={clearDialogueChoiceForm}
+            onEditChoice={editDialogueChoice}
+            onDeleteChoice={(choiceId) => void removeDialogueChoice(choiceId)}
+          />
+        }
+      />
     );
   }
 
@@ -5478,174 +5351,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 </View>
               </View>
             ))}
-            <View style={styles.storyEditor}>
-              <Text style={styles.selectedTitle}>Branching Dialogue Editor</Text>
-              <Text style={styles.copy}>1. Select an event. 2. Add dialogue steps. 3. Select a step and add player choices under it.</Text>
-              <View style={styles.storyRoutePicker}>
-                {adminMapEvents.filter((event) => event.event_type !== "battle").map((event) => (
-                  <Pressable
-                    key={event.id}
-                    style={[styles.routeChip, selectedDialogueEventId === event.id && styles.routeChipActive]}
-                    onPress={() => void loadDialogueEditor(event.id)}
-                  >
-                    <Text style={styles.routeChipText}>{event.title}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              {selectedDialogueEvent ? (
-                <View style={styles.builderStatus}>
-                  <Text style={styles.selectedTitle}>Editing: {selectedDialogueEvent.title}</Text>
-                  <Text style={styles.copy}>{dialogueNodes.length} dialogue steps - {dialogueChoices.length} player choices</Text>
-                </View>
-              ) : (
-                <Text style={styles.adminMessage}>Select a dialogue, clue, or reward event before adding steps.</Text>
-              )}
-              <Pressable style={styles.secondaryButton} onPress={startNewDialogueStep} disabled={!selectedDialogueEventId}>
-                <Text style={styles.secondaryText}>New Dialogue Step</Text>
-              </Pressable>
-              {selectedDialogueEvent ? (
-                <View style={styles.flowPreview}>
-                  <Text style={styles.selectedTitle}>Dialogue Link Preview</Text>
-                  {dialogueNodes.length === 0 ? (
-                    <Text style={styles.copy}>No dialogue steps yet. Add a start step first.</Text>
-                  ) : (
-                    dialogueNodes.map((node) => {
-                      const nodeChoices = dialogueChoices.filter((choice) => choice.node_id === node.id).sort((a, b) => a.sort_order - b.sort_order);
-                      return (
-                        <View key={`preview-${node.id}`} style={styles.flowStep}>
-                          <Text style={styles.flowStepTitle}>{node.sort_order}. {node.title}{node.is_start ? " - Start" : ""}{node.is_ending ? " - Ending" : ""}</Text>
-                          <Text style={styles.flowDialogue}>{node.npc_name ? `${node.npc_name}: ` : ""}{node.dialogue_text || "No NPC dialogue entered."}</Text>
-                          {nodeChoices.length === 0 ? (
-                            <Text style={styles.flowWarning}>No choices connected to this step.</Text>
-                          ) : (
-                            nodeChoices.map((choice) => {
-                              const target = getChoiceTargetSummary(choice, dialogueNodes, mapEvents);
-                              return (
-                                <Pressable key={`preview-choice-${choice.id}`} style={styles.flowChoice} onPress={() => editDialogueChoice(choice)}>
-                                  <Text style={styles.flowChoiceText}>If player chooses: {choice.button_text}</Text>
-                                  {choice.player_dialogue_text ? <Text style={styles.flowDialogue}>Player says: {choice.player_dialogue_text}</Text> : null}
-                                  <Text style={[styles.flowTarget, target.isBroken && styles.flowWarning]}>{target.label}</Text>
-                                </Pressable>
-                              );
-                            })
-                          )}
-                        </View>
-                      );
-                    })
-                  )}
-                </View>
-              ) : null}
-              <TextInput value={nodeTitle} onChangeText={setNodeTitle} placeholder="Dialogue step title / internal label" placeholderTextColor={colors.muted} style={styles.input} />
-              <TextInput value={nodeKey} onChangeText={setNodeKey} placeholder="Optional node key" placeholderTextColor={colors.muted} style={styles.input} />
-              <NpcPicker label="Reuse NPC for this dialogue step" npcs={npcDefinitions} selectedId={nodeNpcId} onSelect={selectNodeDialogueNpc} />
-              <TextInput value={nodeNpcName} onChangeText={setNodeNpcName} placeholder="NPC name" placeholderTextColor={colors.muted} style={styles.input} />
-              <TextInput value={nodeNpcPortrait} onChangeText={setNodeNpcPortrait} placeholder="NPC portrait URL optional" placeholderTextColor={colors.muted} style={styles.input} />
-              <AdminImageUploadButton folder="dialogue-npcs" onUploaded={setNodeNpcPortrait} onMessage={setAdminMessage} />
-              <TextInput value={nodeBackgroundImage} onChangeText={setNodeBackgroundImage} placeholder="Background image URL optional" placeholderTextColor={colors.muted} style={styles.input} />
-              <AdminImageUploadButton folder="dialogue-backgrounds" onUploaded={setNodeBackgroundImage} onMessage={setAdminMessage} />
-              <TextInput value={nodeDialogue} onChangeText={setNodeDialogue} placeholder="NPC dialogue text" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
-              <TextInput value={nodeSortOrder} onChangeText={setNodeSortOrder} placeholder="Dialogue step order" placeholderTextColor={colors.muted} style={styles.input} />
-              <View style={styles.typeGrid}>
-                <Pressable style={[styles.typeButton, nodeIsStart && styles.typeSelected]} onPress={() => setNodeIsStart((value) => !value)}>
-                  <Text style={styles.typeText}>Start Step</Text>
-                </Pressable>
-                <Pressable style={[styles.typeButton, nodeIsEnding && styles.typeSelected]} onPress={() => setNodeIsEnding((value) => !value)}>
-                  <Text style={styles.typeText}>Ending Step</Text>
-                </Pressable>
-                <Pressable style={[styles.typeButton, nodeAllowEndChat && styles.typeSelected]} onPress={() => setNodeAllowEndChat((value) => !value)}>
-                  <Text style={styles.typeText}>Allow End Chat</Text>
-                </Pressable>
-                <Pressable style={[styles.typeButton, nodeEndCompletesEvent && styles.typeSelected]} onPress={() => setNodeEndCompletesEvent((value) => !value)}>
-                  <Text style={styles.typeText}>End Completes</Text>
-                </Pressable>
-              </View>
-              <Pressable style={styles.primaryButton} onPress={() => void saveDialogueNode()} disabled={!selectedDialogueEventId || !nodeTitle.trim()}>
-                <Text style={styles.primaryText}>{editingNode ? "Update Dialogue Step" : "Add Dialogue Step"}</Text>
-              </Pressable>
-              {editingNode ? <Pressable style={styles.secondaryButton} onPress={clearDialogueNodeForm}><Text style={styles.secondaryText}>Cancel Step Edit</Text></Pressable> : null}
-              {dialogueNodes.map((node) => {
-                const nodeChoices = dialogueChoices.filter((choice) => choice.node_id === node.id).sort((a, b) => a.sort_order - b.sort_order);
-                return (
-                <View key={node.id} style={[styles.storyCard, choiceNodeId === node.id && styles.storyCardActive]}>
-                  <Text style={styles.markerName}>{node.sort_order}. {node.title}{node.is_start ? " - Start" : ""}{node.is_ending ? " - Ending" : ""}</Text>
-                  <Text style={styles.copy}>{node.dialogue_text || "No dialogue yet."}</Text>
-                  {nodeChoices.length > 0 ? (
-                    <View style={styles.choicePreviewList}>
-                      {nodeChoices.map((choice) => (
-                        <Pressable key={choice.id} style={styles.choicePreview} onPress={() => editDialogueChoice(choice)}>
-                          <Text style={styles.choicePreviewTitle}>{choice.sort_order}. {choice.button_text}</Text>
-                          <Text style={styles.choicePreviewAction}>{choiceActionLabel(choice.action)}</Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ) : (
-                    <Text style={styles.debugLine}>No player choices yet.</Text>
-                  )}
-                  <View style={styles.modeRow}>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => selectDialogueNode(node.id)}><Text style={styles.secondaryText}>Select Step</Text></Pressable>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueNode(node)}><Text style={styles.secondaryText}>Edit Step</Text></Pressable>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => startChoiceForNode(node)}><Text style={styles.secondaryText}>Add Choice</Text></Pressable>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueNode(node.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
-                  </View>
-                </View>
-              )})}
-              <Text style={styles.selectedTitle}>Player Choices{selectedChoiceNode ? ` for ${selectedChoiceNode.title}` : ""}</Text>
-              <Text style={styles.copy}>{selectedChoiceNode ? "Create choices for the selected dialogue step. Choices can move the conversation, start battle, reward the player, or return to the map." : "Select a dialogue step first."}</Text>
-              <View style={styles.storyRoutePicker}>
-                {dialogueNodes.map((node) => (
-                  <Pressable key={node.id} style={[styles.routeChip, choiceNodeId === node.id && styles.routeChipActive]} onPress={() => selectDialogueNode(node.id)}>
-                    <Text style={styles.routeChipText}>{node.sort_order}. {node.title}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <TextInput value={choiceButtonText} onChangeText={setChoiceButtonText} placeholder="Player button text" placeholderTextColor={colors.muted} style={styles.input} />
-              <TextInput value={choicePlayerText} onChangeText={setChoicePlayerText} placeholder="Optional player dialogue text" placeholderTextColor={colors.muted} style={styles.input} />
-              <View style={styles.typeGrid}>
-                {(["go_to_node", "start_battle", "complete_event", "unlock_next_event", "give_reward", "end_conversation", "return_to_map"] as const).map((action) => (
-                  <Pressable key={action} style={[styles.typeButton, choiceAction === action && styles.typeSelected]} onPress={() => setChoiceAction(action)}>
-                    <Text style={styles.typeText}>{choiceActionLabel(action)}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              {choiceAction === "go_to_node" ? (
-                <View style={styles.storyRoutePicker}>
-                  {dialogueNodes.map((node) => (
-                    <Pressable key={node.id} style={[styles.routeChip, choiceNextNodeId === node.id && styles.routeChipActive]} onPress={() => setChoiceNextNodeId(node.id)}>
-                      <Text style={styles.routeChipText}>Next: {node.title}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-              {choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
-              {choiceAction === "give_reward" ? (
-                <>
-                  <TextInput value={choiceRewardXp} onChangeText={setChoiceRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
-                  <TextInput value={choiceRewardGold} onChangeText={setChoiceRewardGold} placeholder="Reward gold" placeholderTextColor={colors.muted} style={styles.input} />
-                  <ItemPicker label="Reward item" items={itemDefinitions} selectedId={choiceRewardItemId} onSelect={setChoiceRewardItemId} />
-                  <TextInput value={choiceRewardItemQuantity} onChangeText={setChoiceRewardItemQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
-                  <TextInput value={choiceRewardItem} onChangeText={setChoiceRewardItem} placeholder="Legacy reward item text optional" placeholderTextColor={colors.muted} style={styles.input} />
-                </>
-              ) : null}
-              {renderDialogueChoiceRequirementEditor()}
-              {renderDialogueAttributeCheckEditor()}
-              <TextInput value={choiceSortOrder} onChangeText={setChoiceSortOrder} placeholder="Choice order" placeholderTextColor={colors.muted} style={styles.input} />
-              <Pressable style={styles.primaryButton} onPress={() => void saveDialogueChoice()} disabled={!choiceNodeId || !choiceButtonText.trim()}>
-                <Text style={styles.primaryText}>{editingChoice ? "Update Player Choice" : "Add Player Choice"}</Text>
-              </Pressable>
-              {editingChoice ? <Pressable style={styles.secondaryButton} onPress={clearDialogueChoiceForm}><Text style={styles.secondaryText}>Cancel Choice Edit</Text></Pressable> : null}
-              {selectedNodeChoices.map((choice) => (
-                <View key={choice.id} style={styles.storyCard}>
-                  <Text style={styles.markerName}>{choice.button_text}</Text>
-                  <Text style={styles.copy}>{choiceActionLabel(choice.action)}{choice.player_dialogue_text ? ` - "${choice.player_dialogue_text}"` : ""}</Text>
-                  {(choice.requirement_type ?? "none") !== "none" ? <Text style={styles.debugLine}>{getRequirementSummary(choice, itemDefinitions)}</Text> : null}
-                  {getAttributeCheckSummary(choice) ? <Text style={styles.debugLine}>{getAttributeCheckSummary(choice)}</Text> : null}
-                  <View style={styles.modeRow}>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueChoice(choice)}><Text style={styles.secondaryText}>Edit Choice</Text></Pressable>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueChoice(choice.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
-                  </View>
-                </View>
-              ))}
-            </View>
+            {renderBranchingDialogueEditor()}
           </View> : null}
           {selectedMarker && editorMode === "Marker" ? (
             <View style={styles.adminActions}>
