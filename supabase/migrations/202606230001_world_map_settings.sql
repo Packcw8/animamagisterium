@@ -7,6 +7,8 @@ create table if not exists public.world_map_settings (
   draft_image_url text,
   notes text,
   aspect_ratio text not null default 'current',
+  width integer not null default 1800,
+  height integer not null default 1400,
   is_active boolean not null default true,
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamp with time zone not null default now(),
@@ -26,26 +28,26 @@ drop policy if exists "world_map_settings_admin_delete" on public.world_map_sett
 create policy "world_map_settings_read"
   on public.world_map_settings for select
   to authenticated
-  using (is_active = true or public.is_admin(auth.uid()));
+  using (is_active = true or public.is_map_admin());
 
 create policy "world_map_settings_admin_insert"
   on public.world_map_settings for insert
   to authenticated
-  with check (public.is_admin(auth.uid()));
+  with check (public.is_map_admin());
 
 create policy "world_map_settings_admin_update"
   on public.world_map_settings for update
   to authenticated
-  using (public.is_admin(auth.uid()))
-  with check (public.is_admin(auth.uid()));
+  using (public.is_map_admin())
+  with check (public.is_map_admin());
 
 create policy "world_map_settings_admin_delete"
   on public.world_map_settings for delete
   to authenticated
-  using (public.is_admin(auth.uid()));
+  using (public.is_map_admin());
 
-insert into public.world_map_settings (season_number, chapter_number, name, image_url, draft_image_url, notes, aspect_ratio, is_active)
-values (1, 1, 'The Forgotten Marches', null, null, 'Uses the bundled default map until an admin publishes a replacement image.', 'current', true)
+insert into public.world_map_settings (season_number, chapter_number, name, image_url, draft_image_url, notes, aspect_ratio, width, height, is_active)
+values (1, 1, 'The Forgotten Marches', null, null, 'Uses the bundled default map until an admin publishes a replacement image.', 'current', 1800, 1400, true)
 on conflict (season_number, chapter_number) do nothing;
 
 notify pgrst, 'reload schema';

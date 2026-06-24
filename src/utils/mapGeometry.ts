@@ -1,4 +1,5 @@
 export const MAP_SIZE = { width: 1800, height: 1400 };
+export type MapDimensions = typeof MAP_SIZE;
 
 export type PercentPoint = {
   x: number;
@@ -54,8 +55,8 @@ export function getPointOnRoute(points: PercentPoint[], progressPercent: number)
   return points[points.length - 1];
 }
 
-export function getRouteSegments(points: PercentPoint[]) {
-  const mapAspectRatio = MAP_SIZE.height / MAP_SIZE.width;
+export function getRouteSegments(points: PercentPoint[], dimensions: MapDimensions = MAP_SIZE) {
+  const mapAspectRatio = dimensions.height / dimensions.width;
 
   return points.slice(1).map((point, index) => {
     const previous = points[index];
@@ -66,7 +67,7 @@ export function getRouteSegments(points: PercentPoint[]) {
       left: previous.x,
       top: previous.y,
       length: Math.hypot(dx, dy * mapAspectRatio),
-      angle: Math.atan2(dy * MAP_SIZE.height, dx * MAP_SIZE.width) * (180 / Math.PI),
+      angle: Math.atan2(dy * dimensions.height, dx * dimensions.width) * (180 / Math.PI),
     };
   });
 }

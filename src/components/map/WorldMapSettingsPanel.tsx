@@ -9,12 +9,16 @@ type WorldMapSettingsPanelProps = {
   draftImageUrl: string;
   notes: string;
   aspectRatio: string;
+  width: string;
+  height: string;
   isActive: boolean;
   activeImageUrl: string | null;
   onChangeName: (value: string) => void;
   onChangeDraftImageUrl: (value: string) => void;
   onChangeNotes: (value: string) => void;
   onChangeAspectRatio: (value: string) => void;
+  onChangeWidth: (value: string) => void;
+  onChangeHeight: (value: string) => void;
   onToggleActive: () => void;
   onSaveDraft: () => void;
   onPublishDraft: () => void;
@@ -29,12 +33,16 @@ export function WorldMapSettingsPanel({
   draftImageUrl,
   notes,
   aspectRatio,
+  width,
+  height,
   isActive,
   activeImageUrl,
   onChangeName,
   onChangeDraftImageUrl,
   onChangeNotes,
   onChangeAspectRatio,
+  onChangeWidth,
+  onChangeHeight,
   onToggleActive,
   onSaveDraft,
   onPublishDraft,
@@ -60,6 +68,10 @@ export function WorldMapSettingsPanel({
       <TextInput value={draftImageUrl} onChangeText={onChangeDraftImageUrl} placeholder="Draft map image URL or uploaded image URL" placeholderTextColor={colors.muted} style={styles.input} />
       <AdminImageUploadButton folder="world-maps" onUploaded={onChangeDraftImageUrl} onMessage={onUploadMessage} />
       <TextInput value={aspectRatio} onChangeText={onChangeAspectRatio} placeholder="Aspect ratio note, example current or 4:3" placeholderTextColor={colors.muted} style={styles.input} />
+      <View style={styles.dimensionRow}>
+        <TextInput value={width} onChangeText={onChangeWidth} placeholder="Map width, example 1800" placeholderTextColor={colors.muted} style={[styles.input, styles.dimensionInput]} />
+        <TextInput value={height} onChangeText={onChangeHeight} placeholder="Map height, example 1400" placeholderTextColor={colors.muted} style={[styles.input, styles.dimensionInput]} />
+      </View>
       <TextInput value={notes} onChangeText={onChangeNotes} placeholder="Admin notes" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
 
       <View style={styles.previewBox}>
@@ -67,6 +79,7 @@ export function WorldMapSettingsPanel({
         {previewUrl ? <Image source={{ uri: previewUrl }} style={styles.previewImage} resizeMode="cover" /> : <View style={styles.previewFallback}><Text style={styles.copy}>Using bundled default map.</Text></View>}
         <Text style={styles.debugLine}>Published: {activeImageUrl ? "Custom image" : "Bundled default"}</Text>
         <Text style={styles.debugLine}>Draft: {draftImageUrl.trim() ? "Ready to publish" : "None"}</Text>
+        <Text style={styles.debugLine}>Canvas: {width || "1800"} x {height || "1400"}</Text>
       </View>
 
       <View style={styles.actionGrid}>
@@ -107,6 +120,15 @@ const styles = StyleSheet.create({
   },
   disabledAction: {
     opacity: 0.5,
+  },
+  dimensionInput: {
+    flex: 1,
+    minWidth: 140,
+  },
+  dimensionRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   headerText: {
     flex: 1,

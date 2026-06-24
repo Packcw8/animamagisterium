@@ -285,6 +285,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [worldMapDraftImage, setWorldMapDraftImage] = useState("");
   const [worldMapNotes, setWorldMapNotes] = useState("");
   const [worldMapAspectRatio, setWorldMapAspectRatio] = useState("current");
+  const [worldMapWidth, setWorldMapWidth] = useState("1800");
+  const [worldMapHeight, setWorldMapHeight] = useState("1400");
   const [worldMapActive, setWorldMapActive] = useState(true);
   const [newSeasonName, setNewSeasonName] = useState("");
   const [newSeasonDescription, setNewSeasonDescription] = useState("");
@@ -455,19 +457,29 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const actualIsAdmin = role === "admin";
   const isAdmin = actualIsAdmin && adminMapViewMode === "admin";
   const isAdminPlayerPreview = actualIsAdmin && adminMapViewMode === "player";
-  const scaledMapSize = useMemo(() => ({ width: mapSize.width * scale, height: mapSize.height * scale }), [scale]);
-
   const progressPercent = Math.min(100, Math.max(0, (distanceWalked / route.distance_required_meters) * 100));
   const orderedRoutes = useMemo(() => [...routes].sort(compareRoutes), [routes]);
   const adminRoutes = useMemo(() => orderedRoutes.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [orderedRoutes, selectedChapter, selectedSeason]);
   const adminWorldRoutes = useMemo(() => adminRoutes.filter((item) => !item.mini_map_id), [adminRoutes]);
   const adminMiniMapRoutes = useMemo(() => adminRoutes.filter((item) => item.mini_map_id === activeMiniMap?.id), [activeMiniMap?.id, adminRoutes]);
+  const activeWorldMapSetting = useMemo(
+    () => worldMapSettings.find((item) => Number(item.season_number) === selectedSeason && Number(item.chapter_number) === selectedChapter) ?? null,
+    [selectedChapter, selectedSeason, worldMapSettings],
+  );
+  const worldMapDimensions = useMemo(
+    () => ({
+      width: Math.max(320, Number(activeWorldMapSetting?.width) || mapSize.width),
+      height: Math.max(320, Number(activeWorldMapSetting?.height) || mapSize.height),
+    }),
+    [activeWorldMapSetting?.height, activeWorldMapSetting?.width],
+  );
+  const scaledMapSize = useMemo(() => ({ width: worldMapDimensions.width * scale, height: worldMapDimensions.height * scale }), [scale, worldMapDimensions.height, worldMapDimensions.width]);
   const activeRouteScopeRoutes = activeMiniMap ? adminMiniMapRoutes : adminWorldRoutes;
   const routeProgressPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
   const playerPosition = savedPlayerPosition ?? routeProgressPosition;
-  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminWorldRoutes : hasActiveRoute && !route.mini_map_id ? [route] : [], route.id), [adminWorldRoutes, hasActiveRoute, isAdmin, route]);
+  const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminWorldRoutes : hasActiveRoute && !route.mini_map_id ? [route] : [], route.id, worldMapDimensions), [adminWorldRoutes, hasActiveRoute, isAdmin, route, worldMapDimensions]);
   const miniMapRouteSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminMiniMapRoutes : hasActiveRoute && route.mini_map_id === activeMiniMap?.id ? [route] : [], route.id), [activeMiniMap?.id, adminMiniMapRoutes, hasActiveRoute, isAdmin, route]);
-  const draftSegments = useMemo(() => getRouteSegments(pathDraft).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [pathDraft]);
+  const draftSegments = useMemo(() => getRouteSegments(pathDraft, activeMiniMap ? mapSize : worldMapDimensions).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [activeMiniMap, pathDraft, worldMapDimensions]);
   const worldMarkers = useMemo(() => markers.filter((marker) => !marker.mini_map_id), [markers]);
   const miniMapMarkers = useMemo(() => markers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [markers, activeMiniMap?.id]);
   const miniMapSpawnMarker = useMemo(() => miniMapMarkers.find((marker) => marker.type === "Player Spawn") ?? null, [miniMapMarkers]);
@@ -481,10 +493,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
   const adminMapEvents = useMemo(() => mapEvents.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [mapEvents, selectedChapter, selectedSeason]);
-  const activeWorldMapSetting = useMemo(
-    () => worldMapSettings.find((item) => Number(item.season_number) === selectedSeason && Number(item.chapter_number) === selectedChapter) ?? null,
-    [selectedChapter, selectedSeason, worldMapSettings],
-  );
   const publishedWorldMapUri = resolveMapImageUri(activeWorldMapSetting?.image_url);
   const overworldImageSource = publishedWorldMapUri ? { uri: publishedWorldMapUri } : forgottenMarches;
   const availableSeasons = useMemo(() => mergeSeasonRecords(mapSeasons, getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents, worldMapSettings].flat(), "season_number")), [legendItems, mapEvents, mapSeasons, markers, miniMaps, routes, tutorialSteps, worldMapSettings]);
@@ -745,6 +753,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setWorldMapDraftImage(setting?.draft_image_url ?? "");
     setWorldMapNotes(setting?.notes ?? "");
     setWorldMapAspectRatio(setting?.aspect_ratio ?? "current");
+    setWorldMapWidth(String(setting?.width ?? mapSize.width));
+    setWorldMapHeight(String(setting?.height ?? mapSize.height));
     setWorldMapActive(setting?.is_active ?? true);
   }
 
@@ -759,6 +769,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         draft_image_url: nextValues?.draft_image_url ?? worldMapDraftImage,
         notes: nextValues?.notes ?? worldMapNotes,
         aspect_ratio: nextValues?.aspect_ratio ?? worldMapAspectRatio,
+        width: nextValues?.width ?? (Number(worldMapWidth) || mapSize.width),
+        height: nextValues?.height ?? (Number(worldMapHeight) || mapSize.height),
         is_active: nextValues?.is_active ?? worldMapActive,
       });
       setWorldMapSettings((current) => [saved, ...current.filter((item) => item.id !== saved.id)].sort((a, b) => a.season_number - b.season_number || a.chapter_number - b.chapter_number));
@@ -4690,12 +4702,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               draftImageUrl={worldMapDraftImage}
               notes={worldMapNotes}
               aspectRatio={worldMapAspectRatio}
+              width={worldMapWidth}
+              height={worldMapHeight}
               isActive={worldMapActive}
               activeImageUrl={publishedWorldMapUri}
               onChangeName={setWorldMapName}
               onChangeDraftImageUrl={setWorldMapDraftImage}
               onChangeNotes={setWorldMapNotes}
               onChangeAspectRatio={setWorldMapAspectRatio}
+              onChangeWidth={setWorldMapWidth}
+              onChangeHeight={setWorldMapHeight}
               onToggleActive={() => setWorldMapActive((value) => !value)}
               onSaveDraft={() => void saveWorldMapDraftSettings()}
               onPublishDraft={() => void publishWorldMapDraft()}
@@ -5362,9 +5378,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   );
 }
 
-function getRouteSegmentsForRoutes(routes: MapRoute[], activeRouteId: string) {
+function getRouteSegmentsForRoutes(routes: MapRoute[], activeRouteId: string, dimensions = mapSize) {
   return routes.flatMap((mapRoute) =>
-    getRouteSegments(mapRoute.path_points).map((segment, index) => ({
+    getRouteSegments(mapRoute.path_points, dimensions).map((segment, index) => ({
       ...segment,
       id: `${mapRoute.id}-${index}`,
       isActive: mapRoute.id === activeRouteId,

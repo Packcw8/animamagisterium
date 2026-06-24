@@ -534,6 +534,8 @@ export type Tables = {
     draft_image_url: string | null;
     notes: string | null;
     aspect_ratio: string;
+    width: number;
+    height: number;
     is_active: boolean;
     created_by: string | null;
     created_at: string;

@@ -262,6 +262,8 @@ export async function saveWorldMapSetting(input: Partial<WorldMapSetting>) {
     draft_image_url: input.draft_image_url?.trim() || null,
     notes: input.notes?.trim() || null,
     aspect_ratio: input.aspect_ratio?.trim() || "current",
+    width: Math.max(320, Number(input.width) || 1800),
+    height: Math.max(320, Number(input.height) || 1400),
     is_active: input.is_active ?? true,
     created_by: input.id ? input.created_by ?? user?.id ?? null : user?.id ?? null,
     updated_at: new Date().toISOString(),
