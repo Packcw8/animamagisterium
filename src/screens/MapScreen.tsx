@@ -51,7 +51,7 @@ import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { clamp, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, roundPercent } from "../utils/mapGeometry";
-import { choiceActionLabel, evaluateDialogueChoiceRequirement, eventTriggerModeName, eventTypeName, formatResourceName, getChoiceTargetSummary, getRequirementSummary, requirementTypeLabel } from "../utils/dialogueFlow";
+import { choiceActionLabel, evaluateDialogueChoiceRequirement, eventTriggerModeName, eventTypeName, formatAttributeName, formatResourceName, getAttributeCheckSummary, getChoiceTargetSummary, getRequirementSummary, requirementTypeLabel, rollDialogueAttributeCheck } from "../utils/dialogueFlow";
 import { buildCreateMarkerInput, buildMarkerSettingsPayload, type MarkerPayloadState } from "../utils/markerPayload";
 import {
   canPlayerSeeStoryMarker,
@@ -146,6 +146,7 @@ import {
   saveRouteProgress,
   saveWorldMapSetting,
   saveTutorialStep,
+  recordPlayerAttributeCheck,
   setCurrentRoute,
   sellMarketInventoryItem,
   TutorialStep,
@@ -172,6 +173,7 @@ const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle
 const dialogueRequirementTypes = ["none", "gold", "item", "story_flag", "completed_marker", "completed_event", "tutorial_step", "ability_known", "attribute_level"] as const;
 const dialogueRequirementOperators = [">=", ">", "=", "<=", "<"] as const;
 const attributeRequirementKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
+const dialogueCheckAttributes = attributeRequirementKeys;
 const eventTypeLabels: Record<(typeof eventTypes)[number], string> = {
   dialogue: "Dialogue Event",
   battle: "Battle Event",
@@ -453,6 +455,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [choiceHideIfUnmet, setChoiceHideIfUnmet] = useState(false);
   const [choiceDisableIfUnmet, setChoiceDisableIfUnmet] = useState(true);
   const [choiceRequirementFailureMessage, setChoiceRequirementFailureMessage] = useState("");
+  const [choiceCheckEnabled, setChoiceCheckEnabled] = useState(false);
+  const [choiceCheckAttribute, setChoiceCheckAttribute] = useState<NonNullable<StoryDialogueChoice["check_attribute"]>>("charisma");
+  const [choiceCheckDc, setChoiceCheckDc] = useState("10");
+  const [choiceCheckSuccessNodeId, setChoiceCheckSuccessNodeId] = useState<string | null>(null);
+  const [choiceCheckFailureNodeId, setChoiceCheckFailureNodeId] = useState<string | null>(null);
+  const [choiceCheckSuccessText, setChoiceCheckSuccessText] = useState("");
+  const [choiceCheckFailureText, setChoiceCheckFailureText] = useState("");
   const [choiceSortOrder, setChoiceSortOrder] = useState("0");
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [selectedSeason, setSelectedSeason] = useState(1);
@@ -2967,6 +2976,37 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setDialogueLog((current) => [`You: ${choice.player_dialogue_text}`, ...current].slice(0, 4));
     }
 
+    if (choice.check_enabled && choice.check_attribute) {
+      const checkResult = rollDialogueAttributeCheck(choice, character);
+      if (checkResult) {
+        try {
+          await recordPlayerAttributeCheck({
+            characterId: character.id,
+            dialogueNodeId: activeNodeId,
+            choiceId: choice.id,
+            attributeUsed: checkResult.attribute,
+            attributeValue: checkResult.attributeValue,
+            dc: checkResult.dc,
+            rollValue: checkResult.roll,
+            finalResult: checkResult.total,
+            succeeded: checkResult.succeeded,
+          });
+        } catch (error) {
+          console.warn("[dialogue] unable to save attribute check", error);
+        }
+
+        setDialogueLog((current) => [...checkResult.resultLines, ...current].slice(0, 8));
+        const targetNodeId = checkResult.succeeded ? choice.check_success_node_id : choice.check_failure_node_id;
+        if (targetNodeId && dialogueNodes.some((node) => node.id === targetNodeId)) {
+          setActiveNodeId(targetNodeId);
+          return;
+        }
+        if (!checkResult.succeeded) {
+          return;
+        }
+      }
+    }
+
     if (choice.action === "go_to_node") {
       if (choice.next_node_id && dialogueNodes.some((node) => node.id === choice.next_node_id)) {
         setActiveNodeId(choice.next_node_id);
@@ -3390,6 +3430,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         hide_if_unmet: choice.hide_if_unmet ?? false,
         disable_if_unmet: choice.disable_if_unmet ?? true,
         requirement_failure_message: choice.requirement_failure_message,
+        check_enabled: choice.check_enabled ?? false,
+        check_attribute: choice.check_attribute,
+        check_dc: choice.check_dc ?? 10,
+        check_success_node_id: choice.check_success_node_id ? nodeIdMap.get(choice.check_success_node_id) ?? null : null,
+        check_failure_node_id: choice.check_failure_node_id ? nodeIdMap.get(choice.check_failure_node_id) ?? null : null,
+        check_success_text: choice.check_success_text,
+        check_failure_text: choice.check_failure_text,
         sort_order: choice.sort_order,
       });
     }
@@ -3518,6 +3565,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceHideIfUnmet(choice.hide_if_unmet ?? false);
     setChoiceDisableIfUnmet(choice.disable_if_unmet ?? true);
     setChoiceRequirementFailureMessage(choice.requirement_failure_message ?? "");
+    setChoiceCheckEnabled(choice.check_enabled ?? false);
+    setChoiceCheckAttribute(choice.check_attribute ?? "charisma");
+    setChoiceCheckDc(String(choice.check_dc ?? 10));
+    setChoiceCheckSuccessNodeId(choice.check_success_node_id ?? null);
+    setChoiceCheckFailureNodeId(choice.check_failure_node_id ?? null);
+    setChoiceCheckSuccessText(choice.check_success_text ?? "");
+    setChoiceCheckFailureText(choice.check_failure_text ?? "");
     setChoiceSortOrder(String(choice.sort_order));
   }
 
@@ -3549,6 +3603,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceHideIfUnmet(false);
     setChoiceDisableIfUnmet(true);
     setChoiceRequirementFailureMessage("");
+    setChoiceCheckEnabled(false);
+    setChoiceCheckAttribute("charisma");
+    setChoiceCheckDc("10");
+    setChoiceCheckSuccessNodeId(null);
+    setChoiceCheckFailureNodeId(null);
+    setChoiceCheckSuccessText("");
+    setChoiceCheckFailureText("");
     setChoiceSortOrder(String(choiceNodeId ? getNextChoiceOrder(dialogueChoices, choiceNodeId) : 0));
   }
 
@@ -3599,6 +3660,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         hide_if_unmet: choiceHideIfUnmet,
         disable_if_unmet: choiceDisableIfUnmet,
         requirement_failure_message: choiceRequirementFailureMessage.trim() || null,
+        check_enabled: choiceCheckEnabled,
+        check_attribute: choiceCheckEnabled ? choiceCheckAttribute : null,
+        check_dc: Math.max(1, Number(choiceCheckDc) || 10),
+        check_success_node_id: choiceCheckEnabled ? choiceCheckSuccessNodeId : null,
+        check_failure_node_id: choiceCheckEnabled ? choiceCheckFailureNodeId : null,
+        check_success_text: choiceCheckSuccessText.trim() || null,
+        check_failure_text: choiceCheckFailureText.trim() || null,
         sort_order: Number(choiceSortOrder) || 0,
       };
       const saved = editingChoice ? await updateDialogueChoice(editingChoice.id, input) : await createDialogueChoice({ ...input, node_id: choiceNodeId });
@@ -3831,6 +3899,68 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     );
   }
 
+  function renderDialogueAttributeCheckEditor() {
+    return (
+      <View style={styles.storyEditor}>
+        <Text style={styles.selectedTitle}>Attribute Check</Text>
+        <Text style={styles.copy}>Optional d20 + attribute roll. Success and failure can branch to different dialogue steps.</Text>
+        <Pressable style={[styles.secondaryButton, choiceCheckEnabled && styles.typeSelected]} onPress={() => setChoiceCheckEnabled((value) => !value)}>
+          <Text style={styles.secondaryText}>Check Enabled: {choiceCheckEnabled ? "Yes" : "No"}</Text>
+        </Pressable>
+        {choiceCheckEnabled ? (
+          <>
+            <View style={styles.storyRoutePicker}>
+              {dialogueCheckAttributes.map((attribute) => (
+                <Pressable key={attribute} style={[styles.routeChip, choiceCheckAttribute === attribute && styles.routeChipActive]} onPress={() => setChoiceCheckAttribute(attribute)}>
+                  <Text style={styles.routeChipText}>{formatAttributeName(attribute)}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput value={choiceCheckDc} onChangeText={setChoiceCheckDc} placeholder="Difficulty Class (DC), example 15" placeholderTextColor={colors.muted} style={styles.input} />
+            <Text style={styles.copy}>Success branch</Text>
+            <View style={styles.storyRoutePicker}>
+              <Pressable style={[styles.routeChip, !choiceCheckSuccessNodeId && styles.routeChipActive]} onPress={() => setChoiceCheckSuccessNodeId(null)}>
+                <Text style={styles.routeChipText}>Continue action</Text>
+              </Pressable>
+              {dialogueNodes.map((node) => (
+                <Pressable key={node.id} style={[styles.routeChip, choiceCheckSuccessNodeId === node.id && styles.routeChipActive]} onPress={() => setChoiceCheckSuccessNodeId(node.id)}>
+                  <Text style={styles.routeChipText}>{node.sort_order}. {node.title}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <Text style={styles.copy}>Failure branch</Text>
+            <View style={styles.storyRoutePicker}>
+              <Pressable style={[styles.routeChip, !choiceCheckFailureNodeId && styles.routeChipActive]} onPress={() => setChoiceCheckFailureNodeId(null)}>
+                <Text style={styles.routeChipText}>Stay here</Text>
+              </Pressable>
+              {dialogueNodes.map((node) => (
+                <Pressable key={node.id} style={[styles.routeChip, choiceCheckFailureNodeId === node.id && styles.routeChipActive]} onPress={() => setChoiceCheckFailureNodeId(node.id)}>
+                  <Text style={styles.routeChipText}>{node.sort_order}. {node.title}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput value={choiceCheckSuccessText} onChangeText={setChoiceCheckSuccessText} placeholder="Success text, example: Success! The guard steps aside." placeholderTextColor={colors.muted} style={styles.input} />
+            <TextInput value={choiceCheckFailureText} onChangeText={setChoiceCheckFailureText} placeholder="Failure text, example: Failure. The guard refuses." placeholderTextColor={colors.muted} style={styles.input} />
+          </>
+        ) : null}
+      </View>
+    );
+  }
+
+  function applyLegendStyleToMarker(item: MarkerLegendItem) {
+    setDraftType(item.marker_type);
+    setMarkerIconLabel(item.icon_label ?? "");
+    setMarkerIconImage(item.icon_image_url ?? "");
+    setMarkerIconColor(item.icon_color ?? "");
+    if (!draftTitle.trim()) {
+      setDraftTitle(item.title);
+    }
+    if (!draftDescription.trim() && item.description) {
+      setDraftDescription(item.description);
+    }
+    setAdminMessage(`Applied legend style: ${item.title}.`);
+  }
+
   function renderBranchingDialogueEditor() {
     return (
       <View style={styles.storyEditor}>
@@ -3973,6 +4103,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </>
         ) : null}
         {renderDialogueChoiceRequirementEditor()}
+        {renderDialogueAttributeCheckEditor()}
         <TextInput value={choiceSortOrder} onChangeText={setChoiceSortOrder} placeholder="Choice order" placeholderTextColor={colors.muted} style={styles.input} />
         <Pressable style={styles.primaryButton} onPress={() => void saveDialogueChoice()} disabled={!choiceNodeId || !choiceButtonText.trim()}>
           <Text style={styles.primaryText}>{editingChoice ? "Update Player Choice" : "Add Player Choice"}</Text>
@@ -3983,6 +4114,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <Text style={styles.markerName}>{choice.button_text}</Text>
             <Text style={styles.copy}>{choiceActionLabel(choice.action)}{choice.player_dialogue_text ? ` - "${choice.player_dialogue_text}"` : ""}</Text>
             {(choice.requirement_type ?? "none") !== "none" ? <Text style={styles.debugLine}>{getRequirementSummary(choice, itemDefinitions)}</Text> : null}
+            {getAttributeCheckSummary(choice) ? <Text style={styles.debugLine}>{getAttributeCheckSummary(choice)}</Text> : null}
             <View style={styles.modeRow}>
               <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueChoice(choice)}><Text style={styles.secondaryText}>Edit Choice</Text></Pressable>
               <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueChoice(choice.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
@@ -4476,6 +4608,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             {editorMode === "Marker" ? renderReuseStoryMarkerPanel() : null}
             {editorMode === "Marker" ? <MiniMapMarkerAdminForm
               activeSectionMarkerTypes={miniMapMarkerTypes}
+              legendItems={adminLegendItems}
+              onApplyLegendStyle={applyLegendStyleToMarker}
               draftType={draftType}
               setDraftType={setDraftType}
               draftTitle={draftTitle}
@@ -4958,6 +5092,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           {editorMode === "Marker" && ["World Markers", "Area/Town Markers"].includes(adminSection) ? (
             <>
               <MarkerTypeSelector types={activeSectionMarkerTypes} selectedType={draftType} onSelectType={setDraftType} />
+              <LegendStylePicker items={adminLegendItems} onApply={applyLegendStyleToMarker} />
               <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
@@ -5492,6 +5627,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 </>
               ) : null}
               {renderDialogueChoiceRequirementEditor()}
+              {renderDialogueAttributeCheckEditor()}
               <TextInput value={choiceSortOrder} onChangeText={setChoiceSortOrder} placeholder="Choice order" placeholderTextColor={colors.muted} style={styles.input} />
               <Pressable style={styles.primaryButton} onPress={() => void saveDialogueChoice()} disabled={!choiceNodeId || !choiceButtonText.trim()}>
                 <Text style={styles.primaryText}>{editingChoice ? "Update Player Choice" : "Add Player Choice"}</Text>
@@ -5502,6 +5638,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <Text style={styles.markerName}>{choice.button_text}</Text>
                   <Text style={styles.copy}>{choiceActionLabel(choice.action)}{choice.player_dialogue_text ? ` - "${choice.player_dialogue_text}"` : ""}</Text>
                   {(choice.requirement_type ?? "none") !== "none" ? <Text style={styles.debugLine}>{getRequirementSummary(choice, itemDefinitions)}</Text> : null}
+                  {getAttributeCheckSummary(choice) ? <Text style={styles.debugLine}>{getAttributeCheckSummary(choice)}</Text> : null}
                   <View style={styles.modeRow}>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueChoice(choice)}><Text style={styles.secondaryText}>Edit Choice</Text></Pressable>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueChoice(choice.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
@@ -5606,8 +5743,43 @@ function parseChoices(value: string): MapEvent["choices"] {
     });
 }
 
+function LegendStylePicker({ items, onApply }: { items: MarkerLegendItem[]; onApply: (item: MarkerLegendItem) => void }) {
+  const activeItems = items.filter((item) => item.is_active).sort((a, b) => a.sort_order - b.sort_order);
+
+  if (activeItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Reuse Legend Marker Style</Text>
+      <Text style={styles.copy}>Apply an existing legend icon, label, color, and marker type to this marker draft.</Text>
+      <View style={styles.storyRoutePicker}>
+        {activeItems.map((item) => (
+          <Pressable key={item.id} style={styles.routeChip} onPress={() => onApply(item)}>
+            <View style={styles.legendTemplateChip}>
+              <MarkerIcon
+                marker={{
+                  type: item.marker_type,
+                  icon_label: item.icon_label,
+                  icon_image_url: item.icon_image_url,
+                  icon_color: item.icon_color,
+                }}
+                compact
+              />
+              <Text style={styles.routeChipText}>{item.title}</Text>
+            </View>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function MiniMapMarkerAdminForm({
   activeSectionMarkerTypes,
+  legendItems,
+  onApplyLegendStyle,
   draftType,
   setDraftType,
   draftTitle,
@@ -5710,6 +5882,8 @@ function MiniMapMarkerAdminForm({
   onRemoveMarketItem,
 }: {
   activeSectionMarkerTypes: readonly string[];
+  legendItems: MarkerLegendItem[];
+  onApplyLegendStyle: (item: MarkerLegendItem) => void;
   draftType: string;
   setDraftType: (value: string) => void;
   draftTitle: string;
@@ -5821,6 +5995,7 @@ function MiniMapMarkerAdminForm({
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Create / Edit Mini Map Marker</Text>
       <MarkerTypeSelector types={activeSectionMarkerTypes} selectedType={draftType} onSelectType={setDraftType} />
+      <LegendStylePicker items={legendItems} onApply={onApplyLegendStyle} />
       <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
@@ -6721,6 +6896,11 @@ const styles = StyleSheet.create({
   },
   markerTableInfo: {
     gap: 4,
+  },
+  legendTemplateChip: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
   },
   markerTableActions: {
     flexDirection: "row",

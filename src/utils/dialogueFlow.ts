@@ -21,6 +21,15 @@ export type DialogueRequirementContext = {
   storyFlags: Map<string, boolean>;
   knownAbilities: AbilityDefinition[];
 };
+export type DialogueAttributeCheckResult = {
+  attribute: NonNullable<StoryDialogueChoice["check_attribute"]>;
+  attributeValue: number;
+  dc: number;
+  roll: number;
+  total: number;
+  succeeded: boolean;
+  resultLines: string[];
+};
 
 type DialogueSceneStateInput = {
   event: MapEvent;
@@ -185,6 +194,55 @@ export function getRequirementSummary(choice: StoryDialogueChoice, itemDefinitio
     return `Requires ${label} ${choice.requirement_operator ?? ">="} ${getRequirementAmount(choice)}`;
   }
   return `Requires ${requirementTypeLabel(type)}: ${label}`;
+}
+
+export function hasDialogueAttributeCheck(choice: StoryDialogueChoice) {
+  return Boolean(choice.check_enabled && choice.check_attribute);
+}
+
+export function getAttributeCheckSummary(choice: StoryDialogueChoice) {
+  if (!hasDialogueAttributeCheck(choice)) {
+    return null;
+  }
+
+  return `[${formatAttributeName(choice.check_attribute)} Check] DC ${Number(choice.check_dc ?? 10)}`;
+}
+
+export function rollDialogueAttributeCheck(choice: StoryDialogueChoice, character: CharacterWithDetails): DialogueAttributeCheckResult | null {
+  if (!choice.check_enabled || !choice.check_attribute) {
+    return null;
+  }
+
+  const attribute = choice.check_attribute;
+  const attributeValue = Number(character.attributes?.[attribute] ?? 0);
+  const dc = Math.max(1, Number(choice.check_dc) || 10);
+  const roll = Math.floor(Math.random() * 20) + 1;
+  const total = roll + attributeValue;
+  const succeeded = total >= dc;
+  const attributeName = formatAttributeName(attribute);
+
+  return {
+    attribute,
+    attributeValue,
+    dc,
+    roll,
+    total,
+    succeeded,
+    resultLines: [
+      `Rolling ${attributeName}...`,
+      `d20: ${roll}`,
+      `${attributeName}: +${attributeValue}`,
+      `Total: ${total} vs DC ${dc}`,
+      succeeded ? (choice.check_success_text?.trim() || "Success!") : (choice.check_failure_text?.trim() || "Failure."),
+    ],
+  };
+}
+
+export function formatAttributeName(attribute: string | null | undefined) {
+  if (!attribute) {
+    return "Attribute";
+  }
+  return attribute.charAt(0).toUpperCase() + attribute.slice(1);
 }
 
 export function requirementTypeLabel(type: StoryDialogueChoice["requirement_type"]) {

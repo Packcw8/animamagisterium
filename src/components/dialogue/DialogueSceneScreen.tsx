@@ -5,7 +5,7 @@ import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
 import { resolveEnemyImageUri, type NpcDefinition } from "../../services/combatAdminService";
 import type { MapEvent, StoryDialogueChoice, StoryDialogueNode } from "../../services/mapService";
-import { getDialogueSceneState, type DialogueChoiceAvailability } from "../../utils/dialogueFlow";
+import { getAttributeCheckSummary, getDialogueSceneState, type DialogueChoiceAvailability } from "../../utils/dialogueFlow";
 
 type DialogueSceneScreenProps = {
   event: MapEvent;
@@ -79,6 +79,7 @@ export function DialogueSceneScreen({
                     onPress={() => onChoice(choice)}
                     disabled={availability.disabled}
                   >
+                    {getAttributeCheckSummary(choice) ? <Text style={styles.checkBadge}>{getAttributeCheckSummary(choice)}</Text> : null}
                     <Text style={[styles.primaryText, availability.disabled && styles.lockedText]}>{choice.button_text}</Text>
                     {availability.disabled && availability.message ? <Text style={styles.requirementText}>{availability.message}</Text> : null}
                   </Pressable>
@@ -235,6 +236,14 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 4,
     textAlign: "center",
+  },
+  checkBadge: {
+    color: colors.blue,
+    fontSize: 12,
+    fontWeight: "900",
+    marginBottom: 4,
+    textAlign: "center",
+    textTransform: "uppercase",
   },
   secondaryButton: {
     minHeight: 48,

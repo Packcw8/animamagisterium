@@ -26,6 +26,7 @@ export type StoryDialogueNode = Tables["story_dialogue_nodes"];
 export type StoryDialogueChoice = Tables["story_dialogue_choices"];
 export type PlayerStoryFlag = Tables["player_story_flags"];
 export type PlayerTutorialCompletion = Tables["player_tutorial_completions"];
+export type PlayerAttributeCheck = Tables["player_attribute_checks"];
 export type Role = Tables["profiles"]["role"];
 
 export const fallbackRoute: MapRoute = {
@@ -1498,6 +1499,50 @@ export async function updateDialogueChoice(choiceId: string, values: Partial<Omi
   }
 
   return data as StoryDialogueChoice;
+}
+
+export async function recordPlayerAttributeCheck(input: {
+  characterId: string;
+  dialogueNodeId: string | null;
+  choiceId: string;
+  attributeUsed: NonNullable<StoryDialogueChoice["check_attribute"]>;
+  attributeValue: number;
+  dc: number;
+  rollValue: number;
+  finalResult: number;
+  succeeded: boolean;
+}) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to record attribute checks.");
+  }
+
+  const { data, error } = await supabase
+    .from("player_attribute_checks")
+    .insert({
+      user_id: user.id,
+      character_id: input.characterId,
+      dialogue_node_id: input.dialogueNodeId,
+      choice_id: input.choiceId,
+      attribute_used: input.attributeUsed,
+      attribute_value: input.attributeValue,
+      dc: input.dc,
+      roll_value: input.rollValue,
+      final_result: input.finalResult,
+      succeeded: input.succeeded,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as PlayerAttributeCheck;
 }
 
 export async function deleteDialogueChoice(choiceId: string) {

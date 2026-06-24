@@ -437,6 +437,13 @@ export type Tables = {
     hide_if_unmet: boolean;
     disable_if_unmet: boolean;
     requirement_failure_message: string | null;
+    check_enabled: boolean;
+    check_attribute: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | null;
+    check_dc: number;
+    check_success_node_id: string | null;
+    check_failure_node_id: string | null;
+    check_success_text: string | null;
+    check_failure_text: string | null;
     sort_order: number;
     created_at: string;
     updated_at: string;
@@ -457,6 +464,20 @@ export type Tables = {
     character_id: string;
     tutorial_step_id: string;
     completed_at: string;
+  };
+  player_attribute_checks: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    dialogue_node_id: string | null;
+    choice_id: string;
+    attribute_used: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit";
+    attribute_value: number;
+    dc: number;
+    roll_value: number;
+    final_result: number;
+    succeeded: boolean;
+    created_at: string;
   };
   route_progress: {
     id: string;
