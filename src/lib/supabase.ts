@@ -401,7 +401,8 @@ export type Tables = {
   };
   story_dialogue_nodes: {
     id: string;
-    event_id: string;
+    event_id: string | null;
+    marker_id: string | null;
     node_key: string;
     title: string;
     npc_name: string | null;
@@ -422,7 +423,7 @@ export type Tables = {
     node_id: string;
     button_text: string;
     player_dialogue_text: string | null;
-    action: "go_to_node" | "start_battle" | "complete_event" | "unlock_next_event" | "give_reward" | "end_conversation" | "return_to_map";
+    action: "go_to_node" | "start_battle" | "start_quest" | "complete_event" | "unlock_next_event" | "give_reward" | "end_conversation" | "return_to_map";
     next_node_id: string | null;
     battle_event_id: string | null;
     reward_xp: number;

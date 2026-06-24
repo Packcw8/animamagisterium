@@ -1423,6 +1423,21 @@ export async function getDialogueNodes(eventId: string) {
   return (data ?? []) as StoryDialogueNode[];
 }
 
+export async function getDialogueNodesForMarker(markerId: string) {
+  const { data, error } = await supabase
+    .from("story_dialogue_nodes")
+    .select("*")
+    .eq("marker_id", markerId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as StoryDialogueNode[];
+}
+
 export async function getDialogueChoices(nodeIds: string[]) {
   if (nodeIds.length === 0) {
     return [];

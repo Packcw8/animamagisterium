@@ -10,6 +10,11 @@ type Props = {
   events: MapEvent[];
   selectedEventId: string | null;
   selectedEvent: MapEvent | null;
+  title?: string;
+  description?: string;
+  emptyText?: string;
+  showEventPicker?: boolean;
+  sourceSummary?: string | null;
   nodes: StoryDialogueNode[];
   choices: StoryDialogueChoice[];
   itemDefinitions: ItemDefinition[];
@@ -24,6 +29,11 @@ export function DialogueTreeAdmin({
   events,
   selectedEventId,
   selectedEvent,
+  title,
+  description,
+  emptyText,
+  showEventPicker = true,
+  sourceSummary,
   nodes,
   choices,
   itemDefinitions,
@@ -42,28 +52,32 @@ export function DialogueTreeAdmin({
 
   return (
     <View style={styles.storyEditor}>
-      <Text style={styles.selectedTitle}>Dialogue Tree Admin</Text>
-      <Text style={styles.copy}>Manage branching conversations, requirements, checks, and rewards from one place.</Text>
-      <TextInput value={search} onChangeText={setSearch} placeholder="Search dialogue trees" placeholderTextColor={colors.muted} style={styles.input} />
-      <View style={styles.storyRoutePicker}>
-        {filteredEvents.map((event) => (
-          <Pressable key={event.id} style={[styles.routeChip, selectedEventId === event.id && styles.routeChipActive]} onPress={() => onSelectEvent(event.id)}>
-            <Text style={styles.routeChipText}>{event.title}</Text>
-            <Text style={styles.debugLine}>S{event.season_number} / C{event.chapter_number} / {eventTypeName(event.event_type)}</Text>
-          </Pressable>
-        ))}
-      </View>
+      <Text style={styles.selectedTitle}>{title ?? "Dialogue Tree Admin"}</Text>
+      <Text style={styles.copy}>{description ?? "Manage branching conversations, requirements, checks, and rewards from one place."}</Text>
+      {showEventPicker ? (
+        <>
+          <TextInput value={search} onChangeText={setSearch} placeholder="Search dialogue trees" placeholderTextColor={colors.muted} style={styles.input} />
+          <View style={styles.storyRoutePicker}>
+            {filteredEvents.map((event) => (
+              <Pressable key={event.id} style={[styles.routeChip, selectedEventId === event.id && styles.routeChipActive]} onPress={() => onSelectEvent(event.id)}>
+                <Text style={styles.routeChipText}>{event.title}</Text>
+                <Text style={styles.debugLine}>S{event.season_number} / C{event.chapter_number} / {eventTypeName(event.event_type)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : null}
       {selectedEvent ? (
         <View style={styles.storyCard}>
           <Text style={styles.selectedTitle}>Editing: {selectedEvent.title}</Text>
-          <Text style={styles.copy}>Season {selectedEvent.season_number} / Chapter {selectedEvent.chapter_number}</Text>
+          <Text style={styles.copy}>{sourceSummary ?? `Season ${selectedEvent.season_number} / Chapter ${selectedEvent.chapter_number}`}</Text>
           <Text style={styles.copy}>{nodes.length} dialogue steps - {choices.length} player choices</Text>
           <Text style={styles.debugLine}>Status: Draft workflow foundation. Validation and preview are active; publish gating can be added after a published flag migration.</Text>
         </View>
       ) : (
-        <Text style={styles.adminMessage}>Select a dialogue, clue, or reward event before adding steps.</Text>
+        <Text style={styles.adminMessage}>{emptyText ?? "Select a dialogue, clue, or reward event before adding steps."}</Text>
       )}
-      <Pressable style={styles.secondaryButton} onPress={onStartNewNode} disabled={!selectedEventId}>
+      <Pressable style={styles.secondaryButton} onPress={onStartNewNode} disabled={!selectedEvent}>
         <Text style={styles.secondaryText}>New Dialogue Step</Text>
       </Pressable>
       {selectedEvent ? (

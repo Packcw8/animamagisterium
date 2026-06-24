@@ -1,5 +1,5 @@
 import { distance as turfDistance } from "@turf/turf";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButton";
 import { AdminCollapsibleSection } from "../components/admin/AdminCollapsibleSection";
@@ -126,6 +126,7 @@ import {
   getDialogueChoices,
   getClaimedDialogueRewardChoiceIds,
   getDialogueNodes,
+  getDialogueNodesForMarker,
   getEventCompletions,
   getStoryMarkerCompletions,
   getRouteProgress,
@@ -439,6 +440,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [reuseEventId, setReuseEventId] = useState<string | null>(null);
   const [reuseEventOpen, setReuseEventOpen] = useState(false);
   const [selectedDialogueEventId, setSelectedDialogueEventId] = useState<string | null>(null);
+  const [selectedDialogueMarkerId, setSelectedDialogueMarkerId] = useState<string | null>(null);
   const [editingNode, setEditingNode] = useState<StoryDialogueNode | null>(null);
   const [editingChoice, setEditingChoice] = useState<StoryDialogueChoice | null>(null);
   const [nodeTitle, setNodeTitle] = useState("");
@@ -608,6 +610,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     : miniMapMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
+  const selectedDialogueMarker = useMemo(() => markers.find((marker) => marker.id === selectedDialogueMarkerId) ?? null, [markers, selectedDialogueMarkerId]);
   const selectedNodeChoices = useMemo(
     () => (choiceNodeId ? dialogueChoices.filter((choice) => choice.node_id === choiceNodeId).sort((a, b) => a.sort_order - b.sort_order) : []),
     [choiceNodeId, dialogueChoices],
@@ -2086,23 +2089,33 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
-    if (!selectedMarker.starts_route_on_accept && markerRouteLinks.length === 0) {
-      await claimSelectedMarkerReward();
+    await startMarkerQuestFromDialogueOrScene(selectedMarker, markerRouteLinks);
+  }
+
+  async function startMarkerQuestFromDialogueOrScene(marker: MapMarker, routeLinksForMarker?: MarkerRouteLink[]) {
+    const routeLinksToUse = routeLinksForMarker ?? await getMarkerRouteLinks(marker.id);
+
+    if (!marker.starts_route_on_accept && routeLinksToUse.length === 0) {
+      if (selectedMarker?.id === marker.id) {
+        await claimSelectedMarkerReward();
+      } else {
+        await completeSelectedStoryMarker(marker);
+      }
       return;
     }
 
-    const orderedLinks = getOrderedMarkerRouteLinks(markerRouteLinks);
+    const orderedLinks = getOrderedMarkerRouteLinks(routeLinksToUse);
     const firstIncompleteLink = orderedLinks.find((link) => {
       const progress = routeProgressRows.find((row) => row.route_id === link.route_id)?.progress_percent ?? 0;
       return progress < 100;
     });
 
     if (orderedLinks.length > 0 && !firstIncompleteLink) {
-      await completeSelectedStoryMarker(selectedMarker);
+      await completeSelectedStoryMarker(marker);
       return;
     }
 
-    const routeId = firstIncompleteLink?.route_id ?? selectedMarker.linked_route_id;
+    const routeId = firstIncompleteLink?.route_id ?? marker.linked_route_id;
     const linkedRoute = routes.find((item) => item.id === routeId);
 
     if (!linkedRoute) {
@@ -2133,13 +2146,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         current_y_percent: startPoint.y,
         last_lat: null,
         last_lng: null,
-        source_marker_id: selectedMarker.id,
+        source_marker_id: marker.id,
       });
       setRouteProgressRows((current) => {
         const rows = upsertRouteProgressRow(current, linkedRoute.id, 0).map((row) => ({
           ...row,
           is_current: row.route_id === linkedRoute.id,
-          ...(row.route_id === linkedRoute.id ? { source_marker_id: selectedMarker.id, travel_direction: "forward" as const } : {}),
+          ...(row.route_id === linkedRoute.id ? { source_marker_id: marker.id, travel_direction: "forward" as const } : {}),
         }));
         return savedProgress ? rows.map((row) => (row.route_id === linkedRoute.id ? savedProgress : row)) : rows;
       });
@@ -2147,33 +2160,41 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setSavedPlayerPosition(startPoint);
       distanceWalkedRef.current = 0;
       setDistanceWalked(0);
-      setGpsMessage(`${selectedMarker.quest_title || selectedMarker.title} accepted. ${linkedRoute.name} is now the active walking path.`);
+      setGpsMessage(`${marker.quest_title || marker.title} accepted. ${linkedRoute.name} is now the active walking path.`);
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to start linked walking path."));
     }
   }
 
   async function openSelectedMarkerDialogue() {
-    if (!selectedMarker?.dialogue_event_id) {
-      setMarkerPanelMessage("No dialogue event is linked to this marker yet.");
-      return;
-    }
-
-    const event = allMapEvents.find((item) => item.id === selectedMarker.dialogue_event_id);
-
-    if (!event) {
-      setMarkerPanelMessage("The linked dialogue event could not be found.");
+    if (!selectedMarker) {
       return;
     }
 
     try {
+      const markerNodes = await getDialogueNodesForMarker(selectedMarker.id);
+      const event = markerNodes.length > 0
+        ? createMarkerDialogueEvent(selectedMarker)
+        : selectedMarker.dialogue_event_id
+          ? allMapEvents.find((item) => item.id === selectedMarker.dialogue_event_id) ?? null
+          : null;
+
+      if (!event) {
+        setMarkerPanelMessage("No marker dialogue tree has been built yet.");
+        return;
+      }
+
       setActiveMarkerEventId(selectedMarker.id);
       setSelectedMarker(null);
       setPreviewMarkerScene(false);
       setMarkerPanelMessage(null);
       setActiveBattle(null);
       setActiveEvent(event);
-      await loadDialogueForEvent(event);
+      if (markerNodes.length > 0) {
+        await loadDialogueForMarker(selectedMarker.id, markerNodes);
+      } else {
+        await loadDialogueForEvent(event);
+      }
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to open dialogue."));
     }
@@ -2826,8 +2847,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setDialogueLog([]);
   }
 
+  async function loadDialogueForMarker(markerId: string, existingNodes?: StoryDialogueNode[]) {
+    const nodes = existingNodes ?? await getDialogueNodesForMarker(markerId);
+    const choices = await getDialogueChoices(nodes.map((node) => node.id));
+    const claimedRewardChoices = await getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id));
+    const startNode = nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
+    setDialogueNodes(nodes);
+    setDialogueChoices(choices);
+    setClaimedChoiceRewardIds(claimedRewardChoices);
+    setActiveNodeId(startNode?.id ?? null);
+    setDialogueLog([]);
+  }
+
   async function loadDialogueEditor(eventId: string) {
     setSelectedDialogueEventId(eventId);
+    setSelectedDialogueMarkerId(null);
     const nodes = await getDialogueNodes(eventId);
     const choices = await getDialogueChoices(nodes.map((node) => node.id));
     setDialogueNodes(nodes);
@@ -2836,6 +2870,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceNodeId(nodes[0]?.id ?? null);
     clearDialogueNodeForm();
     clearDialogueChoiceForm();
+  }
+
+  async function loadMarkerDialogueEditor(marker: MapMarker) {
+    setSelectedDialogueEventId(null);
+    setSelectedDialogueMarkerId(marker.id);
+    const nodes = await getDialogueNodesForMarker(marker.id);
+    const choices = await getDialogueChoices(nodes.map((node) => node.id));
+    setDialogueNodes(nodes);
+    setDialogueChoices(choices);
+    setClaimedChoiceRewardIds(new Set());
+    setChoiceNodeId(nodes[0]?.id ?? null);
+    clearDialogueNodeForm();
+    clearDialogueChoiceForm();
+    setAdminMessage(`Editing marker dialogue tree for "${marker.title}".`);
   }
 
   async function previewMapEvent(event: MapEvent) {
@@ -2984,11 +3032,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
       const completedMarker = activeMarkerEventId ? markers.find((item) => item.id === activeMarkerEventId) ?? null : null;
       const rewardResult = await applyRewards(character, {
-        xp: (event.reward_xp ?? 0) + (activeEnemy?.xp_reward ?? 0),
-        gold: (event.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
-        itemId: event.reward_item_id,
-        itemQuantity: event.reward_item_quantity,
-        eventId: event.id,
+        xp: ((completedMarker?.reward_xp ?? event.reward_xp) ?? 0) + (activeEnemy?.xp_reward ?? 0),
+        gold: ((completedMarker?.reward_gold ?? event.reward_gold) ?? 0) + (activeEnemy?.gold_reward ?? 0),
+        itemId: completedMarker?.reward_item_id ?? event.reward_item_id,
+        itemQuantity: completedMarker?.reward_item_quantity ?? event.reward_item_quantity,
+        eventId: completedMarker ? null : event.id,
+        markerId: completedMarker?.id ?? null,
+        repeatable: completedMarker?.repeatable,
+        rewardOncePerPlayer: completedMarker?.reward_once_per_player,
       });
       const drops: string[] = [];
       const dropRewards: GameToastReward[] = [];
@@ -3023,9 +3074,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           killMessage = " Kill tracking could not be saved.";
         }
       }
-      await completeMapEvent(event.id);
-      setCompletedEventIds((current) => new Set([...current, event.id]));
-      if (completedMarker && isStoryQuestMarker(completedMarker)) {
+      if (!completedMarker) {
+        await completeMapEvent(event.id);
+        setCompletedEventIds((current) => new Set([...current, event.id]));
+      }
+      if (completedMarker && supportsMarkerDialogue(completedMarker.type)) {
         await completeStoryMarker(completedMarker.id);
         setCompletedStoryMarkerIds((current) => new Set([...current, completedMarker.id]));
       }
@@ -3039,10 +3092,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         title: `${event.title} Complete`,
         message: drops.length ? "Rewards and drops were added to Inventory." : "Event complete. Rewards were saved.",
         rewards: rewardResult.claimed ? buildRewardToastItems({
-          xp: (event.reward_xp ?? 0) + (activeEnemy?.xp_reward ?? 0),
-          gold: (event.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
-          itemId: event.reward_item_id,
-          itemQuantity: event.reward_item_quantity,
+          xp: ((completedMarker?.reward_xp ?? event.reward_xp) ?? 0) + (activeEnemy?.xp_reward ?? 0),
+          gold: ((completedMarker?.reward_gold ?? event.reward_gold) ?? 0) + (activeEnemy?.gold_reward ?? 0),
+          itemId: completedMarker?.reward_item_id ?? event.reward_item_id,
+          itemQuantity: completedMarker?.reward_item_quantity ?? event.reward_item_quantity,
         }, dropRewards) : dropRewards,
         nextMarker: completedMarker ? getNextStoryMarkerAfter(completedMarker) : getJourneyDestinationMarker(routeRef.current, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
         actionLabel: "OK",
@@ -3153,6 +3206,18 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         return;
       }
       setDialogueLog((current) => ["No battle is linked yet.", ...current].slice(0, 4));
+      return;
+    }
+
+    if (choice.action === "start_quest") {
+      const marker = activeMarkerEventId ? markers.find((item) => item.id === activeMarkerEventId) ?? null : null;
+      if (!marker) {
+        setDialogueLog((current) => ["This choice must be used from a marker dialogue tree.", ...current].slice(0, 4));
+        return;
+      }
+      setActiveEvent(null);
+      setActiveMarkerEventId(null);
+      await startMarkerQuestFromDialogueOrScene(marker);
       return;
     }
 
@@ -3509,6 +3574,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     for (const node of sourceNodes) {
       const copiedNode = await createDialogueNode({
         event_id: targetEventId,
+        marker_id: null,
         node_key: `${node.node_key}-${Date.now()}`.slice(0, 120),
         title: node.title,
         npc_name: node.npc_name,
@@ -3615,8 +3681,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function saveDialogueNode() {
-    if (!selectedDialogueEventId || !nodeTitle.trim()) {
-      setAdminMessage("Select a dialogue/event and add a dialogue step title.");
+    if ((!selectedDialogueEventId && !selectedDialogueMarkerId) || !nodeTitle.trim()) {
+      setAdminMessage("Select a dialogue/event or marker and add a dialogue step title.");
       return;
     }
 
@@ -3637,7 +3703,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       };
       const saved = editingNode
         ? await updateDialogueNode(editingNode.id, input)
-        : await createDialogueNode({ ...input, event_id: selectedDialogueEventId });
+        : await createDialogueNode({ ...input, event_id: selectedDialogueEventId, marker_id: selectedDialogueMarkerId });
       setDialogueNodes((current) => {
         const next = editingNode ? current.map((node) => (node.id === saved.id ? saved : node)) : [...current, saved];
         return next.sort((a, b) => a.sort_order - b.sort_order);
@@ -3803,18 +3869,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function saveLinkedBattleForChoice() {
-    if (!selectedDialogueEvent) {
-      setAdminMessage("Select a dialogue event before creating a linked battle.");
+    const dialogueSource = selectedDialogueEvent ?? (selectedDialogueMarker ? createMarkerDialogueEvent(selectedDialogueMarker) : null);
+
+    if (!dialogueSource) {
+      setAdminMessage("Select a dialogue event or marker dialogue tree before creating a linked battle.");
       return;
     }
 
     const existingBattle = choiceBattleEventId ? mapEvents.find((event) => event.id === choiceBattleEventId) ?? allMapEvents.find((event) => event.id === choiceBattleEventId) ?? null : null;
-    const title = choiceBattleTitle.trim() || existingBattle?.title || `${selectedDialogueEvent.title} Battle`;
+    const title = choiceBattleTitle.trim() || existingBattle?.title || `${dialogueSource.title} Battle`;
     const values = {
       event_type: "battle" as const,
       title,
-      route_id: selectedDialogueEvent.route_id,
-      distance_marker_percent: Number(selectedDialogueEvent.distance_marker_percent) || 0,
+      route_id: dialogueSource.route_id,
+      distance_marker_percent: Number(dialogueSource.distance_marker_percent) || 0,
       trigger_mode: "fixed" as const,
       random_chance_percent: 0,
       linked_only: true,
@@ -3838,8 +3906,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       reward_item: rewardItem.trim() || null,
       reward_item_id: rewardItemId,
       reward_item_quantity: Math.max(1, Number(rewardItemQuantity) || 1),
-      season_number: selectedSeason,
-      chapter_number: selectedChapter,
+      season_number: dialogueSource.season_number ?? selectedSeason,
+      chapter_number: dialogueSource.chapter_number ?? selectedChapter,
       is_active: true,
     };
 
@@ -4012,12 +4080,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setAdminMessage(`Applied legend style: ${item.title}.`);
   }
 
-  function renderBranchingDialogueEditor() {
+  function renderBranchingDialogueEditor(markerSource?: MapMarker) {
+    const markerDialogueEvent = markerSource ? createMarkerDialogueEvent(markerSource) : null;
+    const editorSelectedEvent = markerDialogueEvent ?? selectedDialogueEvent;
+    const editorSelectedId = markerSource?.id ?? selectedDialogueEventId;
+
     return (
       <DialogueTreeAdmin
+        title={markerSource ? "Marker Dialogue Tree Builder" : "Dialogue Tree Admin"}
+        description={markerSource ? "Build this marker's own branching conversation. Use Start Quest to begin linked paths from a player choice." : undefined}
+        emptyText={markerSource ? "Select a Story, Quest, Side Quest, or Point of Interest marker first." : undefined}
+        showEventPicker={!markerSource}
+        sourceSummary={markerSource ? `${markerSource.type} marker / ${markerSource.mini_map_id ? "Mini map" : "World map"}` : null}
         events={adminMapEvents}
-        selectedEventId={selectedDialogueEventId}
-        selectedEvent={selectedDialogueEvent}
+        selectedEventId={editorSelectedId}
+        selectedEvent={editorSelectedEvent}
         nodes={dialogueNodes}
         choices={dialogueChoices}
         itemDefinitions={itemDefinitions}
@@ -4040,7 +4117,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             isEnding={nodeIsEnding}
             allowEndChat={nodeAllowEndChat}
             endCompletesEvent={nodeEndCompletesEvent}
-            selectedDialogueEventId={selectedDialogueEventId}
+            selectedDialogueEventId={editorSelectedId}
             renderNpcPicker={<NpcPicker label="Reuse NPC for this dialogue step" npcs={npcDefinitions} selectedId={nodeNpcId} onSelect={selectNodeDialogueNpc} />}
             renderNpcPortraitUploader={<AdminImageUploadButton folder="dialogue-npcs" onUploaded={setNodeNpcPortrait} onMessage={setAdminMessage} />}
             renderBackgroundUploader={<AdminImageUploadButton folder="dialogue-backgrounds" onUploaded={setNodeBackgroundImage} onMessage={setAdminMessage} />}
@@ -4697,6 +4774,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               onSaveSelectedMarker={() => void saveSelectedMarkerSettings()}
               onSaveMarketItem={() => void saveMarketItem()}
               onRemoveMarketItem={(marketItemId) => void removeMarketItem(marketItemId)}
+              selectedDialogueMarkerId={selectedDialogueMarkerId}
+              onLoadMarkerDialogue={(marker) => void loadMarkerDialogueEditor(marker)}
+              renderMarkerDialogueEditor={(marker) => renderBranchingDialogueEditor(marker)}
             /> : (
               <View style={styles.pathEditor}>
                 <Text style={styles.selectedTitle}>Create / Edit Mini Map Walking Path</Text>
@@ -5163,12 +5243,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
               </Pressable>
               {supportsMarkerDialogue(draftType) ? (
-                <EventPicker
-                  label="Linked Dialogue Event"
-                  events={reusableMapEvents.filter((event) => event.event_type !== "battle")}
-                  selectedId={markerDialogueEventId}
-                  onSelect={setMarkerDialogueEventId}
-                />
+                <View style={styles.storyEditor}>
+                  <Text style={styles.selectedTitle}>Marker Dialogue Tree</Text>
+                  <Text style={styles.copy}>Story, Quest, Side Quest, and Point of Interest markers use their own dialogue tree. Use a Start Quest choice to begin this marker's linked path.</Text>
+                  {selectedMarker ? (
+                    <>
+                      <Pressable style={styles.secondaryButton} onPress={() => void loadMarkerDialogueEditor(selectedMarker)}>
+                        <Text style={styles.secondaryText}>{selectedDialogueMarkerId === selectedMarker.id ? "Reload Marker Dialogue Tree" : "Build / Edit Marker Dialogue Tree"}</Text>
+                      </Pressable>
+                      {selectedDialogueMarkerId === selectedMarker.id ? renderBranchingDialogueEditor(selectedMarker) : null}
+                    </>
+                  ) : (
+                    <Text style={styles.debugLine}>Create or select this marker before building its dialogue tree.</Text>
+                  )}
+                </View>
               ) : null}
               {isBattleMarkerType(draftType) ? (
                 <View style={styles.storyEditor}>
@@ -5717,6 +5805,9 @@ function MiniMapMarkerAdminForm({
   onSaveSelectedMarker,
   onSaveMarketItem,
   onRemoveMarketItem,
+  selectedDialogueMarkerId,
+  onLoadMarkerDialogue,
+  renderMarkerDialogueEditor,
 }: {
   activeSectionMarkerTypes: readonly string[];
   legendItems: MarkerLegendItem[];
@@ -5821,6 +5912,9 @@ function MiniMapMarkerAdminForm({
   onSaveSelectedMarker: () => void;
   onSaveMarketItem: () => void;
   onRemoveMarketItem: (marketItemId: string) => void;
+  selectedDialogueMarkerId: string | null;
+  onLoadMarkerDialogue: (marker: MapMarker) => void;
+  renderMarkerDialogueEditor: (marker: MapMarker) => ReactNode;
 }) {
   const supportsQuest = isQuestMarkerType(draftType);
   const supportsMarket = draftType === "Market" || selectedMarker?.type === "Market";
@@ -5848,12 +5942,20 @@ function MiniMapMarkerAdminForm({
         <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
       </Pressable>
       {supportsMarkerDialogue(draftType) ? (
-        <EventPicker
-          label="Linked Dialogue Event"
-          events={reusableMapEvents.filter((event) => event.event_type !== "battle")}
-          selectedId={markerDialogueEventId}
-          onSelect={setMarkerDialogueEventId}
-        />
+        <View style={styles.storyEditor}>
+          <Text style={styles.selectedTitle}>Marker Dialogue Tree</Text>
+          <Text style={styles.copy}>This marker gets its own dialogue tree. Use a Start Quest choice to begin linked mini-map paths from the conversation.</Text>
+          {selectedMarker ? (
+            <>
+              <Pressable style={styles.secondaryButton} onPress={() => onLoadMarkerDialogue(selectedMarker)}>
+                <Text style={styles.secondaryText}>{selectedDialogueMarkerId === selectedMarker.id ? "Reload Marker Dialogue Tree" : "Build / Edit Marker Dialogue Tree"}</Text>
+              </Pressable>
+              {selectedDialogueMarkerId === selectedMarker.id ? renderMarkerDialogueEditor(selectedMarker) : null}
+            </>
+          ) : (
+            <Text style={styles.debugLine}>Create or select this marker before building its dialogue tree.</Text>
+          )}
+        </View>
       ) : null}
       {supportsBattle ? (
         <View style={styles.storyEditor}>
@@ -6120,6 +6222,47 @@ function isQuestMarkerType(type: string) {
 
 function supportsMarkerDialogue(type: string) {
   return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
+}
+
+function createMarkerDialogueEvent(marker: MapMarker): MapEvent {
+  const now = new Date().toISOString();
+
+  return {
+    id: `marker-${marker.id}`,
+    event_type: "dialogue",
+    title: marker.quest_title || marker.title,
+    route_id: marker.linked_route_id,
+    distance_marker_percent: 0,
+    background_image_url: marker.scene_background_image_url ?? marker.quest_image_url ?? null,
+    npc_name: null,
+    npc_portrait_url: marker.scene_npc_image_url ?? marker.quest_image_url ?? null,
+    dialogue_npc_id: null,
+    npc_id: null,
+    dialogue_text: marker.quest_dialogue || marker.description || "",
+    choices: [],
+    enemy_name: null,
+    enemy_id: null,
+    enemy_image_url: null,
+    enemy_hp: 0,
+    enemy_attack_damage: 0,
+    battle_intro_text: null,
+    victory_text: null,
+    defeat_text: null,
+    reward_xp: marker.reward_xp ?? 0,
+    reward_gold: marker.reward_gold ?? 0,
+    reward_item: null,
+    reward_item_id: marker.reward_item_id ?? null,
+    reward_item_quantity: marker.reward_item_quantity ?? 1,
+    trigger_mode: "fixed",
+    random_chance_percent: 0,
+    linked_only: false,
+    is_active: marker.is_active,
+    season_number: marker.season_number ?? 1,
+    chapter_number: marker.chapter_number ?? 1,
+    created_by: null,
+    created_at: now,
+    updated_at: now,
+  };
 }
 
 function isBattleMarkerType(type: string) {

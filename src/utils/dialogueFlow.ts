@@ -94,6 +94,10 @@ export function choiceActionLabel(action: StoryDialogueChoice["action"]) {
     return "Start linked battle event";
   }
 
+  if (action === "start_quest") {
+    return "Start quest / linked path";
+  }
+
   if (action === "complete_event") {
     return "Complete this event";
   }
@@ -139,6 +143,10 @@ export function getChoiceTargetSummary(choice: StoryDialogueChoice, nodes: Story
     return battle
       ? { label: `Then start battle: ${battle.title}`, isBroken: false }
       : { label: "Broken link: choose a target battle event", isBroken: true };
+  }
+
+  if (choice.action === "start_quest") {
+    return { label: "Then start this marker's quest or linked path", isBroken: false };
   }
 
   if (choice.action === "complete_event") {
