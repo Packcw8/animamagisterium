@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { MapChapter, MapSeason } from "../../services/mapService";
 import { getChapterLabel, getSeasonLabel } from "../../utils/mapProgress";
+import { AdminCollapsibleSection } from "../admin/AdminCollapsibleSection";
 import { colors, fonts } from "../theme";
 
 type AdminMapEditorHeaderProps<Section extends string> = {
@@ -17,6 +18,7 @@ type AdminMapEditorHeaderProps<Section extends string> = {
   sections: readonly Section[];
   activeSection: Section;
   message: string | null;
+  seasonPanelOpen: boolean;
   onSelectSeason: (seasonNumber: number) => void;
   onSelectChapter: (chapterNumber: number) => void;
   onChangeSeasonName: (value: string) => void;
@@ -26,6 +28,7 @@ type AdminMapEditorHeaderProps<Section extends string> = {
   onCreateSeason: () => void;
   onCreateChapter: () => void;
   onSelectSection: (section: Section) => void;
+  onToggleSeasonPanel: () => void;
 };
 
 export function AdminMapEditorHeader<Section extends string>({
@@ -42,6 +45,7 @@ export function AdminMapEditorHeader<Section extends string>({
   sections,
   activeSection,
   message,
+  seasonPanelOpen,
   onSelectSeason,
   onSelectChapter,
   onChangeSeasonName,
@@ -51,13 +55,21 @@ export function AdminMapEditorHeader<Section extends string>({
   onCreateSeason,
   onCreateChapter,
   onSelectSection,
+  onToggleSeasonPanel,
 }: AdminMapEditorHeaderProps<Section>) {
+  const seasonLabel = getSeasonLabel(mapSeasons, selectedSeason);
+  const chapterLabel = getChapterLabel(mapChapters, selectedSeason, selectedChapter);
+
   return (
     <>
       <Text style={styles.sectionTitle}>Admin Map Editor</Text>
-      <Text style={styles.copy}>Choose a mode, then click the map. All map content uses percentage coordinates, never pixels or GPS coordinates.</Text>
-      <View style={styles.storyEditor}>
-        <Text style={styles.selectedTitle}>Season / Chapter</Text>
+      <Text style={styles.copy}>Choose an admin section, then edit only the content for that section. Map content uses percentage coordinates, never pixels or GPS coordinates.</Text>
+      <AdminCollapsibleSection
+        title="Season / Chapter"
+        summary={`${seasonLabel} / ${chapterLabel}. New content is assigned here.`}
+        isOpen={seasonPanelOpen}
+        onToggle={onToggleSeasonPanel}
+      >
         <View style={styles.modeRow}>
           {availableSeasons.map((season) => (
             <Pressable key={season.season_number} style={[styles.routeChip, selectedSeason === season.season_number && styles.routeChipActive]} onPress={() => onSelectSeason(season.season_number)}>
@@ -82,8 +94,8 @@ export function AdminMapEditorHeader<Section extends string>({
             <Text style={styles.secondaryText}>Add Chapter</Text>
           </Pressable>
         </View>
-        <Text style={styles.debugLine}>Working in {getSeasonLabel(mapSeasons, selectedSeason)} / {getChapterLabel(mapChapters, selectedSeason, selectedChapter)}. New map content is automatically assigned here.</Text>
-      </View>
+        <Text style={styles.debugLine}>Working in {seasonLabel} / {chapterLabel}. New map content is automatically assigned here.</Text>
+      </AdminCollapsibleSection>
       <View style={styles.adminSectionTabs}>
         {sections.map((section) => (
           <Pressable key={section} style={[styles.modeButton, activeSection === section && styles.typeSelected]} onPress={() => onSelectSection(section)}>

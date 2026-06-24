@@ -2,6 +2,7 @@ import { distance as turfDistance } from "@turf/turf";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButton";
+import { AdminCollapsibleSection } from "../components/admin/AdminCollapsibleSection";
 import { BattleEventScreen } from "../components/battle/BattleEventScreen";
 import { useBattleEncounter } from "../components/battle/useBattleEncounter";
 import { BrandLogo } from "../components/BrandLogo";
@@ -295,6 +296,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [activeMiniMap, setActiveMiniMap] = useState<MiniMap | null>(null);
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
   const [adminSection, setAdminSection] = useState<(typeof adminSections)[number]>("World Markers");
+  const [seasonPanelOpen, setSeasonPanelOpen] = useState(false);
+  const [openAdminPanels, setOpenAdminPanels] = useState<Record<string, boolean>>({
+    list: true,
+    coordinates: true,
+    editor: true,
+    settings: true,
+    rewards: true,
+  });
   const [miniMaps, setMiniMaps] = useState<MiniMap[]>([]);
   const [mapSeasons, setMapSeasons] = useState<MapSeason[]>([]);
   const [mapChapters, setMapChapters] = useState<MapChapter[]>([]);
@@ -1152,6 +1161,87 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         </View>
       </Frame>
     );
+  }
+
+  function toggleAdminPanel(key: string) {
+    setOpenAdminPanels((current) => ({ ...current, [key]: current[key] === false }));
+  }
+
+  function isAdminPanelOpen(key: string) {
+    return openAdminPanels[key] !== false;
+  }
+
+  function getMarkerWarningCount(markerList: MapMarker[]) {
+    return markerList.filter((marker) => {
+      if (!marker.title?.trim()) return true;
+      if (!Number.isFinite(Number(marker.x_percent)) || !Number.isFinite(Number(marker.y_percent))) return true;
+      if (marker.type === "Area/Town Entrance" && !marker.linked_mini_map_id) return true;
+      if (isExitMarkerType(marker.type) && !marker.exit_target_marker_id && !marker.linked_mini_map_id) return true;
+      return false;
+    }).length;
+  }
+
+  function getRouteWarningCount(routeList: MapRoute[]) {
+    return routeList.filter((item) => !item.name?.trim() || !Array.isArray(item.path_points) || item.path_points.length < 2).length;
+  }
+
+  function getMiniMapWarningCount(miniMapList: MiniMap[]) {
+    return miniMapList.filter((miniMap) => {
+      const hasSpawn = adminMiniMapMarkers.some((marker) => marker.mini_map_id === miniMap.id && marker.type === "Player Spawn");
+      return !miniMap.background_image_url?.trim() || !hasSpawn;
+    }).length;
+  }
+
+  function getEventWarningCount(eventList: MapEvent[]) {
+    return eventList.filter((event) => {
+      if (!event.title?.trim()) return true;
+      if (event.event_type === "battle" && !event.enemy_id && !event.npc_id && !event.enemy_name?.trim()) return true;
+      return false;
+    }).length;
+  }
+
+  function getAdminSectionSummary(section: (typeof adminSections)[number]) {
+    if (section === "World Map") {
+      return activeWorldMapSetting ? `${activeWorldMapSetting.name || "Custom map"} configured for this chapter.` : "Using the bundled overworld map.";
+    }
+
+    if (section === "World Markers" || section === "Area/Town Markers") {
+      const sectionMarkers = getAdminSectionMarkers(section, adminWorldMarkers, adminMiniMapMarkers);
+      const hiddenCount = sectionMarkers.filter((marker) => marker.is_active === false).length;
+      return `${sectionMarkers.length} marker${sectionMarkers.length === 1 ? "" : "s"}${hiddenCount ? `, ${hiddenCount} hidden` : ""}.`;
+    }
+
+    if (section === "Mini Maps") {
+      return `${adminMiniMaps.length} mini map${adminMiniMaps.length === 1 ? "" : "s"}, ${adminMiniMapMarkers.length} mini marker${adminMiniMapMarkers.length === 1 ? "" : "s"}.`;
+    }
+
+    if (section === "Walking Paths") {
+      return `${adminWorldRoutes.length} overworld path${adminWorldRoutes.length === 1 ? "" : "s"} in this chapter.`;
+    }
+
+    if (section === "Tutorials") {
+      return `${adminTutorialSteps.length} tutorial step${adminTutorialSteps.length === 1 ? "" : "s"}.`;
+    }
+
+    if (section === "Rewards/Interactions") {
+      return `${adminMapEvents.length} event${adminMapEvents.length === 1 ? "" : "s"} on ${route.name}.`;
+    }
+
+    if (section === "Legend") {
+      return `${adminLegendItems.length} legend item${adminLegendItems.length === 1 ? "" : "s"}.`;
+    }
+
+    return "";
+  }
+
+  function getAdminSectionWarningCount(section: (typeof adminSections)[number]) {
+    if (section === "World Markers" || section === "Area/Town Markers") {
+      return getMarkerWarningCount(getAdminSectionMarkers(section, adminWorldMarkers, adminMiniMapMarkers));
+    }
+    if (section === "Mini Maps") return getMiniMapWarningCount(adminMiniMaps);
+    if (section === "Walking Paths") return getRouteWarningCount(adminWorldRoutes);
+    if (section === "Rewards/Interactions") return getEventWarningCount(adminMapEvents);
+    return 0;
   }
 
   async function selectRoute(nextRoute: MapRoute, force = false) {
@@ -4834,6 +4924,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             sections={adminSections}
             activeSection={adminSection}
             message={adminMessage}
+            seasonPanelOpen={seasonPanelOpen}
             onSelectSeason={(seasonNumber) => {
               setSelectedSeason(seasonNumber);
               setSelectedChapter(1);
@@ -4852,7 +4943,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               if (section === "Walking Paths") setEditorMode("Walking Path");
               if (section !== "Walking Paths") setEditorMode("Marker");
             }}
+            onToggleSeasonPanel={() => setSeasonPanelOpen((value) => !value)}
           />
+          <AdminCollapsibleSection
+            title={adminSection}
+            summary={getAdminSectionSummary(adminSection)}
+            warningCount={getAdminSectionWarningCount(adminSection)}
+            isOpen={isAdminPanelOpen("active-section")}
+            onToggle={() => toggleAdminPanel("active-section")}
+          >
           {adminSection === "World Map" ? (
             <WorldMapSettingsPanel
               setting={activeWorldMapSetting}
@@ -5353,7 +5452,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             ))}
             {renderBranchingDialogueEditor()}
           </View> : null}
+          </AdminCollapsibleSection>
           {selectedMarker && editorMode === "Marker" ? (
+            <AdminCollapsibleSection
+              title="Selected Object Inspector"
+              summary={`${selectedMarker.title} / ${selectedMarker.type}`}
+              isOpen={isAdminPanelOpen("selected-object")}
+              onToggle={() => toggleAdminPanel("selected-object")}
+            >
             <View style={styles.adminActions}>
               <Text style={styles.selectedTitle}>Selected: {selectedMarker.title}</Text>
               <Pressable style={styles.secondaryButton} onPress={() => void moveSelectedMarker()} disabled={!clickedPercent}>
@@ -5366,6 +5472,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <Text style={styles.dangerText}>Delete Marker</Text>
               </Pressable>
             </View>
+            </AdminCollapsibleSection>
           ) : null}
         </Frame>
       ) : null}
