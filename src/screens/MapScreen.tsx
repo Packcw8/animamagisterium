@@ -51,6 +51,7 @@ import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { clamp, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, roundPercent } from "../utils/mapGeometry";
+import { choiceActionLabel, eventTriggerModeName, eventTypeName, formatResourceName, getChoiceTargetSummary } from "../utils/dialogueFlow";
 import { buildCreateMarkerInput, buildMarkerSettingsPayload, type MarkerPayloadState } from "../utils/markerPayload";
 import {
   canPlayerSeeStoryMarker,
@@ -5452,105 +5453,6 @@ function parseChoices(value: string): MapEvent["choices"] {
       const safeAction = choiceActions.includes(action as MapEvent["choices"][number]["action"]) ? (action as MapEvent["choices"][number]["action"]) : "Continue";
       return { label, action: safeAction };
     });
-}
-
-function eventTypeName(type: MapEvent["event_type"]) {
-  if (type === "battle") {
-    return "Battle Event";
-  }
-
-  if (type === "clue") {
-    return "Clue / Investigation Event";
-  }
-
-  if (type === "reward") {
-    return "Reward Event";
-  }
-
-  return "Dialogue Event";
-}
-
-function eventTriggerModeName(event: MapEvent) {
-  if ((event.trigger_mode ?? "fixed") === "random") {
-    return `Random ${Number(event.random_chance_percent ?? 0)}% after ${event.distance_marker_percent}%`;
-  }
-
-  return `Fixed at ${event.distance_marker_percent}%`;
-}
-
-function choiceActionLabel(action: StoryDialogueChoice["action"]) {
-  if (action === "go_to_node") {
-    return "Go to another dialogue step";
-  }
-
-  if (action === "start_battle") {
-    return "Start linked battle event";
-  }
-
-  if (action === "complete_event") {
-    return "Complete this event";
-  }
-
-  if (action === "unlock_next_event") {
-    return "Unlock next event";
-  }
-
-  if (action === "give_reward") {
-    return "Give reward";
-  }
-
-  if (action === "end_conversation") {
-    return "End conversation";
-  }
-
-  return "Return to map";
-}
-
-function formatResourceName(resource: string) {
-  if (resource === "magicka" || resource === "magika") {
-    return "Mana";
-  }
-  if (resource === "health") {
-    return "Health";
-  }
-  if (resource === "stamina") {
-    return "Stamina";
-  }
-  return resource;
-}
-
-function getChoiceTargetSummary(choice: StoryDialogueChoice, nodes: StoryDialogueNode[], events: MapEvent[]) {
-  if (choice.action === "go_to_node") {
-    const nextNode = nodes.find((node) => node.id === choice.next_node_id);
-    return nextNode
-      ? { label: `Then show dialogue step: ${nextNode.sort_order}. ${nextNode.title}`, isBroken: false }
-      : { label: "Broken link: choose a target dialogue step", isBroken: true };
-  }
-
-  if (choice.action === "start_battle") {
-    const battle = events.find((event) => event.id === choice.battle_event_id);
-    return battle
-      ? { label: `Then start battle: ${battle.title}`, isBroken: false }
-      : { label: "Broken link: choose a target battle event", isBroken: true };
-  }
-
-  if (choice.action === "complete_event") {
-    return { label: "Then complete this event", isBroken: false };
-  }
-
-  if (choice.action === "unlock_next_event") {
-    return { label: "Then unlock the next trail event", isBroken: false };
-  }
-
-  if (choice.action === "give_reward") {
-    return { label: `Then give reward: ${choice.reward_xp} XP${choice.reward_item ? ` and ${choice.reward_item}` : ""}`, isBroken: false };
-  }
-
-  if (choice.action === "end_conversation") {
-    return { label: "Then end conversation", isBroken: false };
-  }
-
-  return { label: "Then return to map", isBroken: false };
 }
 
 function MiniMapMarkerAdminForm({

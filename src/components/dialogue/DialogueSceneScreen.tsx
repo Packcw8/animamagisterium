@@ -5,6 +5,7 @@ import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
 import { resolveEnemyImageUri, type NpcDefinition } from "../../services/combatAdminService";
 import type { MapEvent, StoryDialogueChoice, StoryDialogueNode } from "../../services/mapService";
+import { getDialogueSceneState } from "../../utils/dialogueFlow";
 
 type DialogueSceneScreenProps = {
   event: MapEvent;
@@ -33,15 +34,8 @@ export function DialogueSceneScreen({
   onEndChat,
   onExitPreview,
 }: DialogueSceneScreenProps) {
-  const activeNode = nodes.find((node) => node.id === activeNodeId) ?? nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
-  const nodeChoices = activeNode ? choices.filter((choice) => choice.node_id === activeNode.id) : [];
-  const legacyChoices = event.choices.length > 0 ? event.choices : [{ label: "Return to Map", action: "Continue" as const }];
-  const nodeNpc = npcs.find((npc) => npc.id === activeNode?.npc_id);
-  const eventNpc = npcs.find((npc) => npc.id === event.dialogue_npc_id);
-  const npcName = nodeNpc?.name ?? activeNode?.npc_name ?? eventNpc?.name ?? event.npc_name;
-  const npcPortrait = nodeNpc?.image_url ?? activeNode?.npc_portrait_url ?? eventNpc?.image_url ?? event.npc_portrait_url;
-  const backgroundImageUrl = activeNode?.background_image_url ?? event.background_image_url;
-  const dialogueText = activeNode?.dialogue_text || event.dialogue_text || "The trail grows quiet.";
+  const { activeNode, nodeChoices, legacyChoices, npcName, npcPortrait, backgroundImageUrl, dialogueText } =
+    getDialogueSceneState({ event, nodes, choices, npcs, activeNodeId });
 
   return (
     <Screen>
