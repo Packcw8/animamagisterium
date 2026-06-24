@@ -7,7 +7,33 @@ export type PartyMember = Tables["party_members"];
 export type Guild = Tables["guilds"];
 export type GuildMember = Tables["guild_members"];
 export type SocialGroupGoal = Tables["social_group_goals"];
+export type SocialGroupGoalReward = Tables["social_group_goal_rewards"];
 export type SocialGroupGoalContribution = Tables["social_group_goal_contributions"];
+
+export type SocialGoalMetric =
+  | "distance_walked_meters"
+  | "training_sessions"
+  | "enemy_kills"
+  | "enemy_name_kills"
+  | "enemy_type_kills"
+  | "story_marker_completions"
+  | "map_event_completions"
+  | "xp_earned"
+  | "gold_earned"
+  | "custom";
+
+export const socialGoalMetrics: Array<{ key: SocialGoalMetric; label: string; needsFilter?: boolean; filterLabel?: string }> = [
+  { key: "distance_walked_meters", label: "Distance Walked" },
+  { key: "training_sessions", label: "Training Sessions", needsFilter: true, filterLabel: "Attribute optional" },
+  { key: "enemy_kills", label: "Any Enemy Kills" },
+  { key: "enemy_name_kills", label: "Enemy Name Kills", needsFilter: true, filterLabel: "Enemy name" },
+  { key: "enemy_type_kills", label: "Enemy Type Kills", needsFilter: true, filterLabel: "Enemy type" },
+  { key: "story_marker_completions", label: "Story Marker Completions", needsFilter: true, filterLabel: "Marker ID optional" },
+  { key: "map_event_completions", label: "Map Event Completions", needsFilter: true, filterLabel: "Event ID optional" },
+  { key: "xp_earned", label: "XP Earned" },
+  { key: "gold_earned", label: "Gold Earned" },
+  { key: "custom", label: "Custom" },
+];
 
 export type SocialMemberProfile = {
   user_id: string;
@@ -28,11 +54,43 @@ export type GuildMemberWithProfile = GuildMember & {
 export type SocialGoalWithProgress = SocialGroupGoal & {
   total_contribution: number;
   user_contribution: number;
+  rewards: SocialGroupGoalReward[];
+  is_complete: boolean;
   contributors: Array<{
     user_id: string;
     amount: number;
     profile?: SocialMemberProfile | null;
   }>;
+};
+
+export type SocialGoalRewardInput = {
+  itemId: string;
+  quantity: number;
+};
+
+export type SaveSocialGoalInput = {
+  id?: string;
+  groupType: "party" | "guild";
+  groupId: string;
+  title: string;
+  description?: string | null;
+  metricType: SocialGoalMetric;
+  metricFilter?: string | null;
+  targetValue: number;
+  rewardTitle?: string | null;
+  rewardXp: number;
+  rewardGold: number;
+  rewardItems: SocialGoalRewardInput[];
+  isActive: boolean;
+};
+
+export type RecordSocialContributionInput = {
+  userId: string;
+  metricType: SocialGoalMetric;
+  amount: number;
+  metricFilter?: string | null;
+  sourceType?: string | null;
+  sourceId?: string | null;
 };
 
 export type PartyGuildState = {
@@ -280,6 +338,93 @@ export async function leaveGuild(memberId: string) {
   }
 }
 
+export async function saveSocialGroupGoal(input: SaveSocialGoalInput) {
+  const userId = await requireUserId();
+  const values = {
+    group_type: input.groupType,
+    group_id: input.groupId,
+    title: input.title.trim(),
+    description: input.description?.trim() || null,
+    metric_type: input.metricType,
+    metric_filter: input.metricFilter?.trim() || null,
+    target_value: Math.max(1, Number(input.targetValue) || 1),
+    reward_title: input.rewardTitle?.trim() || null,
+    reward_xp: Math.max(0, Number(input.rewardXp) || 0),
+    reward_gold: Math.max(0, Number(input.rewardGold) || 0),
+    reward_item_id: null,
+    reward_item_quantity: 1,
+    is_active: input.isActive,
+    created_by: userId,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { data, error } = input.id
+    ? await supabase.from("social_group_goals").update(values).eq("id", input.id).select("*").single()
+    : await supabase.from("social_group_goals").insert(values).select("*").single();
+
+  if (error) {
+    throw error;
+  }
+
+  const goal = data as SocialGroupGoal;
+  const { error: deleteError } = await supabase.from("social_group_goal_rewards").delete().eq("goal_id", goal.id);
+
+  if (deleteError) {
+    throw deleteError;
+  }
+
+  const rewards = input.rewardItems
+    .filter((reward) => reward.itemId)
+    .map((reward, index) => ({
+      goal_id: goal.id,
+      reward_item_id: reward.itemId,
+      reward_item_quantity: Math.max(1, Number(reward.quantity) || 1),
+      sort_order: index,
+    }));
+
+  if (rewards.length > 0) {
+    const { error: rewardError } = await supabase.from("social_group_goal_rewards").insert(rewards);
+
+    if (rewardError) {
+      throw rewardError;
+    }
+  }
+
+  return goal;
+}
+
+export async function deleteSocialGroupGoal(goalId: string) {
+  const { error } = await supabase.from("social_group_goals").delete().eq("id", goalId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function recordSocialContribution(input: RecordSocialContributionInput) {
+  const amount = Math.max(0, Number(input.amount) || 0);
+
+  if (amount <= 0) {
+    return;
+  }
+
+  try {
+    const [partyMemberships, guildMemberships] = await Promise.all([
+      getPartyMemberships(input.userId),
+      getGuildMemberships(input.userId),
+    ]);
+    const activeParty = partyMemberships.find((row) => row.status === "active") ?? null;
+    const activeGuild = guildMemberships.find((row) => row.status === "active") ?? null;
+
+    await Promise.all([
+      activeParty ? recordContributionForGroup({ ...input, amount, groupType: "party", groupId: activeParty.party_id }) : Promise.resolve(),
+      activeGuild ? recordContributionForGroup({ ...input, amount, groupType: "guild", groupId: activeGuild.guild_id }) : Promise.resolve(),
+    ]);
+  } catch (error) {
+    console.warn("[social] unable to record group contribution", error);
+  }
+}
+
 function emptyState(userId: string | null): PartyGuildState {
   return {
     userId,
@@ -423,16 +568,28 @@ async function getGoalsWithProgress(groupType: "party" | "guild", groupId: strin
     return [];
   }
 
-  const { data: contributions, error: contributionError } = await supabase
-    .from("social_group_goal_contributions")
-    .select("*")
-    .in("goal_id", goalRows.map((goal) => goal.id));
+  const goalIds = goalRows.map((goal) => goal.id);
+  const [contributionResult, rewardResult, completionResult] = await Promise.all([
+    supabase.from("social_group_goal_contributions").select("*").in("goal_id", goalIds),
+    supabase.from("social_group_goal_rewards").select("*").in("goal_id", goalIds).order("sort_order", { ascending: true }),
+    supabase.from("social_group_goal_completions").select("*").in("goal_id", goalIds),
+  ]);
 
-  if (contributionError) {
-    throw contributionError;
+  if (contributionResult.error) {
+    throw contributionResult.error;
   }
 
-  const contributionRows = (contributions ?? []) as SocialGroupGoalContribution[];
+  if (rewardResult.error) {
+    throw rewardResult.error;
+  }
+
+  if (completionResult.error) {
+    throw completionResult.error;
+  }
+
+  const contributionRows = (contributionResult.data ?? []) as SocialGroupGoalContribution[];
+  const rewardRows = (rewardResult.data ?? []) as SocialGroupGoalReward[];
+  const completionRows = (completionResult.data ?? []) as Tables["social_group_goal_completions"][];
   const profiles = await getMemberProfiles(Array.from(new Set(contributionRows.map((row) => row.user_id))));
 
   return goalRows.map((goal) => {
@@ -444,6 +601,8 @@ async function getGoalsWithProgress(groupType: "party" | "guild", groupId: strin
       ...goal,
       total_contribution: rows.reduce((sum, row) => sum + Number(row.amount), 0),
       user_contribution: rows.filter((row) => row.user_id === userId).reduce((sum, row) => sum + Number(row.amount), 0),
+      rewards: rewardRows.filter((reward) => reward.goal_id === goal.id),
+      is_complete: completionRows.some((completion) => completion.goal_id === goal.id),
       contributors: Array.from(byUser.entries()).map(([contributorId, amount]) => ({
         user_id: contributorId,
         amount,
@@ -451,6 +610,67 @@ async function getGoalsWithProgress(groupType: "party" | "guild", groupId: strin
       })).sort((a, b) => b.amount - a.amount),
     } satisfies SocialGoalWithProgress;
   });
+}
+
+async function recordContributionForGroup(input: RecordSocialContributionInput & { groupType: "party" | "guild"; groupId: string }) {
+  const { data: goals, error } = await supabase
+    .from("social_group_goals")
+    .select("*")
+    .eq("group_type", input.groupType)
+    .eq("group_id", input.groupId)
+    .eq("metric_type", input.metricType)
+    .eq("is_active", true);
+
+  if (error) {
+    throw error;
+  }
+
+  const matchingGoals = ((goals ?? []) as SocialGroupGoal[]).filter((goal) => {
+    const filter = goal.metric_filter?.trim().toLowerCase();
+    if (!filter) {
+      return true;
+    }
+    return filter === input.metricFilter?.trim().toLowerCase();
+  });
+
+  for (const goal of matchingGoals) {
+    const { error: insertError } = await supabase.from("social_group_goal_contributions").insert({
+      goal_id: goal.id,
+      group_type: input.groupType,
+      group_id: input.groupId,
+      user_id: input.userId,
+      amount: input.amount,
+      source_type: input.sourceType ?? null,
+      source_id: input.sourceId ?? null,
+    });
+
+    if (insertError) {
+      throw insertError;
+    }
+
+    const { data: rows, error: totalError } = await supabase
+      .from("social_group_goal_contributions")
+      .select("amount")
+      .eq("goal_id", goal.id);
+
+    if (totalError) {
+      throw totalError;
+    }
+
+    const total = (rows ?? []).reduce((sum, row) => sum + Number(row.amount), 0);
+
+    if (total >= Number(goal.target_value)) {
+      const { error: rpcError } = await supabase.rpc("grant_social_group_goal_rewards", {
+        p_goal_id: goal.id,
+        p_group_type: input.groupType,
+        p_group_id: input.groupId,
+      });
+
+      if (rpcError) {
+        throw rpcError;
+      }
+    }
+  }
 }
 
 async function getMemberProfiles(userIds: string[]) {

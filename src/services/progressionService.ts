@@ -1,5 +1,6 @@
 import { supabase, Tables } from "../lib/supabase";
 import type { CharacterWithDetails } from "./characterService";
+import { recordSocialContribution } from "./partyGuildService";
 
 export type AttributeKey = Tables["attribute_progress"]["attribute_key"];
 export type GameProgressionSettings = Tables["game_progression_settings"];
@@ -216,6 +217,23 @@ export async function applyCharacterXpGold(character: CharacterWithDetails, xpRe
   if (error) {
     throw error;
   }
+
+  await Promise.all([
+    xpReward > 0 ? recordSocialContribution({
+      userId: user.id,
+      metricType: "xp_earned",
+      amount: Math.max(0, Number(xpReward) || 0),
+      sourceType: "character_progress",
+      sourceId: character.id,
+    }) : Promise.resolve(),
+    goldReward > 0 ? recordSocialContribution({
+      userId: user.id,
+      metricType: "gold_earned",
+      amount: Math.max(0, Number(goldReward) || 0),
+      sourceType: "character_progress",
+      sourceId: character.id,
+    }) : Promise.resolve(),
+  ]);
 }
 
 export function formatTrainingGoal(config: TrainingAttributeConfig, value: number) {
@@ -353,6 +371,32 @@ export async function recordEnemyKill(input: EnemyKillInput) {
   if (typeUpsert.error) {
     throw typeUpsert.error;
   }
+
+  await Promise.all([
+    recordSocialContribution({
+      userId: input.userId,
+      metricType: "enemy_kills",
+      amount: 1,
+      sourceType: input.enemySource,
+      sourceId: enemyKey,
+    }),
+    recordSocialContribution({
+      userId: input.userId,
+      metricType: "enemy_name_kills",
+      metricFilter: enemyName,
+      amount: 1,
+      sourceType: input.enemySource,
+      sourceId: enemyKey,
+    }),
+    recordSocialContribution({
+      userId: input.userId,
+      metricType: "enemy_type_kills",
+      metricFilter: enemyType,
+      amount: 1,
+      sourceType: input.enemySource,
+      sourceId: enemyKey,
+    }),
+  ]);
 
   return {
     enemyKey,

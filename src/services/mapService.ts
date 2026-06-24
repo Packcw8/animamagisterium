@@ -1,6 +1,7 @@
 import { supabase, Tables } from "../lib/supabase";
 import type { CharacterWithDetails } from "./characterService";
 import { consumeInventoryItem, grantItemToCharacter, type InventoryItem } from "./inventoryService";
+import { recordSocialContribution } from "./partyGuildService";
 import { applyCharacterXpGold } from "./progressionService";
 
 export type MapRoute = Tables["map_routes"];
@@ -1090,6 +1091,17 @@ export async function completeMapEvent(eventId: string) {
     throw userError ?? new Error("You must be signed in to complete an event.");
   }
 
+  const { data: existing, error: existingError } = await supabase
+    .from("map_event_completions")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("event_id", eventId)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
   const { data, error } = await supabase
     .from("map_event_completions")
     .upsert(
@@ -1105,6 +1117,17 @@ export async function completeMapEvent(eventId: string) {
 
   if (error) {
     throw error;
+  }
+
+  if (!existing) {
+    await recordSocialContribution({
+      userId: user.id,
+      metricType: "map_event_completions",
+      metricFilter: eventId,
+      amount: 1,
+      sourceType: "map_event",
+      sourceId: eventId,
+    });
   }
 
   return data as MapEventCompletion;
@@ -1172,6 +1195,17 @@ export async function completeStoryMarker(markerId: string) {
     throw userError ?? new Error("You must be signed in to complete story quests.");
   }
 
+  const { data: existing, error: existingError } = await supabase
+    .from("story_marker_completions")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("marker_id", markerId)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
   const { data, error } = await supabase
     .from("story_marker_completions")
     .upsert(
@@ -1187,6 +1221,17 @@ export async function completeStoryMarker(markerId: string) {
 
   if (error) {
     throw error;
+  }
+
+  if (!existing) {
+    await recordSocialContribution({
+      userId: user.id,
+      metricType: "story_marker_completions",
+      metricFilter: markerId,
+      amount: 1,
+      sourceType: "story_marker",
+      sourceId: markerId,
+    });
   }
 
   return data as StoryMarkerCompletion;

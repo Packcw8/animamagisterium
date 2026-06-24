@@ -54,6 +54,7 @@ import { CharacterWithDetails, incrementCharacterDistanceWalked } from "../servi
 import { AbilityDefinition, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
 import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri } from "../services/inventoryService";
+import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
@@ -1411,6 +1412,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 total_distance_walked_meters: nextTotal,
               });
             }
+          });
+          void recordSocialContribution({
+            userId: character.user_id,
+            metricType: "distance_walked_meters",
+            amount: cleanMeters,
+            sourceType: "route",
+            sourceId: activeRoute.id,
           });
           if (activeRoute.mini_map_id) {
             void savePlayerMapState({

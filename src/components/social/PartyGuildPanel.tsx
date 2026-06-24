@@ -3,10 +3,13 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-nativ
 import { Frame } from "../Frame";
 import { ProgressBar } from "../ProgressBar";
 import { colors, fonts } from "../theme";
+import { getCurrentRole, Role } from "../../services/mapService";
+import { getItemDefinitions, ItemDefinition } from "../../services/inventoryService";
 import type { FriendWithProfile } from "../../services/socialService";
 import {
   createGuild,
   createParty,
+  deleteSocialGroupGoal,
   GuildMemberWithProfile,
   inviteGuildMember,
   invitePartyMember,
@@ -16,8 +19,11 @@ import {
   PartyMemberWithProfile,
   respondToGuildInvite,
   respondToPartyInvite,
+  saveSocialGroupGoal,
   SocialGoalWithProgress,
   SocialMemberProfile,
+  socialGoalMetrics,
+  SocialGoalMetric,
   getPartyGuildState,
 } from "../../services/partyGuildService";
 
@@ -34,6 +40,19 @@ export function PartyGuildPanel({ friends, onMessage }: PartyGuildPanelProps) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [role, setRole] = useState<Role>("player");
+  const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [goalTitle, setGoalTitle] = useState("");
+  const [goalDescription, setGoalDescription] = useState("");
+  const [goalMetric, setGoalMetric] = useState<SocialGoalMetric>("distance_walked_meters");
+  const [goalMetricFilter, setGoalMetricFilter] = useState("");
+  const [goalTarget, setGoalTarget] = useState("10");
+  const [goalRewardTitle, setGoalRewardTitle] = useState("");
+  const [goalRewardXp, setGoalRewardXp] = useState("0");
+  const [goalRewardGold, setGoalRewardGold] = useState("0");
+  const [goalRewardItems, setGoalRewardItems] = useState<Array<{ itemId: string; quantity: string }>>([]);
+  const [goalIsActive, setGoalIsActive] = useState(true);
 
   const acceptedFriends = friends.filter((friend) => friend.status === "accepted" && friend.friend);
 
@@ -44,7 +63,14 @@ export function PartyGuildPanel({ friends, onMessage }: PartyGuildPanelProps) {
   async function loadState() {
     setIsLoading(true);
     try {
-      setState(await getPartyGuildState());
+      const [nextState, nextRole, nextItems] = await Promise.all([
+        getPartyGuildState(),
+        getCurrentRole(),
+        getItemDefinitions(),
+      ]);
+      setState(nextState);
+      setRole(nextRole);
+      setItemDefinitions(nextItems);
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "Unable to load parties and guilds. Confirm the party/guild migration has run.");
     } finally {
@@ -121,11 +147,86 @@ export function PartyGuildPanel({ friends, onMessage }: PartyGuildPanelProps) {
     }
   }
 
+  async function handleSaveGoal() {
+    if (!activeGroup) {
+      onMessage(`Create or join a ${mode} first.`);
+      return;
+    }
+
+    if (!goalTitle.trim()) {
+      onMessage("Name the goal first.");
+      return;
+    }
+
+    try {
+      await saveSocialGroupGoal({
+        id: editingGoalId ?? undefined,
+        groupType: mode,
+        groupId: activeGroup.id,
+        title: goalTitle,
+        description: goalDescription,
+        metricType: goalMetric,
+        metricFilter: goalMetricFilter,
+        targetValue: Number(goalTarget) || 1,
+        rewardTitle: goalRewardTitle,
+        rewardXp: Number(goalRewardXp) || 0,
+        rewardGold: Number(goalRewardGold) || 0,
+        rewardItems: goalRewardItems.map((item) => ({ itemId: item.itemId, quantity: Number(item.quantity) || 1 })),
+        isActive: goalIsActive,
+      });
+      clearGoalForm();
+      onMessage("Group goal saved.");
+      await loadState();
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Unable to save group goal.");
+    }
+  }
+
+  async function handleDeleteGoal(goalId: string) {
+    try {
+      await deleteSocialGroupGoal(goalId);
+      clearGoalForm();
+      onMessage("Group goal deleted.");
+      await loadState();
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Unable to delete group goal.");
+    }
+  }
+
+  function editGoal(goal: SocialGoalWithProgress) {
+    setEditingGoalId(goal.id);
+    setGoalTitle(goal.title);
+    setGoalDescription(goal.description ?? "");
+    setGoalMetric(goal.metric_type as SocialGoalMetric);
+    setGoalMetricFilter(goal.metric_filter ?? "");
+    setGoalTarget(String(goal.target_value ?? 1));
+    setGoalRewardTitle(goal.reward_title ?? "");
+    setGoalRewardXp(String(goal.reward_xp ?? 0));
+    setGoalRewardGold(String(goal.reward_gold ?? 0));
+    setGoalRewardItems(goal.rewards.map((reward) => ({ itemId: reward.reward_item_id, quantity: String(reward.reward_item_quantity ?? 1) })));
+    setGoalIsActive(goal.is_active);
+  }
+
+  function clearGoalForm() {
+    setEditingGoalId(null);
+    setGoalTitle("");
+    setGoalDescription("");
+    setGoalMetric("distance_walked_meters");
+    setGoalMetricFilter("");
+    setGoalTarget("10");
+    setGoalRewardTitle("");
+    setGoalRewardXp("0");
+    setGoalRewardGold("0");
+    setGoalRewardItems([]);
+    setGoalIsActive(true);
+  }
+
   const activeGroup = mode === "party" ? state?.party : state?.guild;
   const activeMembers = mode === "party" ? state?.partyMembers ?? [] : state?.guildMembers ?? [];
   const activeGoals = mode === "party" ? state?.partyGoals ?? [] : state?.guildGoals ?? [];
   const activeMembership = activeMembers.find((member) => member.user_id === state?.userId) ?? null;
   const isLeader = activeMembership?.role === "leader";
+  const isAdmin = role === "admin";
   const maxMembers = mode === "party" ? 5 : 20;
 
   return (
@@ -205,9 +306,39 @@ export function PartyGuildPanel({ friends, onMessage }: PartyGuildPanelProps) {
             {activeGoals.length === 0 ? (
               <Text style={styles.copy}>No active goals yet. Admin-created party and guild missions will appear here.</Text>
             ) : activeGoals.map((goal) => (
-              <GoalCard key={goal.id} goal={goal} />
+              <GoalCard key={goal.id} goal={goal} itemDefinitions={itemDefinitions} onEdit={isAdmin ? editGoal : undefined} onDelete={isAdmin ? (goalId) => void handleDeleteGoal(goalId) : undefined} />
             ))}
           </Frame>
+
+          {isAdmin ? (
+            <AdminGoalBuilder
+              mode={mode}
+              editingGoalId={editingGoalId}
+              goalTitle={goalTitle}
+              goalDescription={goalDescription}
+              goalMetric={goalMetric}
+              goalMetricFilter={goalMetricFilter}
+              goalTarget={goalTarget}
+              goalRewardTitle={goalRewardTitle}
+              goalRewardXp={goalRewardXp}
+              goalRewardGold={goalRewardGold}
+              goalRewardItems={goalRewardItems}
+              goalIsActive={goalIsActive}
+              itemDefinitions={itemDefinitions}
+              onChangeTitle={setGoalTitle}
+              onChangeDescription={setGoalDescription}
+              onChangeMetric={setGoalMetric}
+              onChangeMetricFilter={setGoalMetricFilter}
+              onChangeTarget={setGoalTarget}
+              onChangeRewardTitle={setGoalRewardTitle}
+              onChangeRewardXp={setGoalRewardXp}
+              onChangeRewardGold={setGoalRewardGold}
+              onChangeRewardItems={setGoalRewardItems}
+              onToggleActive={() => setGoalIsActive((value) => !value)}
+              onSave={() => void handleSaveGoal()}
+              onCancel={clearGoalForm}
+            />
+          ) : null}
         </>
       ) : (
         <Frame style={styles.panel}>
@@ -274,7 +405,141 @@ function MemberProfile({ profile }: { profile: SocialMemberProfile | null }) {
   );
 }
 
-function GoalCard({ goal }: { goal: SocialGoalWithProgress }) {
+function AdminGoalBuilder({
+  mode,
+  editingGoalId,
+  goalTitle,
+  goalDescription,
+  goalMetric,
+  goalMetricFilter,
+  goalTarget,
+  goalRewardTitle,
+  goalRewardXp,
+  goalRewardGold,
+  goalRewardItems,
+  goalIsActive,
+  itemDefinitions,
+  onChangeTitle,
+  onChangeDescription,
+  onChangeMetric,
+  onChangeMetricFilter,
+  onChangeTarget,
+  onChangeRewardTitle,
+  onChangeRewardXp,
+  onChangeRewardGold,
+  onChangeRewardItems,
+  onToggleActive,
+  onSave,
+  onCancel,
+}: {
+  mode: GroupMode;
+  editingGoalId: string | null;
+  goalTitle: string;
+  goalDescription: string;
+  goalMetric: SocialGoalMetric;
+  goalMetricFilter: string;
+  goalTarget: string;
+  goalRewardTitle: string;
+  goalRewardXp: string;
+  goalRewardGold: string;
+  goalRewardItems: Array<{ itemId: string; quantity: string }>;
+  goalIsActive: boolean;
+  itemDefinitions: ItemDefinition[];
+  onChangeTitle: (value: string) => void;
+  onChangeDescription: (value: string) => void;
+  onChangeMetric: (value: SocialGoalMetric) => void;
+  onChangeMetricFilter: (value: string) => void;
+  onChangeTarget: (value: string) => void;
+  onChangeRewardTitle: (value: string) => void;
+  onChangeRewardXp: (value: string) => void;
+  onChangeRewardGold: (value: string) => void;
+  onChangeRewardItems: (value: Array<{ itemId: string; quantity: string }>) => void;
+  onToggleActive: () => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const selectedMetric = socialGoalMetrics.find((metric) => metric.key === goalMetric);
+
+  return (
+    <Frame style={styles.panel}>
+      <Text style={styles.sectionTitle}>{editingGoalId ? "Edit" : "Create"} {mode === "party" ? "Party" : "Guild"} Goal</Text>
+      <Text style={styles.copy}>Admin tool. Contributions are recorded automatically from matching gameplay actions.</Text>
+      <TextInput value={goalTitle} onChangeText={onChangeTitle} placeholder="Goal title" placeholderTextColor={colors.muted} style={styles.input} />
+      <TextInput value={goalDescription} onChangeText={onChangeDescription} placeholder="Goal description" placeholderTextColor={colors.muted} style={styles.input} />
+      <Text style={styles.label}>Metric</Text>
+      <View style={styles.chipWrap}>
+        {socialGoalMetrics.map((metric) => (
+          <Pressable key={metric.key} style={[styles.chip, goalMetric === metric.key && styles.chipActive]} onPress={() => onChangeMetric(metric.key)}>
+            <Text style={styles.chipText}>{metric.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {selectedMetric?.needsFilter ? (
+        <TextInput value={goalMetricFilter} onChangeText={onChangeMetricFilter} placeholder={selectedMetric.filterLabel ?? "Filter value"} placeholderTextColor={colors.muted} style={styles.input} />
+      ) : null}
+      <TextInput value={goalTarget} onChangeText={onChangeTarget} placeholder="Target value" placeholderTextColor={colors.muted} style={styles.input} keyboardType="numeric" />
+      <Text style={styles.label}>Rewards</Text>
+      <TextInput value={goalRewardTitle} onChangeText={onChangeRewardTitle} placeholder="Reward title optional" placeholderTextColor={colors.muted} style={styles.input} />
+      <View style={styles.actionRow}>
+        <TextInput value={goalRewardXp} onChangeText={onChangeRewardXp} placeholder="XP" placeholderTextColor={colors.muted} style={[styles.input, styles.compactInput]} keyboardType="numeric" />
+        <TextInput value={goalRewardGold} onChangeText={onChangeRewardGold} placeholder="Gold" placeholderTextColor={colors.muted} style={[styles.input, styles.compactInput]} keyboardType="numeric" />
+      </View>
+      <Text style={styles.label}>Item Rewards</Text>
+      {goalRewardItems.map((reward, index) => (
+        <View key={`${reward.itemId}-${index}`} style={styles.rewardRow}>
+          <View style={styles.chipWrap}>
+            {itemDefinitions.slice(0, 16).map((item) => (
+              <Pressable
+                key={item.id}
+                style={[styles.chip, reward.itemId === item.id && styles.chipActive]}
+                onPress={() => {
+                  const next = [...goalRewardItems];
+                  next[index] = { ...next[index], itemId: item.id };
+                  onChangeRewardItems(next);
+                }}
+              >
+                <Text style={styles.chipText}>{item.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.actionRow}>
+            <TextInput
+              value={reward.quantity}
+              onChangeText={(value) => {
+                const next = [...goalRewardItems];
+                next[index] = { ...next[index], quantity: value };
+                onChangeRewardItems(next);
+              }}
+              placeholder="Qty"
+              placeholderTextColor={colors.muted}
+              style={[styles.input, styles.compactInput]}
+              keyboardType="numeric"
+            />
+            <Pressable style={styles.dangerButton} onPress={() => onChangeRewardItems(goalRewardItems.filter((_, itemIndex) => itemIndex !== index))}>
+              <Text style={styles.dangerText}>Remove</Text>
+            </Pressable>
+          </View>
+        </View>
+      ))}
+      <Pressable style={styles.secondaryButton} onPress={() => onChangeRewardItems([...goalRewardItems, { itemId: itemDefinitions[0]?.id ?? "", quantity: "1" }])}>
+        <Text style={styles.secondaryText}>Add Item Reward</Text>
+      </Pressable>
+      <Pressable style={[styles.secondaryButton, goalIsActive && styles.activeToggle]} onPress={onToggleActive}>
+        <Text style={styles.secondaryText}>Active: {goalIsActive ? "Yes" : "No"}</Text>
+      </Pressable>
+      <Pressable style={styles.primaryButton} onPress={onSave}>
+        <Text style={styles.primaryText}>{editingGoalId ? "Save Goal" : "Create Goal"}</Text>
+      </Pressable>
+      {editingGoalId ? (
+        <Pressable style={styles.secondaryButton} onPress={onCancel}>
+          <Text style={styles.secondaryText}>Cancel Edit</Text>
+        </Pressable>
+      ) : null}
+    </Frame>
+  );
+}
+
+function GoalCard({ goal, itemDefinitions, onEdit, onDelete }: { goal: SocialGoalWithProgress; itemDefinitions: ItemDefinition[]; onEdit?: (goal: SocialGoalWithProgress) => void; onDelete?: (goalId: string) => void }) {
   const progress = Math.min(100, Math.round((goal.total_contribution / Math.max(1, Number(goal.target_value))) * 100));
 
   return (
@@ -295,12 +560,36 @@ function GoalCard({ goal }: { goal: SocialGoalWithProgress }) {
       {goal.reward_title || goal.reward_xp || goal.reward_gold ? (
         <Text style={styles.rewardText}>Reward: {goal.reward_title ?? "Group reward"}{goal.reward_xp ? ` / ${goal.reward_xp} XP` : ""}{goal.reward_gold ? ` / ${goal.reward_gold} Gold` : ""}</Text>
       ) : null}
+      {goal.rewards.length ? (
+        <View style={styles.chipWrap}>
+          {goal.rewards.map((reward) => (
+            <View key={reward.id} style={styles.rewardPill}>
+              <Text style={styles.chipText}>{itemDefinitions.find((item) => item.id === reward.reward_item_id)?.name ?? "Item"} x{reward.reward_item_quantity}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
       {goal.contributors.slice(0, 4).map((contributor) => (
         <View key={contributor.user_id} style={styles.contributionRow}>
           <Text style={styles.copy}>{contributor.profile?.character_name ?? "Unknown Player"}</Text>
           <Text style={styles.score}>{formatNumber(contributor.amount)}</Text>
         </View>
       ))}
+      {goal.is_complete ? <Text style={styles.rewardText}>Completed. Rewards sent to member inboxes.</Text> : null}
+      {onEdit || onDelete ? (
+        <View style={styles.actionRow}>
+          {onEdit ? (
+            <Pressable style={styles.smallButton} onPress={() => onEdit(goal)}>
+              <Text style={styles.buttonText}>Edit</Text>
+            </Pressable>
+          ) : null}
+          {onDelete ? (
+            <Pressable style={styles.dangerButton} onPress={() => onDelete(goal.id)}>
+              <Text style={styles.dangerText}>Delete</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -384,6 +673,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     backgroundColor: "rgba(0,0,0,0.24)",
   },
+  compactInput: {
+    flex: 1,
+  },
+  label: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 12,
+    textTransform: "uppercase",
+  },
   primaryButton: {
     minHeight: 46,
     borderRadius: 8,
@@ -406,6 +704,10 @@ const styles = StyleSheet.create({
   secondaryText: {
     color: colors.blue,
     fontWeight: "900",
+  },
+  activeToggle: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.36)",
   },
   smallButton: {
     minHeight: 38,
@@ -434,6 +736,48 @@ const styles = StyleSheet.create({
   dangerText: {
     color: "#ffb4aa",
     fontWeight: "900",
+  },
+  chipWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  chip: {
+    minHeight: 34,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  chipActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.58)",
+  },
+  chipText: {
+    color: colors.text,
+    fontWeight: "800",
+    fontSize: 12,
+  },
+  rewardRow: {
+    gap: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(174, 126, 55, 0.2)",
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.18)",
+  },
+  rewardPill: {
+    minHeight: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.48)",
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(217, 170, 93, 0.08)",
   },
   inviteRow: {
     flexDirection: "row",

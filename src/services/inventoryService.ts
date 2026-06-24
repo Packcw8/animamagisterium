@@ -170,6 +170,19 @@ export async function getInventoryState(characterId: string): Promise<InventoryS
   };
 }
 
+export async function getItemDefinitions() {
+  const { data, error } = await supabase
+    .from("item_definitions")
+    .select("*")
+    .order("name", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as ItemDefinition[];
+}
+
 export async function saveItemDefinition(input: Partial<ItemDefinition>) {
   const {
     data: { user },

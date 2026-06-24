@@ -433,6 +433,7 @@ export type Tables = {
     title: string;
     description: string | null;
     metric_type: string;
+    metric_filter: string | null;
     target_value: number;
     reward_title: string | null;
     reward_xp: number;
@@ -445,6 +446,21 @@ export type Tables = {
     created_by: string | null;
     created_at: string;
     updated_at: string;
+  };
+  social_group_goal_rewards: {
+    id: string;
+    goal_id: string;
+    reward_item_id: string;
+    reward_item_quantity: number;
+    sort_order: number;
+    created_at: string;
+  };
+  social_group_goal_completions: {
+    id: string;
+    goal_id: string;
+    group_type: "party" | "guild";
+    group_id: string;
+    completed_at: string;
   };
   social_group_goal_contributions: {
     id: string;

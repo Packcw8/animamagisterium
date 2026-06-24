@@ -1,6 +1,7 @@
 import { supabase, Tables } from "../lib/supabase";
 import { CharacterWithDetails, getCharacter } from "./characterService";
 import { syncUnlockedAbilities } from "./abilityService";
+import { recordSocialContribution } from "./partyGuildService";
 import {
   applyCharacterXpGold,
   attributeKeys,
@@ -213,6 +214,14 @@ export async function completeTrainingSession(character: CharacterWithDetails, a
   }
 
   await applyCharacterXpGold(character, config.character_xp_reward, 0);
+  await recordSocialContribution({
+    userId: user.id,
+    metricType: "training_sessions",
+    metricFilter: attributeKey,
+    amount: 1,
+    sourceType: "training",
+    sourceId: attributeKey,
+  });
 
   const { error: attributeError } = await supabase
     .from("attributes")
