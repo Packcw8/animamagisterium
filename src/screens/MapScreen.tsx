@@ -5,6 +5,7 @@ import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButt
 import { BattleEventScreen } from "../components/battle/BattleEventScreen";
 import { useBattleEncounter } from "../components/battle/useBattleEncounter";
 import { BrandLogo } from "../components/BrandLogo";
+import { DialogueSceneScreen } from "../components/dialogue/DialogueSceneScreen";
 import { Frame } from "../components/Frame";
 import { AdminCoordinatePanel } from "../components/map/AdminCoordinatePanel";
 import { AdminMapEditorHeader } from "../components/map/AdminMapEditorHeader";
@@ -44,7 +45,7 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails, incrementCharacterDistanceWalked } from "../services/characterService";
 import { AbilityDefinition, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
-import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition, resolveEnemyImageUri } from "../services/combatAdminService";
+import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
 import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri } from "../services/inventoryService";
 import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
@@ -3846,7 +3847,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   if (activeEvent) {
     return (
       <>
-        <StoryInstanceScreen
+        <DialogueSceneScreen
           event={activeEvent}
           nodes={dialogueNodes}
           choices={dialogueChoices}
@@ -5552,88 +5553,6 @@ function getChoiceTargetSummary(choice: StoryDialogueChoice, nodes: StoryDialogu
   return { label: "Then return to map", isBroken: false };
 }
 
-function StoryInstanceScreen({
-  event,
-  nodes,
-  choices,
-  npcs,
-  activeNodeId,
-  dialogueLog,
-  previewMode = false,
-  onLegacyChoice,
-  onChoice,
-  onEndChat,
-  onExitPreview,
-}: {
-  event: MapEvent;
-  nodes: StoryDialogueNode[];
-  choices: StoryDialogueChoice[];
-  npcs: NpcDefinition[];
-  activeNodeId: string | null;
-  dialogueLog: string[];
-  previewMode?: boolean;
-  onLegacyChoice: (action: MapEvent["choices"][number]["action"]) => void;
-  onChoice: (choice: StoryDialogueChoice) => void;
-  onEndChat: (completeEvent: boolean) => void;
-  onExitPreview?: () => void;
-}) {
-  const activeNode = nodes.find((node) => node.id === activeNodeId) ?? nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
-  const nodeChoices = activeNode ? choices.filter((choice) => choice.node_id === activeNode.id) : [];
-  const legacyChoices = event.choices.length > 0 ? event.choices : [{ label: "Return to Map", action: "Continue" as const }];
-  const nodeNpc = npcs.find((npc) => npc.id === activeNode?.npc_id);
-  const eventNpc = npcs.find((npc) => npc.id === event.dialogue_npc_id);
-  const npcName = nodeNpc?.name ?? activeNode?.npc_name ?? eventNpc?.name ?? event.npc_name;
-  const npcPortrait = nodeNpc?.image_url ?? activeNode?.npc_portrait_url ?? eventNpc?.image_url ?? event.npc_portrait_url;
-
-  return (
-    <Screen>
-      <Frame style={styles.eventScreen}>
-        {previewMode ? (
-          <View style={styles.previewBanner}>
-            <Text style={styles.previewText}>Admin Preview - no rewards or progress will be saved.</Text>
-            <Pressable style={styles.previewExitButton} onPress={onExitPreview}>
-              <Text style={styles.secondaryText}>Exit Preview</Text>
-            </Pressable>
-          </View>
-        ) : null}
-        {(activeNode?.background_image_url ?? event.background_image_url) ? <Image source={{ uri: activeNode?.background_image_url ?? event.background_image_url ?? "" }} style={styles.eventImage} /> : <View style={styles.eventImagePlaceholder} />}
-        {npcPortrait ? <Image source={{ uri: resolveEnemyImageUri(npcPortrait) ?? npcPortrait }} style={styles.npcPortrait} /> : null}
-        <Text style={styles.sectionTitle}>{event.title}</Text>
-        {npcName ? <Text style={styles.selectedTitle}>{npcName}</Text> : null}
-        <Text style={styles.dialogueText}>{activeNode?.dialogue_text || event.dialogue_text || "The trail grows quiet."}</Text>
-        {dialogueLog.map((line, index) => (
-          <Text key={`${line}-${index}`} style={styles.copy}>{line}</Text>
-        ))}
-        <View style={styles.choiceStack}>
-          {activeNode ? (
-            <>
-              {nodeChoices.map((choice) => (
-                <Pressable key={choice.id} style={styles.primaryButton} onPress={() => onChoice(choice)}>
-                  <Text style={styles.primaryText}>{choice.button_text}</Text>
-                </Pressable>
-              ))}
-              {nodeChoices.length === 0 || activeNode.is_ending ? (
-                <Pressable style={styles.primaryButton} onPress={() => onEndChat(activeNode.end_completes_event)}>
-                  <Text style={styles.primaryText}>{activeNode.end_completes_event ? "Complete Event" : "Return to Map"}</Text>
-                </Pressable>
-              ) : null}
-              {activeNode.allow_end_chat ? (
-                <Pressable style={styles.secondaryButton} onPress={() => onEndChat(activeNode.end_completes_event)}>
-                  <Text style={styles.secondaryText}>End Chat</Text>
-                </Pressable>
-              ) : null}
-            </>
-          ) : legacyChoices.map((choice, index) => (
-            <Pressable key={`${choice.label}-${index}`} style={styles.primaryButton} onPress={() => onLegacyChoice(choice.action)}>
-              <Text style={styles.primaryText}>{choice.label}</Text>
-            </Pressable>
-          ))}
-        </View>
-      </Frame>
-    </Screen>
-  );
-}
-
 function MiniMapMarkerAdminForm({
   activeSectionMarkerTypes,
   draftType,
@@ -7135,66 +7054,6 @@ const styles = StyleSheet.create({
   dangerText: {
     color: "#ffb4aa",
     fontWeight: "900",
-  },
-  eventScreen: {
-    margin: 12,
-    padding: 14,
-    gap: 12,
-  },
-  previewBanner: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.blue,
-    backgroundColor: "rgba(20, 61, 86, 0.42)",
-    padding: 10,
-    gap: 8,
-  },
-  previewText: {
-    color: colors.text,
-    fontWeight: "800",
-    lineHeight: 18,
-  },
-  previewExitButton: {
-    minHeight: 38,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.32)",
-  },
-  eventImage: {
-    width: "100%",
-    height: 220,
-    borderRadius: 8,
-  },
-  eventImagePlaceholder: {
-    width: "100%",
-    height: 160,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    backgroundColor: "rgba(20, 61, 86, 0.35)",
-  },
-  npcPortrait: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
-    borderWidth: 2,
-    borderColor: colors.gold,
-  },
-  dialogueText: {
-    color: colors.text,
-    fontSize: 16,
-    lineHeight: 24,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: "rgba(0,0,0,0.3)",
-  },
-  choiceStack: {
-    gap: 10,
   },
   battleArena: {
     minHeight: 340,
