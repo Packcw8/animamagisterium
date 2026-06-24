@@ -384,6 +384,79 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  parties: {
+    id: string;
+    name: string;
+    description: string | null;
+    leader_id: string;
+    max_members: number;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  party_members: {
+    id: string;
+    party_id: string;
+    user_id: string;
+    role: "leader" | "member";
+    status: "pending" | "active" | "declined" | "left";
+    invited_by: string | null;
+    joined_at: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  guilds: {
+    id: string;
+    name: string;
+    description: string | null;
+    leader_id: string;
+    max_members: number;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  guild_members: {
+    id: string;
+    guild_id: string;
+    user_id: string;
+    role: "leader" | "officer" | "member";
+    status: "pending" | "active" | "declined" | "left";
+    invited_by: string | null;
+    joined_at: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  social_group_goals: {
+    id: string;
+    group_type: "party" | "guild";
+    group_id: string;
+    title: string;
+    description: string | null;
+    metric_type: string;
+    target_value: number;
+    reward_title: string | null;
+    reward_xp: number;
+    reward_gold: number;
+    reward_item_id: string | null;
+    reward_item_quantity: number;
+    starts_at: string | null;
+    ends_at: string | null;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  social_group_goal_contributions: {
+    id: string;
+    goal_id: string;
+    group_type: "party" | "guild";
+    group_id: string;
+    user_id: string;
+    amount: number;
+    source_type: string | null;
+    source_id: string | null;
+    created_at: string;
+  };
   player_inbox_rewards: {
     id: string;
     user_id: string;

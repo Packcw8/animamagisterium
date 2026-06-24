@@ -4,12 +4,13 @@ import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { PlayerProfileCard } from "../components/PlayerProfileCard";
 import { Screen } from "../components/Screen";
+import { PartyGuildPanel } from "../components/social/PartyGuildPanel";
 import { colors, fonts } from "../components/theme";
 import { getEarnedBadgesForCharacter, EarnedBadgeSummary } from "../services/badgeService";
 import { getLeaderboardWithRank, LeaderboardMetric, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers } from "../services/leaderboardService";
 import { FriendWithProfile, getCurrentUserId, getFriendRows, removeFriend, sendFriendRequest, updateFriendRequest } from "../services/socialService";
 
-type SocialTab = "friends" | "leaderboard" | "profile";
+type SocialTab = "friends" | "partyGuild" | "leaderboard" | "profile";
 type LeaderboardScope = "all" | "friends";
 
 export function SocialScreen() {
@@ -131,14 +132,14 @@ export function SocialScreen() {
         <BrandLogo size={54} />
         <View style={styles.headerText}>
           <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
-          <Text style={styles.subtitle}>Social / Friends / Leaderboards</Text>
+        <Text style={styles.subtitle}>Social / Friends / Parties / Guilds</Text>
         </View>
       </View>
 
       <View style={styles.tabs}>
-        {(["friends", "leaderboard", "profile"] as const).map((tab) => (
+        {(["friends", "partyGuild", "leaderboard", "profile"] as const).map((tab) => (
           <Pressable key={tab} style={[styles.tab, activeTab === tab && styles.tabActive]} onPress={() => setActiveTab(tab)}>
-            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab === "friends" ? "Friends" : tab === "leaderboard" ? "Leaderboards" : "Profile"}</Text>
+            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab === "friends" ? "Friends" : tab === "partyGuild" ? "Parties" : tab === "leaderboard" ? "Leaderboards" : "Profile"}</Text>
           </Pressable>
         ))}
       </View>
@@ -183,6 +184,8 @@ export function SocialScreen() {
             {(friend) => <Text style={styles.copy}>Waiting for response.</Text>}
           </FriendSection>
         </View>
+      ) : activeTab === "partyGuild" ? (
+        <PartyGuildPanel friends={friends} onMessage={setMessage} />
       ) : activeTab === "leaderboard" ? (
         <View style={styles.stack}>
           <Frame style={styles.heroCard}>
