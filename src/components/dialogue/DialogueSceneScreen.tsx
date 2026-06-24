@@ -5,7 +5,7 @@ import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
 import { resolveEnemyImageUri, type NpcDefinition } from "../../services/combatAdminService";
 import type { MapEvent, StoryDialogueChoice, StoryDialogueNode } from "../../services/mapService";
-import { getDialogueSceneState } from "../../utils/dialogueFlow";
+import { getDialogueSceneState, type DialogueChoiceAvailability } from "../../utils/dialogueFlow";
 
 type DialogueSceneScreenProps = {
   event: MapEvent;
@@ -19,6 +19,7 @@ type DialogueSceneScreenProps = {
   onChoice: (choice: StoryDialogueChoice) => void;
   onEndChat: (completeEvent: boolean) => void;
   onExitPreview?: () => void;
+  choiceAvailability?: Record<string, DialogueChoiceAvailability>;
 };
 
 export function DialogueSceneScreen({
@@ -33,6 +34,7 @@ export function DialogueSceneScreen({
   onChoice,
   onEndChat,
   onExitPreview,
+  choiceAvailability = {},
 }: DialogueSceneScreenProps) {
   const { activeNode, nodeChoices, legacyChoices, npcName, npcPortrait, backgroundImageUrl, dialogueText } =
     getDialogueSceneState({ event, nodes, choices, npcs, activeNodeId });
@@ -65,11 +67,23 @@ export function DialogueSceneScreen({
         <View style={styles.choiceStack}>
           {activeNode ? (
             <>
-              {nodeChoices.map((choice) => (
-                <Pressable key={choice.id} style={styles.primaryButton} onPress={() => onChoice(choice)}>
-                  <Text style={styles.primaryText}>{choice.button_text}</Text>
-                </Pressable>
-              ))}
+              {nodeChoices.map((choice) => {
+                const availability = choiceAvailability[choice.id] ?? { met: true, hidden: false, disabled: false, message: null };
+                if (availability.hidden) {
+                  return null;
+                }
+                return (
+                  <Pressable
+                    key={choice.id}
+                    style={[styles.primaryButton, availability.disabled && styles.lockedButton]}
+                    onPress={() => onChoice(choice)}
+                    disabled={availability.disabled}
+                  >
+                    <Text style={[styles.primaryText, availability.disabled && styles.lockedText]}>{choice.button_text}</Text>
+                    {availability.disabled && availability.message ? <Text style={styles.requirementText}>{availability.message}</Text> : null}
+                  </Pressable>
+                );
+              })}
               {nodeChoices.length === 0 || activeNode.is_ending ? (
                 <Pressable style={styles.primaryButton} onPress={() => onEndChat(activeNode.end_completes_event)}>
                   <Text style={styles.primaryText}>{activeNode.end_completes_event ? "Complete Event" : "Return to Map"}</Text>
@@ -205,6 +219,21 @@ const styles = StyleSheet.create({
   primaryText: {
     color: "#110b04",
     fontWeight: "900",
+    textAlign: "center",
+  },
+  lockedButton: {
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  lockedText: {
+    color: colors.muted,
+  },
+  requirementText: {
+    color: colors.gold,
+    fontSize: 12,
+    fontWeight: "800",
+    marginTop: 4,
     textAlign: "center",
   },
   secondaryButton: {

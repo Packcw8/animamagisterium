@@ -24,6 +24,8 @@ export type MapEventCompletion = Tables["map_event_completions"];
 export type StoryMarkerCompletion = Tables["story_marker_completions"];
 export type StoryDialogueNode = Tables["story_dialogue_nodes"];
 export type StoryDialogueChoice = Tables["story_dialogue_choices"];
+export type PlayerStoryFlag = Tables["player_story_flags"];
+export type PlayerTutorialCompletion = Tables["player_tutorial_completions"];
 export type Role = Tables["profiles"]["role"];
 
 export const fallbackRoute: MapRoute = {
@@ -1129,6 +1131,34 @@ export async function getStoryMarkerCompletions(markerIds: string[]) {
   }
 
   return (data ?? []) as StoryMarkerCompletion[];
+}
+
+export async function getPlayerStoryFlags(characterId: string) {
+  const { data, error } = await supabase
+    .from("player_story_flags")
+    .select("*")
+    .eq("character_id", characterId);
+
+  if (error) {
+    console.warn("[map] story flags unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as PlayerStoryFlag[];
+}
+
+export async function getPlayerTutorialCompletions(characterId: string) {
+  const { data, error } = await supabase
+    .from("player_tutorial_completions")
+    .select("*")
+    .eq("character_id", characterId);
+
+  if (error) {
+    console.warn("[map] tutorial completions unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as PlayerTutorialCompletion[];
 }
 
 export async function completeStoryMarker(markerId: string) {

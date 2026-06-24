@@ -51,7 +51,7 @@ import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { clamp, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, roundPercent } from "../utils/mapGeometry";
-import { choiceActionLabel, eventTriggerModeName, eventTypeName, formatResourceName, getChoiceTargetSummary } from "../utils/dialogueFlow";
+import { choiceActionLabel, evaluateDialogueChoiceRequirement, eventTriggerModeName, eventTypeName, formatResourceName, getChoiceTargetSummary, getRequirementSummary, requirementTypeLabel } from "../utils/dialogueFlow";
 import { buildCreateMarkerInput, buildMarkerSettingsPayload, type MarkerPayloadState } from "../utils/markerPayload";
 import {
   canPlayerSeeStoryMarker,
@@ -107,6 +107,8 @@ import {
   getMapEvents,
   getMarkerMarketItems,
   getPlayerMarketPurchaseCounts,
+  getPlayerStoryFlags,
+  getPlayerTutorialCompletions,
   getPlayerMapState,
   getWorldMapSettings,
   getMarkerLegendItems,
@@ -167,6 +169,9 @@ const eventTriggerModes = ["fixed", "random"] as const;
 const lockTypes = ["public", "story_locked", "quest_locked"] as const;
 const rewardTimings = ["on_interact", "on_path_complete"] as const;
 const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle", "Complete Event"] as const;
+const dialogueRequirementTypes = ["none", "gold", "item", "story_flag", "completed_marker", "completed_event", "tutorial_step", "ability_known", "attribute_level"] as const;
+const dialogueRequirementOperators = [">=", ">", "=", "<=", "<"] as const;
+const attributeRequirementKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 const eventTypeLabels: Record<(typeof eventTypes)[number], string> = {
   dialogue: "Dialogue Event",
   battle: "Battle Event",
@@ -212,6 +217,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [allMapEvents, setAllMapEvents] = useState<MapEvent[]>([]);
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [completedStoryMarkerIds, setCompletedStoryMarkerIds] = useState<Set<string>>(new Set());
+  const [completedTutorialStepIds, setCompletedTutorialStepIds] = useState<Set<string>>(new Set());
+  const [storyFlags, setStoryFlags] = useState<Map<string, boolean>>(new Map());
   const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
   const [activeMarkerEventId, setActiveMarkerEventId] = useState<string | null>(null);
   const [adminPreviewMode, setAdminPreviewMode] = useState<"story" | "battle" | null>(null);
@@ -253,6 +260,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
+  const [knownAbilities, setKnownAbilities] = useState<AbilityDefinition[]>([]);
   const [mapInventoryOpen, setMapInventoryOpen] = useState(false);
   const [mapItemMessage, setMapItemMessage] = useState<string | null>(null);
   const [gameToast, setGameToast] = useState<GameToastData | null>(null);
@@ -438,6 +446,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [choiceRewardItem, setChoiceRewardItem] = useState("");
   const [choiceRewardItemId, setChoiceRewardItemId] = useState<string | null>(null);
   const [choiceRewardItemQuantity, setChoiceRewardItemQuantity] = useState("1");
+  const [choiceRequirementType, setChoiceRequirementType] = useState<StoryDialogueChoice["requirement_type"]>("none");
+  const [choiceRequirementValue, setChoiceRequirementValue] = useState("");
+  const [choiceRequirementQuantity, setChoiceRequirementQuantity] = useState("1");
+  const [choiceRequirementOperator, setChoiceRequirementOperator] = useState<StoryDialogueChoice["requirement_operator"]>(">=");
+  const [choiceHideIfUnmet, setChoiceHideIfUnmet] = useState(false);
+  const [choiceDisableIfUnmet, setChoiceDisableIfUnmet] = useState(true);
+  const [choiceRequirementFailureMessage, setChoiceRequirementFailureMessage] = useState("");
   const [choiceSortOrder, setChoiceSortOrder] = useState("0");
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [selectedSeason, setSelectedSeason] = useState(1);
@@ -464,6 +479,22 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const adminRoutes = useMemo(() => orderedRoutes.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [orderedRoutes, selectedChapter, selectedSeason]);
   const adminWorldRoutes = useMemo(() => adminRoutes.filter((item) => !item.mini_map_id), [adminRoutes]);
   const adminMiniMapRoutes = useMemo(() => adminRoutes.filter((item) => item.mini_map_id === activeMiniMap?.id), [activeMiniMap?.id, adminRoutes]);
+  const dialogueChoiceAvailability = useMemo(
+    () => Object.fromEntries(dialogueChoices.map((choice) => [
+      choice.id,
+      evaluateDialogueChoiceRequirement(choice, {
+        character,
+        inventoryItems,
+        itemDefinitions,
+        completedMarkerIds: completedStoryMarkerIds,
+        completedEventIds,
+        completedTutorialStepIds,
+        storyFlags,
+        knownAbilities,
+      }),
+    ])),
+    [character, completedEventIds, completedStoryMarkerIds, completedTutorialStepIds, dialogueChoices, inventoryItems, itemDefinitions, knownAbilities, storyFlags],
+  );
   const activeWorldMapSetting = useMemo(
     () => worldMapSettings.find((item) => Number(item.season_number) === selectedSeason && Number(item.chapter_number) === selectedChapter) ?? null,
     [selectedChapter, selectedSeason, worldMapSettings],
@@ -592,6 +623,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     try {
       const loadout = await getCombatLoadout(character);
       setEquippedAbilities(loadout.equipped);
+      setKnownAbilities(loadout.unlocked);
     } catch (error) {
       setBattleLog((current) => [getErrorMessage(error, "Unable to load combat abilities."), ...current].slice(0, 8));
     }
@@ -956,7 +988,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       getRouteProgressForRoutes(nextRoutes.map((item) => item.id)),
       getPlayerMapState(),
     ]);
-    const storyCompletions = await getStoryMarkerCompletions(loadedMarkers.filter(isStoryQuestMarker).map((item) => item.id));
+    const [storyCompletions, loadedStoryFlags, tutorialCompletions, allEventCompletions] = await Promise.all([
+      getStoryMarkerCompletions(loadedMarkers.filter(isStoryQuestMarker).map((item) => item.id)),
+      getPlayerStoryFlags(character.id),
+      getPlayerTutorialCompletions(character.id),
+      getEventCompletions(loadedEvents.map((event) => event.id)),
+    ]);
     const currentProgressRow =
       [...progressRows]
         .filter((row) => row.is_current)
@@ -965,6 +1002,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const firstRoute = nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
     setRouteProgressRows(progressRows);
     setCompletedStoryMarkerIds(new Set(storyCompletions.map((completion) => completion.marker_id)));
+    setStoryFlags(new Map(loadedStoryFlags.map((flag) => [flag.flag_key, flag.flag_value])));
+    setCompletedTutorialStepIds(new Set(tutorialCompletions.map((completion) => completion.tutorial_step_id)));
+    setCompletedEventIds(new Set(allEventCompletions.map((completion) => completion.event_id)));
     setRoutes(nextRoutes);
     setPathDraft([]);
     setMarkers(loadedMarkers);
@@ -1121,7 +1161,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const [progress, events] = await Promise.all([getRouteProgress(nextRoute.id), getMapEvents(nextRoute.id)]);
     setMapEvents(events);
     const completions = await getEventCompletions(events.map((event) => event.id));
-    setCompletedEventIds(new Set(completions.map((completion) => completion.event_id)));
+    setCompletedEventIds((current) => new Set([...current, ...completions.map((completion) => completion.event_id)]));
 
     if (progress) {
       const savedDistance = Number(progress.distance_walked_meters);
@@ -2917,6 +2957,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    const requirement = dialogueChoiceAvailability[choice.id];
+    if (requirement && !requirement.met) {
+      setDialogueLog((current) => [requirement.message ?? "That choice is not available yet.", ...current].slice(0, 4));
+      return;
+    }
+
     if (choice.player_dialogue_text) {
       setDialogueLog((current) => [`You: ${choice.player_dialogue_text}`, ...current].slice(0, 4));
     }
@@ -3337,6 +3383,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         reward_item: choice.reward_item,
         reward_item_id: choice.reward_item_id,
         reward_item_quantity: choice.reward_item_quantity,
+        requirement_type: choice.requirement_type ?? "none",
+        requirement_value: choice.requirement_value,
+        requirement_quantity: choice.requirement_quantity ?? 1,
+        requirement_operator: choice.requirement_operator ?? ">=",
+        hide_if_unmet: choice.hide_if_unmet ?? false,
+        disable_if_unmet: choice.disable_if_unmet ?? true,
+        requirement_failure_message: choice.requirement_failure_message,
         sort_order: choice.sort_order,
       });
     }
@@ -3458,6 +3511,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceRewardItem(choice.reward_item ?? "");
     setChoiceRewardItemId(choice.reward_item_id ?? null);
     setChoiceRewardItemQuantity(String(choice.reward_item_quantity ?? 1));
+    setChoiceRequirementType(choice.requirement_type ?? "none");
+    setChoiceRequirementValue(choice.requirement_value ?? "");
+    setChoiceRequirementQuantity(String(choice.requirement_quantity ?? 1));
+    setChoiceRequirementOperator(choice.requirement_operator ?? ">=");
+    setChoiceHideIfUnmet(choice.hide_if_unmet ?? false);
+    setChoiceDisableIfUnmet(choice.disable_if_unmet ?? true);
+    setChoiceRequirementFailureMessage(choice.requirement_failure_message ?? "");
     setChoiceSortOrder(String(choice.sort_order));
   }
 
@@ -3482,6 +3542,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceRewardItem("");
     setChoiceRewardItemId(null);
     setChoiceRewardItemQuantity("1");
+    setChoiceRequirementType("none");
+    setChoiceRequirementValue("");
+    setChoiceRequirementQuantity("1");
+    setChoiceRequirementOperator(">=");
+    setChoiceHideIfUnmet(false);
+    setChoiceDisableIfUnmet(true);
+    setChoiceRequirementFailureMessage("");
     setChoiceSortOrder(String(choiceNodeId ? getNextChoiceOrder(dialogueChoices, choiceNodeId) : 0));
   }
 
@@ -3525,6 +3592,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         reward_item: choiceRewardItem.trim() || null,
         reward_item_id: choiceRewardItemId,
         reward_item_quantity: Math.max(1, Number(choiceRewardItemQuantity) || 1),
+        requirement_type: choiceRequirementType,
+        requirement_value: choiceRequirementType === "none" ? null : choiceRequirementValue.trim() || null,
+        requirement_quantity: Math.max(1, Number(choiceRequirementQuantity) || 1),
+        requirement_operator: choiceRequirementOperator,
+        hide_if_unmet: choiceHideIfUnmet,
+        disable_if_unmet: choiceDisableIfUnmet,
+        requirement_failure_message: choiceRequirementFailureMessage.trim() || null,
         sort_order: Number(choiceSortOrder) || 0,
       };
       const saved = editingChoice ? await updateDialogueChoice(editingChoice.id, input) : await createDialogueChoice({ ...input, node_id: choiceNodeId });
@@ -3685,6 +3759,78 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     );
   }
 
+  function renderDialogueChoiceRequirementEditor() {
+    const showQuantity = choiceRequirementType === "gold" || choiceRequirementType === "item" || choiceRequirementType === "attribute_level";
+    const showOperator = choiceRequirementType === "gold" || choiceRequirementType === "attribute_level";
+
+    return (
+      <View style={styles.storyEditor}>
+        <Text style={styles.selectedTitle}>Choice Requirement</Text>
+        <Text style={styles.copy}>Gate this choice behind gold, items, story progress, tutorial completion, known abilities, or attribute levels.</Text>
+        <View style={styles.typeGrid}>
+          {dialogueRequirementTypes.map((type) => (
+            <Pressable key={type} style={[styles.typeButton, choiceRequirementType === type && styles.typeSelected]} onPress={() => setChoiceRequirementType(type)}>
+              <Text style={styles.typeText}>{requirementTypeLabel(type)}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {choiceRequirementType === "item" ? (
+          <ItemPicker label="Required item" items={itemDefinitions} selectedId={choiceRequirementValue || null} onSelect={(id) => setChoiceRequirementValue(id ?? "")} />
+        ) : null}
+        {choiceRequirementType === "completed_marker" ? (
+          <MarkerPicker label="Required completed marker" markers={markers.filter(isStoryQuestMarker)} selectedId={choiceRequirementValue || null} onSelect={(id) => setChoiceRequirementValue(id ?? "")} />
+        ) : null}
+        {choiceRequirementType === "completed_event" ? (
+          <EventPicker label="Required completed event" events={allMapEvents} selectedId={choiceRequirementValue || null} onSelect={(id) => setChoiceRequirementValue(id ?? "")} />
+        ) : null}
+        {choiceRequirementType === "tutorial_step" ? (
+          <View style={styles.storyRoutePicker}>
+            {tutorialSteps.map((step) => (
+              <Pressable key={step.id} style={[styles.routeChip, choiceRequirementValue === step.id && styles.routeChipActive]} onPress={() => setChoiceRequirementValue(step.id)}>
+                <Text style={styles.routeChipText}>{step.title}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {choiceRequirementType === "attribute_level" ? (
+          <View style={styles.storyRoutePicker}>
+            {attributeRequirementKeys.map((attribute) => (
+              <Pressable key={attribute} style={[styles.routeChip, choiceRequirementValue === attribute && styles.routeChipActive]} onPress={() => setChoiceRequirementValue(attribute)}>
+                <Text style={styles.routeChipText}>{attribute}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {choiceRequirementType !== "none" && !["item", "completed_marker", "completed_event", "tutorial_step", "attribute_level"].includes(choiceRequirementType) ? (
+          <TextInput value={choiceRequirementValue} onChangeText={setChoiceRequirementValue} placeholder="Requirement value, key, ability id/name, or amount" placeholderTextColor={colors.muted} style={styles.input} />
+        ) : null}
+        {showQuantity ? (
+          <TextInput value={choiceRequirementQuantity} onChangeText={setChoiceRequirementQuantity} placeholder={choiceRequirementType === "gold" ? "Required gold amount" : choiceRequirementType === "attribute_level" ? "Required attribute level" : "Required quantity"} placeholderTextColor={colors.muted} style={styles.input} />
+        ) : null}
+        {showOperator ? (
+          <View style={styles.storyRoutePicker}>
+            {dialogueRequirementOperators.map((operator) => (
+              <Pressable key={operator} style={[styles.routeChip, choiceRequirementOperator === operator && styles.routeChipActive]} onPress={() => setChoiceRequirementOperator(operator)}>
+                <Text style={styles.routeChipText}>{operator}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        {choiceRequirementType !== "none" ? (
+          <>
+            <TextInput value={choiceRequirementFailureMessage} onChangeText={setChoiceRequirementFailureMessage} placeholder="Failure message, example: Requires 100 Gold" placeholderTextColor={colors.muted} style={styles.input} />
+            <Pressable style={[styles.secondaryButton, choiceHideIfUnmet && styles.typeSelected]} onPress={() => setChoiceHideIfUnmet((value) => !value)}>
+              <Text style={styles.secondaryText}>Hide If Not Met: {choiceHideIfUnmet ? "Yes" : "No"}</Text>
+            </Pressable>
+            <Pressable style={[styles.secondaryButton, choiceDisableIfUnmet && styles.typeSelected]} onPress={() => setChoiceDisableIfUnmet((value) => !value)}>
+              <Text style={styles.secondaryText}>Disable If Not Met: {choiceDisableIfUnmet ? "Yes" : "No"}</Text>
+            </Pressable>
+          </>
+        ) : null}
+      </View>
+    );
+  }
+
   function renderBranchingDialogueEditor() {
     return (
       <View style={styles.storyEditor}>
@@ -3826,6 +3972,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <TextInput value={choiceRewardItem} onChangeText={setChoiceRewardItem} placeholder="Legacy reward item text optional" placeholderTextColor={colors.muted} style={styles.input} />
           </>
         ) : null}
+        {renderDialogueChoiceRequirementEditor()}
         <TextInput value={choiceSortOrder} onChangeText={setChoiceSortOrder} placeholder="Choice order" placeholderTextColor={colors.muted} style={styles.input} />
         <Pressable style={styles.primaryButton} onPress={() => void saveDialogueChoice()} disabled={!choiceNodeId || !choiceButtonText.trim()}>
           <Text style={styles.primaryText}>{editingChoice ? "Update Player Choice" : "Add Player Choice"}</Text>
@@ -3835,6 +3982,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           <View key={choice.id} style={styles.storyCard}>
             <Text style={styles.markerName}>{choice.button_text}</Text>
             <Text style={styles.copy}>{choiceActionLabel(choice.action)}{choice.player_dialogue_text ? ` - "${choice.player_dialogue_text}"` : ""}</Text>
+            {(choice.requirement_type ?? "none") !== "none" ? <Text style={styles.debugLine}>{getRequirementSummary(choice, itemDefinitions)}</Text> : null}
             <View style={styles.modeRow}>
               <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueChoice(choice)}><Text style={styles.secondaryText}>Edit Choice</Text></Pressable>
               <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueChoice(choice.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>
@@ -3856,6 +4004,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           activeNodeId={activeNodeId}
           dialogueLog={dialogueLog}
           previewMode={adminPreviewMode === "story"}
+          choiceAvailability={dialogueChoiceAvailability}
           onLegacyChoice={handleStoryChoice}
           onChoice={(choice) => void handleDialogueChoice(choice)}
           onEndChat={(completeEvent) => void endDialogueChat(completeEvent)}
@@ -5342,6 +5491,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <TextInput value={choiceRewardItem} onChangeText={setChoiceRewardItem} placeholder="Legacy reward item text optional" placeholderTextColor={colors.muted} style={styles.input} />
                 </>
               ) : null}
+              {renderDialogueChoiceRequirementEditor()}
               <TextInput value={choiceSortOrder} onChangeText={setChoiceSortOrder} placeholder="Choice order" placeholderTextColor={colors.muted} style={styles.input} />
               <Pressable style={styles.primaryButton} onPress={() => void saveDialogueChoice()} disabled={!choiceNodeId || !choiceButtonText.trim()}>
                 <Text style={styles.primaryText}>{editingChoice ? "Update Player Choice" : "Add Player Choice"}</Text>
@@ -5351,6 +5501,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <View key={choice.id} style={styles.storyCard}>
                   <Text style={styles.markerName}>{choice.button_text}</Text>
                   <Text style={styles.copy}>{choiceActionLabel(choice.action)}{choice.player_dialogue_text ? ` - "${choice.player_dialogue_text}"` : ""}</Text>
+                  {(choice.requirement_type ?? "none") !== "none" ? <Text style={styles.debugLine}>{getRequirementSummary(choice, itemDefinitions)}</Text> : null}
                   <View style={styles.modeRow}>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => editDialogueChoice(choice)}><Text style={styles.secondaryText}>Edit Choice</Text></Pressable>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialogueChoice(choice.id)}><Text style={styles.dangerText}>Delete</Text></Pressable>

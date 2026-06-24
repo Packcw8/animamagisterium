@@ -430,9 +430,33 @@ export type Tables = {
     reward_item: string | null;
     reward_item_id: string | null;
     reward_item_quantity: number;
+    requirement_type: "none" | "gold" | "item" | "story_flag" | "completed_marker" | "completed_event" | "tutorial_step" | "ability_known" | "attribute_level";
+    requirement_value: string | null;
+    requirement_quantity: number;
+    requirement_operator: ">=" | ">" | "=" | "<=" | "<";
+    hide_if_unmet: boolean;
+    disable_if_unmet: boolean;
+    requirement_failure_message: string | null;
     sort_order: number;
     created_at: string;
     updated_at: string;
+  };
+  player_story_flags: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    flag_key: string;
+    flag_value: boolean;
+    text_value: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  player_tutorial_completions: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    tutorial_step_id: string;
+    completed_at: string;
   };
   route_progress: {
     id: string;
