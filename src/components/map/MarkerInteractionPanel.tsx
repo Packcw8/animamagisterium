@@ -198,6 +198,7 @@ export function MarkerInteractionPanel({
         <Text style={styles.copy}>
           Rewards: {marker.reward_xp ?? 0} XP / {marker.reward_gold ?? 0} gold
           {marker.reward_item_id ? ` / ${marker.reward_item_quantity ?? 1} ${getItemName(itemDefinitions, marker.reward_item_id)}` : ""}
+          {marker.reward_full_heal ? " / Full heal" : ""}
         </Text>
         <Pressable style={styles.primaryButton} onPress={onClaimReward}>
           <Text style={styles.primaryText}>Claim Reward</Text>

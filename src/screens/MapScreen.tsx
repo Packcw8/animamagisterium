@@ -363,6 +363,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerRewardGold, setMarkerRewardGold] = useState("0");
   const [markerRewardItemId, setMarkerRewardItemId] = useState<string | null>(null);
   const [markerRewardQuantity, setMarkerRewardQuantity] = useState("1");
+  const [markerRewardFullHeal, setMarkerRewardFullHeal] = useState(false);
   const [markerRewardTiming, setMarkerRewardTiming] = useState<MapMarker["reward_timing"]>("on_interact");
   const [markerRepeatable, setMarkerRepeatable] = useState(false);
   const [markerRewardOnce, setMarkerRewardOnce] = useState(true);
@@ -691,7 +692,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
-  function buildRewardToastItems(reward: { xp?: number | null; gold?: number | null; itemId?: string | null; itemQuantity?: number | null }, extraRewards: GameToastReward[] = []) {
+  function buildRewardToastItems(reward: { xp?: number | null; gold?: number | null; itemId?: string | null; itemQuantity?: number | null; fullHeal?: boolean | null }, extraRewards: GameToastReward[] = []) {
     const rewards: GameToastReward[] = [];
     const xp = Number(reward.xp ?? 0) || 0;
     const gold = Number(reward.gold ?? 0) || 0;
@@ -709,6 +710,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         label: getItemName(itemDefinitions, reward.itemId),
         quantity: Math.max(1, Number(reward.itemQuantity ?? 1) || 1),
       });
+    }
+
+    if (reward.fullHeal) {
+      rewards.push({ label: "Full Heal" });
     }
 
     return [...rewards, ...extraRewards];
@@ -1693,6 +1698,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markerRewardGold,
       markerRewardItemId,
       markerRewardQuantity,
+      markerRewardFullHeal,
       markerRewardTiming,
       markerRepeatable,
       markerRewardOnce,
@@ -1741,6 +1747,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerRewardGold(String(marker.reward_gold ?? 0));
     setMarkerRewardItemId(marker.reward_item_id ?? null);
     setMarkerRewardQuantity(String(marker.reward_item_quantity ?? 1));
+    setMarkerRewardFullHeal(Boolean(marker.reward_full_heal));
     setMarkerRewardTiming(marker.reward_timing ?? "on_interact");
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
@@ -1796,6 +1803,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerRewardGold(String(marker.reward_gold ?? 0));
     setMarkerRewardItemId(marker.reward_item_id ?? null);
     setMarkerRewardQuantity(String(marker.reward_item_quantity ?? 1));
+    setMarkerRewardFullHeal(Boolean(marker.reward_full_heal));
     setMarkerRewardTiming(marker.reward_timing ?? "on_interact");
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
@@ -2016,6 +2024,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         gold: selectedMarker.reward_gold,
         itemId: selectedMarker.reward_item_id,
         itemQuantity: selectedMarker.reward_item_quantity,
+        fullHeal: selectedMarker.reward_full_heal,
+        fullHealMaxHealth: combatResources.maxHp,
         repeatable: selectedMarker.repeatable,
         rewardOncePerPlayer: selectedMarker.reward_once_per_player,
         markerId: selectedMarker.id,
@@ -2037,10 +2047,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             gold: completedMarker.reward_gold,
             itemId: completedMarker.reward_item_id,
             itemQuantity: completedMarker.reward_item_quantity,
+            fullHeal: completedMarker.reward_full_heal,
           }) : [],
           nextMarker,
         });
         await loadInventory();
+        if (result.currentHealth != null) {
+          onCharacterUpdated({ ...character, current_health: result.currentHealth });
+        }
         return;
       }
       setMarkerPanelMessage(result.message);
@@ -2053,11 +2067,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             gold: selectedMarker.reward_gold,
             itemId: selectedMarker.reward_item_id,
             itemQuantity: selectedMarker.reward_item_quantity,
+            fullHeal: selectedMarker.reward_full_heal,
           }),
           actionLabel: "OK",
         });
       }
       await loadInventory();
+      if (result.currentHealth != null) {
+        onCharacterUpdated({ ...character, current_health: result.currentHealth });
+      }
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to claim marker reward."));
     }
@@ -2070,6 +2088,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         gold: marker.reward_gold,
         itemId: marker.reward_item_id,
         itemQuantity: marker.reward_item_quantity,
+        fullHeal: marker.reward_full_heal,
+        fullHealMaxHealth: combatResources.maxHp,
         repeatable: marker.repeatable,
         rewardOncePerPlayer: marker.reward_once_per_player,
         markerId: marker.id,
@@ -2088,10 +2108,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           gold: marker.reward_gold,
           itemId: marker.reward_item_id,
           itemQuantity: marker.reward_item_quantity,
+          fullHeal: marker.reward_full_heal,
         }) : [],
         nextMarker: getNextStoryMarkerAfter(marker),
       });
       await loadInventory();
+      if (result.currentHealth != null) {
+        onCharacterUpdated({ ...character, current_health: result.currentHealth });
+      }
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to complete story quest."));
     }
@@ -2267,6 +2291,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         gold: sourceMarker.reward_gold,
         itemId: sourceMarker.reward_item_id,
         itemQuantity: sourceMarker.reward_item_quantity,
+        fullHeal: sourceMarker.reward_full_heal,
+        fullHealMaxHealth: combatResources.maxHp,
         repeatable: sourceMarker.repeatable,
         rewardOncePerPlayer: sourceMarker.reward_once_per_player,
         markerId: sourceMarker.id,
@@ -2288,10 +2314,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           gold: sourceMarker.reward_gold,
           itemId: sourceMarker.reward_item_id,
           itemQuantity: sourceMarker.reward_item_quantity,
+          fullHeal: sourceMarker.reward_full_heal,
         }) : [],
         nextMarker: getNextStoryMarkerAfter(sourceMarker),
       });
       await loadInventory();
+      if (result.currentHealth != null) {
+        onCharacterUpdated({ ...character, current_health: result.currentHealth });
+      }
     } catch (error) {
       setGpsMessage(getErrorMessage(error, "Path completed, but the linked quest reward could not be granted."));
     }
@@ -2990,6 +3020,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           gold: (marker?.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
           itemId: marker?.reward_item_id ?? null,
           itemQuantity: marker?.reward_item_quantity ?? 1,
+          fullHeal: marker?.reward_full_heal,
+          fullHealMaxHealth: combatResources.maxHp,
           repeatable: marker?.repeatable,
           rewardOncePerPlayer: marker?.reward_once_per_player,
           markerId: marker?.id ?? null,
@@ -3039,10 +3071,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             gold: (marker?.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
             itemId: marker?.reward_item_id ?? null,
             itemQuantity: marker?.reward_item_quantity ?? 1,
+            fullHeal: marker?.reward_full_heal,
           }, dropRewards) : dropRewards,
           actionLabel: "OK",
         });
         await loadInventory();
+        if (rewardResult.currentHealth != null) {
+          onCharacterUpdated({ ...character, current_health: rewardResult.currentHealth });
+        }
         return;
       }
 
@@ -3052,6 +3088,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         gold: ((completedMarker?.reward_gold ?? event.reward_gold) ?? 0) + (activeEnemy?.gold_reward ?? 0),
         itemId: completedMarker?.reward_item_id ?? event.reward_item_id,
         itemQuantity: completedMarker?.reward_item_quantity ?? event.reward_item_quantity,
+        fullHeal: completedMarker?.reward_full_heal,
+        fullHealMaxHealth: combatResources.maxHp,
         eventId: completedMarker ? null : event.id,
         markerId: completedMarker?.id ?? null,
         repeatable: completedMarker?.repeatable,
@@ -3112,11 +3150,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           gold: ((completedMarker?.reward_gold ?? event.reward_gold) ?? 0) + (activeEnemy?.gold_reward ?? 0),
           itemId: completedMarker?.reward_item_id ?? event.reward_item_id,
           itemQuantity: completedMarker?.reward_item_quantity ?? event.reward_item_quantity,
+          fullHeal: completedMarker?.reward_full_heal,
         }, dropRewards) : dropRewards,
         nextMarker: completedMarker ? getNextStoryMarkerAfter(completedMarker) : getJourneyDestinationMarker(routeRef.current, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
         actionLabel: "OK",
       });
       await loadInventory();
+      if (rewardResult.currentHealth != null) {
+        onCharacterUpdated({ ...character, current_health: rewardResult.currentHealth });
+      }
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to complete event."));
     }
@@ -4740,6 +4782,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerRewardItemId={setMarkerRewardItemId}
               markerRewardQuantity={markerRewardQuantity}
               setMarkerRewardQuantity={setMarkerRewardQuantity}
+              markerRewardFullHeal={markerRewardFullHeal}
+              setMarkerRewardFullHeal={setMarkerRewardFullHeal}
               markerRewardTiming={markerRewardTiming}
               setMarkerRewardTiming={setMarkerRewardTiming}
               markerRepeatable={markerRepeatable}
@@ -5370,6 +5414,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <TextInput value={markerRewardGold} onChangeText={setMarkerRewardGold} placeholder="Gold reward" placeholderTextColor={colors.muted} style={styles.input} />
                   <ItemPicker label="Item reward" items={itemDefinitions} selectedId={markerRewardItemId} onSelect={setMarkerRewardItemId} />
                   <TextInput value={markerRewardQuantity} onChangeText={setMarkerRewardQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
+                  <Pressable style={[styles.secondaryButton, markerRewardFullHeal && styles.typeSelected]} onPress={() => setMarkerRewardFullHeal((value) => !value)}>
+                    <Text style={styles.secondaryText}>Full Heal Reward: {markerRewardFullHeal ? "Yes" : "No"}</Text>
+                  </Pressable>
                   <RewardTimingPicker value={markerRewardTiming} onSelect={setMarkerRewardTiming} />
                   <View style={styles.modeRow}>
                     <Pressable style={[styles.secondaryButtonFlex, markerRepeatable && styles.typeSelected]} onPress={() => setMarkerRepeatable((value) => !value)}>
@@ -5791,6 +5838,8 @@ function MiniMapMarkerAdminForm({
   setMarkerRewardItemId,
   markerRewardQuantity,
   setMarkerRewardQuantity,
+  markerRewardFullHeal,
+  setMarkerRewardFullHeal,
   markerRewardTiming,
   setMarkerRewardTiming,
   markerRepeatable,
@@ -5898,6 +5947,8 @@ function MiniMapMarkerAdminForm({
   setMarkerRewardItemId: (value: string | null) => void;
   markerRewardQuantity: string;
   setMarkerRewardQuantity: (value: string) => void;
+  markerRewardFullHeal: boolean;
+  setMarkerRewardFullHeal: (value: boolean | ((current: boolean) => boolean)) => void;
   markerRewardTiming: MapMarker["reward_timing"];
   setMarkerRewardTiming: (value: MapMarker["reward_timing"]) => void;
   markerRepeatable: boolean;
@@ -6124,6 +6175,9 @@ function MiniMapMarkerAdminForm({
           <TextInput value={markerRewardGold} onChangeText={setMarkerRewardGold} placeholder="Gold reward" placeholderTextColor={colors.muted} style={styles.input} />
           <ItemPicker label="Item reward" items={itemDefinitions} selectedId={markerRewardItemId} onSelect={setMarkerRewardItemId} />
           <TextInput value={markerRewardQuantity} onChangeText={setMarkerRewardQuantity} placeholder="Reward item quantity" placeholderTextColor={colors.muted} style={styles.input} />
+          <Pressable style={[styles.secondaryButton, markerRewardFullHeal && styles.typeSelected]} onPress={() => setMarkerRewardFullHeal((value) => !value)}>
+            <Text style={styles.secondaryText}>Full Heal Reward: {markerRewardFullHeal ? "Yes" : "No"}</Text>
+          </Pressable>
           <RewardTimingPicker value={markerRewardTiming} onSelect={setMarkerRewardTiming} />
           <View style={styles.modeRow}>
             <Pressable style={[styles.secondaryButtonFlex, markerRepeatable && styles.typeSelected]} onPress={() => setMarkerRepeatable((value) => !value)}>

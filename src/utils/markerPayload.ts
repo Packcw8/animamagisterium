@@ -36,6 +36,7 @@ export type MarkerPayloadState = {
   markerRewardGold: string;
   markerRewardItemId: string | null;
   markerRewardQuantity: string;
+  markerRewardFullHeal: boolean;
   markerRewardTiming: MapMarker["reward_timing"];
   markerRepeatable: boolean;
   markerRewardOnce: boolean;
@@ -74,6 +75,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     reward_gold: Number(state.markerRewardGold) || 0,
     reward_item_id: state.markerRewardItemId,
     reward_item_quantity: Math.max(1, Number(state.markerRewardQuantity) || 1),
+    reward_full_heal: state.markerRewardFullHeal,
     reward_timing: state.markerRewardTiming,
     repeatable: state.markerRepeatable,
     reward_once_per_player: state.markerRewardOnce,

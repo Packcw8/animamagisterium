@@ -1,5 +1,5 @@
 import { supabase, Tables } from "../lib/supabase";
-import type { CharacterWithDetails } from "./characterService";
+import { updateCharacterHealth, type CharacterWithDetails } from "./characterService";
 import { consumeInventoryItem, grantItemToCharacter, type InventoryItem } from "./inventoryService";
 import { recordSocialContribution } from "./partyGuildService";
 import { applyCharacterXpGold } from "./progressionService";
@@ -907,7 +907,7 @@ export async function updateMapMarker(markerId: string, values: Partial<Pick<Map
   return data as MapMarker;
 }
 
-export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "reward_timing" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "season_number" | "chapter_number">>) {
+export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "reward_full_heal" | "reward_timing" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "lock_type" | "lock_message" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "season_number" | "chapter_number">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({
@@ -1250,6 +1250,8 @@ export async function applyRewards(
     markerId?: string | null;
     eventId?: string | null;
     choiceId?: string | null;
+    fullHeal?: boolean | null;
+    fullHealMaxHealth?: number | null;
   },
 ) {
   const {
@@ -1296,6 +1298,11 @@ export async function applyRewards(
     await grantItemToCharacter(character.id, reward.itemId, quantity);
   }
 
+  const healedHealth = reward.fullHeal ? Math.max(1, Math.floor(Number(reward.fullHealMaxHealth) || Number(character.current_health) || 30)) : null;
+  if (healedHealth) {
+    await updateCharacterHealth(character.id, healedHealth);
+  }
+
   if (shouldTrackClaim && !allowRepeat) {
     const { error } = await supabase.from("marker_reward_claims").insert({
       user_id: user.id,
@@ -1310,7 +1317,7 @@ export async function applyRewards(
     }
   }
 
-  return { claimed: true, message: formatRewardMessage(xp, gold, reward.itemId ? quantity : 0) };
+  return { claimed: true, message: formatRewardMessage(xp, gold, reward.itemId ? quantity : 0, Boolean(reward.fullHeal)), currentHealth: healedHealth };
 }
 
 export async function buyMarketItem(character: CharacterWithDetails, marketItem: MarkerMarketItem) {
@@ -1439,7 +1446,7 @@ export function canMarketItemBeSoldTo(marketItem: MarkerMarketItem) {
   return marketItem.listing_mode === "buy_and_sell" || marketItem.listing_mode === "sell_only";
 }
 
-function formatRewardMessage(xp: number, gold: number, itemQuantity: number) {
+function formatRewardMessage(xp: number, gold: number, itemQuantity: number, fullHeal = false) {
   const parts = [];
   if (xp > 0) {
     parts.push(`${xp} XP`);
@@ -1449,6 +1456,9 @@ function formatRewardMessage(xp: number, gold: number, itemQuantity: number) {
   }
   if (itemQuantity > 0) {
     parts.push(`${itemQuantity} item${itemQuantity === 1 ? "" : "s"}`);
+  }
+  if (fullHeal) {
+    parts.push("full heal");
   }
   return parts.length > 0 ? `Reward claimed: ${parts.join(", ")}.` : "No reward configured.";
 }

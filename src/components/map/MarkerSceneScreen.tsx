@@ -147,6 +147,7 @@ export function MarkerSceneScreen({
             <Text style={styles.copy}>
               Rewards: {marker.reward_xp ?? 0} XP / {marker.reward_gold ?? 0} gold
               {marker.reward_item_id ? ` / ${marker.reward_item_quantity ?? 1} ${getItemName(itemDefinitions, marker.reward_item_id)}` : ""}
+              {marker.reward_full_heal ? " / Full heal" : ""}
             </Text>
             <Pressable style={[styles.primaryButton, nextStoryRouteLocked && !storyRoutesComplete && styles.disabledAction]} onPress={onAcceptQuest} disabled={nextStoryRouteLocked && !storyRoutesComplete}>
               <Text style={styles.primaryText}>
@@ -178,6 +179,7 @@ export function MarkerSceneScreen({
             <Text style={styles.copy}>
               Rewards: {marker.reward_xp ?? 0} XP / {marker.reward_gold ?? 0} gold
               {marker.reward_item_id ? ` / ${marker.reward_item_quantity ?? 1} ${getItemName(itemDefinitions, marker.reward_item_id)}` : ""}
+              {marker.reward_full_heal ? " / Full heal" : ""}
             </Text>
             {marker.linked_route_id && marker.starts_route_on_accept ? <Text style={styles.copy}>Accepting this quest starts its linked walking path.</Text> : null}
             <Pressable style={styles.primaryButton} onPress={marker.linked_route_id && marker.starts_route_on_accept ? onAcceptQuest : onClaimReward}>

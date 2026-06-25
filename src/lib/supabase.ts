@@ -621,6 +621,7 @@ export type Tables = {
     reward_gold: number;
     reward_item_id: string | null;
     reward_item_quantity: number;
+    reward_full_heal: boolean;
     reward_timing: "on_interact" | "on_path_complete";
     repeatable: boolean;
     reward_once_per_player: boolean;
