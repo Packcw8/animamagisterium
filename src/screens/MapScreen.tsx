@@ -5484,6 +5484,19 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
               {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
               <Info label="Path Points" value={String(pathDraft.length)} />
+              <WalkingPathAdminPanel
+                title="Overworld Trail Visibility"
+                emptyText=""
+                routes={[]}
+                selectedRouteId={route.id}
+                showList={false}
+                onSelectRoute={() => undefined}
+                onEditRoute={() => undefined}
+                onDeleteRoute={() => undefined}
+                pathDraft={pathDraft}
+                pathSegments={pathSegmentDraft}
+                onChangePathSegments={(segments) => setPathSegmentDraft(normalizePathSegments(segments, pathDraft.length))}
+              />
               <View style={styles.modeRow}>
                 <Pressable style={styles.secondaryButtonFlex} onPress={loadSelectedPathIntoDraft}>
                   <Text style={styles.secondaryText}>Load Selected Path</Text>
