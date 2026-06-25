@@ -29,6 +29,7 @@ export function MarkerSceneScreen({
   routeProgressRows,
   inventoryItems,
   itemDefinitions,
+  markerHasDialogue,
   message,
   onExit,
   onBuy,
@@ -50,6 +51,7 @@ export function MarkerSceneScreen({
   routeProgressRows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>;
   inventoryItems: InventoryItem[];
   itemDefinitions: ItemDefinition[];
+  markerHasDialogue: boolean;
   message: string | null;
   onExit: () => void;
   onBuy: (marketItem: MarkerMarketItem) => void;
@@ -115,7 +117,7 @@ export function MarkerSceneScreen({
             routeProgressRows={routeProgressRows}
             onStartPath={onStartPath}
           />
-        ) : marker.dialogue_event_id && isDialogueMarkerType(marker.type) ? (
+        ) : markerHasDialogue && isDialogueMarkerType(marker.type) ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Dialogue</Text>
             <Text style={styles.copy}>Open the linked dialogue tree for this marker.</Text>

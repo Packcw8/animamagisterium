@@ -227,6 +227,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [legendOpen, setLegendOpen] = useState(false);
   const [mapEvents, setMapEvents] = useState<MapEvent[]>([]);
   const [allMapEvents, setAllMapEvents] = useState<MapEvent[]>([]);
+  const [markerDialogueIds, setMarkerDialogueIds] = useState<Set<string>>(new Set());
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [completedStoryMarkerIds, setCompletedStoryMarkerIds] = useState<Set<string>>(new Set());
   const [completedTutorialStepIds, setCompletedTutorialStepIds] = useState<Set<string>>(new Set());
@@ -1757,11 +1758,23 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerPanelMessage(null);
 
     try {
+      const [links, markerNodes] = await Promise.all([
+        getMarkerRouteLinks(marker.id),
+        supportsMarkerDialogue(marker.type) ? getDialogueNodesForMarker(marker.id) : Promise.resolve([]),
+      ]);
       await loadMarkerMarketState(marker.id);
-      const links = await getMarkerRouteLinks(marker.id);
       setMarkerRouteLinks(links);
       setSelectedMarkerRouteIds(links.map((link) => link.route_id));
       setMarkerRouteCompletionCondition(links[0]?.completion_condition ?? "either");
+      setMarkerDialogueIds((current) => {
+        const next = new Set(current);
+        if (markerNodes.length > 0 || marker.dialogue_event_id) {
+          next.add(marker.id);
+        } else {
+          next.delete(marker.id);
+        }
+        return next;
+      });
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to load marker market."));
     }
@@ -4332,6 +4345,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           routeProgressRows={effectiveRouteProgressRows}
           inventoryItems={inventoryItems}
           itemDefinitions={itemDefinitions}
+          markerHasDialogue={markerDialogueIds.has(selectedMarker.id) || Boolean(selectedMarker.dialogue_event_id)}
           message={markerPanelMessage}
           onExit={closeMarkerScene}
           onBuy={(marketItem) => void buyFromMarker(marketItem)}
