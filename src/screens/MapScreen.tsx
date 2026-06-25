@@ -51,7 +51,7 @@ import { WalkingPathAdminPanel } from "../components/map/WalkingPathAdminPanel";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
-import { CharacterWithDetails, incrementCharacterDistanceWalked } from "../services/characterService";
+import { CharacterWithDetails, incrementCharacterDistanceWalked, spendCharacterGold } from "../services/characterService";
 import { AbilityDefinition, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
 import { BattleEventCombatant, deleteBattleEventCombatant, getBattleEventCombatants, saveBattleEventCombatant } from "../services/battlefieldService";
@@ -123,6 +123,7 @@ import {
   getWorldMapSettings,
   getMarkerLegendItems,
   getMarkerRouteLinks,
+  hasClaimedDialogueChoiceEffect,
   getAllMarkerRouteLinks,
   getMiniMaps,
   getTutorialSteps,
@@ -160,6 +161,7 @@ import {
   saveWorldMapSetting,
   saveTutorialStep,
   startStoryMarker,
+  recordDialogueChoiceEffectClaim,
   recordPlayerAttributeCheck,
   setCurrentRoute,
   sellMarketInventoryItem,
@@ -3264,6 +3266,24 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setDialogueLog((current) => [`You: ${choice.player_dialogue_text}`, ...current].slice(0, 4));
     }
 
+    if (Number(choice.consume_gold ?? 0) > 0 && !adminPreviewMode) {
+      try {
+        const alreadyPaid = claimedChoiceRewardIds.has(choice.id) || await hasClaimedDialogueChoiceEffect(choice.id);
+        if (!alreadyPaid) {
+          const updatedCharacter = await spendCharacterGold(character.id, Number(choice.consume_gold));
+          if (updatedCharacter) {
+            onCharacterUpdated({ ...character, gold: updatedCharacter.gold });
+          }
+          await recordDialogueChoiceEffectClaim(character, choice.id);
+          setClaimedChoiceRewardIds((current) => new Set([...current, choice.id]));
+          setDialogueLog((current) => [`Paid ${choice.consume_gold} gold.`, ...current].slice(0, 4));
+        }
+      } catch (error) {
+        setDialogueLog((current) => [getErrorMessage(error, `Requires ${choice.consume_gold} gold.`), ...current].slice(0, 4));
+        return;
+      }
+    }
+
     if (choice.check_enabled && choice.check_attribute) {
       const checkResult = rollDialogueAttributeCheck(choice, character);
       if (checkResult) {
@@ -3771,6 +3791,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         reward_item: choice.reward_item,
         reward_item_id: choice.reward_item_id,
         reward_item_quantity: choice.reward_item_quantity,
+        consume_gold: choice.consume_gold ?? 0,
         requirement_type: choice.requirement_type ?? "none",
         requirement_value: choice.requirement_value,
         requirement_quantity: choice.requirement_quantity ?? 1,
@@ -4001,6 +4022,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         reward_item: choiceRewardItem.trim() || null,
         reward_item_id: choiceRewardItemId,
         reward_item_quantity: Math.max(1, Number(choiceRewardItemQuantity) || 1),
+        consume_gold: editingChoice?.consume_gold ?? 0,
         requirement_type: choiceRequirementType,
         requirement_value: choiceRequirementType === "none" ? null : choiceRequirementValue.trim() || null,
         requirement_quantity: Math.max(1, Number(choiceRequirementQuantity) || 1),

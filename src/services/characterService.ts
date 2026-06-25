@@ -274,6 +274,43 @@ export async function updateCharacterHealth(characterId: string, currentHealth: 
   return data as Tables["characters"];
 }
 
+export async function spendCharacterGold(characterId: string, amount: number) {
+  const safeAmount = Math.max(0, Math.floor(Number(amount) || 0));
+
+  if (safeAmount <= 0) {
+    return null;
+  }
+
+  const { data: currentCharacter, error: currentError } = await supabase
+    .from("characters")
+    .select("gold")
+    .eq("id", characterId)
+    .single();
+
+  if (currentError) {
+    throw currentError;
+  }
+
+  const currentGold = Number(currentCharacter.gold) || 0;
+
+  if (currentGold < safeAmount) {
+    throw new Error(`Requires ${safeAmount} gold.`);
+  }
+
+  const { data, error } = await supabase
+    .from("characters")
+    .update({ gold: currentGold - safeAmount })
+    .eq("id", characterId)
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as Tables["characters"];
+}
+
 export async function incrementCharacterDistanceWalked(characterId: string, meters: number) {
   const safeMeters = Math.max(0, Number(meters) || 0);
 

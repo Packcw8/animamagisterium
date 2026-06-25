@@ -1603,7 +1603,8 @@ export async function deleteDialogueNode(nodeId: string) {
 }
 
 export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at">) {
-  const { data, error } = await supabase.from("story_dialogue_choices").insert(input).select().single();
+  const values = { ...input, consume_gold: input.consume_gold ?? 0 };
+  const { data, error } = await supabase.from("story_dialogue_choices").insert(values).select().single();
 
   if (error) {
     throw error;
@@ -1625,6 +1626,51 @@ export async function updateDialogueChoice(choiceId: string, values: Partial<Omi
   }
 
   return data as StoryDialogueChoice;
+}
+
+export async function hasClaimedDialogueChoiceEffect(choiceId: string) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to check dialogue effects.");
+  }
+
+  const { data, error } = await supabase
+    .from("marker_reward_claims")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("choice_id", choiceId)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return Boolean(data);
+}
+
+export async function recordDialogueChoiceEffectClaim(character: CharacterWithDetails, choiceId: string) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to save dialogue effects.");
+  }
+
+  const { error } = await supabase.from("marker_reward_claims").insert({
+    user_id: user.id,
+    character_id: character.id,
+    choice_id: choiceId,
+  });
+
+  if (error && error.code !== "23505") {
+    throw error;
+  }
 }
 
 export async function getClaimedDialogueRewardChoiceIds(choiceIds: string[]) {

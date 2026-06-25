@@ -543,6 +543,7 @@ export type Tables = {
     reward_item: string | null;
     reward_item_id: string | null;
     reward_item_quantity: number;
+    consume_gold: number;
     requirement_type: "none" | "gold" | "item" | "story_flag" | "completed_marker" | "completed_event" | "tutorial_step" | "ability_known" | "attribute_level";
     requirement_value: string | null;
     requirement_quantity: number;
