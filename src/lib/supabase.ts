@@ -822,6 +822,7 @@ export type Tables = {
     charisma: number;
     spirit: number;
     defense: number;
+    attack_bonus: number;
     armor_rating: number;
     xp_reward: number;
     gold_reward: number;
@@ -865,6 +866,7 @@ export type Tables = {
     charisma: number;
     spirit: number;
     defense: number;
+    attack_bonus: number;
     armor_rating: number;
     xp_reward: number;
     gold_reward: number;

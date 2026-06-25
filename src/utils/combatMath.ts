@@ -42,7 +42,7 @@ export function rollD20Attack(statBonus: number, abilityBonus: number, defense: 
   const naturalCritical = roll === 20;
   const naturalMiss = roll === 1;
   const critical = naturalCritical || Math.random() * 100 < criticalChance;
-  const total = roll + Math.floor(statBonus / 2) + abilityBonus;
+  const total = roll + getD20StatBonus(statBonus) + abilityBonus;
 
   return {
     roll,
@@ -51,6 +51,14 @@ export function rollD20Attack(statBonus: number, abilityBonus: number, defense: 
     critical,
     criticalMultiplier,
   };
+}
+
+export function getD20StatBonus(attributeLevel: number) {
+  return Math.floor((Number(attributeLevel) || 0) / 2);
+}
+
+export function getDefenseAttributeBonus(attributeLevel: number) {
+  return Math.floor((Number(attributeLevel) || 0) / 5);
 }
 
 export function metersPerSecondToMph(metersPerSecond: number) {

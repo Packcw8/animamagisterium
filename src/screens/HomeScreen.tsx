@@ -780,7 +780,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
               <CombatStat label="Health" value={`${currentHealth} / ${battleStats.maxHp}`} note="Persistent Health / max Health" />
               <CombatStat label="Stamina" value={battleStats.maxStamina} note="Strength, Endurance, gear" />
               <CombatStat label="Mana" value={battleStats.maxMagicka} note="Intelligence, Wisdom, Spirit" />
-              <CombatStat label="Defense" value={battleStats.defense} note="10 + Endurance + Agility + armor" />
+              <CombatStat label="Defense" value={battleStats.defense} note="10 + slow Endurance/Agility scaling + armor" />
               <CombatStat label="Melee Attack" value={`+${battleStats.meleeAttackBonus}`} note="Strength + gear damage" />
               <CombatStat label="Ranged / Dodge" value={`+${battleStats.agilityBonus}`} note="Agility accuracy and evasion" />
               <CombatStat label="Spell Power" value={`+${battleStats.spellPower}`} note="Intelligence + Mana scaling" />
@@ -955,6 +955,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 ))}
                 <View style={styles.slotActions}>
                   <ItemText label="Defense" value={String(enemyForm.defense ?? 10)} onChange={(value) => setEnemyForm((current) => ({ ...current, defense: Number(value) || 10 }))} />
+                  <ItemText label="Attack Bonus" value={String(enemyForm.attack_bonus ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, attack_bonus: Number(value) || 0 }))} />
                   <ItemText label="Armor Rating" value={String(enemyForm.armor_rating ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, armor_rating: Number(value) || 0 }))} />
                 </View>
                 <View style={styles.slotActions}>
@@ -1000,7 +1001,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                       {resolveEnemyImageUri(enemy.image_url) ? <Image source={{ uri: resolveEnemyImageUri(enemy.image_url) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                       <View style={styles.itemBody}>
                     <Text style={styles.abilityName}>{enemy.name}</Text>
-                    <Text style={styles.muted}>{enemy.type || "Enemy"} / HP {enemy.health} / Defense {enemy.defense} / Armor {enemy.armor_rating}</Text>
+                    <Text style={styles.muted}>{enemy.type || "Enemy"} / HP {enemy.health} / Attack +{enemy.attack_bonus ?? 0} / Defense {enemy.defense} / Armor {enemy.armor_rating}</Text>
                       </View>
                     </View>
                     <View style={styles.slotActions}>
@@ -1032,6 +1033,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 ))}
                 <View style={styles.slotActions}>
                   <ItemText label="Defense" value={String(npcForm.defense ?? 10)} onChange={(value) => setNpcForm((current) => ({ ...current, defense: Number(value) || 10 }))} />
+                  <ItemText label="Attack Bonus" value={String(npcForm.attack_bonus ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, attack_bonus: Number(value) || 0 }))} />
                   <ItemText label="Armor Rating" value={String(npcForm.armor_rating ?? 0)} onChange={(value) => setNpcForm((current) => ({ ...current, armor_rating: Number(value) || 0 }))} />
                 </View>
                 <View style={styles.slotActions}>
@@ -1077,7 +1079,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                       {resolveEnemyImageUri(npc.image_url) ? <Image source={{ uri: resolveEnemyImageUri(npc.image_url) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                       <View style={styles.itemBody}>
                     <Text style={styles.abilityName}>{npc.name}</Text>
-                    <Text style={styles.muted}>{npc.type || "NPC"} / {npc.can_battle ? `Battle Capable / HP ${npc.health}` : "Dialogue NPC"}</Text>
+                    <Text style={styles.muted}>{npc.type || "NPC"} / {npc.can_battle ? `Battle Capable / HP ${npc.health} / Attack +${npc.attack_bonus ?? 0} / Defense ${npc.defense}` : "Dialogue NPC"}</Text>
                     {npc.description ? <Text style={styles.muted}>{npc.description}</Text> : null}
                       </View>
                     </View>
@@ -1621,7 +1623,7 @@ function getDerivedBattleStats(
   const armorValue = Object.values(equipped).reduce((sum, item) => sum + Number(item?.armor_value ?? 0), 0);
   const meleeAttackBonus = Math.floor(strength / 2) + weaponDamage + inventoryBonuses.damage;
   const agilityBonus = Math.floor(agility / 2);
-  const defense = 10 + Math.floor(endurance / 2) + Math.floor(agility / 2) + inventoryBonuses.defense;
+  const defense = 10 + Math.floor(endurance / 5) + Math.floor(agility / 5) + inventoryBonuses.defense;
 
   return {
     maxHp: resources.maxHp,

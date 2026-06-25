@@ -4,7 +4,7 @@ import { CharacterWithDetails, updateCharacterHealth } from "../../services/char
 import { EnemyWithLoadout, NpcWithLoadout, getEnemyLoadout, getNpcLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
 import { InventoryItem, ItemDefinition, consumeInventoryItem, getInventoryResourceBonuses, isReviveBattleItem } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
-import { chooseWeightedEnemyAbility, rollD20Attack } from "../../utils/combatMath";
+import { chooseWeightedEnemyAbility, getDefenseAttributeBonus, rollD20Attack } from "../../utils/combatMath";
 import { type CombatIndicator } from "./BattleDisplay";
 
 type PreviewMode = "story" | "battle" | null;
@@ -296,7 +296,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     if (!attackRoll.hit) {
       pushCombatIndicator("enemy", "MISS", "#9ca3af");
       nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${actionName} misses.`);
-      const counter = resolveEnemyCounterAttack(context, bonuses.defense);
+      const counter = resolveEnemyCounterAttack(context);
       const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
       nextLog.push(...counter.log);
       await savePlayerHealth(nextPlayerHp, context.previewMode);
@@ -333,7 +333,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
 
-    const counter = resolveEnemyCounterAttack(context, bonuses.defense);
+    const counter = resolveEnemyCounterAttack(context);
     const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
     nextLog.push(...counter.log);
     setBattleEnemyHp(nextEnemyHp);
@@ -369,10 +369,10 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const playerDefense = getPlayerDefense(context.equippedItems, extraPlayerDefense);
 
     if (!ability) {
-      const roll = rollD20Attack(Number(activeEnemy?.strength ?? 0), 0, playerDefense, 0, 2);
+      const roll = rollD20Attack(Number(activeEnemy?.strength ?? 0), getEnemyAttackBonus(), playerDefense, 0, 2);
       if (!roll.hit) {
         pushCombatIndicator("player", "MISS", "#9ca3af");
-        return { damage: 0, log: [`${enemyName} misses. d20 ${roll.roll} vs Defense ${playerDefense}.`] };
+        return { damage: 0, log: [`${enemyName} misses. d20 ${roll.roll} + bonuses = ${roll.total} vs Defense ${playerDefense}.`] };
       }
       const damage = Math.max(1, (Number(activeBattle?.enemy_attack_damage) || 5) - extraPlayerDefense);
       const totalDamage = roll.critical ? Math.ceil(damage * 2) : damage;
@@ -415,10 +415,10 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     const statBonus = Number(activeEnemy?.strength ?? 0);
-    const roll = rollD20Attack(statBonus, ability.attack_bonus, playerDefense, ability.critical_chance, ability.critical_multiplier);
+    const roll = rollD20Attack(statBonus, Number(ability.attack_bonus ?? 0) + getEnemyAttackBonus(), playerDefense, ability.critical_chance, ability.critical_multiplier);
     if (!roll.hit) {
       pushCombatIndicator("player", "MISS", "#9ca3af");
-      return { damage: 0, log: [`${enemyName} uses ${ability.name} and misses. d20 ${roll.roll} vs Defense ${playerDefense}.`] };
+      return { damage: 0, log: [`${enemyName} uses ${ability.name} and misses. d20 ${roll.roll} + bonuses = ${roll.total} vs Defense ${playerDefense}.`] };
     }
 
     const baseDamage = Math.max(1, Number(ability.damage) || 1);
@@ -432,11 +432,15 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
   function getPlayerDefense(equippedItems: Record<string, ItemDefinition | null>, extraDefense = 0) {
     const bonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
-    return 10 + Math.floor((character.attributes?.endurance ?? 0) / 2) + Math.floor((character.attributes?.agility ?? 0) / 2) + bonuses.defense + extraDefense;
+    return 10 + getDefenseAttributeBonus(character.attributes?.endurance ?? 0) + getDefenseAttributeBonus(character.attributes?.agility ?? 0) + bonuses.defense + extraDefense;
   }
 
   function getEnemyDefense() {
-    return Number(activeEnemy?.defense ?? 10) + Math.floor(Number(activeEnemy?.endurance ?? 0) / 2) + Math.floor(Number(activeEnemy?.agility ?? 0) / 2) + Number(activeEnemy?.armor_rating ?? 0);
+    return Number(activeEnemy?.defense ?? 10) + getDefenseAttributeBonus(Number(activeEnemy?.endurance ?? 0)) + getDefenseAttributeBonus(Number(activeEnemy?.agility ?? 0)) + Number(activeEnemy?.armor_rating ?? 0);
+  }
+
+  function getEnemyAttackBonus() {
+    return Number(activeEnemy?.attack_bonus ?? 0);
   }
 
   function getEnemyArmorReduction() {
