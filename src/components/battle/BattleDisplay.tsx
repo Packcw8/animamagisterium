@@ -1,4 +1,5 @@
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import Svg, { Path } from "react-native-svg";
 import { ProgressBar } from "../ProgressBar";
 import { colors, fonts } from "../theme";
 import { getAbilityCostLabel, type AbilityDefinition } from "../../services/abilityService";
@@ -65,15 +66,13 @@ export function CombatPortraitFrame({
   const manaPercent = getPercent(mana ?? 0, maxMana ?? 1);
   const frameSize = compact ? 104 : 132;
   const portraitSize = compact ? 78 : 98;
+  const ringSize = frameSize - 2;
+  const ringRadius = frameSize / 2 - 9;
 
   return (
     <View style={[styles.portraitFrameWrap, active && styles.portraitFrameActive, accent === "enemy" && styles.enemyPortraitGlow]}>
       <View style={[styles.portraitFrame, { width: frameSize, height: frameSize, borderRadius: frameSize / 2 } as object]}>
-        <View style={[styles.sideArc, styles.leftArc, { height: `${Math.max(8, staminaPercent)}%` } as object]} />
-        <View style={[styles.sideArc, styles.rightArc, { height: `${Math.max(8, manaPercent)}%` } as object]} />
-        <View style={styles.bottomArcTrack}>
-          <View style={[styles.bottomArcFill, { width: `${hpPercent}%` } as object]} />
-        </View>
+        <CircularResourceArcs size={ringSize} radius={ringRadius} hpPercent={hpPercent} staminaPercent={staminaPercent} manaPercent={manaPercent} />
         <View style={[styles.portraitInner, { width: portraitSize, height: portraitSize, borderRadius: portraitSize / 2 } as object]}>
           {imageUri && !imageFailed ? (
             <Image source={{ uri: imageUri }} style={[styles.portraitImage, { width: portraitSize, height: portraitSize, borderRadius: portraitSize / 2 } as object]} onError={onImageError} />
@@ -91,6 +90,35 @@ export function CombatPortraitFrame({
         {mana != null && maxMana != null ? <Text style={[styles.miniResourceText, { color: colors.blue }]}>MN {Math.max(0, mana)} / {Math.max(1, maxMana)}</Text> : null}
       </View>
     </View>
+  );
+}
+
+function CircularResourceArcs({
+  size,
+  radius,
+  hpPercent,
+  staminaPercent,
+  manaPercent,
+}: {
+  size: number;
+  radius: number;
+  hpPercent: number;
+  staminaPercent: number;
+  manaPercent: number;
+}) {
+  const center = size / 2;
+  const strokeWidth = 7;
+
+  return (
+    <Svg width={size} height={size} style={styles.resourceArcSvg} pointerEvents="none">
+      <Path d={describeArc(center, center, radius, 142, 218)} stroke="rgba(232,181,94,0.16)" strokeWidth={strokeWidth} strokeLinecap="round" fill="none" />
+      <Path d={describeArc(center, center, radius, 322, 398)} stroke="rgba(54,171,224,0.16)" strokeWidth={strokeWidth} strokeLinecap="round" fill="none" />
+      <Path d={describeArc(center, center, radius, 205, 335)} stroke="rgba(255,255,255,0.12)" strokeWidth={strokeWidth} strokeLinecap="round" fill="none" />
+
+      {staminaPercent > 0 ? <Path d={describeArc(center, center, radius, 142, 142 + 76 * (staminaPercent / 100))} stroke={colors.gold} strokeWidth={strokeWidth} strokeLinecap="round" fill="none" /> : null}
+      {manaPercent > 0 ? <Path d={describeArc(center, center, radius, 322, 322 + 76 * (manaPercent / 100))} stroke={colors.blue} strokeWidth={strokeWidth} strokeLinecap="round" fill="none" /> : null}
+      {hpPercent > 0 ? <Path d={describeArc(center, center, radius, 205, 205 + 130 * (hpPercent / 100))} stroke={colors.red} strokeWidth={strokeWidth} strokeLinecap="round" fill="none" /> : null}
+    </Svg>
   );
 }
 
@@ -208,6 +236,23 @@ function getPercent(value: number, max: number) {
   return Math.max(0, Math.min(100, (Number(value) / Math.max(1, Number(max) || 1)) * 100));
 }
 
+function polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {
+  const angleInRadians = (angleInDegrees * Math.PI) / 180;
+
+  return {
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians),
+  };
+}
+
+function describeArc(centerX: number, centerY: number, radius: number, startAngle: number, endAngle: number) {
+  const start = polarToCartesian(centerX, centerY, radius, startAngle);
+  const end = polarToCartesian(centerX, centerY, radius, endAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+
+  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
+}
+
 const styles = StyleSheet.create({
   resourceMeter: {
     gap: 5,
@@ -251,7 +296,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(232,181,94,0.28)",
     backgroundColor: "rgba(0,0,0,0.35)",
-    overflow: "hidden",
+    overflow: "visible",
+  },
+  resourceArcSvg: {
+    position: "absolute",
+    zIndex: 3,
   },
   portraitInner: {
     alignItems: "center",
@@ -270,46 +319,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.title,
     fontSize: 22,
     fontWeight: "900",
-  },
-  sideArc: {
-    position: "absolute",
-    bottom: 24,
-    width: 7,
-    borderRadius: 999,
-    zIndex: 2,
-  },
-  leftArc: {
-    left: 8,
-    backgroundColor: colors.gold,
-    shadowColor: colors.gold,
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
-  },
-  rightArc: {
-    right: 8,
-    backgroundColor: colors.blue,
-    shadowColor: colors.blue,
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
-  },
-  bottomArcTrack: {
-    position: "absolute",
-    left: 22,
-    right: 22,
-    bottom: 12,
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    overflow: "hidden",
-    zIndex: 3,
-  },
-  bottomArcFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: colors.red,
-    shadowColor: colors.red,
-    shadowOpacity: 0.6,
-    shadowRadius: 8,
   },
   portraitName: {
     color: colors.text,
@@ -475,15 +484,17 @@ const styles = StyleSheet.create({
   },
   combatIndicatorStack: {
     position: "absolute",
-    top: 0,
+    top: -12,
     left: 0,
     right: 0,
     alignItems: "center",
+    zIndex: 20,
+    elevation: 20,
   },
   combatIndicator: {
     position: "absolute",
     fontWeight: "900",
-    fontSize: 16,
+    fontSize: 19,
     textShadowColor: "rgba(0,0,0,0.9)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
