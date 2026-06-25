@@ -10,6 +10,10 @@
     "web": "expo start --web",
     "prebuild": "node scripts/write-runtime-env.cjs",
     "build": "expo export -p web && node scripts/patch-web-icons.cjs",
+    "supabase:login": "supabase login",
+    "supabase:link": "supabase link --project-ref xasccgfbwluyommimqis",
+    "supabase:push": "supabase db push",
+    "supabase:migrations": "supabase migration list",
     "typecheck": "node --stack-size=8192 node_modules/typescript/lib/tsc.js --noEmit"
   },
   "dependencies": {
@@ -30,6 +34,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.0.10",
+    "supabase": "^2.108.0",
     "typescript": "~5.8.3"
   }
 }

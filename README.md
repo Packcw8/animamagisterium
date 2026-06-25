@@ -35,6 +35,27 @@ Migrations live in `supabase/migrations`. The MVP uses:
 - `character-portraits` storage bucket for AI-generated portraits
 - RLS-protected character/profile/attribute/appearance records
 
+### Supabase CLI migrations
+
+The project includes Supabase CLI config in `supabase/config.toml`.
+
+First-time setup on a machine:
+
+```sh
+npm install
+npm run supabase:login
+npm run supabase:link
+```
+
+When a new migration is added and you want to apply it to the linked Supabase project:
+
+```sh
+npm run supabase:migrations
+npm run supabase:push
+```
+
+`npm run supabase:link` is already pointed at project ref `xasccgfbwluyommimqis`. Supabase may ask for the database password when linking or pushing.
+
 ## Vercel
 
 Vercel must define:

@@ -1,0 +1,2 @@
+-- Local development seed file.
+-- Production data is managed through migrations and admin tools.
