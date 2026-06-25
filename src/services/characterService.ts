@@ -193,6 +193,7 @@ export async function createCharacter(input: CharacterCreationInput) {
       original_photo_url: input.original_photo_url,
       portrait_url: input.portrait_url,
       current_health: 30,
+      gold: 10,
     })
     .select()
     .single();
