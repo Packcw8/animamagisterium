@@ -4,6 +4,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-nativ
 import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButton";
 import { AdminCollapsibleSection } from "../components/admin/AdminCollapsibleSection";
 import { BattleEventScreen } from "../components/battle/BattleEventScreen";
+import { BattlefieldLayoutEditor } from "../components/battle/BattlefieldLayoutEditor";
 import { useBattleEncounter } from "../components/battle/useBattleEncounter";
 import { BrandLogo } from "../components/BrandLogo";
 import { DialogueCheckEditor } from "../components/dialogue/DialogueCheckEditor";
@@ -53,6 +54,7 @@ import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails, incrementCharacterDistanceWalked } from "../services/characterService";
 import { AbilityDefinition, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
+import { BattleEventCombatant, deleteBattleEventCombatant, getBattleEventCombatants, saveBattleEventCombatant } from "../services/battlefieldService";
 import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri } from "../services/inventoryService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
@@ -250,6 +252,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     battleStamina,
     battleMagicka,
     battleEnemyHp,
+    battleOpponents,
+    selectedOpponentKey,
     battleLog,
     setBattleLog,
     battleFinished,
@@ -265,6 +269,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setBattleInventoryOpen,
     resetBattleState,
     startBattle: startBattleEncounter,
+    selectBattleTarget,
     savePlayerHealth,
     handleBattleAction: runBattleAction,
     handleWeaponAction: runWeaponAction,
@@ -444,6 +449,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [rewardItem, setRewardItem] = useState("");
   const [rewardItemId, setRewardItemId] = useState<string | null>(null);
   const [rewardItemQuantity, setRewardItemQuantity] = useState("1");
+  const [battlefieldCombatants, setBattlefieldCombatants] = useState<BattleEventCombatant[]>([]);
   const [reuseEventId, setReuseEventId] = useState<string | null>(null);
   const [reuseEventOpen, setReuseEventOpen] = useState(false);
   const [selectedDialogueEventId, setSelectedDialogueEventId] = useState<string | null>(null);
@@ -3467,6 +3473,45 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setRewardItem(event.reward_item ?? "");
     setRewardItemId(event.reward_item_id ?? null);
     setRewardItemQuantity(String(event.reward_item_quantity ?? 1));
+    if (event.event_type === "battle") {
+      void loadBattlefieldCombatants(event.id);
+    } else {
+      setBattlefieldCombatants([]);
+    }
+  }
+
+  async function loadBattlefieldCombatants(eventId: string) {
+    try {
+      const loaded = await getBattleEventCombatants(eventId);
+      setBattlefieldCombatants(loaded);
+    } catch (error) {
+      setBattlefieldCombatants([]);
+      setAdminMessage(getErrorMessage(error, "Unable to load battlefield layout. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function saveBattlefieldCombatant(input: Partial<BattleEventCombatant> & { event_id: string }) {
+    try {
+      const saved = await saveBattleEventCombatant(input);
+      setBattlefieldCombatants((current) => {
+        const exists = current.some((combatant) => combatant.id === saved.id);
+        const next = exists ? current.map((combatant) => combatant.id === saved.id ? saved : combatant) : [...current, saved];
+        return next.sort((a, b) => Number(a.sort_order) - Number(b.sort_order));
+      });
+      setAdminMessage("Battlefield combatant saved.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save battlefield combatant. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function removeBattlefieldCombatant(combatantId: string) {
+    try {
+      await deleteBattleEventCombatant(combatantId);
+      setBattlefieldCombatants((current) => current.filter((combatant) => combatant.id !== combatantId));
+      setAdminMessage("Battlefield combatant deleted.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to delete battlefield combatant."));
+    }
   }
 
   function selectEventEnemy(enemyId: string | null) {
@@ -3560,6 +3605,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setRewardItem("");
     setRewardItemId(null);
     setRewardItemQuantity("1");
+    setBattlefieldCombatants([]);
     setReuseEventId(null);
   }
 
@@ -3612,6 +3658,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         const next = editingEvent ? current.map((event) => (event.id === saved.id ? saved : event)) : [...current, saved];
         return next.sort(compareEventsByRouteAndDistance);
       });
+      if (saved.event_type === "battle") {
+        setEditingEvent(saved);
+        await loadBattlefieldCombatants(saved.id);
+        setAdminMessage("Event saved. You can now place battlefield combatants.");
+        return;
+      }
       clearEventForm();
       setAdminMessage("Event saved.");
     } catch (error) {
@@ -4341,6 +4393,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           resources={combatResources}
           enemyHp={battleEnemyHp}
           activeEnemy={activeEnemy}
+          opponents={battleOpponents}
+          selectedOpponentKey={selectedOpponentKey}
           equippedAbilities={equippedAbilities}
           weapon={equippedItems.weapon ?? null}
           battleItems={getBattleUsableItems(inventoryItems, battlePlayerHp <= 0 || battleFinished === "defeat")}
@@ -4351,6 +4405,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           result={battleFinished}
           previewMode={adminPreviewMode === "battle"}
           onAction={(ability) => void handleBattleAction(ability)}
+          onSelectOpponent={selectBattleTarget}
           onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
           onFlee={() => void fleeBattle()}
           onUseItem={(item) => void useBattleItem(item)}
@@ -5027,6 +5082,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                       <TextInput value={battleIntro} onChangeText={setBattleIntro} placeholder="Battle intro text" placeholderTextColor={colors.muted} style={styles.input} />
                       <TextInput value={victoryText} onChangeText={setVictoryText} placeholder="Victory text" placeholderTextColor={colors.muted} style={styles.input} />
                       <TextInput value={defeatText} onChangeText={setDefeatText} placeholder="Defeat text" placeholderTextColor={colors.muted} style={styles.input} />
+                      <BattlefieldLayoutEditor
+                        eventId={editingEvent?.event_type === "battle" ? editingEvent.id : null}
+                        backgroundImageUrl={eventBackgroundImage}
+                        combatants={battlefieldCombatants}
+                        enemies={enemyDefinitions}
+                        npcs={npcDefinitions}
+                        onSave={saveBattlefieldCombatant}
+                        onDelete={removeBattlefieldCombatant}
+                        onMessage={setAdminMessage}
+                      />
                     </>
                   )}
                   <Text style={styles.selectedTitle}>Event Rewards</Text>
@@ -5682,6 +5747,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <TextInput value={battleIntro} onChangeText={setBattleIntro} placeholder="Battle intro text" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={victoryText} onChangeText={setVictoryText} placeholder="Victory text" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={defeatText} onChangeText={setDefeatText} placeholder="Defeat text" placeholderTextColor={colors.muted} style={styles.input} />
+                <BattlefieldLayoutEditor
+                  eventId={editingEvent?.event_type === "battle" ? editingEvent.id : null}
+                  backgroundImageUrl={eventBackgroundImage}
+                  combatants={battlefieldCombatants}
+                  enemies={enemyDefinitions}
+                  npcs={npcDefinitions}
+                  onSave={saveBattlefieldCombatant}
+                  onDelete={removeBattlefieldCombatant}
+                  onMessage={setAdminMessage}
+                />
               </>
             )}
             <View style={styles.storyEditor}>

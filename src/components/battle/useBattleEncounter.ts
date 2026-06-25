@@ -2,6 +2,7 @@ import { Dispatch, SetStateAction, useState } from "react";
 import { AbilityDefinition, CharacterResources, clampHealth, getCharacterResources } from "../../services/abilityService";
 import { CharacterWithDetails, updateCharacterHealth } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout, getEnemyLoadout, getNpcLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
+import { BattleEventCombatant, getBattleEventCombatants } from "../../services/battlefieldService";
 import { InventoryItem, ItemDefinition, consumeInventoryItem, getInventoryResourceBonuses, isReviveBattleItem } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
 import { chooseWeightedEnemyAbility, getDefenseAttributeBonus, rollD20Attack } from "../../utils/combatMath";
@@ -34,6 +35,15 @@ type BattleActionContext = {
   loadInventory: () => Promise<void>;
 };
 
+export type BattleOpponentState = {
+  key: string;
+  combatant: BattleEventCombatant | null;
+  enemy: EnemyWithLoadout | NpcWithLoadout | null;
+  hp: number;
+  stamina: number;
+  magika: number;
+};
+
 export function useBattleEncounter(character: CharacterWithDetails, onCharacterUpdated: (character: CharacterWithDetails) => void) {
   const [activeBattle, setActiveBattle] = useState<MapEvent | null>(null);
   const [battlePlayerHp, setBattlePlayerHp] = useState(100);
@@ -46,6 +56,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | null>(null);
   const [revivePromptOpen, setRevivePromptOpen] = useState(false);
   const [activeEnemy, setActiveEnemy] = useState<EnemyWithLoadout | NpcWithLoadout | null>(null);
+  const [battleOpponents, setBattleOpponents] = useState<BattleOpponentState[]>([]);
+  const [selectedOpponentKey, setSelectedOpponentKey] = useState<string | null>(null);
   const [combatIndicators, setCombatIndicators] = useState<CombatIndicator[]>([]);
   const [combatResources, setCombatResources] = useState<CharacterResources>(() => getCharacterResources(character));
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
@@ -54,6 +66,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   function resetBattleState() {
     setActiveBattle(null);
     setActiveEnemy(null);
+    setBattleOpponents([]);
+    setSelectedOpponentKey(null);
     setBattleFinished(null);
     setRevivePromptOpen(false);
     setBattleInventoryOpen(false);
@@ -83,24 +97,41 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         return { ok: false, message };
       }
 
-      const enemyImage = resolveEnemyImageUri(opponent?.image_url ?? event.enemy_image_url);
+      const stagedOpponents = await loadStagedOpponents(event);
+      const fallbackOpponent = stagedOpponents.length === 0
+        ? [{
+          key: "primary",
+          combatant: null,
+          enemy: opponent,
+          hp: Number(opponent?.health ?? event.enemy_hp) || 30,
+          stamina: Number(opponent?.stamina ?? 0) || 0,
+          magika: Number(opponent?.magika ?? 0) || 0,
+        }]
+        : stagedOpponents;
+      const firstOpponent = fallbackOpponent[0];
+      const selectedEnemy = firstOpponent?.enemy ?? opponent;
+      const enemyImage = resolveEnemyImageUri(selectedEnemy?.image_url ?? event.enemy_image_url);
       setActiveEvent(null);
       setActiveBattle(event);
       setAdminPreviewMode(preview ? "battle" : null);
-      setActiveEnemy(opponent);
+      setActiveEnemy(selectedEnemy);
+      setBattleOpponents(fallbackOpponent);
+      setSelectedOpponentKey(firstOpponent?.key ?? null);
       setCombatIndicators([]);
       setBattlePlayerHp(currentHealth);
       setBattleStamina(nextCombatResources.maxStamina);
       setBattleMagicka(nextCombatResources.maxMagicka);
-      setBattleEnemyHp(Number(opponent?.health ?? event.enemy_hp) || 30);
-      setBattleEnemyStamina(Number(opponent?.stamina ?? 0) || 0);
-      setBattleEnemyMagika(Number(opponent?.magika ?? 0) || 0);
+      setBattleEnemyHp(firstOpponent?.hp ?? (Number(opponent?.health ?? event.enemy_hp) || 30));
+      setBattleEnemyStamina(firstOpponent?.stamina ?? (Number(opponent?.stamina ?? 0) || 0));
+      setBattleEnemyMagika(firstOpponent?.magika ?? (Number(opponent?.magika ?? 0) || 0));
       setBattleFinished(null);
       setRevivePromptOpen(false);
       setBattleInventoryOpen(false);
       setBattleLog([
-        event.battle_intro_text || `${opponent?.name || event.enemy_name || "An enemy"} blocks the trail.`,
-        opponent?.id ? `Loaded ${opponent.abilities.length} abilities and ${opponent.drops.length} drop entries from Admin.` : "Using manual battle enemy data.",
+        event.battle_intro_text || `${selectedEnemy?.name || event.enemy_name || "An enemy"} blocks the trail.`,
+        stagedOpponents.length > 0
+          ? `Loaded ${stagedOpponents.length} staged combatant${stagedOpponents.length === 1 ? "" : "s"} from Battlefield Layout.`
+          : selectedEnemy?.id ? `Loaded ${selectedEnemy.abilities.length} abilities and ${selectedEnemy.drops.length} drop entries from Admin.` : "Using manual battle enemy data.",
         enemyImage ? "Enemy image ready." : "Enemy image missing. A placeholder will be shown.",
       ]);
       return { ok: true };
@@ -110,6 +141,78 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       setBattleLog([message]);
       return { ok: false, message };
     }
+  }
+
+  async function loadStagedOpponents(event: MapEvent): Promise<BattleOpponentState[]> {
+    try {
+      const staged = await getBattleEventCombatants(event.id);
+      const activeStaged = staged.filter((combatant) => combatant.is_active && combatant.side === "enemy" && (combatant.enemy_id || combatant.npc_id));
+      const loaded = await Promise.all(activeStaged.map(async (combatant) => {
+        const enemy = combatant.enemy_id ? await getEnemyLoadout(combatant.enemy_id) : null;
+        const npc = !enemy && combatant.npc_id ? await getNpcLoadout(combatant.npc_id) : null;
+        const opponent = enemy ?? npc;
+
+        if (!opponent) {
+          return null;
+        }
+
+        return {
+          key: combatant.id,
+          combatant,
+          enemy: opponent,
+          hp: Number(opponent.health ?? event.enemy_hp) || 30,
+          stamina: Number(opponent.stamina ?? 0) || 0,
+          magika: Number(opponent.magika ?? 0) || 0,
+        } satisfies BattleOpponentState;
+      }));
+
+      return loaded.filter(Boolean) as BattleOpponentState[];
+    } catch {
+      return [];
+    }
+  }
+
+  function selectBattleTarget(key: string) {
+    const opponent = battleOpponents.find((entry) => entry.key === key);
+
+    if (!opponent || opponent.hp <= 0 || battleFinished) {
+      return;
+    }
+
+    setSelectedOpponentKey(key);
+    setActiveEnemy(opponent.enemy);
+    setBattleEnemyHp(opponent.hp);
+    setBattleEnemyStamina(opponent.stamina);
+    setBattleEnemyMagika(opponent.magika);
+  }
+
+  function updateSelectedOpponent(values: Partial<Pick<BattleOpponentState, "hp" | "stamina" | "magika">>) {
+    const selectedKey = selectedOpponentKey;
+
+    if (!selectedKey) {
+      return;
+    }
+
+    setBattleOpponents((current) => current.map((opponent) => opponent.key === selectedKey ? { ...opponent, ...values } : opponent));
+  }
+
+  function chooseNextLivingOpponent(opponents: BattleOpponentState[], currentKey: string | null, currentHp: number) {
+    return opponents
+      .map((opponent) => opponent.key === currentKey ? { ...opponent, hp: currentHp } : opponent)
+      .find((opponent) => opponent.hp > 0);
+  }
+
+  function allOpponentsDefeated(nextSelectedHp: number) {
+    if (battleOpponents.length <= 1) {
+      return nextSelectedHp <= 0;
+    }
+
+    return battleOpponents.every((opponent) => opponent.key === selectedOpponentKey ? nextSelectedHp <= 0 : opponent.hp <= 0);
+  }
+
+  function markSelectedOpponentHp(nextHp: number) {
+    setBattleEnemyHp(nextHp);
+    updateSelectedOpponent({ hp: nextHp });
   }
 
   function pushCombatIndicator(target: CombatIndicator["target"], text: string, color: string) {
@@ -238,9 +341,18 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       if (healthRestore > 0) {
         await savePlayerHealth(postAbilityPlayerHp, context.previewMode);
       }
-      setBattleEnemyHp(0);
-      setBattleFinished("victory");
-      setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+      markSelectedOpponentHp(0);
+      if (allOpponentsDefeated(nextEnemyHp)) {
+        setBattleFinished("victory");
+        setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+        return;
+      }
+      const nextTarget = chooseNextLivingOpponent(battleOpponents, selectedOpponentKey, nextEnemyHp);
+      if (nextTarget) {
+        selectBattleTarget(nextTarget.key);
+        nextLog.push(`${activeEnemy?.name || "Target"} falls. Choose the next target.`);
+      }
+      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
     }
 
@@ -248,7 +360,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const nextPlayerHp = Math.max(0, postAbilityPlayerHp - counter.damage);
     nextLog.push(...counter.log);
 
-    setBattleEnemyHp(nextEnemyHp);
+    markSelectedOpponentHp(nextEnemyHp);
     await savePlayerHealth(nextPlayerHp, context.previewMode);
 
     if (nextPlayerHp <= 0) {
@@ -327,16 +439,25 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     if (nextEnemyHp <= 0) {
-      setBattleEnemyHp(0);
-      setBattleFinished("victory");
-      setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+      markSelectedOpponentHp(0);
+      if (allOpponentsDefeated(nextEnemyHp)) {
+        setBattleFinished("victory");
+        setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+        return;
+      }
+      const nextTarget = chooseNextLivingOpponent(battleOpponents, selectedOpponentKey, nextEnemyHp);
+      if (nextTarget) {
+        selectBattleTarget(nextTarget.key);
+        nextLog.push(`${activeEnemy?.name || "Target"} falls. Choose the next target.`);
+      }
+      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
     }
 
     const counter = resolveEnemyCounterAttack(context);
     const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
     nextLog.push(...counter.log);
-    setBattleEnemyHp(nextEnemyHp);
+    markSelectedOpponentHp(nextEnemyHp);
     await savePlayerHealth(nextPlayerHp, context.previewMode);
 
     if (nextPlayerHp <= 0) {
@@ -393,7 +514,11 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const staminaRestore = Math.max(0, Number(ability.stamina_restore) || 0);
       const magikaRestore = Math.max(0, Number(ability.magika_restore) || 0);
       if (healing > 0) {
-        setBattleEnemyHp((current) => Math.min(Number(activeEnemy?.health ?? activeBattle?.enemy_hp ?? 30), current + healing));
+        setBattleEnemyHp((current) => {
+          const next = Math.min(Number(activeEnemy?.health ?? activeBattle?.enemy_hp ?? 30), current + healing);
+          updateSelectedOpponent({ hp: next });
+          return next;
+        });
         pushCombatIndicator("enemy", `+${healing}`, "#42d77d");
         logs.push(`${enemyName} heals ${healing}.`);
       }
@@ -593,6 +718,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setBattleEnemyStamina,
     battleEnemyMagika,
     setBattleEnemyMagika,
+    battleOpponents,
+    selectedOpponentKey,
     battleLog,
     setBattleLog,
     battleFinished,
@@ -611,6 +738,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setBattleInventoryOpen,
     resetBattleState,
     startBattle,
+    selectBattleTarget,
     pushCombatIndicator,
     savePlayerHealth,
     handleBattleAction,

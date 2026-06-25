@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { AbilityDefinition, CharacterResources } from "../../services/abilityService";
 import { CharacterWithDetails } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
@@ -9,6 +9,7 @@ import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
 import { BattleActionCard, CombatPortraitFrame, EnemyTargetCard, type CombatIndicator } from "./BattleDisplay";
+import { type BattleOpponentState } from "./useBattleEncounter";
 
 type BattleEventScreenProps = {
   character: CharacterWithDetails;
@@ -19,6 +20,8 @@ type BattleEventScreenProps = {
   resources: CharacterResources;
   enemyHp: number;
   activeEnemy: EnemyWithLoadout | NpcWithLoadout | null;
+  opponents?: BattleOpponentState[];
+  selectedOpponentKey?: string | null;
   equippedAbilities: Array<AbilityDefinition | null>;
   weapon: ItemDefinition | null;
   battleItems: InventoryItem[];
@@ -29,6 +32,7 @@ type BattleEventScreenProps = {
   result: "victory" | "defeat" | null;
   previewMode?: boolean;
   onAction: (ability: AbilityDefinition) => void;
+  onSelectOpponent?: (opponentKey: string) => void;
   onWeaponAction: (weapon: ItemDefinition) => void;
   onFlee: () => void;
   onUseItem: (item: InventoryItem) => void;
@@ -48,6 +52,8 @@ export function BattleEventScreen({
   resources,
   enemyHp,
   activeEnemy,
+  opponents = [],
+  selectedOpponentKey = null,
   equippedAbilities,
   battleItems,
   inventoryOpen,
@@ -57,6 +63,7 @@ export function BattleEventScreen({
   result,
   previewMode = false,
   onAction,
+  onSelectOpponent,
   onFlee,
   onUseItem,
   onToggleInventory,
@@ -85,6 +92,8 @@ export function BattleEventScreen({
     setPlayerImageFailed(false);
   }, [character.portrait_url]);
 
+  const livingOpponents = opponents.filter((opponent) => opponent.hp > 0);
+  const visibleOpponents = opponents.length > 0 ? opponents : [];
   const enemyIndicators = combatIndicators.filter((indicator) => indicator.target === "enemy");
   const playerIndicators = combatIndicators.filter((indicator) => indicator.target === "player");
   const reviveItem = battleItems.find((entry) => isReviveBattleItem(entry.item));
@@ -114,14 +123,33 @@ export function BattleEventScreen({
           </View>
           <View style={styles.battleArena}>
             <View style={styles.enemyRoster}>
-              <EnemyTargetCard
-                name={enemyName}
-                subtitle={enemySubtitle}
-                hp={enemyHp}
-                maxHp={enemyMaxHp}
-                imageUri={enemyImageUri && !enemyImageFailed ? enemyImageUri : null}
-                active={!result}
-              />
+              {livingOpponents.length > 1 ? livingOpponents.map((opponent) => {
+                const name = opponent.enemy?.name || opponent.combatant?.label || "Enemy";
+                const maxHp = Number(opponent.enemy?.health ?? event.enemy_hp) || 30;
+                const isSelected = opponent.key === selectedOpponentKey;
+                return (
+                  <Pressable key={opponent.key} style={styles.enemyRosterButton} onPress={() => onSelectOpponent?.(opponent.key)}>
+                    <EnemyTargetCard
+                      name={name}
+                      subtitle={`${opponent.enemy?.type || "Enemy"} / Level ${getBattleEnemyLevel(maxHp)}`}
+                      hp={opponent.hp}
+                      maxHp={maxHp}
+                      imageUri={resolveEnemyImageUri(opponent.enemy?.image_url)}
+                      active={!result && isSelected}
+                      targetSelected={isSelected}
+                    />
+                  </Pressable>
+                );
+              }) : (
+                <EnemyTargetCard
+                  name={enemyName}
+                  subtitle={enemySubtitle}
+                  hp={enemyHp}
+                  maxHp={enemyMaxHp}
+                  imageUri={enemyImageUri && !enemyImageFailed ? enemyImageUri : null}
+                  active={!result}
+                />
+              )}
               <View style={styles.enemyIntentBox}>
                 <Text style={styles.enemyIntentLabel}>Enemy Intent</Text>
                 <Text style={styles.enemyIntentText} numberOfLines={2}>{enemyIntent}</Text>
@@ -132,21 +160,56 @@ export function BattleEventScreen({
                 <Text style={styles.stageHint}>{playerTurnActive ? "Choose an ability, then strike the selected target." : "Enemy action resolving."}</Text>
               </View>
               <View style={styles.enemyStage}>
-                <CombatPortraitFrame
-                  imageUri={enemyImageUri}
-                  imageFailed={enemyImageFailed}
-                  onImageError={() => setEnemyImageFailed(true)}
-                  fallbackText={enemyName}
-                  name={enemyName}
-                  subtitle={enemySubtitle}
-                  hp={enemyHp}
-                  maxHp={enemyMaxHp}
-                  accent="enemy"
-                  compact
-                  active={!playerTurnActive && !result}
-                  indicators={enemyIndicators}
-                />
-                {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
+                {visibleOpponents.length > 0 ? (
+                  <>
+                    {visibleOpponents.map((opponent) => {
+                      const name = opponent.enemy?.name || opponent.combatant?.label || "Enemy";
+                      const imageUri = resolveEnemyImageUri(opponent.enemy?.image_url);
+                      const maxHp = Number(opponent.enemy?.health ?? event.enemy_hp) || 30;
+                      const isSelected = opponent.key === selectedOpponentKey;
+                      const size = Math.max(62, Math.min(142, Number(opponent.combatant?.size_percent ?? 14) * 7));
+                      return (
+                        <Pressable
+                          key={`stage-${opponent.key}`}
+                          style={[
+                            styles.stagedCombatant,
+                            isSelected && styles.stagedCombatantSelected,
+                            opponent.hp <= 0 && styles.defeatedCombatant,
+                            {
+                              left: `${opponent.combatant?.x_percent ?? 72}%`,
+                              top: `${opponent.combatant?.y_percent ?? 22}%`,
+                              width: size,
+                              transform: [{ translateX: -size / 2 }, { translateY: -size / 2 }],
+                            } as object,
+                          ]}
+                          onPress={() => onSelectOpponent?.(opponent.key)}
+                        >
+                          {imageUri ? <Image source={{ uri: imageUri }} style={styles.stagedCombatantImage} /> : <Text style={styles.stagedCombatantFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
+                          <Text style={styles.stagedCombatantName} numberOfLines={1}>{name}</Text>
+                          {isSelected ? <CombatIndicatorStackOverlay indicators={enemyIndicators} /> : null}
+                        </Pressable>
+                      );
+                    })}
+                  </>
+                ) : (
+                  <>
+                    <CombatPortraitFrame
+                      imageUri={enemyImageUri}
+                      imageFailed={enemyImageFailed}
+                      onImageError={() => setEnemyImageFailed(true)}
+                      fallbackText={enemyName}
+                      name={enemyName}
+                      subtitle={enemySubtitle}
+                      hp={enemyHp}
+                      maxHp={enemyMaxHp}
+                      accent="enemy"
+                      compact
+                      active={!playerTurnActive && !result}
+                      indicators={enemyIndicators}
+                    />
+                    {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
+                  </>
+                )}
               </View>
               <View style={styles.playerStage}>
                 <CombatPortraitFrame
@@ -268,6 +331,18 @@ function resolveSceneImageUri(imagePath?: string | null) {
 
   const normalized = trimmed.replaceAll("\\", "/");
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function CombatIndicatorStackOverlay({ indicators }: { indicators: CombatIndicator[] }) {
+  return (
+    <View style={styles.stageIndicatorStack} pointerEvents="none">
+      {indicators.map((indicator, index) => (
+        <Text key={indicator.id} style={[styles.stageIndicatorText, { color: indicator.color, top: -20 - index * 20 } as object]}>
+          {indicator.text}
+        </Text>
+      ))}
+    </View>
+  );
 }
 
 function formatResourceName(resource: string) {
@@ -407,9 +482,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   enemyStage: {
-    alignSelf: "flex-end",
-    alignItems: "center",
-    maxWidth: 170,
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 74,
   },
   playerStage: {
     alignSelf: "flex-start",
@@ -442,6 +519,67 @@ const styles = StyleSheet.create({
     color: colors.red,
     fontWeight: "800",
     fontSize: 11,
+  },
+  enemyRosterButton: {
+    flexBasis: 210,
+    flexGrow: 1,
+  },
+  stagedCombatant: {
+    position: "absolute",
+    aspectRatio: 1,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: "rgba(255,180,170,0.58)",
+    backgroundColor: "rgba(12,5,5,0.72)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#ff5c5c",
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+  },
+  stagedCombatantSelected: {
+    borderColor: colors.gold,
+    shadowColor: colors.gold,
+    shadowOpacity: 0.65,
+    shadowRadius: 18,
+  },
+  defeatedCombatant: {
+    opacity: 0.42,
+  },
+  stagedCombatantImage: {
+    width: "82%",
+    height: "82%",
+    borderRadius: 999,
+  },
+  stagedCombatantFallback: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 20,
+  },
+  stagedCombatantName: {
+    position: "absolute",
+    bottom: -22,
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: "900",
+    textShadowColor: "#000",
+    textShadowRadius: 4,
+  },
+  stageIndicatorStack: {
+    position: "absolute",
+    left: "50%",
+    top: 0,
+    alignItems: "center",
+  },
+  stageIndicatorText: {
+    position: "absolute",
+    minWidth: 96,
+    marginLeft: -48,
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: "900",
+    textShadowColor: "#000",
+    textShadowRadius: 5,
   },
   abilityGrid: {
     flexDirection: "row",

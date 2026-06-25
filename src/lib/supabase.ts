@@ -318,6 +318,23 @@ export type Tables = {
     event_id: string;
     completed_at: string;
   };
+  battle_event_combatants: {
+    id: string;
+    event_id: string;
+    side: "player" | "companion" | "enemy";
+    enemy_id: string | null;
+    npc_id: string | null;
+    label: string | null;
+    x_percent: number;
+    y_percent: number;
+    size_percent: number;
+    sort_order: number;
+    is_boss: boolean;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
   enemy_kill_log: {
     id: string;
     user_id: string;
