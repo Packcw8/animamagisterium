@@ -1,6 +1,6 @@
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { ProgressBar } from "../ProgressBar";
-import { colors } from "../theme";
+import { colors, fonts } from "../theme";
 import { getAbilityCostLabel, type AbilityDefinition } from "../../services/abilityService";
 import { resolveAbilityImageUri, resolveInventoryImageUri } from "../../services/inventoryService";
 
@@ -21,6 +21,109 @@ export function ResourceMeter({ label, value, max, color, compact = false }: { l
         <Text style={styles.resourceMeterValue}>{Math.max(0, value)} / {safeMax}</Text>
       </View>
       <ProgressBar value={value} max={safeMax} color={color} height={compact ? 5 : 8} />
+    </View>
+  );
+}
+
+export function CombatPortraitFrame({
+  imageUri,
+  fallbackText,
+  name,
+  subtitle,
+  hp,
+  maxHp,
+  stamina,
+  maxStamina,
+  mana,
+  maxMana,
+  accent,
+  active,
+  compact = false,
+  indicators,
+  imageFailed,
+  onImageError,
+}: {
+  imageUri: string | null;
+  fallbackText: string;
+  name: string;
+  subtitle: string;
+  hp: number;
+  maxHp: number;
+  stamina?: number;
+  maxStamina?: number;
+  mana?: number;
+  maxMana?: number;
+  accent: "player" | "enemy";
+  active: boolean;
+  compact?: boolean;
+  indicators?: CombatIndicator[];
+  imageFailed?: boolean;
+  onImageError?: () => void;
+}) {
+  const hpPercent = getPercent(hp, maxHp);
+  const staminaPercent = getPercent(stamina ?? 0, maxStamina ?? 1);
+  const manaPercent = getPercent(mana ?? 0, maxMana ?? 1);
+  const frameSize = compact ? 104 : 132;
+  const portraitSize = compact ? 78 : 98;
+
+  return (
+    <View style={[styles.portraitFrameWrap, active && styles.portraitFrameActive, accent === "enemy" && styles.enemyPortraitGlow]}>
+      <View style={[styles.portraitFrame, { width: frameSize, height: frameSize, borderRadius: frameSize / 2 } as object]}>
+        <View style={[styles.sideArc, styles.leftArc, { height: `${Math.max(8, staminaPercent)}%` } as object]} />
+        <View style={[styles.sideArc, styles.rightArc, { height: `${Math.max(8, manaPercent)}%` } as object]} />
+        <View style={styles.bottomArcTrack}>
+          <View style={[styles.bottomArcFill, { width: `${hpPercent}%` } as object]} />
+        </View>
+        <View style={[styles.portraitInner, { width: portraitSize, height: portraitSize, borderRadius: portraitSize / 2 } as object]}>
+          {imageUri && !imageFailed ? (
+            <Image source={{ uri: imageUri }} style={[styles.portraitImage, { width: portraitSize, height: portraitSize, borderRadius: portraitSize / 2 } as object]} onError={onImageError} />
+          ) : (
+            <Text style={styles.portraitFallback}>{fallbackText.slice(0, 2).toUpperCase()}</Text>
+          )}
+        </View>
+        <CombatIndicatorStack indicators={indicators ?? []} />
+      </View>
+      <Text style={styles.portraitName} numberOfLines={1}>{name}</Text>
+      <Text style={styles.portraitSubtitle} numberOfLines={1}>{subtitle}</Text>
+      <View style={styles.miniResourceRow}>
+        <Text style={[styles.miniResourceText, { color: colors.red }]}>HP {Math.max(0, hp)} / {Math.max(1, maxHp)}</Text>
+        {stamina != null && maxStamina != null ? <Text style={[styles.miniResourceText, { color: colors.gold }]}>ST {Math.max(0, stamina)} / {Math.max(1, maxStamina)}</Text> : null}
+        {mana != null && maxMana != null ? <Text style={[styles.miniResourceText, { color: colors.blue }]}>MN {Math.max(0, mana)} / {Math.max(1, maxMana)}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+export function EnemyTargetCard({
+  name,
+  subtitle,
+  hp,
+  maxHp,
+  imageUri,
+  active,
+  targetSelected = true,
+}: {
+  name: string;
+  subtitle: string;
+  hp: number;
+  maxHp: number;
+  imageUri: string | null;
+  active: boolean;
+  targetSelected?: boolean;
+}) {
+  return (
+    <View style={[styles.enemyTargetCard, targetSelected && styles.enemyTargetSelected]}>
+      <View style={styles.enemyTargetImageWrap}>
+        {imageUri ? <Image source={{ uri: imageUri }} style={styles.enemyTargetImage} /> : <Text style={styles.battleActionFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
+      </View>
+      <View style={styles.enemyTargetBody}>
+        <View style={styles.enemyTargetHeader}>
+          <Text style={styles.enemyTargetName} numberOfLines={1}>{name}</Text>
+          {active ? <Text style={styles.turnChip}>Target</Text> : null}
+        </View>
+        <Text style={styles.enemyTargetSub} numberOfLines={1}>{subtitle}</Text>
+        <ProgressBar value={hp} max={Math.max(1, maxHp)} color={colors.red} height={5} />
+      </View>
     </View>
   );
 }
@@ -101,6 +204,10 @@ function getAbilityPowerLabel(ability: AbilityDefinition) {
   return ability.description;
 }
 
+function getPercent(value: number, max: number) {
+  return Math.max(0, Math.min(100, (Number(value) / Math.max(1, Number(max) || 1)) * 100));
+}
+
 const styles = StyleSheet.create({
   resourceMeter: {
     gap: 5,
@@ -122,6 +229,174 @@ const styles = StyleSheet.create({
   resourceMeterValue: {
     color: colors.text,
     fontSize: 12,
+    fontWeight: "900",
+  },
+  portraitFrameWrap: {
+    alignItems: "center",
+    gap: 4,
+    padding: 4,
+  },
+  portraitFrameActive: {
+    transform: [{ scale: 1.03 }],
+  },
+  enemyPortraitGlow: {
+    shadowColor: colors.red,
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+  },
+  portraitFrame: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(232,181,94,0.28)",
+    backgroundColor: "rgba(0,0,0,0.35)",
+    overflow: "hidden",
+  },
+  portraitInner: {
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "rgba(54,171,224,0.74)",
+    overflow: "hidden",
+    backgroundColor: "rgba(5,9,10,0.82)",
+    zIndex: 4,
+  },
+  portraitImage: {
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  portraitFallback: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  sideArc: {
+    position: "absolute",
+    bottom: 24,
+    width: 7,
+    borderRadius: 999,
+    zIndex: 2,
+  },
+  leftArc: {
+    left: 8,
+    backgroundColor: colors.gold,
+    shadowColor: colors.gold,
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+  },
+  rightArc: {
+    right: 8,
+    backgroundColor: colors.blue,
+    shadowColor: colors.blue,
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+  },
+  bottomArcTrack: {
+    position: "absolute",
+    left: 22,
+    right: 22,
+    bottom: 12,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    overflow: "hidden",
+    zIndex: 3,
+  },
+  bottomArcFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: colors.red,
+    shadowColor: colors.red,
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+  },
+  portraitName: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 13,
+    maxWidth: 150,
+  },
+  portraitSubtitle: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+    maxWidth: 150,
+  },
+  miniResourceRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    gap: 5,
+    maxWidth: 160,
+  },
+  miniResourceText: {
+    fontSize: 9,
+    fontWeight: "900",
+  },
+  enemyTargetCard: {
+    minWidth: 170,
+    flexGrow: 1,
+    flexBasis: 170,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,180,170,0.28)",
+    padding: 8,
+    backgroundColor: "rgba(12,8,8,0.64)",
+  },
+  enemyTargetSelected: {
+    borderColor: "#ffb4aa",
+    backgroundColor: "rgba(62,15,15,0.46)",
+  },
+  enemyTargetImageWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "#ffb4aa",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  enemyTargetImage: {
+    width: 44,
+    height: 44,
+  },
+  enemyTargetBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  enemyTargetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  enemyTargetName: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "900",
+    flex: 1,
+  },
+  enemyTargetSub: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: "800",
+    textTransform: "uppercase",
+  },
+  turnChip: {
+    color: "#1a0705",
+    backgroundColor: "#ffb4aa",
+    borderRadius: 999,
+    overflow: "hidden",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    fontSize: 9,
     fontWeight: "900",
   },
   battleActionCard: {

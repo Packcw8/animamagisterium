@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { AbilityDefinition, CharacterResources } from "../../services/abilityService";
 import { CharacterWithDetails } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
@@ -8,7 +8,7 @@ import { MapEvent } from "../../services/mapService";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
-import { BattleActionCard, CombatIndicatorStack, ResourceMeter, type CombatIndicator } from "./BattleDisplay";
+import { BattleActionCard, CombatPortraitFrame, EnemyTargetCard, type CombatIndicator } from "./BattleDisplay";
 
 type BattleEventScreenProps = {
   character: CharacterWithDetails;
@@ -88,6 +88,8 @@ export function BattleEventScreen({
   const enemyIndicators = combatIndicators.filter((indicator) => indicator.target === "enemy");
   const playerIndicators = combatIndicators.filter((indicator) => indicator.target === "player");
   const reviveItem = battleItems.find((entry) => isReviveBattleItem(entry.item));
+  const enemyName = activeEnemy?.name || event.enemy_name || "Enemy";
+  const enemySubtitle = `${activeEnemy?.type || "Enemy"} / Level ${enemyLevel}`;
 
   return (
     <Screen>
@@ -111,33 +113,59 @@ export function BattleEventScreen({
             </View>
           </View>
           <View style={styles.battleArena}>
-            <View style={[styles.enemyPanel, !playerTurnActive && !result && styles.combatantActive]}>
-              <View style={styles.combatantInfo}>
-                <Text style={styles.combatantName} numberOfLines={1}>{activeEnemy?.name || event.enemy_name || "Enemy"}</Text>
-                <Text style={styles.combatantSub} numberOfLines={1}>{activeEnemy?.type || "Enemy"} / Level {enemyLevel}</Text>
-                <ResourceMeter label="HP" value={enemyHp} max={enemyMaxHp} color={colors.red} />
-                <View style={styles.enemyIntentBox}>
-                  <Text style={styles.enemyIntentLabel}>Intent</Text>
-                  <Text style={styles.enemyIntentText} numberOfLines={1}>{enemyIntent}</Text>
-                </View>
-                {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
-              </View>
-              <View style={[styles.combatImageWrap, enemyIndicators.length > 0 && styles.combatImageHit]}>
-                {enemyImageUri && !enemyImageFailed ? <Image source={{ uri: enemyImageUri }} style={styles.enemyImage} onError={() => setEnemyImageFailed(true)} /> : <View style={styles.enemyImagePlaceholder}><Text style={styles.copy}>Enemy image missing</Text></View>}
-                <CombatIndicatorStack indicators={enemyIndicators} />
+            <View style={styles.enemyRoster}>
+              <EnemyTargetCard
+                name={enemyName}
+                subtitle={enemySubtitle}
+                hp={enemyHp}
+                maxHp={enemyMaxHp}
+                imageUri={enemyImageUri && !enemyImageFailed ? enemyImageUri : null}
+                active={!result}
+              />
+              <View style={styles.enemyIntentBox}>
+                <Text style={styles.enemyIntentLabel}>Enemy Intent</Text>
+                <Text style={styles.enemyIntentText} numberOfLines={2}>{enemyIntent}</Text>
               </View>
             </View>
-            <View style={[styles.playerPanel, playerTurnActive && styles.combatantActive]}>
-              <View style={[styles.combatImageWrap, playerIndicators.length > 0 && styles.combatImageHit]}>
-                {character.portrait_url && !playerImageFailed ? <Image source={{ uri: character.portrait_url }} style={styles.battlePortrait} onError={() => setPlayerImageFailed(true)} /> : <Text style={styles.playerInitial}>{character.name.slice(0, 1).toUpperCase()}</Text>}
-                <CombatIndicatorStack indicators={playerIndicators} />
+            <View style={styles.stageLayer}>
+              <View style={styles.stageCenterText}>
+                <Text style={styles.stageHint}>{playerTurnActive ? "Choose an ability, then strike the selected target." : "Enemy action resolving."}</Text>
               </View>
-              <View style={styles.combatantInfo}>
-                <Text style={styles.combatantName} numberOfLines={1}>{character.name}</Text>
-                <Text style={styles.combatantSub} numberOfLines={1}>{character.origin || "Adventurer"}</Text>
-                <ResourceMeter label="HP" value={playerHp} max={resources.maxHp} color={colors.red} />
-                <ResourceMeter label="Stamina" value={stamina} max={resources.maxStamina} color={colors.gold} compact />
-                <ResourceMeter label="Mana" value={magicka} max={resources.maxMagicka} color={colors.blue} compact />
+              <View style={styles.enemyStage}>
+                <CombatPortraitFrame
+                  imageUri={enemyImageUri}
+                  imageFailed={enemyImageFailed}
+                  onImageError={() => setEnemyImageFailed(true)}
+                  fallbackText={enemyName}
+                  name={enemyName}
+                  subtitle={enemySubtitle}
+                  hp={enemyHp}
+                  maxHp={enemyMaxHp}
+                  accent="enemy"
+                  compact
+                  active={!playerTurnActive && !result}
+                  indicators={enemyIndicators}
+                />
+                {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
+              </View>
+              <View style={styles.playerStage}>
+                <CombatPortraitFrame
+                  imageUri={character.portrait_url}
+                  imageFailed={playerImageFailed}
+                  onImageError={() => setPlayerImageFailed(true)}
+                  fallbackText={character.name}
+                  name={character.name}
+                  subtitle={character.origin || "Adventurer"}
+                  hp={playerHp}
+                  maxHp={resources.maxHp}
+                  stamina={stamina}
+                  maxStamina={resources.maxStamina}
+                  mana={magicka}
+                  maxMana={resources.maxMagicka}
+                  accent="player"
+                  active={playerTurnActive}
+                  indicators={playerIndicators}
+                />
               </View>
             </View>
           </View>
@@ -341,116 +369,62 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   battleArena: {
-    minHeight: 340,
-    justifyContent: "space-between",
-    gap: 18,
+    minHeight: 380,
+    gap: 10,
     paddingHorizontal: 2,
     paddingVertical: 6,
   },
-  enemyPanel: {
-    alignSelf: "flex-end",
-    width: "84%",
-    maxWidth: 360,
+  enemyRoster: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
     gap: 10,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "rgba(255, 180, 170, 0.52)",
-    padding: 9,
-    backgroundColor: "rgba(12, 8, 8, 0.58)",
-    shadowColor: "#ff6d63",
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
   },
-  playerPanel: {
-    alignSelf: "flex-start",
-    width: "84%",
-    maxWidth: 360,
-    flexDirection: "row",
+  stageLayer: {
+    position: "relative",
+    minHeight: 270,
+    justifyContent: "space-between",
+  },
+  stageCenterText: {
+    position: "absolute",
+    left: "24%",
+    right: "24%",
+    top: "42%",
     alignItems: "center",
-    gap: 10,
-    borderRadius: 14,
+    justifyContent: "center",
+    minHeight: 48,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: "rgba(54, 171, 224, 0.5)",
-    padding: 9,
-    backgroundColor: "rgba(6, 16, 24, 0.62)",
-    shadowColor: colors.blue,
-    shadowOpacity: 0.22,
-    shadowRadius: 12,
+    borderColor: "rgba(232,181,94,0.18)",
+    backgroundColor: "rgba(0,0,0,0.18)",
+    paddingHorizontal: 12,
   },
-  combatantActive: {
-    borderColor: colors.blue,
-    backgroundColor: "rgba(20, 61, 86, 0.68)",
-    shadowColor: colors.blue,
-    shadowOpacity: 0.42,
-    shadowRadius: 16,
-  },
-  combatantInfo: {
-    flex: 1,
-    minWidth: 0,
-    gap: 4,
-  },
-  combatantName: {
-    color: colors.text,
-    fontWeight: "900",
-    fontSize: 15,
-  },
-  combatantSub: {
+  stageHint: {
     color: colors.muted,
     fontSize: 11,
-    fontWeight: "800",
-    textTransform: "uppercase",
+    fontWeight: "900",
+    textAlign: "center",
   },
-  combatImageWrap: {
-    position: "relative",
+  enemyStage: {
+    alignSelf: "flex-end",
     alignItems: "center",
-    justifyContent: "center",
+    maxWidth: 170,
   },
-  combatImageHit: {
-    transform: [{ scale: 1.04 }],
-    shadowColor: colors.red,
-    shadowOpacity: 0.48,
-    shadowRadius: 14,
-  },
-  enemyImage: {
-    width: 126,
-    height: 126,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#ffb4aa",
-  },
-  enemyImagePlaceholder: {
-    width: 126,
-    height: 126,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: "#ffb4aa",
-    backgroundColor: "rgba(100, 20, 20, 0.38)",
+  playerStage: {
+    alignSelf: "flex-start",
     alignItems: "center",
-    justifyContent: "center",
-    padding: 8,
-  },
-  battlePortrait: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    borderWidth: 2,
-    borderColor: colors.blue,
-  },
-  playerInitial: {
-    color: colors.gold,
-    fontFamily: fonts.title,
-    fontSize: 22,
+    maxWidth: 190,
   },
   enemyIntentBox: {
+    flexGrow: 1,
+    flexBasis: 180,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255,180,170,0.24)",
     paddingHorizontal: 8,
-    paddingVertical: 5,
-    backgroundColor: "rgba(0,0,0,0.28)",
+    paddingVertical: 7,
+    backgroundColor: "rgba(0,0,0,0.34)",
   },
   enemyIntentLabel: {
     color: "#ffb4aa",
