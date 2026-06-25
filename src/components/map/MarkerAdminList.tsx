@@ -9,10 +9,12 @@ type MarkerAdminListProps = {
   markers: MapMarker[];
   onEdit: (marker: MapMarker) => void;
   onPreview: (marker: MapMarker) => void;
+  onMove?: (marker: MapMarker) => void;
   onDelete: (marker: MapMarker) => void;
+  canMove?: boolean;
 };
 
-export function MarkerAdminList({ title, emptyText, markers, onEdit, onPreview, onDelete }: MarkerAdminListProps) {
+export function MarkerAdminList({ title, emptyText, markers, onEdit, onPreview, onMove, onDelete, canMove = false }: MarkerAdminListProps) {
   const [searchText, setSearchText] = useState("");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const markerTypes = useMemo(() => Array.from(new Set(markers.map((marker) => marker.type))).sort(), [markers]);
@@ -67,6 +69,11 @@ export function MarkerAdminList({ title, emptyText, markers, onEdit, onPreview, 
             <Pressable style={styles.secondaryButtonFlex} onPress={() => onPreview(marker)}>
               <Text style={styles.secondaryText}>Preview/Test</Text>
             </Pressable>
+            {onMove ? (
+              <Pressable style={[styles.secondaryButtonFlex, !canMove && styles.disabledButton]} onPress={() => onMove(marker)} disabled={!canMove}>
+                <Text style={styles.secondaryText}>{canMove ? "Move Here" : "Tap Map First"}</Text>
+              </Pressable>
+            ) : null}
             <Pressable style={styles.secondaryButtonFlex} onPress={() => onDelete(marker)}>
               <Text style={styles.dangerText}>Delete</Text>
             </Pressable>
@@ -97,6 +104,9 @@ const styles = StyleSheet.create({
   dangerText: {
     color: colors.red,
     fontFamily: fonts.title,
+  },
+  disabledButton: {
+    opacity: 0.45,
   },
   debugLine: {
     color: colors.gold,

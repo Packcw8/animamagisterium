@@ -21,6 +21,8 @@ export type MarkerPayloadState = {
   markerUnlockAfterId: string | null;
   markerHideWhenCompleted: boolean;
   markerRequireAllLinkedRoutes: boolean;
+  markerDialogueEventId: string | null;
+  markerBattleEventId?: string | null;
   markerEnemyId: string | null;
   markerNpcId: string | null;
   markerInteractable: boolean;
@@ -70,6 +72,10 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     unlock_after_marker_id: state.markerUnlockAfterId,
     hide_when_completed: state.markerHideWhenCompleted,
     require_all_linked_routes: state.markerRequireAllLinkedRoutes,
+    dialogue_event_id: supportsDialogueType(state.draftType) ? state.markerDialogueEventId : null,
+    battle_event_id: state.markerBattleEventId ?? null,
+    enemy_id: isBattleType(state.draftType) ? state.markerEnemyId : null,
+    npc_id: isBattleType(state.draftType) ? state.markerNpcId : null,
     interaction_radius_percent: Math.max(0.5, Number(state.markerInteractionRadius) || 4),
     reward_xp: Number(state.markerRewardXp) || 0,
     reward_gold: Number(state.markerRewardGold) || 0,
@@ -119,6 +125,10 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     unlock_after_marker_id: settings.unlock_after_marker_id,
     hide_when_completed: settings.hide_when_completed,
     require_all_linked_routes: settings.require_all_linked_routes,
+    dialogue_event_id: settings.dialogue_event_id,
+    battle_event_id: settings.battle_event_id,
+    enemy_id: settings.enemy_id,
+    npc_id: settings.npc_id,
     season_number: state.selectedSeason,
     chapter_number: state.selectedChapter,
   };
@@ -138,6 +148,14 @@ function getLinkedMiniMapId(state: MarkerPayloadState) {
 
 function isQuestType(type: string) {
   return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
+}
+
+function supportsDialogueType(type: string) {
+  return ["Story", "Quest", "Side Quest", "Point of Interest"].includes(type);
+}
+
+function isBattleType(type: string) {
+  return type === "Battle" || type === "Battle Zone";
 }
 
 function isExitType(type: string) {

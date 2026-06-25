@@ -1687,6 +1687,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markerUnlockAfterId,
       markerHideWhenCompleted,
       markerRequireAllLinkedRoutes,
+      markerDialogueEventId,
       markerEnemyId,
       markerNpcId,
       markerInteractable,
@@ -2519,13 +2520,23 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    await moveMarkerToClicked(selectedMarker);
+  }
+
+  async function moveMarkerToClicked(marker: MapMarker) {
+    if (!clickedPercent) {
+      setAdminMessage("Tap the map first to capture the marker's new X/Y coordinates.");
+      return;
+    }
+
     try {
-      const updated = await updateMapMarker(selectedMarker.id, {
+      const updated = await updateMapMarker(marker.id, {
         x_percent: clickedPercent.x,
         y_percent: clickedPercent.y,
       });
       setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
       setSelectedMarker(updated);
+      setClickedPercent(null);
       setAdminMessage("Marker moved.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to move marker."));
@@ -4758,6 +4769,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => void previewMarker(marker)}>
                       <Text style={styles.secondaryText}>Preview/Test</Text>
                     </Pressable>
+                    <Pressable style={[styles.secondaryButtonFlex, !clickedPercent && styles.disabledAction]} onPress={() => void moveMarkerToClicked(marker)} disabled={!clickedPercent}>
+                      <Text style={styles.secondaryText}>{clickedPercent ? "Move Here" : "Tap Mini Map First"}</Text>
+                    </Pressable>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeMarker(marker)}>
                       <Text style={styles.dangerText}>Delete</Text>
                     </Pressable>
@@ -5261,6 +5275,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 void selectMarker(marker);
               }}
               onPreview={(marker) => void previewMarker(marker)}
+              onMove={(marker) => void moveMarkerToClicked(marker)}
+              canMove={Boolean(clickedPercent)}
               onDelete={(marker) => void removeMarker(marker)}
             />
           ) : null}
