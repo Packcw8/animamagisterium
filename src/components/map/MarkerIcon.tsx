@@ -45,6 +45,7 @@ function resolveMapImageUri(imagePath?: string | null) {
 function getDefaultMarkerIconLabel(type: string) {
   if (type === "Market") return "MKT";
   if (type === "Sign Post") return "SIG";
+  if (type === "World Spawn") return "WSP";
   if (type === "Player Spawn") return "SPN";
   if (type === "Area/Town Entrance") return "IN";
   if (type === "Battle" || type === "Battle Zone") return "BTL";
@@ -60,6 +61,7 @@ function getDefaultMarkerIconLabel(type: string) {
 function getDefaultMarkerIconColor(type: string) {
   if (type === "Market") return colors.gold;
   if (type === "Sign Post") return "#f0d28a";
+  if (type === "World Spawn") return "#7fe7ff";
   if (type === "Player Spawn") return colors.blue;
   if (type === "Area/Town Entrance") return colors.blue;
   if (type === "Battle" || type === "Battle Zone") return "#e0574f";

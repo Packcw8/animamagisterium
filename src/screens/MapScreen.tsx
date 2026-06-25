@@ -169,7 +169,7 @@ import {
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
-const markerTypes = ["Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post", "Player Spawn"];
+const markerTypes = ["World Spawn", "Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
 const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "Point of Interest", "Market", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const editorModes = ["Marker", "Walking Path"] as const;
@@ -1069,12 +1069,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setAllMapEvents(loadedEvents);
     setAllMarkerRouteLinks(loadedMarkerRouteLinks);
     const currentMiniMap = currentRoute?.mini_map_id ? loadedMiniMaps.find((item) => item.id === currentRoute.mini_map_id) ?? null : null;
+    const worldSpawnPosition = getWorldSpawnPosition(loadedMarkers);
     const savedMiniMap = !currentRoute && playerMapState?.active_mini_map_id ? loadedMiniMaps.find((item) => item.id === playerMapState.active_mini_map_id) ?? null : null;
     const savedWorldPosition = !currentRoute && !playerMapState?.active_mini_map_id && playerMapState?.current_x_percent != null && playerMapState?.current_y_percent != null
       ? { x: Number(playerMapState.current_x_percent), y: Number(playerMapState.current_y_percent) }
       : null;
-    const startingMiniMap = !currentRoute && !savedMiniMap && !savedWorldPosition ? getStartingMiniMap(loadedMiniMaps) : null;
-    const restoredMiniMap = currentMiniMap ?? savedMiniMap ?? startingMiniMap;
+    const restoredMiniMap = currentMiniMap ?? savedMiniMap ?? null;
     if (restoredMiniMap) {
       setActiveMiniMap(restoredMiniMap);
       setSelectedMiniMapId(restoredMiniMap.id);
@@ -1090,13 +1090,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     } else if (restoredMiniMap && !currentMiniMap) {
       const spawnPosition = getMiniMapSpawnPosition(restoredMiniMap.id, loadedMarkers);
       setSavedMiniMapPosition(spawnPosition);
-      if (startingMiniMap) {
-        void savePlayerMapState({
-          active_mini_map_id: startingMiniMap.id,
-          current_x_percent: spawnPosition.x,
-          current_y_percent: spawnPosition.y,
-        });
-      }
     } else {
       setSavedMiniMapPosition(null);
     }
@@ -1117,17 +1110,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setPathDraft([]);
       setPathSegmentDraft([]);
       distanceWalkedRef.current = 0;
-      setSavedPlayerPosition(savedWorldPosition);
+      const nextWorldPosition = savedWorldPosition ?? worldSpawnPosition;
+      setSavedPlayerPosition(nextWorldPosition);
       setDistanceWalked(0);
       setRouteDirection("forward");
       setLastPosition(null);
       setMapEvents([]);
       setCompletedEventIds(new Set());
-      if (startingMiniMap) {
-        setGpsMessage(`Welcome to ${startingMiniMap.name}. Talk to a story marker or use a sign post to begin travel.`);
-      } else {
-        setGpsMessage("Choose a path from a Sign Post to begin travel.");
+      if (!savedWorldPosition && !savedMiniMap) {
+        void savePlayerMapState({
+          active_mini_map_id: null,
+          current_x_percent: nextWorldPosition.x,
+          current_y_percent: nextWorldPosition.y,
+        });
       }
+      setGpsMessage("Choose a marker or path from the world map to begin travel.");
     }
     setMapReady(true);
   }
@@ -1137,14 +1134,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     return spawnMarker ? { x: Number(spawnMarker.x_percent), y: Number(spawnMarker.y_percent) } : { x: 50, y: 50 };
   }
 
-  function getStartingMiniMap(miniMapSource: MiniMap[]) {
-    const activeMiniMaps = miniMapSource.filter((miniMap) => miniMap.is_active !== false);
-    return (
-      activeMiniMaps.find((miniMap) => /raven'?s?\s+rest/i.test(miniMap.name)) ??
-      activeMiniMaps.find((miniMap) => miniMap.type === "town") ??
-      activeMiniMaps[0] ??
-      null
-    );
+  function getWorldSpawnPosition(markerSource = markers) {
+    const spawnMarker = markerSource.find((marker) => !marker.mini_map_id && marker.type === "World Spawn");
+    return spawnMarker ? { x: Number(spawnMarker.x_percent), y: Number(spawnMarker.y_percent) } : { x: 50, y: 50 };
   }
 
   function switchAdminMapViewMode(mode: "admin" | "player") {
@@ -1640,6 +1632,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    if (!isMiniMapMarker && draftType === "World Spawn" && markers.some((marker) => !marker.mini_map_id && marker.type === "World Spawn")) {
+      setAdminMessage("The overworld already has a World Spawn marker. Edit or move the existing spawn instead.");
+      return;
+    }
+
     try {
       const markerState = getMarkerPayloadState(activeMiniMapId);
       const created = await createMapMarker(buildCreateMarkerInput(markerState, clickedPercent));
@@ -1850,6 +1847,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markers.some((marker) => marker.id !== selectedMarker.id && marker.mini_map_id === selectedMarker.mini_map_id && marker.type === "Player Spawn")
     ) {
       setAdminMessage("This mini map already has a Player Spawn marker. Move or edit that spawn instead.");
+      return;
+    }
+
+    if (
+      !selectedMarker.mini_map_id &&
+      draftType === "World Spawn" &&
+      markers.some((marker) => marker.id !== selectedMarker.id && !marker.mini_map_id && marker.type === "World Spawn")
+    ) {
+      setAdminMessage("The overworld already has a World Spawn marker. Move or edit that spawn instead.");
       return;
     }
 
@@ -2636,7 +2642,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return { x: Number(worldEntrance.x_percent), y: Number(worldEntrance.y_percent) };
     }
 
-    return { x: 33.8, y: 73.81 };
+    return getWorldSpawnPosition();
   }
 
   async function leaveMiniMap(targetPosition?: { x: number; y: number }, options?: { forceExit?: boolean }) {
@@ -6317,7 +6323,7 @@ function getJourneyDestinationMarker(route: MapRoute, markers: MapMarker[], rout
     return null;
   }
 
-  const candidates = markers.filter((marker) => linkedMarkerIds.has(marker.id) && marker.type !== "Player Spawn" && marker.type !== "Sign Post" && !isStoryQuestMarker(marker));
+  const candidates = markers.filter((marker) => linkedMarkerIds.has(marker.id) && marker.type !== "Player Spawn" && marker.type !== "World Spawn" && marker.type !== "Sign Post" && !isStoryQuestMarker(marker));
   const rankedTypes = ["Area/Town Entrance", "Exit", "Exit/Leave", "Market", "Quest", "Side Quest", "Point of Interest", "Training", "Battle", "Battle Zone"];
 
   return candidates.sort((a, b) => {

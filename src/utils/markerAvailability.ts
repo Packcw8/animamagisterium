@@ -1,6 +1,6 @@
 import type { MapMarker, MarkerRouteLink, RouteProgress } from "../services/mapService";
 import { getPercentDistance, type PercentPoint } from "./mapGeometry";
-import { isStoryQuestMarker } from "./mapVisibility";
+import { isSpawnMarker, isStoryQuestMarker } from "./mapVisibility";
 
 export type MarkerAvailability = {
   visible: boolean;
@@ -27,7 +27,7 @@ export function getMarkerAvailability({
   const markerPosition = { x: Number(marker.x_percent), y: Number(marker.y_percent) };
   const distance = getPercentDistance(playerPosition, markerPosition);
 
-  if (marker.type === "Player Spawn") {
+  if (isSpawnMarker(marker.type)) {
     return { visible: false, interactable: false, reason: null, distance, radius };
   }
 

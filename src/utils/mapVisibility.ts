@@ -2,7 +2,7 @@ import type { MapMarker, MarkerRouteLink } from "../services/mapService";
 import { getPercentDistance, PercentPoint } from "./mapGeometry";
 
 export function canPlayerSeeMarker(marker: MapMarker, playerPosition: PercentPoint) {
-  if (marker.type === "Player Spawn") {
+  if (isSpawnMarker(marker.type)) {
     return false;
   }
 
@@ -16,6 +16,10 @@ export function canPlayerSeeMarker(marker: MapMarker, playerPosition: PercentPoi
 
 export function isStoryQuestMarker(marker: Pick<MapMarker, "type">) {
   return marker.type === "Story" || marker.type === "Quest";
+}
+
+export function isSpawnMarker(type: string) {
+  return type === "Player Spawn" || type === "World Spawn";
 }
 
 export function getOrderedMarkerRouteLinks(links: MarkerRouteLink[]) {
