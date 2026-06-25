@@ -96,12 +96,20 @@ const inventoryCategoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
 const adminToolTabs = ["Items", "Abilities", "Enemies", "NPCs"] as const;
 const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
+const enemyBalanceProfiles = ["minion", "standard", "elite", "boss"] as const;
 type AbilityCostResource = (typeof abilityCostResources)[number];
+type EnemyBalanceProfile = (typeof enemyBalanceProfiles)[number];
 const abilityCostResourceLabels: Record<AbilityCostResource, string> = {
   none: "No Cost",
   stamina: "Stamina",
   mana: "Mana",
   health: "Health",
+};
+const enemyBalanceLabels: Record<EnemyBalanceProfile, string> = {
+  minion: "Minion",
+  standard: "Standard",
+  elite: "Elite",
+  boss: "Boss",
 };
 
 function getAbilityCostResource(ability: Partial<CombatAbility>): AbilityCostResource {
@@ -147,6 +155,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [editingAdminAbilityId, setEditingAdminAbilityId] = useState<string | null>(null);
   const [enemies, setEnemies] = useState<EnemyDefinition[]>([]);
   const [enemyForm, setEnemyForm] = useState<Partial<EnemyDefinition>>(blankEnemy());
+  const [enemyBalanceProfile, setEnemyBalanceProfile] = useState<EnemyBalanceProfile>("standard");
   const [editingEnemyId, setEditingEnemyId] = useState<string | null>(null);
   const [enemyAbilities, setEnemyAbilities] = useState<EnemyAbility[]>([]);
   const [enemyDrops, setEnemyDrops] = useState<EnemyItemDrop[]>([]);
@@ -342,6 +351,54 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     } catch (error) {
       setAbilityMessage(error instanceof Error ? error.message : "Unable to save enemy.");
     }
+  }
+
+  function applyEnemyBalance(profile: EnemyBalanceProfile) {
+    const equipmentBonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
+    const resources = getCharacterResources(character, equipmentBonuses);
+    const attributes = character.attributes;
+    const attributeAverage = attributeKeys.reduce((sum, key) => sum + Number(attributes?.[key] ?? 0), 0) / attributeKeys.length;
+    const topPhysical = Math.max(Number(attributes?.strength ?? 0), Number(attributes?.agility ?? 0), Number(attributes?.endurance ?? 0));
+    const topMental = Math.max(Number(attributes?.intelligence ?? 0), Number(attributes?.wisdom ?? 0), Number(attributes?.spirit ?? 0));
+    const playerDefense = 10 + Math.floor(Number(attributes?.endurance ?? 0) / 5) + Math.floor(Number(attributes?.agility ?? 0) / 5) + equipmentBonuses.defense;
+    const level = Math.max(1, Number(character.level) || 1);
+    const profileTuning: Record<EnemyBalanceProfile, { hp: number; attack: number; defense: number; armor: number; xp: number; gold: number; stat: number }> = {
+      minion: { hp: 0.55, attack: -3, defense: -2, armor: 0, xp: 0.45, gold: 0.35, stat: 0.55 },
+      standard: { hp: 0.9, attack: -1, defense: 0, armor: 0, xp: 1, gold: 0.75, stat: 0.8 },
+      elite: { hp: 1.35, attack: 1, defense: 1, armor: 1, xp: 1.75, gold: 1.25, stat: 1.05 },
+      boss: { hp: 2.5, attack: 3, defense: 2, armor: 2, xp: 3.25, gold: 2.4, stat: 1.3 },
+    };
+    const tuning = profileTuning[profile];
+    const targetAttackBonus = Math.max(0, Math.round(playerDefense - 11 + tuning.attack));
+    const targetDefense = Math.max(8, Math.min(18, 10 + Math.floor(attributeAverage / 8) + tuning.defense));
+    const health = Math.max(8, Math.round((resources.maxHp + level * 4 + attributeAverage * 1.5) * tuning.hp));
+    const stamina = Math.max(0, Math.round((resources.maxStamina * 0.55 + topPhysical) * (profile === "boss" ? 1.35 : profile === "elite" ? 1.1 : 0.85)));
+    const magika = Math.max(0, Math.round((resources.maxMagicka * 0.35 + topMental) * (profile === "boss" ? 1.25 : profile === "elite" ? 1 : 0.65)));
+    const mainStat = Math.max(0, Math.round(Math.max(1, attributeAverage) * tuning.stat));
+    const secondaryStat = Math.max(0, Math.round(mainStat * 0.55));
+    const xpReward = Math.max(1, Math.round((level * 12 + health * 0.45) * tuning.xp));
+    const goldReward = Math.max(0, Math.round((level * 3 + health * 0.08) * tuning.gold));
+
+    setEnemyBalanceProfile(profile);
+    setEnemyForm((current) => ({
+      ...current,
+      health,
+      stamina,
+      magika,
+      strength: mainStat,
+      endurance: profile === "boss" || profile === "elite" ? mainStat : secondaryStat,
+      agility: secondaryStat,
+      intelligence: secondaryStat,
+      wisdom: secondaryStat,
+      charisma: secondaryStat,
+      spirit: profile === "boss" ? mainStat : secondaryStat,
+      defense: targetDefense,
+      attack_bonus: targetAttackBonus,
+      armor_rating: tuning.armor,
+      xp_reward: xpReward,
+      gold_reward: goldReward,
+    }));
+    setAbilityMessage(`${enemyBalanceLabels[profile]} balance applied from ${character.name}'s current stats.`);
   }
 
   async function editEnemy(enemy: EnemyDefinition) {
@@ -945,6 +1002,20 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 <ItemText label="Image URL/path" value={enemyForm.image_url ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, image_url: value }))} />
                 <AdminImageUploadButton folder="enemies" onUploaded={(url) => setEnemyForm((current) => ({ ...current, image_url: url }))} onMessage={setAbilityMessage} />
                 <AssetPreview label="Enemy image preview" uri={resolveEnemyImageUri(enemyForm.image_url)} />
+                <View style={styles.adminBuilder}>
+                  <Text style={styles.subTitle}>Balance From Current Player</Text>
+                  <Text style={styles.muted}>Uses {character.name}'s level, resources, attributes, and equipped defense to tune enemy HP, Defense, Attack Bonus, resources, and rewards.</Text>
+                  <View style={styles.slotActions}>
+                    {enemyBalanceProfiles.map((profile) => (
+                      <Pressable key={profile} style={[styles.smallButton, enemyBalanceProfile === profile && styles.smallButtonActive]} onPress={() => applyEnemyBalance(profile)}>
+                        <Text style={styles.smallButtonText}>{enemyBalanceLabels[profile]}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Text style={styles.muted}>
+                    Target feel: Minions fall fast, Standard enemies trade blows, Elites pressure the player, Bosses need resources and strategy.
+                  </Text>
+                </View>
                 <View style={styles.slotActions}>
                   <ItemText label="Health" value={String(enemyForm.health ?? 20)} onChange={(value) => setEnemyForm((current) => ({ ...current, health: Number(value) || 20 }))} />
                   <ItemText label="Stamina" value={String(enemyForm.stamina ?? 0)} onChange={(value) => setEnemyForm((current) => ({ ...current, stamina: Number(value) || 0 }))} />
@@ -2232,6 +2303,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderSoft,
     borderRadius: 8,
+  },
+  smallButtonActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(54,171,224,0.22)",
   },
   disabledAction: {
     opacity: 0.45,
