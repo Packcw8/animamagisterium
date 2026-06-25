@@ -734,6 +734,12 @@ export type Tables = {
     marker_id: string;
     completed_at: string;
   };
+  story_marker_starts: {
+    id: string;
+    user_id: string;
+    marker_id: string;
+    started_at: string;
+  };
   mini_maps: {
     id: string;
     name: string;

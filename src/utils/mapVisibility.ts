@@ -26,12 +26,12 @@ export function getOrderedMarkerRouteLinks(links: MarkerRouteLink[]) {
   return [...links].sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0) || a.created_at.localeCompare(b.created_at));
 }
 
-export function canPlayerSeeStoryMarker(marker: MapMarker, scopeMarkers: MapMarker[], completedMarkerIds: Set<string>) {
+export function canPlayerSeeStoryMarker(marker: MapMarker, scopeMarkers: MapMarker[], completedMarkerIds: Set<string>, startedMarkerIds: Set<string> = new Set()) {
   if (!isStoryQuestMarker(marker)) {
     return true;
   }
 
-  if (marker.hide_when_completed !== false && completedMarkerIds.has(marker.id)) {
+  if (marker.hide_when_completed !== false && (completedMarkerIds.has(marker.id) || startedMarkerIds.has(marker.id))) {
     return false;
   }
 

@@ -130,6 +130,7 @@ import {
   getDialogueNodesForMarker,
   getEventCompletions,
   getStoryMarkerCompletions,
+  getStoryMarkerStarts,
   getRouteProgress,
   getRouteProgressForRoutes,
   MapMarker,
@@ -156,6 +157,7 @@ import {
   saveRouteProgress,
   saveWorldMapSetting,
   saveTutorialStep,
+  startStoryMarker,
   recordPlayerAttributeCheck,
   setCurrentRoute,
   sellMarketInventoryItem,
@@ -230,6 +232,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerDialogueIds, setMarkerDialogueIds] = useState<Set<string>>(new Set());
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [completedStoryMarkerIds, setCompletedStoryMarkerIds] = useState<Set<string>>(new Set());
+  const [startedStoryMarkerIds, setStartedStoryMarkerIds] = useState<Set<string>>(new Set());
   const [completedTutorialStepIds, setCompletedTutorialStepIds] = useState<Set<string>>(new Set());
   const [storyFlags, setStoryFlags] = useState<Map<string, boolean>>(new Map());
   const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
@@ -609,10 +612,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }, [distanceWalked, hasActiveRoute, playerPosition.x, playerPosition.y, progressPercent, route.id, routeDirection, routeProgressRows]);
   const visibleMarkers = isAdmin
     ? worldMarkers
-    : worldMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
+    : worldMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds, startedStoryMarkerIds));
   const visibleMiniMapMarkers = isAdmin
     ? adminMiniMapMarkers
-    : miniMapMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds));
+    : miniMapMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds, startedStoryMarkerIds));
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedDialogueMarker = useMemo(() => markers.find((marker) => marker.id === selectedDialogueMarkerId) ?? null, [markers, selectedDialogueMarkerId]);
@@ -1039,8 +1042,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       getRouteProgressForRoutes(nextRoutes.map((item) => item.id)),
       getPlayerMapState(),
     ]);
-    const [storyCompletions, loadedStoryFlags, tutorialCompletions, allEventCompletions] = await Promise.all([
-      getStoryMarkerCompletions(loadedMarkers.filter(isStoryQuestMarker).map((item) => item.id)),
+    const storyMarkerIds = loadedMarkers.filter(isStoryQuestMarker).map((item) => item.id);
+    const [storyCompletions, storyStarts, loadedStoryFlags, tutorialCompletions, allEventCompletions] = await Promise.all([
+      getStoryMarkerCompletions(storyMarkerIds),
+      getStoryMarkerStarts(storyMarkerIds),
       getPlayerStoryFlags(character.id),
       getPlayerTutorialCompletions(character.id),
       getEventCompletions(loadedEvents.map((event) => event.id)),
@@ -1053,6 +1058,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const firstRoute = nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
     setRouteProgressRows(progressRows);
     setCompletedStoryMarkerIds(new Set(storyCompletions.map((completion) => completion.marker_id)));
+    setStartedStoryMarkerIds(new Set(storyStarts.map((start) => start.marker_id)));
     setStoryFlags(new Map(loadedStoryFlags.map((flag) => [flag.flag_key, flag.flag_value])));
     setCompletedTutorialStepIds(new Set(tutorialCompletions.map((completion) => completion.tutorial_step_id)));
     setCompletedEventIds(new Set(allEventCompletions.map((completion) => completion.event_id)));
@@ -2148,6 +2154,19 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     await startMarkerQuestFromDialogueOrScene(selectedMarker, markerRouteLinks);
   }
 
+  async function markStoryMarkerStartedForPlayer(marker: MapMarker) {
+    if (!isStoryQuestMarker(marker) || marker.hide_when_completed === false) {
+      return;
+    }
+
+    try {
+      await startStoryMarker(marker.id);
+      setStartedStoryMarkerIds((current) => new Set([...current, marker.id]));
+    } catch (error) {
+      console.warn("[map] unable to save story marker start", error);
+    }
+  }
+
   async function startMarkerQuestFromDialogueOrScene(marker: MapMarker, routeLinksForMarker?: MarkerRouteLink[]) {
     const routeLinksToUse = routeLinksForMarker ?? await getMarkerRouteLinks(marker.id);
 
@@ -2212,6 +2231,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         }));
         return savedProgress ? rows.map((row) => (row.route_id === linkedRoute.id ? savedProgress : row)) : rows;
       });
+      if (orderedLinks.length <= 1) {
+        await markStoryMarkerStartedForPlayer(marker);
+      }
       await selectRoute(linkedRoute, true);
       setSavedPlayerPosition(startPoint);
       distanceWalkedRef.current = 0;

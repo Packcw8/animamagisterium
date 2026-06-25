@@ -23,6 +23,7 @@ export type MapStoryInstance = Tables["map_story_instances"];
 export type MapEvent = Tables["map_events"];
 export type MapEventCompletion = Tables["map_event_completions"];
 export type StoryMarkerCompletion = Tables["story_marker_completions"];
+export type StoryMarkerStart = Tables["story_marker_starts"];
 export type StoryDialogueNode = Tables["story_dialogue_nodes"];
 export type StoryDialogueChoice = Tables["story_dialogue_choices"];
 export type PlayerStoryFlag = Tables["player_story_flags"];
@@ -1158,6 +1159,30 @@ export async function getStoryMarkerCompletions(markerIds: string[]) {
   return (data ?? []) as StoryMarkerCompletion[];
 }
 
+export async function getStoryMarkerStarts(markerIds: string[]) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user || markerIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("story_marker_starts")
+    .select("*")
+    .eq("user_id", user.id)
+    .in("marker_id", markerIds);
+
+  if (error) {
+    console.warn("[map] story marker starts unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as StoryMarkerStart[];
+}
+
 export async function getPlayerStoryFlags(characterId: string) {
   const { data, error } = await supabase
     .from("player_story_flags")
@@ -1184,6 +1209,36 @@ export async function getPlayerTutorialCompletions(characterId: string) {
   }
 
   return (data ?? []) as PlayerTutorialCompletion[];
+}
+
+export async function startStoryMarker(markerId: string) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to start story quests.");
+  }
+
+  const { data, error } = await supabase
+    .from("story_marker_starts")
+    .upsert(
+      {
+        user_id: user.id,
+        marker_id: markerId,
+        started_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,marker_id" },
+    )
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as StoryMarkerStart;
 }
 
 export async function completeStoryMarker(markerId: string) {
