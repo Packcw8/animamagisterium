@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
+import { PlayerAbilitiesPanel } from "../components/home/PlayerAbilitiesPanel";
+import { PlayerInventoryPanel } from "../components/home/PlayerInventoryPanel";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
@@ -192,7 +194,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const isAdmin = role === "admin";
   const playerAbilityCounts = useMemo(() => getAbilityTypeCounts(unlockedAbilities), [unlockedAbilities]);
   const filteredPlayerAbilities = useMemo(() => unlockedAbilities.filter((ability) => getPlayerAbilityType(ability) === playerAbilityTab), [unlockedAbilities, playerAbilityTab]);
-  const selectedInventoryItem = useMemo(() => inventoryItems.find((entry) => entry.id === selectedInventoryItemId) ?? inventoryItems[0] ?? null, [inventoryItems, selectedInventoryItemId]);
+  const selectedInventoryItem = useMemo(() => inventoryItems.find((entry) => entry.id === selectedInventoryItemId) ?? null, [inventoryItems, selectedInventoryItemId]);
   const filteredInventoryItems = useMemo(() => inventoryItems.filter((entry) => itemMatchesCategory(entry.item, inventoryCategory)), [inventoryItems, inventoryCategory]);
   const filteredAdminItems = useMemo(() => itemDefinitions.filter((item) => itemMatchesCategory(item, inventoryCategory)), [itemDefinitions, inventoryCategory]);
   const filteredAdminAbilities = useMemo(() => adminAbilities.filter((ability) => ability.type === abilityTypeTab.toLowerCase()), [adminAbilities, abilityTypeTab]);
@@ -798,92 +800,24 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
           </View>
         ) : activeTab === "Abilities" ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Ability Management</Text>
-            <Text style={styles.muted}>Punch is always available. Training and equipped weapons add more abilities. Equip up to four before combat.</Text>
-            {abilityMessage ? <Text style={styles.abilityMessage}>{abilityMessage}</Text> : null}
-            <Text style={styles.subTitle}>Equipped Slots</Text>
-            <View style={styles.equippedAbilityGrid}>
-              {equippedAbilities.map((ability, index) => (
-                <AbilitySlotCard
-                  key={`slot-${index + 1}`}
-                  slot={index + 1}
-                  ability={ability}
-                  selectedAbility={selectedPlayerAbility}
-                  onEquip={() => void equipSelectedAbility(index + 1)}
-                  onClear={() => void clearSlot(index + 1)}
-                />
-              ))}
-            </View>
-            <Text style={styles.subTitle}>Unlocked Abilities</Text>
-            <Text style={styles.muted}>Tap an ability to select it, then choose an equipped slot above. Ability slots are what appear in battle.</Text>
-            <View style={styles.tabs}>
-              {abilityTypeTabs.map((tab) => (
-                <Pressable key={tab} style={[styles.tab, playerAbilityTab === tab && styles.activeTab]} onPress={() => { setPlayerAbilityTab(tab); setSelectedPlayerAbility(null); }}>
-                  <Text style={[styles.tabText, playerAbilityTab === tab && styles.activeTabText]}>{tab} ({playerAbilityCounts[tab] ?? 0})</Text>
-                </Pressable>
-              ))}
-            </View>
-            {selectedPlayerAbility ? (
-              <View style={styles.detailPanel}>
-                <View style={styles.abilityHeader}>
-                  <AbilityIcon ability={selectedPlayerAbility} />
-                  <View style={styles.itemBody}>
-                    <Text style={styles.abilityName}>{selectedPlayerAbility.name}</Text>
-                    <Text style={styles.abilityTag}>{getAbilityDetailedSource(selectedPlayerAbility)}</Text>
-                  </View>
-                </View>
-                <Text style={styles.muted}>{selectedPlayerAbility.description}</Text>
-                <Info label="Damage / Healing / Effect" value={getAbilityEffectSummary(selectedPlayerAbility)} />
-                <Info label="Stamina Cost" value={String(selectedPlayerAbility.adminAbility?.stamina_cost ?? (selectedPlayerAbility.resource === "stamina" ? selectedPlayerAbility.cost : 0))} />
-                <Info label="Mana Cost" value={String(selectedPlayerAbility.adminAbility?.magika_cost ?? (selectedPlayerAbility.resource === "magicka" ? selectedPlayerAbility.cost : 0))} />
-                <Info label="Health Cost" value={String(selectedPlayerAbility.adminAbility?.health_cost ?? (selectedPlayerAbility.resource === "health" ? selectedPlayerAbility.cost : 0))} />
-                <Info label="Stamina Restore" value={String(selectedPlayerAbility.adminAbility?.stamina_restore ?? 0)} />
-                <Info label="Mana Restore" value={String(selectedPlayerAbility.adminAbility?.magika_restore ?? 0)} />
-                <Info label="Cooldown" value={`${selectedPlayerAbility.adminAbility?.cooldown_turns ?? 0} turns`} />
-                <Info label="Linked Attribute" value={selectedPlayerAbility.attribute ?? "None"} />
-                <Info label="Required Level" value={String(selectedPlayerAbility.unlockLevel ?? 0)} />
-                <Info label="Source" value={getAbilityDetailedSource(selectedPlayerAbility)} />
-                <Text style={styles.subTitle}>Equip to Slot</Text>
-                <View style={styles.slotActions}>
-                  {[1, 2, 3, 4].map((slot) => (
-                    <Pressable key={slot} style={styles.smallButton} onPress={() => void equipSelectedAbility(slot)}>
-                      <Text style={styles.smallButtonText}>Slot {slot}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {selectedPlayerAbility.adminAbility?.type === "heal" && canUseAbilityInContext(selectedPlayerAbility, "outside") ? (
-                  <Pressable style={[styles.smallButton, currentHealth >= resources.maxHp && styles.disabledAction]} onPress={() => void useOutsideBattleAbility(selectedPlayerAbility)} disabled={currentHealth >= resources.maxHp}>
-                    <Text style={styles.smallButtonText}>Use Heal</Text>
-                  </Pressable>
-                ) : null}
-                <Pressable style={styles.smallButton} onPress={() => setSelectedPlayerAbility(null)}>
-                  <Text style={styles.smallButtonText}>Back to Ability Tabs</Text>
-                </Pressable>
-              </View>
-            ) : filteredPlayerAbilities.length === 0 ? (
-              <Text style={styles.muted}>No abilities learned yet.</Text>
-            ) : (
-              <View style={styles.abilityGrid}>
-                {filteredPlayerAbilities.map((ability) => (
-                  <Pressable
-                    key={ability.key}
-                    style={[styles.abilityGridCard, selectedAbilityKey === ability.key && styles.abilityCardActive]}
-                    onPress={() => {
-                      setSelectedAbilityKey(ability.key);
-                      setSelectedPlayerAbility(ability);
-                    }}
-                  >
-                    <View style={styles.gridIconWrap}>
-                      <AbilityIcon ability={ability} />
-                    </View>
-                    <Text style={styles.gridCardName}>{ability.name}</Text>
-                    <Text style={styles.gridCardMeta}>{getAbilityCostLabel(ability)}</Text>
-                    <Text style={styles.gridCardMeta}>CD {ability.adminAbility?.cooldown_turns ?? 0}</Text>
-                    {selectedAbilityKey === ability.key ? <Text style={styles.selectedHint}>Tap slot to equip</Text> : null}
-                  </Pressable>
-                ))}
-              </View>
-            )}
+            <PlayerAbilitiesPanel
+              abilities={unlockedAbilities}
+              equippedAbilities={equippedAbilities}
+              selectedAbility={selectedPlayerAbility}
+              selectedAbilityKey={selectedAbilityKey}
+              activeTab={playerAbilityTab}
+              currentHealth={currentHealth}
+              maxHealth={resources.maxHp}
+              message={abilityMessage}
+              onSelectTab={setPlayerAbilityTab}
+              onSelectAbility={(ability) => {
+                setSelectedPlayerAbility(ability);
+                setSelectedAbilityKey(ability?.key ?? null);
+              }}
+              onEquipAbility={(slot) => void equipSelectedAbility(slot)}
+              onClearSlot={(slot) => void clearSlot(slot)}
+              onUseHeal={(ability) => void useOutsideBattleAbility(ability)}
+            />
             {isAdmin ? (
               <View style={styles.adminBuilder}>
                 <View style={styles.tabs}>
@@ -1161,57 +1095,24 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
           </View>
         ) : activeTab === "Inventory" ? (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Inventory</Text>
-            {inventoryMessage ? <Text style={styles.abilityMessage}>{inventoryMessage}</Text> : null}
-            <Text style={styles.subTitle}>Equipped</Text>
-            <View style={styles.equipmentGrid}>
-              {equipmentSlots.map((slot) => (
-                <EquipmentSlotCard key={slot} slot={slot} item={equippedItems[slot] ?? null} onUnequip={() => void unequipSlot(slot)} />
-              ))}
-            </View>
-            <Text style={styles.subTitle}>Inventory</Text>
-            <Text style={styles.muted}>Carry Weight {totalInventoryWeight.toFixed(1)} / {carryCapacity.toFixed(1)}</Text>
-            <ProgressBar value={Math.min(totalInventoryWeight, carryCapacity)} max={Math.max(1, carryCapacity)} color={totalInventoryWeight > carryCapacity ? colors.red : colors.gold} height={8} />
-            <View style={styles.tabs}>
-              {inventoryCategoryTabs.map((tab) => (
-                <Pressable key={tab} style={[styles.tab, inventoryCategory === tab && styles.activeTab]} onPress={() => setInventoryCategory(tab)}>
-                  <Text style={[styles.tabText, inventoryCategory === tab && styles.activeTabText]}>{tab}</Text>
-                </Pressable>
-              ))}
-            </View>
-            {selectedInventoryItem ? (
-              <View style={styles.detailPanel}>
-                <View style={styles.itemCardHeader}>
-                  {resolveInventoryImageUri(selectedInventoryItem.item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(selectedInventoryItem.item.image_path) ?? "" }} style={styles.detailItemImage} /> : <View style={styles.detailItemPlaceholder} />}
-                  <View style={styles.itemBody}>
-                    <Text style={styles.abilityName}>{selectedInventoryItem.item.name}</Text>
-                    <Text style={styles.abilityTag}>{selectedInventoryItem.equippedSlot ? `Equipped: ${selectedInventoryItem.equippedSlot}` : selectedInventoryItem.item.rarity}</Text>
-                  </View>
-                </View>
-                <Text style={styles.muted}>{selectedInventoryItem.item.type} / {selectedInventoryItem.item.rarity} / Qty {selectedInventoryItem.quantity}</Text>
-                <Text style={styles.muted}>{selectedInventoryItem.item.description ?? "No description."}</Text>
-                <Text style={styles.muted}>Value {selectedInventoryItem.item.gold_value} gold / Weight {(Number(selectedInventoryItem.item.weight ?? 0) * selectedInventoryItem.quantity).toFixed(1)}</Text>
-                <View style={styles.slotActions}>
-                  {selectedInventoryItem.item.equipment_slot ? <Pressable style={styles.smallButton} onPress={() => void equipItem(selectedInventoryItem)}><Text style={styles.smallButtonText}>Equip</Text></Pressable> : null}
-                  {selectedInventoryItem.equippedSlot ? <Pressable style={styles.smallButton} onPress={() => void unequipSlot(selectedInventoryItem.equippedSlot as "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic")}><Text style={styles.smallButtonText}>Unequip</Text></Pressable> : null}
-                  {selectedInventoryItem.item.type === "scroll" && selectedInventoryItem.item.teaches_ability_id ? <Pressable style={styles.smallButton} onPress={() => void useAbilityScroll(selectedInventoryItem)}><Text style={styles.smallButtonText}>Use Scroll</Text></Pressable> : null}
-                  {canUseItemOutsideBattle(selectedInventoryItem) ? <Pressable style={[styles.smallButton, currentHealth >= resources.maxHp && styles.disabledAction]} onPress={() => void useOutsideBattleItem(selectedInventoryItem)} disabled={currentHealth >= resources.maxHp}><Text style={styles.smallButtonText}>Use</Text></Pressable> : null}
-                  {selectedInventoryItem.item.sellable ? <Pressable style={styles.smallButton} onPress={() => void sellItem(selectedInventoryItem)}><Text style={styles.smallButtonText}>Sell</Text></Pressable> : null}
-                </View>
-              </View>
-            ) : null}
-            <View style={styles.inventoryGrid}>
-              {filteredInventoryItems.length === 0 ? <Text style={styles.muted}>No items in this category yet.</Text> : null}
-              {filteredInventoryItems.map((entry) => (
-                <Pressable key={entry.id} style={[styles.inventoryGridCard, selectedInventoryItem?.id === entry.id && styles.abilityCardActive]} onPress={() => setSelectedInventoryItemId(entry.id)}>
-                  {resolveInventoryImageUri(entry.item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(entry.item.image_path) ?? "" }} style={styles.inventoryGridImage} /> : <View style={styles.inventoryGridPlaceholder} />}
-                  {entry.equippedSlot ? <Text style={styles.equippedBadge}>E</Text> : null}
-                  <Text style={styles.itemQtyBadge}>{entry.quantity}</Text>
-                  <Text style={styles.gridCardName}>{entry.item.name}</Text>
-                  <Text style={styles.gridCardMeta}>{entry.item.rarity}</Text>
-                </Pressable>
-              ))}
-            </View>
+            <PlayerInventoryPanel
+              items={inventoryItems}
+              equippedItems={equippedItems}
+              selectedItem={selectedInventoryItem}
+              activeTab={inventoryCategory}
+              totalWeight={totalInventoryWeight}
+              carryCapacity={carryCapacity}
+              currentHealth={currentHealth}
+              maxHealth={resources.maxHp}
+              message={inventoryMessage}
+              onSelectTab={setInventoryCategory}
+              onSelectItem={setSelectedInventoryItemId}
+              onEquipItem={(entry) => void equipItem(entry)}
+              onUnequipSlot={(slot) => void unequipSlot(slot)}
+              onUseItem={(entry) => void useOutsideBattleItem(entry)}
+              onUseScroll={(entry) => void useAbilityScroll(entry)}
+              onSellItem={(entry) => void sellItem(entry)}
+            />
             {isAdmin ? (
               <View style={styles.adminBuilder}>
                 <View style={styles.tabs}>
