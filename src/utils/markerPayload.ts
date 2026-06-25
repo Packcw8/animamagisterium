@@ -73,7 +73,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     hide_when_completed: state.markerHideWhenCompleted,
     require_all_linked_routes: state.markerRequireAllLinkedRoutes,
     dialogue_event_id: supportsDialogueType(state.draftType) ? state.markerDialogueEventId : null,
-    battle_event_id: state.markerBattleEventId ?? null,
+    battle_event_id: isBattleType(state.draftType) ? state.markerBattleEventId ?? null : null,
     enemy_id: isBattleType(state.draftType) ? state.markerEnemyId : null,
     npc_id: isBattleType(state.draftType) ? state.markerNpcId : null,
     interaction_radius_percent: Math.max(0.5, Number(state.markerInteractionRadius) || 4),

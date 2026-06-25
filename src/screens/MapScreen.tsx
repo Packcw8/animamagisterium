@@ -391,6 +391,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerRequireAllLinkedRoutes, setMarkerRequireAllLinkedRoutes] = useState(true);
   const [markerRouteCompletionCondition, setMarkerRouteCompletionCondition] = useState<MarkerRouteLink["completion_condition"]>("either");
   const [markerDialogueEventId, setMarkerDialogueEventId] = useState<string | null>(null);
+  const [markerBattleEventId, setMarkerBattleEventId] = useState<string | null>(null);
   const [markerEnemyId, setMarkerEnemyId] = useState<string | null>(null);
   const [markerNpcId, setMarkerNpcId] = useState<string | null>(null);
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
@@ -1696,6 +1697,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markerHideWhenCompleted,
       markerRequireAllLinkedRoutes,
       markerDialogueEventId,
+      markerBattleEventId,
       markerEnemyId,
       markerNpcId,
       markerInteractable,
@@ -1752,6 +1754,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerHideWhenCompleted(marker.hide_when_completed ?? true);
     setMarkerRequireAllLinkedRoutes(marker.require_all_linked_routes ?? true);
     setMarkerDialogueEventId(marker.dialogue_event_id ?? null);
+    setMarkerBattleEventId(marker.battle_event_id ?? null);
     setMarkerEnemyId(marker.enemy_id ?? null);
     setMarkerNpcId(marker.npc_id ?? null);
     setMarkerInteractionRadius(String(marker.interaction_radius_percent ?? 4));
@@ -2288,12 +2291,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function startSelectedMarkerBattle() {
-    if (!selectedMarker?.enemy_id && !selectedMarker?.npc_id) {
-      setMarkerPanelMessage("No Enemy or NPC is linked to this battle marker yet.");
+    if (!selectedMarker?.battle_event_id && !selectedMarker?.enemy_id && !selectedMarker?.npc_id) {
+      setMarkerPanelMessage("No Battle Event, Enemy, or NPC is linked to this battle marker yet.");
       return;
     }
 
-    const event = createMarkerBattleEvent(selectedMarker, enemyDefinitions, npcDefinitions);
+    const event = selectedMarker.battle_event_id
+      ? allMapEvents.find((item) => item.id === selectedMarker.battle_event_id) ?? null
+      : createMarkerBattleEvent(selectedMarker, enemyDefinitions, npcDefinitions);
+
+    if (!event) {
+      setMarkerPanelMessage("The linked Battle Event could not be found. Re-link this marker to a saved Battle Event.");
+      return;
+    }
+
     const result = await startBattle(event, false, { saveRoutePosition: false });
 
     if (!result.ok) {
@@ -4939,6 +4950,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerRouteCompletionCondition={setMarkerRouteCompletionCondition}
               markerDialogueEventId={markerDialogueEventId}
               setMarkerDialogueEventId={setMarkerDialogueEventId}
+              markerBattleEventId={markerBattleEventId}
+              setMarkerBattleEventId={setMarkerBattleEventId}
               markerEnemyId={markerEnemyId}
               setMarkerEnemyId={setMarkerEnemyId}
               markerNpcId={markerNpcId}
@@ -5491,8 +5504,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               ) : null}
               {isBattleMarkerType(draftType) ? (
                 <View style={styles.storyEditor}>
-                  <Text style={styles.selectedTitle}>Battle Enemy</Text>
-                  <Text style={styles.copy}>Battle markers start a standalone battle against the selected Enemy or NPC. They do not require a linked trail or use trail progress.</Text>
+                  <Text style={styles.selectedTitle}>Battle Setup</Text>
+                  <Text style={styles.copy}>Link a saved Battle Event to use its battleground image, battlefield layout, rewards, and combatants. Or pick a direct Enemy/NPC for a simple standalone battle.</Text>
+                  <EventPicker
+                    label="Linked Battle Event"
+                    events={reusableMapEvents.filter((event) => event.event_type === "battle")}
+                    selectedId={markerBattleEventId}
+                    onSelect={setMarkerBattleEventId}
+                  />
                   <EnemyPicker
                     enemies={enemyDefinitions}
                     selectedId={markerEnemyId}
@@ -6030,6 +6049,8 @@ function MiniMapMarkerAdminForm({
   setMarkerRouteCompletionCondition,
   markerDialogueEventId,
   setMarkerDialogueEventId,
+  markerBattleEventId,
+  setMarkerBattleEventId,
   markerEnemyId,
   setMarkerEnemyId,
   markerNpcId,
@@ -6139,6 +6160,8 @@ function MiniMapMarkerAdminForm({
   setMarkerRouteCompletionCondition: (value: MarkerRouteLink["completion_condition"]) => void;
   markerDialogueEventId: string | null;
   setMarkerDialogueEventId: (value: string | null) => void;
+  markerBattleEventId: string | null;
+  setMarkerBattleEventId: (value: string | null) => void;
   markerEnemyId: string | null;
   setMarkerEnemyId: (value: string | null) => void;
   markerNpcId: string | null;
@@ -6226,8 +6249,14 @@ function MiniMapMarkerAdminForm({
       ) : null}
       {supportsBattle ? (
         <View style={styles.storyEditor}>
-          <Text style={styles.selectedTitle}>Battle Enemy</Text>
-          <Text style={styles.copy}>Battle markers start a standalone battle against the selected Enemy or NPC. They do not require a linked trail or use trail progress.</Text>
+          <Text style={styles.selectedTitle}>Battle Setup</Text>
+          <Text style={styles.copy}>Link a saved Battle Event to use its battleground image, battlefield layout, rewards, and combatants. Or pick a direct Enemy/NPC for a simple standalone battle.</Text>
+          <EventPicker
+            label="Linked Battle Event"
+            events={reusableMapEvents.filter((event) => event.event_type === "battle")}
+            selectedId={markerBattleEventId}
+            onSelect={setMarkerBattleEventId}
+          />
           <EnemyPicker
             enemies={enemyDefinitions}
             selectedId={markerEnemyId}
