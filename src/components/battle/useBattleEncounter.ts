@@ -2,7 +2,7 @@ import { Dispatch, SetStateAction, useState } from "react";
 import { AbilityDefinition, CharacterResources, clampHealth, getCharacterResources } from "../../services/abilityService";
 import { CharacterWithDetails, updateCharacterHealth } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout, getEnemyLoadout, getNpcLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
-import { BattleEventCombatant, getBattleEventCombatants } from "../../services/battlefieldService";
+import { BattleEventCombatant, MarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants } from "../../services/battlefieldService";
 import { InventoryItem, ItemDefinition, consumeInventoryItem, getInventoryResourceBonuses, isReviveBattleItem } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
 import { chooseWeightedEnemyAbility, getDefenseAttributeBonus, rollD20Attack } from "../../utils/combatMath";
@@ -37,7 +37,7 @@ type BattleActionContext = {
 
 export type BattleOpponentState = {
   key: string;
-  combatant: BattleEventCombatant | null;
+  combatant: BattleEventCombatant | MarkerBattleCombatant | null;
   enemy: EnemyWithLoadout | NpcWithLoadout | null;
   hp: number;
   stamina: number;
@@ -145,7 +145,9 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
   async function loadStagedOpponents(event: MapEvent): Promise<BattleOpponentState[]> {
     try {
-      const staged = await getBattleEventCombatants(event.id);
+      const eventStaged = await getBattleEventCombatants(event.id);
+      const markerStaged = eventStaged.length > 0 ? [] : await getMarkerBattleCombatants(event.id);
+      const staged = eventStaged.length > 0 ? eventStaged : markerStaged;
       const activeStaged = staged.filter((combatant) => combatant.is_active && combatant.side === "enemy" && (combatant.enemy_id || combatant.npc_id));
       const loaded = await Promise.all(activeStaged.map(async (combatant) => {
         const enemy = combatant.enemy_id ? await getEnemyLoadout(combatant.enemy_id) : null;

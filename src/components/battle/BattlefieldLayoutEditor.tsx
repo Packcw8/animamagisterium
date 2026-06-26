@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { EnemyDefinition, NpcDefinition, resolveEnemyImageUri } from "../../services/combatAdminService";
-import { BattleEventCombatant } from "../../services/battlefieldService";
+import { BattleEventCombatant, MarkerBattleCombatant } from "../../services/battlefieldService";
 import { colors, fonts } from "../theme";
 import { EnemyPicker, NpcPicker } from "../map/MarkerEditorControls";
 
 type BattlefieldLayoutEditorProps = {
   eventId: string | null;
+  title?: string;
+  emptyText?: string;
   backgroundImageUrl: string | null;
-  combatants: BattleEventCombatant[];
+  combatants: Array<BattleEventCombatant | MarkerBattleCombatant>;
   enemies: EnemyDefinition[];
   npcs: NpcDefinition[];
   onSave: (combatant: Partial<BattleEventCombatant> & { event_id: string }) => Promise<void>;
@@ -20,6 +22,8 @@ const sides: BattleEventCombatant["side"][] = ["enemy", "companion", "player"];
 
 export function BattlefieldLayoutEditor({
   eventId,
+  title = "Battlefield Layout",
+  emptyText = "Save this battle event first, then place enemies, bosses, companions, or player start markers on the battle image.",
   backgroundImageUrl,
   combatants,
   enemies,
@@ -28,7 +32,7 @@ export function BattlefieldLayoutEditor({
   onDelete,
   onMessage,
 }: BattlefieldLayoutEditorProps) {
-  const [editing, setEditing] = useState<BattleEventCombatant | null>(null);
+  const [editing, setEditing] = useState<BattleEventCombatant | MarkerBattleCombatant | null>(null);
   const [side, setSide] = useState<BattleEventCombatant["side"]>("enemy");
   const [enemyId, setEnemyId] = useState<string | null>(null);
   const [npcId, setNpcId] = useState<string | null>(null);
@@ -74,8 +78,8 @@ export function BattlefieldLayoutEditor({
   if (!eventId) {
     return (
       <View style={styles.panel}>
-        <Text style={styles.title}>Battlefield Layout</Text>
-        <Text style={styles.copy}>Save this battle event first, then place enemies, bosses, companions, or player start markers on the battle image.</Text>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.copy}>{emptyText}</Text>
       </View>
     );
   }
@@ -145,7 +149,7 @@ export function BattlefieldLayoutEditor({
     <View style={styles.panel}>
       <View style={styles.headerRow}>
         <View>
-          <Text style={styles.title}>Battlefield Layout</Text>
+          <Text style={styles.title}>{title}</Text>
           <Text style={styles.copy}>Tap the battleground image to place actors by percentage coordinates.</Text>
         </View>
         <Pressable style={styles.smallButton} onPress={clearForm}>
@@ -248,7 +252,9 @@ export function BattlefieldLayoutEditor({
   );
 }
 
-export function getCombatantName(combatant: BattleEventCombatant, enemies: EnemyDefinition[], npcs: NpcDefinition[]) {
+type AnyBattlefieldCombatant = BattleEventCombatant | MarkerBattleCombatant;
+
+export function getCombatantName(combatant: AnyBattlefieldCombatant, enemies: EnemyDefinition[], npcs: NpcDefinition[]) {
   if (combatant.enemy_id) {
     return enemies.find((enemy) => enemy.id === combatant.enemy_id)?.name ?? combatant.label ?? "Enemy";
   }
@@ -260,7 +266,7 @@ export function getCombatantName(combatant: BattleEventCombatant, enemies: Enemy
   return combatant.label || (combatant.side === "player" ? "Player Start" : combatant.side);
 }
 
-export function getCombatantImage(combatant: BattleEventCombatant, enemies: EnemyDefinition[], npcs: NpcDefinition[]) {
+export function getCombatantImage(combatant: AnyBattlefieldCombatant, enemies: EnemyDefinition[], npcs: NpcDefinition[]) {
   const imagePath = combatant.enemy_id
     ? enemies.find((enemy) => enemy.id === combatant.enemy_id)?.image_url
     : combatant.npc_id
@@ -270,7 +276,7 @@ export function getCombatantImage(combatant: BattleEventCombatant, enemies: Enem
   return resolveEnemyImageUri(imagePath);
 }
 
-function getCombatantInitial(combatant: BattleEventCombatant, enemies: EnemyDefinition[], npcs: NpcDefinition[]) {
+function getCombatantInitial(combatant: AnyBattlefieldCombatant, enemies: EnemyDefinition[], npcs: NpcDefinition[]) {
   return getCombatantName(combatant, enemies, npcs).slice(0, 1).toUpperCase();
 }
 

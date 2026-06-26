@@ -1,6 +1,7 @@
 import { supabase, Tables } from "../lib/supabase";
 
 export type BattleEventCombatant = Tables["battle_event_combatants"];
+export type MarkerBattleCombatant = Tables["marker_battle_combatants"];
 
 export type BattleEventCombatantInput = Partial<BattleEventCombatant> & {
   event_id: string;
@@ -39,6 +40,51 @@ export async function saveBattleEventCombatant(input: BattleEventCombatantInput)
 
 export async function deleteBattleEventCombatant(combatantId: string) {
   const { error } = await supabase.from("battle_event_combatants").delete().eq("id", combatantId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function getMarkerBattleCombatants(markerId: string) {
+  const { data, error } = await supabase
+    .from("marker_battle_combatants")
+    .select("*")
+    .eq("marker_id", markerId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as MarkerBattleCombatant[];
+}
+
+export async function saveMarkerBattleCombatant(input: Partial<MarkerBattleCombatant> & { marker_id: string }) {
+  const { data: userData } = await supabase.auth.getUser();
+  const payload = normalizeCombatantPayload({ ...input, event_id: input.marker_id }, userData.user?.id ?? null);
+  const markerPayload = {
+    ...payload,
+    marker_id: input.marker_id,
+  };
+  delete (markerPayload as Partial<typeof markerPayload> & { event_id?: string }).event_id;
+
+  const query = input.id
+    ? supabase.from("marker_battle_combatants").update(markerPayload).eq("id", input.id).select("*").single()
+    : supabase.from("marker_battle_combatants").insert(markerPayload).select("*").single();
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  return data as MarkerBattleCombatant;
+}
+
+export async function deleteMarkerBattleCombatant(combatantId: string) {
+  const { error } = await supabase.from("marker_battle_combatants").delete().eq("id", combatantId);
 
   if (error) {
     throw error;

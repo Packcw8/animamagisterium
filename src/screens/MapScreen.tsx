@@ -54,7 +54,7 @@ import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails, incrementCharacterDistanceWalked, spendCharacterGold } from "../services/characterService";
 import { AbilityDefinition, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
-import { BattleEventCombatant, deleteBattleEventCombatant, getBattleEventCombatants, saveBattleEventCombatant } from "../services/battlefieldService";
+import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
 import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri } from "../services/inventoryService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
@@ -452,7 +452,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [rewardItem, setRewardItem] = useState("");
   const [rewardItemId, setRewardItemId] = useState<string | null>(null);
   const [rewardItemQuantity, setRewardItemQuantity] = useState("1");
-  const [battlefieldCombatants, setBattlefieldCombatants] = useState<BattleEventCombatant[]>([]);
+  const [battlefieldCombatants, setBattlefieldCombatants] = useState<Array<BattleEventCombatant | MarkerBattleCombatant>>([]);
   const [reuseEventId, setReuseEventId] = useState<string | null>(null);
   const [reuseEventOpen, setReuseEventOpen] = useState(false);
   const [selectedDialogueEventId, setSelectedDialogueEventId] = useState<string | null>(null);
@@ -1786,6 +1786,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         supportsMarkerDialogue(marker.type) ? getDialogueNodesForMarker(marker.id) : Promise.resolve([]),
       ]);
       await loadMarkerMarketState(marker.id);
+      if (isBattleMarkerType(marker.type)) {
+        await loadMarkerBattlefieldCombatants(marker.id);
+      } else {
+        setBattlefieldCombatants([]);
+      }
       setMarkerRouteLinks(links);
       setSelectedMarkerRouteIds(links.map((link) => link.route_id));
       setMarkerRouteCompletionCondition(links[0]?.completion_condition ?? "either");
@@ -2296,8 +2301,22 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function startSelectedMarkerBattle() {
-    if (!selectedMarker?.battle_event_id && !selectedMarker?.enemy_id && !selectedMarker?.npc_id) {
-      setMarkerPanelMessage("No Battle Event, Enemy, or NPC is linked to this battle marker yet.");
+    if (!selectedMarker) {
+      return;
+    }
+
+    let hasMarkerBattleActors = battlefieldCombatants.some((combatant) => combatant.side === "enemy" && combatant.is_active && (combatant.enemy_id || combatant.npc_id));
+    if (!hasMarkerBattleActors && !selectedMarker.battle_event_id && !selectedMarker.enemy_id && !selectedMarker.npc_id) {
+      try {
+        const markerActors = await getMarkerBattleCombatants(selectedMarker.id);
+        hasMarkerBattleActors = markerActors.some((combatant) => combatant.side === "enemy" && combatant.is_active && (combatant.enemy_id || combatant.npc_id));
+      } catch {
+        hasMarkerBattleActors = false;
+      }
+    }
+
+    if (!selectedMarker.battle_event_id && !selectedMarker.enemy_id && !selectedMarker.npc_id && !hasMarkerBattleActors) {
+      setMarkerPanelMessage("No Battle Event, Enemy, NPC, or Marker Battle Board enemy is linked to this battle marker yet.");
       return;
     }
 
@@ -3528,6 +3547,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
+  async function loadMarkerBattlefieldCombatants(markerId: string) {
+    try {
+      const loaded = await getMarkerBattleCombatants(markerId);
+      setBattlefieldCombatants(loaded);
+    } catch (error) {
+      setBattlefieldCombatants([]);
+      setAdminMessage(getErrorMessage(error, "Unable to load marker battlefield layout. Confirm the Supabase migration has run."));
+    }
+  }
+
   async function saveBattlefieldCombatant(input: Partial<BattleEventCombatant> & { event_id: string }) {
     try {
       const saved = await saveBattleEventCombatant(input);
@@ -3539,6 +3568,33 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setAdminMessage("Battlefield combatant saved.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to save battlefield combatant. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function saveMarkerBattlefieldCombatant(input: Partial<BattleEventCombatant> & { event_id: string }) {
+    try {
+      const saved = await saveMarkerBattleCombatant({
+        ...input,
+        marker_id: input.event_id,
+      });
+      setBattlefieldCombatants((current) => {
+        const exists = current.some((combatant) => combatant.id === saved.id);
+        const next = exists ? current.map((combatant) => combatant.id === saved.id ? saved : combatant) : [...current, saved];
+        return next.sort((a, b) => Number(a.sort_order) - Number(b.sort_order));
+      });
+      setAdminMessage("Marker battlefield actor saved.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save marker battlefield actor. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function removeMarkerBattlefieldCombatant(combatantId: string) {
+    try {
+      await deleteMarkerBattleCombatant(combatantId);
+      setBattlefieldCombatants((current) => current.filter((combatant) => combatant.id !== combatantId));
+      setAdminMessage("Marker battlefield actor removed.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to delete marker battlefield actor."));
     }
   }
 
@@ -5002,6 +5058,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               selectedDialogueMarkerId={selectedDialogueMarkerId}
               onLoadMarkerDialogue={(marker) => void loadMarkerDialogueEditor(marker)}
               onEditBattleEvent={editMapEvent}
+              battlefieldCombatants={battlefieldCombatants}
+              onSaveMarkerBattlefieldCombatant={saveMarkerBattlefieldCombatant}
+              onRemoveMarkerBattlefieldCombatant={removeMarkerBattlefieldCombatant}
+              onMessage={setAdminMessage}
               renderMarkerDialogueEditor={(marker) => renderBranchingDialogueEditor(marker)}
             /> : (
               <View style={styles.pathEditor}>
@@ -5552,6 +5612,18 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                       if (id) setMarkerEnemyId(null);
                     }}
                     battleOnly
+                  />
+                  <BattlefieldLayoutEditor
+                    title="Marker Battle Board"
+                    emptyText="Select or create this Battle marker first, then place enemies directly on its battleground."
+                    eventId={selectedMarker?.id ?? null}
+                    backgroundImageUrl={markerSceneBackground || markerQuestImage}
+                    combatants={battlefieldCombatants}
+                    enemies={enemyDefinitions}
+                    npcs={npcDefinitions}
+                    onSave={saveMarkerBattlefieldCombatant}
+                    onDelete={removeMarkerBattlefieldCombatant}
+                    onMessage={setAdminMessage}
                   />
                 </View>
               ) : null}
@@ -6117,6 +6189,10 @@ function MiniMapMarkerAdminForm({
   selectedDialogueMarkerId,
   onLoadMarkerDialogue,
   onEditBattleEvent,
+  battlefieldCombatants,
+  onSaveMarkerBattlefieldCombatant,
+  onRemoveMarkerBattlefieldCombatant,
+  onMessage,
   renderMarkerDialogueEditor,
 }: {
   activeSectionMarkerTypes: readonly string[];
@@ -6229,6 +6305,10 @@ function MiniMapMarkerAdminForm({
   selectedDialogueMarkerId: string | null;
   onLoadMarkerDialogue: (marker: MapMarker) => void;
   onEditBattleEvent: (event: MapEvent) => void;
+  battlefieldCombatants: Array<BattleEventCombatant | MarkerBattleCombatant>;
+  onSaveMarkerBattlefieldCombatant: (input: Partial<BattleEventCombatant> & { event_id: string }) => Promise<void>;
+  onRemoveMarkerBattlefieldCombatant: (combatantId: string) => Promise<void>;
+  onMessage: (message: string) => void;
   renderMarkerDialogueEditor: (marker: MapMarker) => ReactNode;
 }) {
   const supportsQuest = isQuestMarkerType(draftType);
@@ -6312,6 +6392,18 @@ function MiniMapMarkerAdminForm({
               if (id) setMarkerEnemyId(null);
             }}
             battleOnly
+          />
+          <BattlefieldLayoutEditor
+            title="Marker Battle Board"
+            emptyText="Select or create this Battle marker first, then place enemies directly on its battleground."
+            eventId={selectedMarker?.id ?? null}
+            backgroundImageUrl={markerSceneBackground || markerQuestImage}
+            combatants={battlefieldCombatants}
+            enemies={enemyDefinitions}
+            npcs={npcDefinitions}
+            onSave={onSaveMarkerBattlefieldCombatant}
+            onDelete={onRemoveMarkerBattlefieldCombatant}
+            onMessage={onMessage}
           />
         </View>
       ) : null}

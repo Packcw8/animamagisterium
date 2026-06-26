@@ -6,9 +6,10 @@ import { EnemyWithLoadout, NpcWithLoadout, resolveEnemyImageUri } from "../../se
 import { InventoryItem, ItemDefinition, isReviveBattleItem } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
 import { Frame } from "../Frame";
+import { ProgressBar } from "../ProgressBar";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
-import { BattleActionCard, CombatPortraitFrame, EnemyTargetCard, type CombatIndicator } from "./BattleDisplay";
+import { BattleActionCard, CombatPortraitFrame, type CombatIndicator } from "./BattleDisplay";
 import { type BattleOpponentState } from "./useBattleEncounter";
 
 type BattleEventScreenProps = {
@@ -92,7 +93,6 @@ export function BattleEventScreen({
     setPlayerImageFailed(false);
   }, [character.portrait_url]);
 
-  const livingOpponents = opponents.filter((opponent) => opponent.hp > 0);
   const visibleOpponents = opponents.length > 0 ? opponents : [];
   const enemyIndicators = combatIndicators.filter((indicator) => indicator.target === "enemy");
   const playerIndicators = combatIndicators.filter((indicator) => indicator.target === "player");
@@ -122,40 +122,11 @@ export function BattleEventScreen({
             </View>
           </View>
           <View style={styles.battleArena}>
-            <View style={styles.enemyRoster}>
-              {livingOpponents.length > 1 ? livingOpponents.map((opponent) => {
-                const name = opponent.enemy?.name || opponent.combatant?.label || "Enemy";
-                const maxHp = Number(opponent.enemy?.health ?? event.enemy_hp) || 30;
-                const isSelected = opponent.key === selectedOpponentKey;
-                return (
-                  <Pressable key={opponent.key} style={styles.enemyRosterButton} onPress={() => onSelectOpponent?.(opponent.key)}>
-                    <EnemyTargetCard
-                      name={name}
-                      subtitle={`${opponent.enemy?.type || "Enemy"} / Level ${getBattleEnemyLevel(maxHp)}`}
-                      hp={opponent.hp}
-                      maxHp={maxHp}
-                      imageUri={resolveEnemyImageUri(opponent.enemy?.image_url)}
-                      active={!result && isSelected}
-                      targetSelected={isSelected}
-                    />
-                  </Pressable>
-                );
-              }) : (
-                <EnemyTargetCard
-                  name={enemyName}
-                  subtitle={enemySubtitle}
-                  hp={enemyHp}
-                  maxHp={enemyMaxHp}
-                  imageUri={enemyImageUri && !enemyImageFailed ? enemyImageUri : null}
-                  active={!result}
-                />
-              )}
-              <View style={styles.enemyIntentBox}>
-                <Text style={styles.enemyIntentLabel}>Enemy Intent</Text>
-                <Text style={styles.enemyIntentText} numberOfLines={2}>{enemyIntent}</Text>
-              </View>
-            </View>
             <View style={styles.stageLayer}>
+              <View style={styles.enemyIntentBadge}>
+                <Text style={styles.enemyIntentLabel}>Intent</Text>
+                <Text style={styles.enemyIntentText} numberOfLines={1}>{enemyIntent}</Text>
+              </View>
               <View style={styles.stageCenterText}>
                 <Text style={styles.stageHint}>{playerTurnActive ? "Choose an ability, then strike the selected target." : "Enemy action resolving."}</Text>
               </View>
@@ -185,7 +156,13 @@ export function BattleEventScreen({
                           onPress={() => onSelectOpponent?.(opponent.key)}
                         >
                           {imageUri ? <Image source={{ uri: imageUri }} style={styles.stagedCombatantImage} /> : <Text style={styles.stagedCombatantFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
-                          <Text style={styles.stagedCombatantName} numberOfLines={1}>{name}</Text>
+                          <View style={styles.stagedCombatantPlate}>
+                            <Text style={styles.stagedCombatantName} numberOfLines={1}>{name}</Text>
+                            <View style={styles.stagedHpTrack}>
+                              <ProgressBar value={opponent.hp} max={maxHp} color={colors.red} height={5} />
+                            </View>
+                            <Text style={styles.stagedCombatantHp} numberOfLines={1}>HP {Math.max(0, opponent.hp)} / {maxHp}</Text>
+                          </View>
                           {isSelected ? <CombatIndicatorStackOverlay indicators={enemyIndicators} /> : null}
                         </Pressable>
                       );
@@ -444,22 +421,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   battleArena: {
-    minHeight: 470,
+    minHeight: 430,
     gap: 8,
     paddingHorizontal: 0,
     paddingVertical: 4,
   },
-  enemyRoster: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
   stageLayer: {
     position: "relative",
-    minHeight: 365,
+    minHeight: 420,
     justifyContent: "space-between",
+  },
+  enemyIntentBadge: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 6,
+    maxWidth: 184,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,180,170,0.24)",
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    backgroundColor: "rgba(0,0,0,0.42)",
   },
   stageCenterText: {
     position: "absolute",
@@ -493,16 +476,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     maxWidth: 190,
   },
-  enemyIntentBox: {
-    flexGrow: 1,
-    flexBasis: 180,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(255,180,170,0.24)",
-    paddingHorizontal: 8,
-    paddingVertical: 7,
-    backgroundColor: "rgba(0,0,0,0.34)",
-  },
   enemyIntentLabel: {
     color: "#ffb4aa",
     fontSize: 9,
@@ -519,10 +492,6 @@ const styles = StyleSheet.create({
     color: colors.red,
     fontWeight: "800",
     fontSize: 11,
-  },
-  enemyRosterButton: {
-    flexBasis: 210,
-    flexGrow: 1,
   },
   stagedCombatant: {
     position: "absolute",
@@ -556,14 +525,36 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 20,
   },
-  stagedCombatantName: {
+  stagedCombatantPlate: {
     position: "absolute",
-    bottom: -22,
+    top: "92%",
+    minWidth: 104,
+    maxWidth: 148,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,180,170,0.28)",
+    paddingHorizontal: 7,
+    paddingVertical: 5,
+    backgroundColor: "rgba(6,4,4,0.76)",
+    gap: 3,
+  },
+  stagedCombatantName: {
     color: colors.text,
     fontSize: 10,
     fontWeight: "900",
+    textAlign: "center",
     textShadowColor: "#000",
     textShadowRadius: 4,
+  },
+  stagedHpTrack: {
+    width: "100%",
+    height: 5,
+  },
+  stagedCombatantHp: {
+    color: "#ff8d80",
+    fontSize: 9,
+    fontWeight: "900",
+    textAlign: "center",
   },
   stageIndicatorStack: {
     position: "absolute",
