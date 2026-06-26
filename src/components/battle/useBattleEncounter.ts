@@ -121,8 +121,15 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const selectedEnemy = firstOpponent?.enemy ?? opponent;
       const enemyImage = resolveEnemyImageUri(selectedEnemy?.image_url ?? event.enemy_image_url);
       const playerInitiative = rollInitiative(character.attributes?.agility ?? 0);
-      const enemyInitiative = rollInitiative(Number(selectedEnemy?.agility ?? 0));
-      const enemyStarts = enemyInitiative.total > playerInitiative.total;
+      const enemyInitiatives = fallbackOpponent
+        .filter((entry) => entry.enemy)
+        .map((entry) => ({
+          name: entry.enemy?.name || "Enemy",
+          initiative: rollInitiative(Number(entry.enemy?.agility ?? 0)),
+        }))
+        .sort((a, b) => b.initiative.total - a.initiative.total);
+      const leadEnemyInitiative = enemyInitiatives[0]?.initiative ?? rollInitiative(0);
+      const enemyStarts = leadEnemyInitiative.total > playerInitiative.total;
       setActiveEvent(null);
       setActiveBattle(event);
       setAdminPreviewMode(preview ? "battle" : null);
@@ -143,8 +150,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       setRevivePromptOpen(false);
       setBattleInventoryOpen(false);
       setBattleLog([
-        `Initiative: you rolled ${playerInitiative.roll} + ${playerInitiative.bonus} = ${playerInitiative.total}. ${selectedEnemy?.name || "Enemy"} rolled ${enemyInitiative.roll} + ${enemyInitiative.bonus} = ${enemyInitiative.total}.`,
-        enemyStarts ? `${selectedEnemy?.name || "Enemy"} acts first.` : "You act first.",
+        `Initiative: you rolled ${playerInitiative.roll} + ${playerInitiative.bonus} = ${playerInitiative.total}. Fastest enemy: ${enemyInitiatives[0]?.name || "Enemy"} ${leadEnemyInitiative.roll} + ${leadEnemyInitiative.bonus} = ${leadEnemyInitiative.total}.`,
+        enemyStarts ? "The enemies act first." : "You act first.",
         event.battle_intro_text || `${selectedEnemy?.name || event.enemy_name || "An enemy"} blocks the trail.`,
         stagedOpponents.length > 0
           ? `Loaded ${stagedOpponents.length} staged combatant${stagedOpponents.length === 1 ? "" : "s"} from Battlefield Layout.`
@@ -222,6 +229,22 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setBattleOpponents((current) => current.map((opponent) => opponent.key === selectedKey ? { ...opponent, ...values } : opponent));
   }
 
+  function updateOpponent(key: string, values: Partial<Pick<BattleOpponentState, "hp" | "stamina" | "magika">>) {
+    setBattleOpponents((current) => current.map((opponent) => opponent.key === key ? { ...opponent, ...values } : opponent));
+
+    if (key === selectedOpponentKey) {
+      if (values.hp !== undefined) {
+        setBattleEnemyHp(values.hp);
+      }
+      if (values.stamina !== undefined) {
+        setBattleEnemyStamina(values.stamina);
+      }
+      if (values.magika !== undefined) {
+        setBattleEnemyMagika(values.magika);
+      }
+    }
+  }
+
   function chooseNextLivingOpponent(opponents: BattleOpponentState[], currentKey: string | null, currentHp: number) {
     return opponents
       .map((opponent) => opponent.key === currentKey ? { ...opponent, hp: currentHp } : opponent)
@@ -239,6 +262,26 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   function markSelectedOpponentHp(nextHp: number) {
     setBattleEnemyHp(nextHp);
     updateSelectedOpponent({ hp: nextHp });
+  }
+
+  function getEnemyRoundOpponents(selectedNextHp?: number) {
+    const opponents = battleOpponents.length > 0
+      ? battleOpponents
+      : [{
+        key: "primary",
+        combatant: null,
+        enemy: activeEnemy,
+        hp: battleEnemyHp,
+        stamina: battleEnemyStamina,
+        magika: battleEnemyMagika,
+      }];
+
+    return opponents
+      .map((opponent) => opponent.key === selectedOpponentKey && selectedNextHp !== undefined ? { ...opponent, hp: selectedNextHp } : opponent)
+      .filter((opponent) => opponent.enemy && opponent.hp > 0)
+      .map((opponent) => ({ opponent, initiative: rollInitiative(Number(opponent.enemy?.agility ?? 0)) }))
+      .sort((a, b) => b.initiative.total - a.initiative.total)
+      .map((entry) => entry.opponent);
   }
 
   function pushCombatIndicator(target: CombatIndicator["target"], text: string, color: string) {
@@ -312,7 +355,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       }
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
-      const counter = resolveEnemyCounterAttack(context);
+      const counter = await resolveEnemyRound(context);
       const nextPlayerHp = Math.max(0, Math.min(combatResources.maxHp, battlePlayerHp + healthRestore) - counter.damage);
       nextLog.push(...counter.log);
       await savePlayerHealth(nextPlayerHp, context.previewMode);
@@ -334,7 +377,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${ability.name} misses.`);
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
-      const counter = resolveEnemyCounterAttack(context);
+      const counter = await resolveEnemyRound(context);
       const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
       nextLog.push(...counter.log);
       await savePlayerHealth(nextPlayerHp, context.previewMode);
@@ -393,7 +436,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
     setBattleTurnPhase("enemy");
     await delayEnemyTurn();
-    const counter = resolveEnemyCounterAttack(context);
+    const counter = await resolveEnemyRound(context, nextEnemyHp);
     const nextPlayerHp = Math.max(0, postAbilityPlayerHp - counter.damage);
     nextLog.push(...counter.log);
 
@@ -449,7 +492,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${actionName} misses.`);
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
-      const counter = resolveEnemyCounterAttack(context);
+      const counter = await resolveEnemyRound(context);
       const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
       nextLog.push(...counter.log);
       await savePlayerHealth(nextPlayerHp, context.previewMode);
@@ -500,7 +543,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
     setBattleTurnPhase("enemy");
     await delayEnemyTurn();
-    const counter = resolveEnemyCounterAttack(context);
+    const counter = await resolveEnemyRound(context, nextEnemyHp);
     const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
     nextLog.push(...counter.log);
     markSelectedOpponentHp(nextEnemyHp);
@@ -533,13 +576,39 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     context.setGpsMessage("You escaped. No rewards were granted.");
   }
 
-  function resolveEnemyCounterAttack(context: BattleActionContext, extraPlayerDefense = 0) {
-    const enemyName = activeEnemy?.name || activeBattle?.enemy_name || "Enemy";
-    const ability = chooseWeightedEnemyAbility(activeEnemy, battleEnemyStamina, battleEnemyMagika, battleEnemyHp);
+  async function resolveEnemyRound(context: BattleActionContext, selectedNextHp?: number, extraPlayerDefense = 0) {
+    const livingOpponents = getEnemyRoundOpponents(selectedNextHp);
+    const log: string[] = [];
+    let totalDamage = 0;
+
+    if (livingOpponents.length === 0) {
+      return { damage: 0, log };
+    }
+
+    log.push(`Enemy turn: ${livingOpponents.length} foe${livingOpponents.length === 1 ? "" : "s"} act.`);
+
+    for (const opponent of livingOpponents) {
+      await delayEnemyTurn(livingOpponents.length > 1 ? 360 : 0);
+      const result = resolveSingleEnemyAction(opponent, context, extraPlayerDefense);
+      totalDamage += result.damage;
+      log.push(...result.log);
+    }
+
+    return { damage: totalDamage, log };
+  }
+
+  function resolveSingleEnemyAction(opponent: BattleOpponentState, context: BattleActionContext, extraPlayerDefense = 0) {
+    const enemy = opponent.enemy;
+    const enemyName = enemy?.name || activeBattle?.enemy_name || "Enemy";
+    const ability = chooseWeightedEnemyAbility(enemy, opponent.stamina, opponent.magika, opponent.hp);
     const playerDefense = getPlayerDefense(context.equippedItems, extraPlayerDefense);
 
+    if (!enemy) {
+      return { damage: 0, log: [] };
+    }
+
     if (!ability) {
-      const roll = rollD20Attack(Number(activeEnemy?.strength ?? 0), getEnemyAttackBonus(), playerDefense, 0, 2);
+      const roll = rollD20Attack(Number(enemy.strength ?? 0), getEnemyAttackBonus(enemy), playerDefense, 0, 2);
       if (!roll.hit) {
         pushCombatIndicator("player", "MISS", "#9ca3af");
         return { damage: 0, log: [`${enemyName} misses. d20 ${roll.roll} + bonuses = ${roll.total} vs Defense ${playerDefense}.`] };
@@ -551,14 +620,10 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     if (ability.stamina_cost > 0) {
-      const nextStamina = Math.max(0, battleEnemyStamina - ability.stamina_cost);
-      setBattleEnemyStamina(nextStamina);
-      updateSelectedOpponent({ stamina: nextStamina });
+      updateOpponent(opponent.key, { stamina: Math.max(0, opponent.stamina - ability.stamina_cost) });
     }
     if (ability.magika_cost > 0) {
-      const nextMagika = Math.max(0, battleEnemyMagika - ability.magika_cost);
-      setBattleEnemyMagika(nextMagika);
-      updateSelectedOpponent({ magika: nextMagika });
+      updateOpponent(opponent.key, { magika: Math.max(0, opponent.magika - ability.magika_cost) });
     }
 
     if (ability.type === "heal") {
@@ -567,26 +632,21 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const staminaRestore = Math.max(0, Number(ability.stamina_restore) || 0);
       const magikaRestore = Math.max(0, Number(ability.magika_restore) || 0);
       if (healing > 0) {
-        setBattleEnemyHp((current) => {
-          const next = Math.min(Number(activeEnemy?.health ?? activeBattle?.enemy_hp ?? 30), current + healing);
-          updateSelectedOpponent({ hp: next });
-          return next;
-        });
-        pushCombatIndicator("enemy", `+${healing}`, "#42d77d");
+        const nextHp = Math.min(Number(enemy.health ?? activeBattle?.enemy_hp ?? 30), opponent.hp + healing);
+        updateOpponent(opponent.key, { hp: nextHp });
+        if (opponent.key === selectedOpponentKey) {
+          pushCombatIndicator("enemy", `+${healing}`, "#42d77d");
+        }
         logs.push(`${enemyName} heals ${healing}.`);
       }
       if (staminaRestore > 0) {
-        const nextStamina = Math.min(Number(activeEnemy?.stamina ?? 0), battleEnemyStamina + staminaRestore);
-        setBattleEnemyStamina(nextStamina);
-        updateSelectedOpponent({ stamina: nextStamina });
-        pushCombatIndicator("enemy", `+${staminaRestore} Stamina`, "#3b82f6");
+        const nextStamina = Math.min(Number(enemy.stamina ?? 0), opponent.stamina + staminaRestore);
+        updateOpponent(opponent.key, { stamina: nextStamina });
         logs.push(`${enemyName} restores ${staminaRestore} Stamina.`);
       }
       if (magikaRestore > 0) {
-        const nextMagika = Math.min(Number(activeEnemy?.magika ?? 0), battleEnemyMagika + magikaRestore);
-        setBattleEnemyMagika(nextMagika);
-        updateSelectedOpponent({ magika: nextMagika });
-        pushCombatIndicator("enemy", `+${magikaRestore} Mana`, "#7dd3fc");
+        const nextMagika = Math.min(Number(enemy.magika ?? 0), opponent.magika + magikaRestore);
+        updateOpponent(opponent.key, { magika: nextMagika });
         logs.push(`${enemyName} restores ${magikaRestore} Mana.`);
       }
       return { damage: 0, log: [`${enemyName} uses ${ability.name}.`, ...(logs.length > 0 ? logs : ["No restore amount is configured."])] };
@@ -596,8 +656,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return { damage: 0, log: [`${enemyName} uses ${ability.name}. ${ability.status_effect !== "none" ? `Status: ${ability.status_effect}.` : "It braces for the next exchange."}`] };
     }
 
-    const statBonus = Number(activeEnemy?.strength ?? 0);
-    const roll = rollD20Attack(statBonus, Number(ability.attack_bonus ?? 0) + getEnemyAttackBonus(), playerDefense, ability.critical_chance, ability.critical_multiplier);
+    const statBonus = Number(enemy.strength ?? 0);
+    const roll = rollD20Attack(statBonus, Number(ability.attack_bonus ?? 0) + getEnemyAttackBonus(enemy), playerDefense, ability.critical_chance, ability.critical_multiplier);
     if (!roll.hit) {
       pushCombatIndicator("player", "MISS", "#9ca3af");
       return { damage: 0, log: [`${enemyName} uses ${ability.name} and misses. d20 ${roll.roll} + bonuses = ${roll.total} vs Defense ${playerDefense}.`] };
@@ -621,8 +681,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     return Number(activeEnemy?.defense ?? 10) + getDefenseAttributeBonus(Number(activeEnemy?.endurance ?? 0)) + getDefenseAttributeBonus(Number(activeEnemy?.agility ?? 0)) + Number(activeEnemy?.armor_rating ?? 0);
   }
 
-  function getEnemyAttackBonus() {
-    return Number(activeEnemy?.attack_bonus ?? 0);
+  function getEnemyAttackBonus(enemy: EnemyWithLoadout | NpcWithLoadout | null = activeEnemy) {
+    return Number(enemy?.attack_bonus ?? 0);
   }
 
   function getEnemyArmorReduction() {
@@ -770,7 +830,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setOpeningEnemyTurnQueued(false);
     setBattleTurnPhase("enemy");
     await delayEnemyTurn(950);
-    const counter = resolveEnemyCounterAttack(context);
+    const counter = await resolveEnemyRound(context);
     const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
     const nextLog = [...counter.log];
     await savePlayerHealth(nextPlayerHp, context.previewMode);
