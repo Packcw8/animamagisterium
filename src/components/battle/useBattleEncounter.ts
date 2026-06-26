@@ -44,6 +44,8 @@ export type BattleOpponentState = {
   magika: number;
 };
 
+export type BattleTurnPhase = "rolling" | "player" | "enemy" | "finished";
+
 export function useBattleEncounter(character: CharacterWithDetails, onCharacterUpdated: (character: CharacterWithDetails) => void) {
   const [activeBattle, setActiveBattle] = useState<MapEvent | null>(null);
   const [battlePlayerHp, setBattlePlayerHp] = useState(100);
@@ -54,6 +56,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   const [battleEnemyMagika, setBattleEnemyMagika] = useState(0);
   const [battleLog, setBattleLog] = useState<string[]>([]);
   const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | null>(null);
+  const [battleTurnPhase, setBattleTurnPhase] = useState<BattleTurnPhase>("player");
+  const [openingEnemyTurnQueued, setOpeningEnemyTurnQueued] = useState(false);
   const [revivePromptOpen, setRevivePromptOpen] = useState(false);
   const [activeEnemy, setActiveEnemy] = useState<EnemyWithLoadout | NpcWithLoadout | null>(null);
   const [battleOpponents, setBattleOpponents] = useState<BattleOpponentState[]>([]);
@@ -71,6 +75,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setBattleLayoutCombatants([]);
     setSelectedOpponentKey(null);
     setBattleFinished(null);
+    setBattleTurnPhase("player");
+    setOpeningEnemyTurnQueued(false);
     setRevivePromptOpen(false);
     setBattleInventoryOpen(false);
     setBattleLog([]);
@@ -114,6 +120,9 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const firstOpponent = fallbackOpponent[0];
       const selectedEnemy = firstOpponent?.enemy ?? opponent;
       const enemyImage = resolveEnemyImageUri(selectedEnemy?.image_url ?? event.enemy_image_url);
+      const playerInitiative = rollInitiative(character.attributes?.agility ?? 0);
+      const enemyInitiative = rollInitiative(Number(selectedEnemy?.agility ?? 0));
+      const enemyStarts = enemyInitiative.total > playerInitiative.total;
       setActiveEvent(null);
       setActiveBattle(event);
       setAdminPreviewMode(preview ? "battle" : null);
@@ -129,9 +138,13 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       setBattleEnemyStamina(firstOpponent?.stamina ?? (Number(opponent?.stamina ?? 0) || 0));
       setBattleEnemyMagika(firstOpponent?.magika ?? (Number(opponent?.magika ?? 0) || 0));
       setBattleFinished(null);
+      setBattleTurnPhase(enemyStarts ? "enemy" : "player");
+      setOpeningEnemyTurnQueued(enemyStarts);
       setRevivePromptOpen(false);
       setBattleInventoryOpen(false);
       setBattleLog([
+        `Initiative: you rolled ${playerInitiative.roll} + ${playerInitiative.bonus} = ${playerInitiative.total}. ${selectedEnemy?.name || "Enemy"} rolled ${enemyInitiative.roll} + ${enemyInitiative.bonus} = ${enemyInitiative.total}.`,
+        enemyStarts ? `${selectedEnemy?.name || "Enemy"} acts first.` : "You act first.",
         event.battle_intro_text || `${selectedEnemy?.name || event.enemy_name || "An enemy"} blocks the trail.`,
         stagedOpponents.length > 0
           ? `Loaded ${stagedOpponents.length} staged combatant${stagedOpponents.length === 1 ? "" : "s"} from Battlefield Layout.`
@@ -249,7 +262,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   }
 
   async function handleBattleAction(ability: AbilityDefinition, context: BattleActionContext) {
-    if (!activeBattle || battleFinished) {
+    if (!activeBattle || battleFinished || battleTurnPhase !== "player") {
       return;
     }
 
@@ -297,12 +310,16 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       if (nextLog.length === 0) {
         nextLog.push(`${ability.name} has no restore amount configured.`);
       }
+      setBattleTurnPhase("enemy");
+      await delayEnemyTurn();
       const counter = resolveEnemyCounterAttack(context);
       const nextPlayerHp = Math.max(0, Math.min(combatResources.maxHp, battlePlayerHp + healthRestore) - counter.damage);
       nextLog.push(...counter.log);
       await savePlayerHealth(nextPlayerHp, context.previewMode);
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog, context);
+      } else {
+        setBattleTurnPhase("player");
       }
       setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
@@ -315,12 +332,16 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     if (!attackRoll.hit) {
       pushCombatIndicator("enemy", "MISS", "#9ca3af");
       nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${ability.name} misses.`);
+      setBattleTurnPhase("enemy");
+      await delayEnemyTurn();
       const counter = resolveEnemyCounterAttack(context);
       const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
       nextLog.push(...counter.log);
       await savePlayerHealth(nextPlayerHp, context.previewMode);
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog, context);
+      } else {
+        setBattleTurnPhase("player");
       }
       setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
@@ -357,6 +378,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       markSelectedOpponentHp(0);
       if (allOpponentsDefeated(nextEnemyHp)) {
         setBattleFinished("victory");
+        setBattleTurnPhase("finished");
         setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
         return;
       }
@@ -369,6 +391,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
 
+    setBattleTurnPhase("enemy");
+    await delayEnemyTurn();
     const counter = resolveEnemyCounterAttack(context);
     const nextPlayerHp = Math.max(0, postAbilityPlayerHp - counter.damage);
     nextLog.push(...counter.log);
@@ -378,13 +402,15 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
     if (nextPlayerHp <= 0) {
       await resolvePlayerDefeat(nextLog, context);
+    } else {
+      setBattleTurnPhase("player");
     }
 
     setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
   }
 
   async function handleWeaponAction(weapon: ItemDefinition, context: BattleActionContext) {
-    if (!activeBattle || battleFinished) {
+    if (!activeBattle || battleFinished || battleTurnPhase !== "player") {
       return;
     }
 
@@ -421,12 +447,16 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     if (!attackRoll.hit) {
       pushCombatIndicator("enemy", "MISS", "#9ca3af");
       nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${actionName} misses.`);
+      setBattleTurnPhase("enemy");
+      await delayEnemyTurn();
       const counter = resolveEnemyCounterAttack(context);
       const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
       nextLog.push(...counter.log);
       await savePlayerHealth(nextPlayerHp, context.previewMode);
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog, context);
+      } else {
+        setBattleTurnPhase("player");
       }
       setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
@@ -455,6 +485,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       markSelectedOpponentHp(0);
       if (allOpponentsDefeated(nextEnemyHp)) {
         setBattleFinished("victory");
+        setBattleTurnPhase("finished");
         setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
         return;
       }
@@ -467,6 +498,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
 
+    setBattleTurnPhase("enemy");
+    await delayEnemyTurn();
     const counter = resolveEnemyCounterAttack(context);
     const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
     nextLog.push(...counter.log);
@@ -475,6 +508,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
     if (nextPlayerHp <= 0) {
       await resolvePlayerDefeat(nextLog, context);
+    } else {
+      setBattleTurnPhase("player");
     }
 
     setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
@@ -493,6 +528,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setBattleLog((current) => ["You escaped. No rewards were granted.", ...current].slice(0, 8));
     setActiveBattle(null);
     setBattleFinished(null);
+    setBattleTurnPhase("finished");
     setRevivePromptOpen(false);
     context.setGpsMessage("You escaped. No rewards were granted.");
   }
@@ -649,6 +685,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
   async function resolvePlayerDefeat(log: string[], context: BattleActionContext) {
     setBattleFinished("defeat");
+    setBattleTurnPhase("finished");
     await savePlayerHealth(1, context.previewMode);
     log.push(activeBattle?.defeat_text || "Defeat.");
 
@@ -706,6 +743,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       pushCombatIndicator("player", `+${amount}`, "#42d77d");
       if (defeated) {
         setBattleFinished(null);
+        setBattleTurnPhase("player");
         setRevivePromptOpen(false);
       }
     } else if (target === "stamina") {
@@ -722,6 +760,28 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
     setBattleInventoryOpen(false);
     setBattleLog((current) => [`Used ${item.name}. Restored ${amount} ${target}.`, ...current].slice(0, 8));
+  }
+
+  async function resolveOpeningEnemyTurn(context: BattleActionContext) {
+    if (!openingEnemyTurnQueued || !activeBattle || battleFinished) {
+      return;
+    }
+
+    setOpeningEnemyTurnQueued(false);
+    setBattleTurnPhase("enemy");
+    await delayEnemyTurn(950);
+    const counter = resolveEnemyCounterAttack(context);
+    const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
+    const nextLog = [...counter.log];
+    await savePlayerHealth(nextPlayerHp, context.previewMode);
+
+    if (nextPlayerHp <= 0) {
+      await resolvePlayerDefeat(nextLog, context);
+    } else {
+      setBattleTurnPhase("player");
+    }
+
+    setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
   }
 
   return {
@@ -746,6 +806,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setBattleLog,
     battleFinished,
     setBattleFinished,
+    battleTurnPhase,
+    openingEnemyTurnQueued,
     revivePromptOpen,
     setRevivePromptOpen,
     activeEnemy,
@@ -765,8 +827,26 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     savePlayerHealth,
     handleBattleAction,
     handleWeaponAction,
+    resolveOpeningEnemyTurn,
     fleeBattle,
     declineReviveAfterDefeat,
     useBattleItem,
   };
+}
+
+function rollInitiative(attributeLevel: number) {
+  const roll = Math.floor(Math.random() * 20) + 1;
+  const bonus = Math.max(0, Math.floor(Number(attributeLevel || 0) / 2));
+
+  return {
+    roll,
+    bonus,
+    total: roll + bonus,
+  };
+}
+
+function delayEnemyTurn(ms = 750) {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

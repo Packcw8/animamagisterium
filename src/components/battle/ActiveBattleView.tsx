@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { AbilityDefinition, CharacterResources } from "../../services/abilityService";
 import { CharacterWithDetails } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout } from "../../services/combatAdminService";
@@ -7,7 +8,7 @@ import { BattleEventCombatant, MarkerBattleCombatant } from "../../services/batt
 import { GameToast, type GameToastData } from "../map/GameToast";
 import { BattleEventScreen } from "./BattleEventScreen";
 import { type CombatIndicator } from "./BattleDisplay";
-import { type BattleOpponentState } from "./useBattleEncounter";
+import { type BattleOpponentState, type BattleTurnPhase } from "./useBattleEncounter";
 
 type ActiveBattleViewProps = {
   character: CharacterWithDetails;
@@ -28,12 +29,15 @@ type ActiveBattleViewProps = {
   inventoryItems: InventoryItem[];
   inventoryOpen: boolean;
   battleLog: string[];
+  battleTurnPhase: BattleTurnPhase;
+  openingEnemyTurnQueued: boolean;
   combatIndicators: CombatIndicator[];
   revivePromptOpen: boolean;
   result: "victory" | "defeat" | null;
   previewMode: boolean;
   toast: GameToastData | null;
   onAction: (ability: AbilityDefinition) => void;
+  onOpeningEnemyTurn: () => void;
   onSelectOpponent: (opponentKey: string) => void;
   onWeaponAction: (weapon: ItemDefinition) => void;
   onFlee: () => void;
@@ -65,12 +69,15 @@ export function ActiveBattleView({
   inventoryItems,
   inventoryOpen,
   battleLog,
+  battleTurnPhase,
+  openingEnemyTurnQueued,
   combatIndicators,
   revivePromptOpen,
   result,
   previewMode,
   toast,
   onAction,
+  onOpeningEnemyTurn,
   onSelectOpponent,
   onWeaponAction,
   onFlee,
@@ -82,6 +89,12 @@ export function ActiveBattleView({
   onExitPreview,
   onDismissToast,
 }: ActiveBattleViewProps) {
+  useEffect(() => {
+    if (openingEnemyTurnQueued) {
+      onOpeningEnemyTurn();
+    }
+  }, [openingEnemyTurnQueued]);
+
   return (
     <>
       <BattleEventScreen
@@ -103,6 +116,7 @@ export function ActiveBattleView({
         battleItems={getBattleUsableItems(inventoryItems, playerHp <= 0 || result === "defeat")}
         inventoryOpen={inventoryOpen}
         battleLog={battleLog}
+        battleTurnPhase={battleTurnPhase}
         combatIndicators={combatIndicators}
         revivePromptOpen={revivePromptOpen}
         result={result}

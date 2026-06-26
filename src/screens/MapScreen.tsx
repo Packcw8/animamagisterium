@@ -262,6 +262,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     battleLog,
     setBattleLog,
     battleFinished,
+    battleTurnPhase,
+    openingEnemyTurnQueued,
     revivePromptOpen,
     activeEnemy,
     setActiveEnemy,
@@ -278,6 +280,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     savePlayerHealth,
     handleBattleAction: runBattleAction,
     handleWeaponAction: runWeaponAction,
+    resolveOpeningEnemyTurn: runOpeningEnemyTurn,
     fleeBattle: runFleeBattle,
     declineReviveAfterDefeat: runDeclineReviveAfterDefeat,
     useBattleItem: runUseBattleItem,
@@ -3477,6 +3480,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     await runWeaponAction(weapon, getBattleActionContext());
   }
 
+  async function handleOpeningEnemyTurn() {
+    await runOpeningEnemyTurn(getBattleActionContext());
+  }
+
   async function fleeBattle() {
     await runFleeBattle(getBattleActionContext());
     activeBattleRouteRef.current = null;
@@ -4501,12 +4508,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         inventoryItems={inventoryItems}
         inventoryOpen={battleInventoryOpen}
         battleLog={battleLog}
+        battleTurnPhase={battleTurnPhase}
+        openingEnemyTurnQueued={openingEnemyTurnQueued}
         combatIndicators={combatIndicators}
         revivePromptOpen={revivePromptOpen}
         result={battleFinished}
         previewMode={adminPreviewMode === "battle"}
         toast={gameToast}
         onAction={(ability) => void handleBattleAction(ability)}
+        onOpeningEnemyTurn={() => void handleOpeningEnemyTurn()}
         onSelectOpponent={selectBattleTarget}
         onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
         onFlee={() => void fleeBattle()}

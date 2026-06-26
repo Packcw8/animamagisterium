@@ -10,7 +10,7 @@ import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
 import { BattleActionCard, CircularResourceArcs, CombatPortraitFrame, type CombatIndicator } from "./BattleDisplay";
-import { type BattleOpponentState } from "./useBattleEncounter";
+import { type BattleOpponentState, type BattleTurnPhase } from "./useBattleEncounter";
 
 type BattleEventScreenProps = {
   character: CharacterWithDetails;
@@ -31,6 +31,7 @@ type BattleEventScreenProps = {
   battleItems: InventoryItem[];
   inventoryOpen: boolean;
   battleLog: string[];
+  battleTurnPhase: BattleTurnPhase;
   combatIndicators: CombatIndicator[];
   revivePromptOpen: boolean;
   result: "victory" | "defeat" | null;
@@ -65,6 +66,7 @@ export function BattleEventScreen({
   battleItems,
   inventoryOpen,
   battleLog,
+  battleTurnPhase,
   combatIndicators,
   revivePromptOpen,
   result,
@@ -86,8 +88,9 @@ export function BattleEventScreen({
   const enemyMaxHp = Number(activeEnemy?.health ?? event.enemy_hp) || 30;
   const rewardXp = Number(event.reward_xp ?? 0) + Number(activeEnemy?.xp_reward ?? 0);
   const rewardGold = Number(event.reward_gold ?? 0) + Number(activeEnemy?.gold_reward ?? 0);
-  const battlePhase = result === "victory" ? "Victory" : result === "defeat" ? "Defeat" : revivePromptOpen ? "Revive Choice" : "Your Turn";
-  const playerTurnActive = !result && !revivePromptOpen;
+  const battlePhase = result === "victory" ? "Victory" : result === "defeat" ? "Defeat" : revivePromptOpen ? "Revive Choice" : battleTurnPhase === "enemy" ? "Enemy Turn" : battleTurnPhase === "rolling" ? "Rolling" : "Your Turn";
+  const playerTurnActive = !result && !revivePromptOpen && battleTurnPhase === "player";
+  const enemyTurnActive = !result && battleTurnPhase === "enemy";
   const enemyIntent = getEnemyIntent(activeEnemy, event);
   const enemyLevel = getBattleEnemyLevel(enemyMaxHp);
 
@@ -163,6 +166,7 @@ export function BattleEventScreen({
                             style={[
                               styles.stagedCombatant,
                               isSelected && styles.stagedCombatantSelected,
+                              enemyTurnActive && isSelected && styles.stagedEnemyActive,
                               opponent.hp <= 0 && styles.defeatedCombatant,
                               {
                                 left: `${opponent.combatant?.x_percent ?? 72}%`,
@@ -203,7 +207,7 @@ export function BattleEventScreen({
                         maxMana={Number(activeEnemy?.magika ?? 0) || undefined}
                         accent="enemy"
                         compact
-                        active={!playerTurnActive && !result}
+                        active={enemyTurnActive}
                         indicators={enemyIndicators}
                       />
                       {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
@@ -243,7 +247,7 @@ export function BattleEventScreen({
                 <Text style={styles.enemyIntentText} numberOfLines={1}>{enemyIntent}</Text>
               </View>
             </View>
-            <Text style={styles.stageHint}>{playerTurnActive ? "Choose an ability, then strike the selected target." : "Enemy action resolving."}</Text>
+            <Text style={styles.stageHint}>{playerTurnActive ? "Choose an ability, then strike the selected target." : enemyTurnActive ? "Enemy action resolving..." : "Battle is resolving."}</Text>
           </View>
           <View style={styles.abilityGrid}>
             {equippedAbilities.map((ability, index) => {
@@ -254,7 +258,7 @@ export function BattleEventScreen({
                   key={`ability-${index}`}
                   ability={ability}
                   slotNumber={index + 1}
-                  disabled={!ability || !hasResource || Boolean(result)}
+                  disabled={!ability || !hasResource || Boolean(result) || !playerTurnActive}
                   unavailableReason={ability && !hasResource ? "Not enough resource" : null}
                   onPress={() => ability ? onAction(ability) : undefined}
                 />
@@ -569,6 +573,12 @@ const styles = StyleSheet.create({
     shadowColor: colors.gold,
     shadowOpacity: 0.65,
     shadowRadius: 18,
+  },
+  stagedEnemyActive: {
+    borderColor: "#ffb4aa",
+    shadowColor: "#ff5c5c",
+    shadowOpacity: 0.78,
+    shadowRadius: 20,
   },
   defeatedCombatant: {
     opacity: 0.42,
