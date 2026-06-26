@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButton";
 import { AdminCollapsibleSection } from "../components/admin/AdminCollapsibleSection";
-import { BattleEventScreen } from "../components/battle/BattleEventScreen";
+import { ActiveBattleView } from "../components/battle/ActiveBattleView";
 import { BattlefieldLayoutEditor } from "../components/battle/BattlefieldLayoutEditor";
 import { useBattleEncounter } from "../components/battle/useBattleEncounter";
 import { BrandLogo } from "../components/BrandLogo";
@@ -55,7 +55,7 @@ import { CharacterWithDetails, incrementCharacterDistanceWalked, spendCharacterG
 import { AbilityDefinition, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
-import { canUseItemInContext, consumeInventoryItem, getBattleUsableItems, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri } from "../services/inventoryService";
+import { canUseItemInContext, consumeInventoryItem, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri } from "../services/inventoryService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
@@ -254,6 +254,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     battleStamina,
     battleMagicka,
     battleEnemyHp,
+    battleEnemyStamina,
+    battleEnemyMagika,
     battleOpponents,
     selectedOpponentKey,
     battleLog,
@@ -4479,42 +4481,41 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
   if (activeBattle) {
     return (
-      <>
-        <BattleEventScreen
-          character={character}
-          event={activeBattle}
-          playerHp={battlePlayerHp}
-          stamina={battleStamina}
-          magicka={battleMagicka}
-          resources={combatResources}
-          enemyHp={battleEnemyHp}
-          enemyStamina={battleEnemyStamina}
-          enemyMana={battleEnemyMagika}
-          activeEnemy={activeEnemy}
-          opponents={battleOpponents}
-          selectedOpponentKey={selectedOpponentKey}
-          equippedAbilities={equippedAbilities}
-          weapon={equippedItems.weapon ?? null}
-          battleItems={getBattleUsableItems(inventoryItems, battlePlayerHp <= 0 || battleFinished === "defeat")}
-          inventoryOpen={battleInventoryOpen}
-          battleLog={battleLog}
-          combatIndicators={combatIndicators}
-          revivePromptOpen={revivePromptOpen}
-          result={battleFinished}
-          previewMode={adminPreviewMode === "battle"}
-          onAction={(ability) => void handleBattleAction(ability)}
-          onSelectOpponent={selectBattleTarget}
-          onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
-          onFlee={() => void fleeBattle()}
-          onUseItem={(item) => void useBattleItem(item)}
-          onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
-          onDeclineRevive={() => void declineReviveAfterDefeat()}
-          onReturnToStart={() => void resetCurrentRouteAfterDefeat()}
-          onComplete={() => void finishEvent(activeBattle)}
-          onExitPreview={closeAdminPreview}
-        />
-        <GameToast toast={gameToast} onDismiss={() => setGameToast(null)} />
-      </>
+      <ActiveBattleView
+        character={character}
+        activeBattle={activeBattle}
+        playerHp={battlePlayerHp}
+        stamina={battleStamina}
+        mana={battleMagicka}
+        resources={combatResources}
+        enemyHp={battleEnemyHp}
+        enemyStamina={battleEnemyStamina}
+        enemyMana={battleEnemyMagika}
+        activeEnemy={activeEnemy}
+        opponents={battleOpponents}
+        selectedOpponentKey={selectedOpponentKey}
+        equippedAbilities={equippedAbilities}
+        equippedWeapon={equippedItems.weapon ?? null}
+        inventoryItems={inventoryItems}
+        inventoryOpen={battleInventoryOpen}
+        battleLog={battleLog}
+        combatIndicators={combatIndicators}
+        revivePromptOpen={revivePromptOpen}
+        result={battleFinished}
+        previewMode={adminPreviewMode === "battle"}
+        toast={gameToast}
+        onAction={(ability) => void handleBattleAction(ability)}
+        onSelectOpponent={selectBattleTarget}
+        onWeaponAction={(weapon) => void handleWeaponAction(weapon)}
+        onFlee={() => void fleeBattle()}
+        onUseItem={(item) => void useBattleItem(item)}
+        onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
+        onDeclineRevive={() => void declineReviveAfterDefeat()}
+        onReturnToStart={() => void resetCurrentRouteAfterDefeat()}
+        onComplete={() => void finishEvent(activeBattle)}
+        onExitPreview={closeAdminPreview}
+        onDismissToast={() => setGameToast(null)}
+      />
     );
   }
 
