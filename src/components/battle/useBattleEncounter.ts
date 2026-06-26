@@ -57,6 +57,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   const [revivePromptOpen, setRevivePromptOpen] = useState(false);
   const [activeEnemy, setActiveEnemy] = useState<EnemyWithLoadout | NpcWithLoadout | null>(null);
   const [battleOpponents, setBattleOpponents] = useState<BattleOpponentState[]>([]);
+  const [battleLayoutCombatants, setBattleLayoutCombatants] = useState<Array<BattleEventCombatant | MarkerBattleCombatant>>([]);
   const [selectedOpponentKey, setSelectedOpponentKey] = useState<string | null>(null);
   const [combatIndicators, setCombatIndicators] = useState<CombatIndicator[]>([]);
   const [combatResources, setCombatResources] = useState<CharacterResources>(() => getCharacterResources(character));
@@ -67,6 +68,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setActiveBattle(null);
     setActiveEnemy(null);
     setBattleOpponents([]);
+    setBattleLayoutCombatants([]);
     setSelectedOpponentKey(null);
     setBattleFinished(null);
     setRevivePromptOpen(false);
@@ -97,7 +99,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         return { ok: false, message };
       }
 
-      const stagedOpponents = await loadStagedOpponents(event);
+      const stagedLayout = await loadStagedLayout(event);
+      const stagedOpponents = await loadStagedOpponents(event, stagedLayout);
       const fallbackOpponent = stagedOpponents.length === 0
         ? [{
           key: "primary",
@@ -115,6 +118,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       setActiveBattle(event);
       setAdminPreviewMode(preview ? "battle" : null);
       setActiveEnemy(selectedEnemy);
+      setBattleLayoutCombatants(stagedLayout);
       setBattleOpponents(fallbackOpponent);
       setSelectedOpponentKey(firstOpponent?.key ?? null);
       setCombatIndicators([]);
@@ -143,11 +147,18 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
   }
 
-  async function loadStagedOpponents(event: MapEvent): Promise<BattleOpponentState[]> {
+  async function loadStagedLayout(event: MapEvent) {
     try {
       const eventStaged = await getBattleEventCombatants(event.id);
       const markerStaged = eventStaged.length > 0 ? [] : await getMarkerBattleCombatants(event.id);
-      const staged = eventStaged.length > 0 ? eventStaged : markerStaged;
+      return (eventStaged.length > 0 ? eventStaged : markerStaged).filter((combatant) => combatant.is_active);
+    } catch {
+      return [];
+    }
+  }
+
+  async function loadStagedOpponents(event: MapEvent, staged: Array<BattleEventCombatant | MarkerBattleCombatant>): Promise<BattleOpponentState[]> {
+    try {
       const activeStaged = staged.filter((combatant) => combatant.is_active && combatant.side === "enemy" && (combatant.enemy_id || combatant.npc_id));
       const loaded = await Promise.all(activeStaged.map(async (combatant) => {
         const enemy = combatant.enemy_id ? await getEnemyLoadout(combatant.enemy_id) : null;
@@ -729,6 +740,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     battleEnemyMagika,
     setBattleEnemyMagika,
     battleOpponents,
+    battleLayoutCombatants,
     selectedOpponentKey,
     battleLog,
     setBattleLog,

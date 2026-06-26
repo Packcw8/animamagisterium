@@ -257,6 +257,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     battleEnemyStamina,
     battleEnemyMagika,
     battleOpponents,
+    battleLayoutCombatants,
     selectedOpponentKey,
     battleLog,
     setBattleLog,
@@ -4493,6 +4494,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         enemyMana={battleEnemyMagika}
         activeEnemy={activeEnemy}
         opponents={battleOpponents}
+        layoutCombatants={battleLayoutCombatants}
         selectedOpponentKey={selectedOpponentKey}
         equippedAbilities={equippedAbilities}
         equippedWeapon={equippedItems.weapon ?? null}

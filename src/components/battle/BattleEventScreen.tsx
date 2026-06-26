@@ -5,6 +5,7 @@ import { CharacterWithDetails } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
 import { InventoryItem, ItemDefinition, isReviveBattleItem } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
+import { BattleEventCombatant, MarkerBattleCombatant } from "../../services/battlefieldService";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
@@ -23,6 +24,7 @@ type BattleEventScreenProps = {
   enemyMana: number;
   activeEnemy: EnemyWithLoadout | NpcWithLoadout | null;
   opponents?: BattleOpponentState[];
+  layoutCombatants?: Array<BattleEventCombatant | MarkerBattleCombatant>;
   selectedOpponentKey?: string | null;
   equippedAbilities: Array<AbilityDefinition | null>;
   weapon: ItemDefinition | null;
@@ -57,6 +59,7 @@ export function BattleEventScreen({
   enemyMana,
   activeEnemy,
   opponents = [],
+  layoutCombatants = [],
   selectedOpponentKey = null,
   equippedAbilities,
   battleItems,
@@ -102,6 +105,8 @@ export function BattleEventScreen({
   const reviveItem = battleItems.find((entry) => isReviveBattleItem(entry.item));
   const enemyName = activeEnemy?.name || event.enemy_name || "Enemy";
   const enemySubtitle = `${activeEnemy?.type || "Enemy"} / Level ${enemyLevel}`;
+  const playerCombatant = layoutCombatants.find((combatant) => combatant.side === "player" && combatant.is_active);
+  const fallbackPlayerCombatant = { x_percent: 24, y_percent: 68, size_percent: 22 };
 
   return (
     <Screen>
@@ -133,7 +138,7 @@ export function BattleEventScreen({
               <View style={styles.stageCenterText}>
                 <Text style={styles.stageHint}>{playerTurnActive ? "Choose an ability, then strike the selected target." : "Enemy action resolving."}</Text>
               </View>
-              <View style={styles.enemyStage}>
+              <View style={styles.combatantSurface}>
                 {visibleOpponents.length > 0 ? (
                   <>
                     {visibleOpponents.map((opponent) => {
@@ -143,7 +148,8 @@ export function BattleEventScreen({
                       const maxStamina = Number(opponent.enemy?.stamina ?? 0) || 0;
                       const maxMana = Number(opponent.enemy?.magika ?? 0) || 0;
                       const isSelected = opponent.key === selectedOpponentKey;
-                      const size = Math.max(62, Math.min(142, Number(opponent.combatant?.size_percent ?? 14) * 7));
+                      const sizePercent = Number(opponent.combatant?.size_percent ?? 14) || 14;
+                      const size = Math.max(54, Math.min(124, sizePercent * 6.2));
                       const ringSize = Math.max(58, size - 2);
                       const ringRadius = Math.max(22, ringSize / 2 - 7);
                       return (
@@ -172,14 +178,6 @@ export function BattleEventScreen({
                           {imageUri ? <Image source={{ uri: imageUri }} style={styles.stagedCombatantImage} /> : <Text style={styles.stagedCombatantFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
                           <View style={styles.stagedCombatantPlate}>
                             <Text style={styles.stagedCombatantName} numberOfLines={1}>{name}</Text>
-                            <Text style={styles.stagedCombatantHp} numberOfLines={1}>HP {Math.max(0, opponent.hp)} / {maxHp}</Text>
-                            {maxStamina > 0 || maxMana > 0 ? (
-                              <Text style={styles.stagedCombatantResources} numberOfLines={1}>
-                                {maxStamina > 0 ? `ST ${Math.max(0, opponent.stamina)} / ${maxStamina}` : ""}
-                                {maxStamina > 0 && maxMana > 0 ? "  " : ""}
-                                {maxMana > 0 ? `MN ${Math.max(0, opponent.magika)} / ${maxMana}` : ""}
-                              </Text>
-                            ) : null}
                           </View>
                           {isSelected ? <CombatIndicatorStackOverlay indicators={enemyIndicators} /> : null}
                         </Pressable>
@@ -209,25 +207,35 @@ export function BattleEventScreen({
                     {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
                   </>
                 )}
-              </View>
-              <View style={styles.playerStage}>
-                <CombatPortraitFrame
-                  imageUri={character.portrait_url}
-                  imageFailed={playerImageFailed}
-                  onImageError={() => setPlayerImageFailed(true)}
-                  fallbackText={character.name}
-                  name={character.name}
-                  subtitle={character.origin || "Adventurer"}
-                  hp={playerHp}
-                  maxHp={resources.maxHp}
-                  stamina={stamina}
-                  maxStamina={resources.maxStamina}
-                  mana={magicka}
-                  maxMana={resources.maxMagicka}
-                  accent="player"
-                  active={playerTurnActive}
-                  indicators={playerIndicators}
-                />
+                <View
+                  style={[
+                    styles.stagedPlayer,
+                    {
+                      left: `${playerCombatant?.x_percent ?? fallbackPlayerCombatant.x_percent}%`,
+                      top: `${playerCombatant?.y_percent ?? fallbackPlayerCombatant.y_percent}%`,
+                      transform: [{ translateX: -52 }, { translateY: -52 }],
+                    } as object,
+                  ]}
+                >
+                  <CombatPortraitFrame
+                    imageUri={character.portrait_url}
+                    imageFailed={playerImageFailed}
+                    onImageError={() => setPlayerImageFailed(true)}
+                    fallbackText={character.name}
+                    name={character.name}
+                    subtitle={character.origin || "Adventurer"}
+                    hp={playerHp}
+                    maxHp={resources.maxHp}
+                    stamina={stamina}
+                    maxStamina={resources.maxStamina}
+                    mana={magicka}
+                    maxMana={resources.maxMagicka}
+                    accent="player"
+                    compact
+                    active={playerTurnActive}
+                    indicators={playerIndicators}
+                  />
+                </View>
               </View>
             </View>
           </View>
@@ -447,15 +455,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   battleArena: {
-    minHeight: 430,
+    minHeight: 390,
     gap: 8,
     paddingHorizontal: 0,
     paddingVertical: 4,
   },
   stageLayer: {
     position: "relative",
-    minHeight: 420,
-    justifyContent: "space-between",
+    minHeight: 390,
+    borderRadius: 14,
+    overflow: "visible",
   },
   enemyIntentBadge: {
     position: "absolute",
@@ -474,7 +483,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: "24%",
     right: "24%",
-    top: "42%",
+    top: "48%",
+    zIndex: 2,
     alignItems: "center",
     justifyContent: "center",
     minHeight: 48,
@@ -490,17 +500,16 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textAlign: "center",
   },
-  enemyStage: {
+  combatantSurface: {
     position: "absolute",
     left: 0,
     right: 0,
     top: 0,
-    bottom: 96,
+    bottom: 0,
   },
-  playerStage: {
-    alignSelf: "flex-start",
-    alignItems: "center",
-    maxWidth: 190,
+  stagedPlayer: {
+    position: "absolute",
+    zIndex: 4,
   },
   enemyIntentLabel: {
     color: "#ffb4aa",
@@ -556,8 +565,8 @@ const styles = StyleSheet.create({
   stagedCombatantPlate: {
     position: "absolute",
     top: "92%",
-    minWidth: 104,
-    maxWidth: 148,
+    minWidth: 86,
+    maxWidth: 132,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255,180,170,0.28)",
@@ -573,18 +582,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     textShadowColor: "#000",
     textShadowRadius: 4,
-  },
-  stagedCombatantHp: {
-    color: "#ff8d80",
-    fontSize: 9,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  stagedCombatantResources: {
-    color: colors.muted,
-    fontSize: 8,
-    fontWeight: "900",
-    textAlign: "center",
   },
   stageIndicatorStack: {
     position: "absolute",
