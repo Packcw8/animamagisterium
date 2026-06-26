@@ -107,6 +107,10 @@ export function BattleEventScreen({
   const enemySubtitle = `${activeEnemy?.type || "Enemy"} / Level ${enemyLevel}`;
   const playerCombatant = layoutCombatants.find((combatant) => combatant.side === "player" && combatant.is_active);
   const fallbackPlayerCombatant = { x_percent: 24, y_percent: 68, size_percent: 22 };
+  const playerSizePercent = Number(playerCombatant?.size_percent ?? fallbackPlayerCombatant.size_percent) || fallbackPlayerCombatant.size_percent;
+  const playerSize = Math.max(48, Math.min(112, playerSizePercent * 5.6));
+  const playerRingSize = Math.max(50, playerSize - 2);
+  const playerRingRadius = Math.max(20, playerRingSize / 2 - 7);
 
   return (
     <Screen>
@@ -169,19 +173,16 @@ export function BattleEventScreen({
                             ]}
                             onPress={() => onSelectOpponent?.(opponent.key)}
                           >
-                            <CircularResourceArcs
-                              size={ringSize}
-                              radius={ringRadius}
+                          <CircularResourceArcs
+                            size={ringSize}
+                            radius={ringRadius}
                               hpPercent={getPercent(opponent.hp, maxHp)}
                               staminaPercent={getPercent(opponent.stamina, maxStamina)}
                               manaPercent={getPercent(opponent.magika, maxMana)}
-                            />
-                            {imageUri ? <Image source={{ uri: imageUri }} style={styles.stagedCombatantImage} /> : <Text style={styles.stagedCombatantFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
-                            <View style={styles.stagedCombatantPlate}>
-                              <Text style={styles.stagedCombatantName} numberOfLines={1}>{name}</Text>
-                            </View>
-                            {isSelected ? <CombatIndicatorStackOverlay indicators={enemyIndicators} /> : null}
-                          </Pressable>
+                          />
+                          {imageUri ? <Image source={{ uri: imageUri }} style={styles.stagedCombatantImage} /> : <Text style={styles.stagedCombatantFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
+                          {isSelected ? <CombatIndicatorStackOverlay indicators={enemyIndicators} /> : null}
+                        </Pressable>
                         );
                       })}
                     </>
@@ -210,32 +211,30 @@ export function BattleEventScreen({
                   )}
                   <View
                     style={[
+                      styles.stagedCombatant,
                       styles.stagedPlayer,
+                      playerTurnActive && styles.stagedPlayerActive,
                       {
                         left: `${playerCombatant?.x_percent ?? fallbackPlayerCombatant.x_percent}%`,
                         top: `${playerCombatant?.y_percent ?? fallbackPlayerCombatant.y_percent}%`,
-                        transform: [{ translateX: -48 }, { translateY: -48 }],
+                        width: playerSize,
+                        transform: [{ translateX: -playerSize / 2 }, { translateY: -playerSize / 2 }],
                       } as object,
                     ]}
                   >
-                    <CombatPortraitFrame
-                      imageUri={character.portrait_url}
-                      imageFailed={playerImageFailed}
-                      onImageError={() => setPlayerImageFailed(true)}
-                      fallbackText={character.name}
-                      name={character.name}
-                      subtitle={character.origin || "Adventurer"}
-                      hp={playerHp}
-                      maxHp={resources.maxHp}
-                      stamina={stamina}
-                      maxStamina={resources.maxStamina}
-                      mana={magicka}
-                      maxMana={resources.maxMagicka}
-                      accent="player"
-                      compact
-                      active={playerTurnActive}
-                      indicators={playerIndicators}
+                    <CircularResourceArcs
+                      size={playerRingSize}
+                      radius={playerRingRadius}
+                      hpPercent={getPercent(playerHp, resources.maxHp)}
+                      staminaPercent={getPercent(stamina, resources.maxStamina)}
+                      manaPercent={getPercent(magicka, resources.maxMagicka)}
                     />
+                    {character.portrait_url && !playerImageFailed ? (
+                      <Image source={{ uri: character.portrait_url }} style={styles.stagedCombatantImage} onError={() => setPlayerImageFailed(true)} />
+                    ) : (
+                      <Text style={styles.stagedCombatantFallback}>{character.name.slice(0, 2).toUpperCase()}</Text>
+                    )}
+                    <CombatIndicatorStackOverlay indicators={playerIndicators} />
                   </View>
                 </View>
               </View>
@@ -520,8 +519,15 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   stagedPlayer: {
-    position: "absolute",
+    borderColor: colors.blue,
+    backgroundColor: "rgba(5,31,52,0.76)",
     zIndex: 4,
+  },
+  stagedPlayerActive: {
+    borderColor: colors.gold,
+    shadowColor: colors.blue,
+    shadowOpacity: 0.72,
+    shadowRadius: 18,
   },
   fallbackEnemyPosition: {
     position: "absolute",
@@ -578,27 +584,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 20,
     zIndex: 4,
-  },
-  stagedCombatantPlate: {
-    position: "absolute",
-    top: "92%",
-    minWidth: 86,
-    maxWidth: 132,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(255,180,170,0.28)",
-    paddingHorizontal: 7,
-    paddingVertical: 5,
-    backgroundColor: "rgba(6,4,4,0.76)",
-    gap: 3,
-  },
-  stagedCombatantName: {
-    color: colors.text,
-    fontSize: 10,
-    fontWeight: "900",
-    textAlign: "center",
-    textShadowColor: "#000",
-    textShadowRadius: 4,
   },
   stageIndicatorStack: {
     position: "absolute",
