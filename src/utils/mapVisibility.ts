@@ -31,7 +31,7 @@ export function canPlayerSeeStoryMarker(marker: MapMarker, scopeMarkers: MapMark
     return true;
   }
 
-  if (marker.hide_when_completed !== false && (completedMarkerIds.has(marker.id) || startedMarkerIds.has(marker.id))) {
+  if (marker.hide_when_completed !== false && completedMarkerIds.has(marker.id)) {
     return false;
   }
 
