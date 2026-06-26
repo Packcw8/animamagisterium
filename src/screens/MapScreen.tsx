@@ -3478,6 +3478,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   function editMapEvent(event: MapEvent) {
+    setAdminSection("Rewards/Interactions");
+    setOpenAdminPanels((current) => ({ ...current, "active-section": true }));
     setEditingEvent(event);
     setEventType(event.event_type === "story" ? "dialogue" : event.event_type);
     setEventTitle(event.title);
@@ -4994,6 +4996,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               onRemoveMarketItem={(marketItemId) => void removeMarketItem(marketItemId)}
               selectedDialogueMarkerId={selectedDialogueMarkerId}
               onLoadMarkerDialogue={(marker) => void loadMarkerDialogueEditor(marker)}
+              onEditBattleEvent={editMapEvent}
               renderMarkerDialogueEditor={(marker) => renderBranchingDialogueEditor(marker)}
             /> : (
               <View style={styles.pathEditor}>
@@ -5512,6 +5515,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                     selectedId={markerBattleEventId}
                     onSelect={setMarkerBattleEventId}
                   />
+                  {markerBattleEventId ? (
+                    <Pressable
+                      style={styles.secondaryButton}
+                      onPress={() => {
+                        const linkedEvent = reusableMapEvents.find((event) => event.id === markerBattleEventId);
+                        if (linkedEvent) {
+                          editMapEvent(linkedEvent);
+                        } else {
+                          setAdminMessage("The linked Battle Event could not be found in this season/chapter.");
+                        }
+                      }}
+                    >
+                      <Text style={styles.secondaryText}>Edit Linked Battle Event Board</Text>
+                    </Pressable>
+                  ) : null}
                   <EnemyPicker
                     enemies={enemyDefinitions}
                     selectedId={markerEnemyId}
@@ -6093,6 +6111,7 @@ function MiniMapMarkerAdminForm({
   onRemoveMarketItem,
   selectedDialogueMarkerId,
   onLoadMarkerDialogue,
+  onEditBattleEvent,
   renderMarkerDialogueEditor,
 }: {
   activeSectionMarkerTypes: readonly string[];
@@ -6204,6 +6223,7 @@ function MiniMapMarkerAdminForm({
   onRemoveMarketItem: (marketItemId: string) => void;
   selectedDialogueMarkerId: string | null;
   onLoadMarkerDialogue: (marker: MapMarker) => void;
+  onEditBattleEvent: (event: MapEvent) => void;
   renderMarkerDialogueEditor: (marker: MapMarker) => ReactNode;
 }) {
   const supportsQuest = isQuestMarkerType(draftType);
@@ -6257,6 +6277,19 @@ function MiniMapMarkerAdminForm({
             selectedId={markerBattleEventId}
             onSelect={setMarkerBattleEventId}
           />
+          {markerBattleEventId ? (
+            <Pressable
+              style={styles.secondaryButton}
+              onPress={() => {
+                const linkedEvent = reusableMapEvents.find((event) => event.id === markerBattleEventId);
+                if (linkedEvent) {
+                  onEditBattleEvent(linkedEvent);
+                }
+              }}
+            >
+              <Text style={styles.secondaryText}>Edit Linked Battle Event Board</Text>
+            </Pressable>
+          ) : null}
           <EnemyPicker
             enemies={enemyDefinitions}
             selectedId={markerEnemyId}

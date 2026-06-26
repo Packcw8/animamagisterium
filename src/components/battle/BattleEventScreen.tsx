@@ -258,6 +258,12 @@ export function BattleEventScreen({
               </Pressable>
             ) : null}
           </View>
+          <View style={styles.battleLogPanel}>
+            <Text style={styles.battleLogTitle}>Battle Log</Text>
+            {battleLog.slice(0, 4).map((line, index) => (
+              <Text key={`${line}-${index}`} style={styles.battleLogLine}>{line}</Text>
+            ))}
+          </View>
           {revivePromptOpen ? (
             <View style={styles.revivePrompt}>
               <Text style={styles.selectedTitle}>You have fallen</Text>
@@ -306,12 +312,6 @@ export function BattleEventScreen({
               </Pressable>
             </View>
           ) : null}
-          <View style={styles.battleLogPanel}>
-            <Text style={styles.battleLogTitle}>Battle Log</Text>
-            {battleLog.slice(0, 5).map((line, index) => (
-              <Text key={`${line}-${index}`} style={styles.battleLogLine}>{line}</Text>
-            ))}
-          </View>
         </View>
       </Frame>
     </Screen>
@@ -378,17 +378,17 @@ function getBattleEnemyLevel(enemyMaxHp: number) {
 
 const styles = StyleSheet.create({
   eventScreen: {
-    margin: 12,
-    padding: 14,
-    gap: 12,
+    margin: 8,
+    padding: 8,
+    gap: 8,
   },
   battleScreenFrame: {
     overflow: "hidden",
   },
   battleBackdrop: {
-    gap: 10,
-    padding: 10,
-    paddingTop: 12,
+    gap: 8,
+    padding: 8,
+    paddingTop: 8,
     borderRadius: 8,
     backgroundColor: "rgba(0,0,0,0.28)",
   },
@@ -417,7 +417,7 @@ const styles = StyleSheet.create({
   battleHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 8,
     alignItems: "flex-start",
   },
   sectionTitle: {
@@ -444,10 +444,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   battleArena: {
-    minHeight: 380,
-    gap: 10,
-    paddingHorizontal: 2,
-    paddingVertical: 6,
+    minHeight: 470,
+    gap: 8,
+    paddingHorizontal: 0,
+    paddingVertical: 4,
   },
   enemyRoster: {
     flexDirection: "row",
@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
   },
   stageLayer: {
     position: "relative",
-    minHeight: 270,
+    minHeight: 365,
     justifyContent: "space-between",
   },
   stageCenterText: {
@@ -486,7 +486,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     top: 0,
-    bottom: 74,
+    bottom: 96,
   },
   playerStage: {
     alignSelf: "flex-start",
@@ -584,15 +584,15 @@ const styles = StyleSheet.create({
   abilityGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 7,
   },
   battleUtilityRow: {
     flexDirection: "row",
-    gap: 8,
+    gap: 7,
   },
   inventoryBattleButton: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 34,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(54, 171, 224, 0.52)",
@@ -602,7 +602,7 @@ const styles = StyleSheet.create({
   },
   fleeBattleButton: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 34,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255, 180, 170, 0.52)",
@@ -686,12 +686,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(9, 15, 13, 0.86)",
   },
   battleLogPanel: {
-    gap: 7,
+    gap: 5,
     borderWidth: 1,
     borderColor: "rgba(232, 181, 94, 0.22)",
     borderRadius: 8,
-    padding: 10,
-    backgroundColor: "rgba(0,0,0,0.32)",
+    padding: 8,
+    backgroundColor: "rgba(0,0,0,0.46)",
   },
   battleLogTitle: {
     color: colors.gold,
@@ -701,8 +701,8 @@ const styles = StyleSheet.create({
   },
   battleLogLine: {
     color: colors.text,
-    lineHeight: 18,
-    fontSize: 12,
+    lineHeight: 16,
+    fontSize: 11,
     borderTopWidth: 1,
     borderColor: "rgba(255,255,255,0.06)",
     paddingTop: 6,
