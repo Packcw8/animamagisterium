@@ -39,21 +39,21 @@ create policy "Admins can create marker battle layouts"
 on public.marker_battle_combatants
 for insert
 to authenticated
-with check (public.is_admin(auth.uid()));
+with check (public.is_admin());
 
 drop policy if exists "Admins can update marker battle layouts" on public.marker_battle_combatants;
 create policy "Admins can update marker battle layouts"
 on public.marker_battle_combatants
 for update
 to authenticated
-using (public.is_admin(auth.uid()))
-with check (public.is_admin(auth.uid()));
+using (public.is_admin())
+with check (public.is_admin());
 
 drop policy if exists "Admins can delete marker battle layouts" on public.marker_battle_combatants;
 create policy "Admins can delete marker battle layouts"
 on public.marker_battle_combatants
 for delete
 to authenticated
-using (public.is_admin(auth.uid()));
+using (public.is_admin());
 
 grant select, insert, update, delete on public.marker_battle_combatants to authenticated;
