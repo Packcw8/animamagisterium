@@ -504,10 +504,14 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     if (ability.stamina_cost > 0) {
-      setBattleEnemyStamina((current) => Math.max(0, current - ability.stamina_cost));
+      const nextStamina = Math.max(0, battleEnemyStamina - ability.stamina_cost);
+      setBattleEnemyStamina(nextStamina);
+      updateSelectedOpponent({ stamina: nextStamina });
     }
     if (ability.magika_cost > 0) {
-      setBattleEnemyMagika((current) => Math.max(0, current - ability.magika_cost));
+      const nextMagika = Math.max(0, battleEnemyMagika - ability.magika_cost);
+      setBattleEnemyMagika(nextMagika);
+      updateSelectedOpponent({ magika: nextMagika });
     }
 
     if (ability.type === "heal") {
@@ -525,12 +529,16 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         logs.push(`${enemyName} heals ${healing}.`);
       }
       if (staminaRestore > 0) {
-        setBattleEnemyStamina((current) => Math.min(Number(activeEnemy?.stamina ?? 0), current + staminaRestore));
+        const nextStamina = Math.min(Number(activeEnemy?.stamina ?? 0), battleEnemyStamina + staminaRestore);
+        setBattleEnemyStamina(nextStamina);
+        updateSelectedOpponent({ stamina: nextStamina });
         pushCombatIndicator("enemy", `+${staminaRestore} Stamina`, "#3b82f6");
         logs.push(`${enemyName} restores ${staminaRestore} Stamina.`);
       }
       if (magikaRestore > 0) {
-        setBattleEnemyMagika((current) => Math.min(Number(activeEnemy?.magika ?? 0), current + magikaRestore));
+        const nextMagika = Math.min(Number(activeEnemy?.magika ?? 0), battleEnemyMagika + magikaRestore);
+        setBattleEnemyMagika(nextMagika);
+        updateSelectedOpponent({ magika: nextMagika });
         pushCombatIndicator("enemy", `+${magikaRestore} Mana`, "#7dd3fc");
         logs.push(`${enemyName} restores ${magikaRestore} Mana.`);
       }

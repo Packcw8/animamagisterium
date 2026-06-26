@@ -93,7 +93,7 @@ export function CombatPortraitFrame({
   );
 }
 
-function CircularResourceArcs({
+export function CircularResourceArcs({
   size,
   radius,
   hpPercent,

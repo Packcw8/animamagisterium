@@ -4488,6 +4488,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           magicka={battleMagicka}
           resources={combatResources}
           enemyHp={battleEnemyHp}
+          enemyStamina={battleEnemyStamina}
+          enemyMana={battleEnemyMagika}
           activeEnemy={activeEnemy}
           opponents={battleOpponents}
           selectedOpponentKey={selectedOpponentKey}

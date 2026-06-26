@@ -6,10 +6,9 @@ import { EnemyWithLoadout, NpcWithLoadout, resolveEnemyImageUri } from "../../se
 import { InventoryItem, ItemDefinition, isReviveBattleItem } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
 import { Frame } from "../Frame";
-import { ProgressBar } from "../ProgressBar";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
-import { BattleActionCard, CombatPortraitFrame, type CombatIndicator } from "./BattleDisplay";
+import { BattleActionCard, CircularResourceArcs, CombatPortraitFrame, type CombatIndicator } from "./BattleDisplay";
 import { type BattleOpponentState } from "./useBattleEncounter";
 
 type BattleEventScreenProps = {
@@ -20,6 +19,8 @@ type BattleEventScreenProps = {
   magicka: number;
   resources: CharacterResources;
   enemyHp: number;
+  enemyStamina: number;
+  enemyMana: number;
   activeEnemy: EnemyWithLoadout | NpcWithLoadout | null;
   opponents?: BattleOpponentState[];
   selectedOpponentKey?: string | null;
@@ -52,6 +53,8 @@ export function BattleEventScreen({
   magicka,
   resources,
   enemyHp,
+  enemyStamina,
+  enemyMana,
   activeEnemy,
   opponents = [],
   selectedOpponentKey = null,
@@ -137,8 +140,12 @@ export function BattleEventScreen({
                       const name = opponent.enemy?.name || opponent.combatant?.label || "Enemy";
                       const imageUri = resolveEnemyImageUri(opponent.enemy?.image_url);
                       const maxHp = Number(opponent.enemy?.health ?? event.enemy_hp) || 30;
+                      const maxStamina = Number(opponent.enemy?.stamina ?? 0) || 0;
+                      const maxMana = Number(opponent.enemy?.magika ?? 0) || 0;
                       const isSelected = opponent.key === selectedOpponentKey;
                       const size = Math.max(62, Math.min(142, Number(opponent.combatant?.size_percent ?? 14) * 7));
+                      const ringSize = Math.max(58, size - 2);
+                      const ringRadius = Math.max(22, ringSize / 2 - 7);
                       return (
                         <Pressable
                           key={`stage-${opponent.key}`}
@@ -155,13 +162,24 @@ export function BattleEventScreen({
                           ]}
                           onPress={() => onSelectOpponent?.(opponent.key)}
                         >
+                          <CircularResourceArcs
+                            size={ringSize}
+                            radius={ringRadius}
+                            hpPercent={getPercent(opponent.hp, maxHp)}
+                            staminaPercent={getPercent(opponent.stamina, maxStamina)}
+                            manaPercent={getPercent(opponent.magika, maxMana)}
+                          />
                           {imageUri ? <Image source={{ uri: imageUri }} style={styles.stagedCombatantImage} /> : <Text style={styles.stagedCombatantFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
                           <View style={styles.stagedCombatantPlate}>
                             <Text style={styles.stagedCombatantName} numberOfLines={1}>{name}</Text>
-                            <View style={styles.stagedHpTrack}>
-                              <ProgressBar value={opponent.hp} max={maxHp} color={colors.red} height={5} />
-                            </View>
                             <Text style={styles.stagedCombatantHp} numberOfLines={1}>HP {Math.max(0, opponent.hp)} / {maxHp}</Text>
+                            {maxStamina > 0 || maxMana > 0 ? (
+                              <Text style={styles.stagedCombatantResources} numberOfLines={1}>
+                                {maxStamina > 0 ? `ST ${Math.max(0, opponent.stamina)} / ${maxStamina}` : ""}
+                                {maxStamina > 0 && maxMana > 0 ? "  " : ""}
+                                {maxMana > 0 ? `MN ${Math.max(0, opponent.magika)} / ${maxMana}` : ""}
+                              </Text>
+                            ) : null}
                           </View>
                           {isSelected ? <CombatIndicatorStackOverlay indicators={enemyIndicators} /> : null}
                         </Pressable>
@@ -179,6 +197,10 @@ export function BattleEventScreen({
                       subtitle={enemySubtitle}
                       hp={enemyHp}
                       maxHp={enemyMaxHp}
+                      stamina={enemyStamina}
+                      maxStamina={Number(activeEnemy?.stamina ?? 0) || undefined}
+                      mana={enemyMana}
+                      maxMana={Number(activeEnemy?.magika ?? 0) || undefined}
                       accent="enemy"
                       compact
                       active={!playerTurnActive && !result}
@@ -353,6 +375,10 @@ function getBattleEnemyLevel(enemyMaxHp: number) {
   return Math.max(1, Math.round(enemyMaxHp / 25));
 }
 
+function getPercent(value: number, max: number) {
+  return Math.max(0, Math.min(100, (Number(value) / Math.max(1, Number(max) || 1)) * 100));
+}
+
 const styles = StyleSheet.create({
   eventScreen: {
     margin: 8,
@@ -516,14 +542,16 @@ const styles = StyleSheet.create({
     opacity: 0.42,
   },
   stagedCombatantImage: {
-    width: "82%",
-    height: "82%",
+    width: "76%",
+    height: "76%",
     borderRadius: 999,
+    zIndex: 4,
   },
   stagedCombatantFallback: {
     color: colors.text,
     fontWeight: "900",
     fontSize: 20,
+    zIndex: 4,
   },
   stagedCombatantPlate: {
     position: "absolute",
@@ -546,13 +574,15 @@ const styles = StyleSheet.create({
     textShadowColor: "#000",
     textShadowRadius: 4,
   },
-  stagedHpTrack: {
-    width: "100%",
-    height: 5,
-  },
   stagedCombatantHp: {
     color: "#ff8d80",
     fontSize: 9,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+  stagedCombatantResources: {
+    color: colors.muted,
+    fontSize: 8,
     fontWeight: "900",
     textAlign: "center",
   },
