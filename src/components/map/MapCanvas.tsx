@@ -106,16 +106,18 @@ export function OverworldMapCanvas({
 export function MiniMapCanvas({
   imageUri,
   fallbackText = "No mini map image set.",
+  height,
   canCapturePointer,
   ...shared
 }: SharedCanvasProps & {
   imageUri: string | null;
   fallbackText?: string;
+  height?: number;
   canCapturePointer: boolean;
 }) {
   return (
     <View
-      style={styles.miniMapSurface}
+      style={[styles.miniMapSurface, height ? ({ height, aspectRatio: undefined } as object) : null]}
       {...(canCapturePointer
         ? ({
             onClick: shared.onMapPointer,

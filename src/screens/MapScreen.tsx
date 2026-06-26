@@ -347,6 +347,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [miniMapBackground, setMiniMapBackground] = useState("");
   const [miniMapDescription, setMiniMapDescription] = useState("");
   const [miniMapActive, setMiniMapActive] = useState(true);
+  const [miniMapEditorHeight, setMiniMapEditorHeight] = useState("520");
   const [tutorialSteps, setTutorialSteps] = useState<TutorialStep[]>([]);
   const [editingTutorialId, setEditingTutorialId] = useState<string | null>(null);
   const [tutorialTitle, setTutorialTitle] = useState("");
@@ -1619,7 +1620,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     lastCaptureRef.current = { time: now, ...nextPoint };
     setClickedPercent(nextPoint);
-    setSelectedMarker(null);
     setAdminMessage(`Coordinates captured: X ${nextPoint.x}% / Y ${nextPoint.y}%`);
 
     if (editorMode === "Walking Path") {
@@ -2586,7 +2586,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
       setSelectedMarker(updated);
       setClickedPercent(null);
-      setAdminMessage("Marker moved.");
+      setAdminMessage(`${updated.title} moved to X ${Number(updated.x_percent).toFixed(2)}% / Y ${Number(updated.y_percent).toFixed(2)}%.`);
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to move marker."));
     }
@@ -4875,6 +4875,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </View>
           <MiniMapCanvas
             imageUri={miniMapImage}
+            height={Math.max(280, Math.min(900, Number(miniMapEditorHeight) || 520))}
             canCapturePointer={isAdmin}
             onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini")}
             routeSegments={miniMapRouteSegments}
@@ -4909,6 +4910,18 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               </View>
               <TextInput value={miniMapBackground} onChangeText={setMiniMapBackground} placeholder="Background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
               <AdminImageUploadButton folder="mini-maps" onUploaded={setMiniMapBackground} onMessage={setAdminMessage} />
+              <TextInput value={miniMapEditorHeight} onChangeText={setMiniMapEditorHeight} placeholder="Editor preview height, example 520" placeholderTextColor={colors.muted} style={styles.input} />
+              <View style={styles.storyRoutePicker}>
+                {[
+                  { label: "Compact", value: "360" },
+                  { label: "Normal", value: "520" },
+                  { label: "Large", value: "680" },
+                ].map((option) => (
+                  <Pressable key={option.value} style={[styles.routeChip, miniMapEditorHeight === option.value && styles.routeChipActive]} onPress={() => setMiniMapEditorHeight(option.value)}>
+                    <Text style={styles.routeChipText}>{option.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
               <TextInput value={miniMapDescription} onChangeText={setMiniMapDescription} placeholder="Description" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
               <Pressable style={[styles.secondaryButton, miniMapActive && styles.typeSelected]} onPress={() => setMiniMapActive((value) => !value)}>
                 <Text style={styles.secondaryText}>Active: {miniMapActive ? "true" : "false"}</Text>
