@@ -324,7 +324,8 @@ const styles = StyleSheet.create({
   },
   battlefield: {
     position: "relative",
-    minHeight: 220,
+    width: "100%",
+    aspectRatio: 1,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     borderRadius: 8,
@@ -333,11 +334,12 @@ const styles = StyleSheet.create({
   },
   battlefieldImage: {
     width: "100%",
-    height: 260,
-    resizeMode: "cover",
+    height: "100%",
+    resizeMode: "contain",
   },
   emptyBattlefield: {
-    minHeight: 220,
+    width: "100%",
+    height: "100%",
     alignItems: "center",
     justifyContent: "center",
     padding: 18,

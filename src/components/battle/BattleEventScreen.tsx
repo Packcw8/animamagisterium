@@ -110,7 +110,7 @@ export function BattleEventScreen({
 
   return (
     <Screen>
-      <Frame style={backgroundUri ? [styles.eventScreen, styles.battleScreenFrame, ({ backgroundImage: `url(${backgroundUri})`, backgroundSize: "cover", backgroundPosition: "center" } as never)] : [styles.eventScreen, styles.battleScreenFrame]}>
+      <Frame style={[styles.eventScreen, styles.battleScreenFrame]}>
         <View style={styles.battleBackdrop}>
           {previewMode ? (
             <View style={styles.previewBanner}>
@@ -131,113 +131,120 @@ export function BattleEventScreen({
           </View>
           <View style={styles.battleArena}>
             <View style={styles.stageLayer}>
+              <View style={styles.stageImageViewport}>
+                {backgroundUri ? (
+                  <Image source={{ uri: backgroundUri }} style={styles.stageImage} resizeMode="contain" />
+                ) : (
+                  <View style={styles.emptyStageImage}>
+                    <Text style={styles.copy}>No battleground image selected.</Text>
+                  </View>
+                )}
+                <View style={styles.combatantSurface}>
+                  {visibleOpponents.length > 0 ? (
+                    <>
+                      {visibleOpponents.map((opponent) => {
+                        const name = opponent.enemy?.name || opponent.combatant?.label || "Enemy";
+                        const imageUri = resolveEnemyImageUri(opponent.enemy?.image_url);
+                        const maxHp = Number(opponent.enemy?.health ?? event.enemy_hp) || 30;
+                        const maxStamina = Number(opponent.enemy?.stamina ?? 0) || 0;
+                        const maxMana = Number(opponent.enemy?.magika ?? 0) || 0;
+                        const isSelected = opponent.key === selectedOpponentKey;
+                        const sizePercent = Number(opponent.combatant?.size_percent ?? 14) || 14;
+                        const size = Math.max(48, Math.min(112, sizePercent * 5.6));
+                        const ringSize = Math.max(50, size - 2);
+                        const ringRadius = Math.max(20, ringSize / 2 - 7);
+                        return (
+                          <Pressable
+                            key={`stage-${opponent.key}`}
+                            style={[
+                              styles.stagedCombatant,
+                              isSelected && styles.stagedCombatantSelected,
+                              opponent.hp <= 0 && styles.defeatedCombatant,
+                              {
+                                left: `${opponent.combatant?.x_percent ?? 72}%`,
+                                top: `${opponent.combatant?.y_percent ?? 22}%`,
+                                width: size,
+                                transform: [{ translateX: -size / 2 }, { translateY: -size / 2 }],
+                              } as object,
+                            ]}
+                            onPress={() => onSelectOpponent?.(opponent.key)}
+                          >
+                            <CircularResourceArcs
+                              size={ringSize}
+                              radius={ringRadius}
+                              hpPercent={getPercent(opponent.hp, maxHp)}
+                              staminaPercent={getPercent(opponent.stamina, maxStamina)}
+                              manaPercent={getPercent(opponent.magika, maxMana)}
+                            />
+                            {imageUri ? <Image source={{ uri: imageUri }} style={styles.stagedCombatantImage} /> : <Text style={styles.stagedCombatantFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
+                            <View style={styles.stagedCombatantPlate}>
+                              <Text style={styles.stagedCombatantName} numberOfLines={1}>{name}</Text>
+                            </View>
+                            {isSelected ? <CombatIndicatorStackOverlay indicators={enemyIndicators} /> : null}
+                          </Pressable>
+                        );
+                      })}
+                    </>
+                  ) : (
+                    <View style={styles.fallbackEnemyPosition}>
+                      <CombatPortraitFrame
+                        imageUri={enemyImageUri}
+                        imageFailed={enemyImageFailed}
+                        onImageError={() => setEnemyImageFailed(true)}
+                        fallbackText={enemyName}
+                        name={enemyName}
+                        subtitle={enemySubtitle}
+                        hp={enemyHp}
+                        maxHp={enemyMaxHp}
+                        stamina={enemyStamina}
+                        maxStamina={Number(activeEnemy?.stamina ?? 0) || undefined}
+                        mana={enemyMana}
+                        maxMana={Number(activeEnemy?.magika ?? 0) || undefined}
+                        accent="enemy"
+                        compact
+                        active={!playerTurnActive && !result}
+                        indicators={enemyIndicators}
+                      />
+                      {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
+                    </View>
+                  )}
+                  <View
+                    style={[
+                      styles.stagedPlayer,
+                      {
+                        left: `${playerCombatant?.x_percent ?? fallbackPlayerCombatant.x_percent}%`,
+                        top: `${playerCombatant?.y_percent ?? fallbackPlayerCombatant.y_percent}%`,
+                        transform: [{ translateX: -48 }, { translateY: -48 }],
+                      } as object,
+                    ]}
+                  >
+                    <CombatPortraitFrame
+                      imageUri={character.portrait_url}
+                      imageFailed={playerImageFailed}
+                      onImageError={() => setPlayerImageFailed(true)}
+                      fallbackText={character.name}
+                      name={character.name}
+                      subtitle={character.origin || "Adventurer"}
+                      hp={playerHp}
+                      maxHp={resources.maxHp}
+                      stamina={stamina}
+                      maxStamina={resources.maxStamina}
+                      mana={magicka}
+                      maxMana={resources.maxMagicka}
+                      accent="player"
+                      compact
+                      active={playerTurnActive}
+                      indicators={playerIndicators}
+                    />
+                  </View>
+                </View>
+              </View>
               <View style={styles.enemyIntentBadge}>
                 <Text style={styles.enemyIntentLabel}>Intent</Text>
                 <Text style={styles.enemyIntentText} numberOfLines={1}>{enemyIntent}</Text>
               </View>
-              <View style={styles.stageCenterText}>
-                <Text style={styles.stageHint}>{playerTurnActive ? "Choose an ability, then strike the selected target." : "Enemy action resolving."}</Text>
-              </View>
-              <View style={styles.combatantSurface}>
-                {visibleOpponents.length > 0 ? (
-                  <>
-                    {visibleOpponents.map((opponent) => {
-                      const name = opponent.enemy?.name || opponent.combatant?.label || "Enemy";
-                      const imageUri = resolveEnemyImageUri(opponent.enemy?.image_url);
-                      const maxHp = Number(opponent.enemy?.health ?? event.enemy_hp) || 30;
-                      const maxStamina = Number(opponent.enemy?.stamina ?? 0) || 0;
-                      const maxMana = Number(opponent.enemy?.magika ?? 0) || 0;
-                      const isSelected = opponent.key === selectedOpponentKey;
-                      const sizePercent = Number(opponent.combatant?.size_percent ?? 14) || 14;
-                      const size = Math.max(54, Math.min(124, sizePercent * 6.2));
-                      const ringSize = Math.max(58, size - 2);
-                      const ringRadius = Math.max(22, ringSize / 2 - 7);
-                      return (
-                        <Pressable
-                          key={`stage-${opponent.key}`}
-                          style={[
-                            styles.stagedCombatant,
-                            isSelected && styles.stagedCombatantSelected,
-                            opponent.hp <= 0 && styles.defeatedCombatant,
-                            {
-                              left: `${opponent.combatant?.x_percent ?? 72}%`,
-                              top: `${opponent.combatant?.y_percent ?? 22}%`,
-                              width: size,
-                              transform: [{ translateX: -size / 2 }, { translateY: -size / 2 }],
-                            } as object,
-                          ]}
-                          onPress={() => onSelectOpponent?.(opponent.key)}
-                        >
-                          <CircularResourceArcs
-                            size={ringSize}
-                            radius={ringRadius}
-                            hpPercent={getPercent(opponent.hp, maxHp)}
-                            staminaPercent={getPercent(opponent.stamina, maxStamina)}
-                            manaPercent={getPercent(opponent.magika, maxMana)}
-                          />
-                          {imageUri ? <Image source={{ uri: imageUri }} style={styles.stagedCombatantImage} /> : <Text style={styles.stagedCombatantFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
-                          <View style={styles.stagedCombatantPlate}>
-                            <Text style={styles.stagedCombatantName} numberOfLines={1}>{name}</Text>
-                          </View>
-                          {isSelected ? <CombatIndicatorStackOverlay indicators={enemyIndicators} /> : null}
-                        </Pressable>
-                      );
-                    })}
-                  </>
-                ) : (
-                  <>
-                    <CombatPortraitFrame
-                      imageUri={enemyImageUri}
-                      imageFailed={enemyImageFailed}
-                      onImageError={() => setEnemyImageFailed(true)}
-                      fallbackText={enemyName}
-                      name={enemyName}
-                      subtitle={enemySubtitle}
-                      hp={enemyHp}
-                      maxHp={enemyMaxHp}
-                      stamina={enemyStamina}
-                      maxStamina={Number(activeEnemy?.stamina ?? 0) || undefined}
-                      mana={enemyMana}
-                      maxMana={Number(activeEnemy?.magika ?? 0) || undefined}
-                      accent="enemy"
-                      compact
-                      active={!playerTurnActive && !result}
-                      indicators={enemyIndicators}
-                    />
-                    {enemyImageUri && enemyImageFailed ? <Text style={styles.errorText}>Enemy image failed to load.</Text> : null}
-                  </>
-                )}
-                <View
-                  style={[
-                    styles.stagedPlayer,
-                    {
-                      left: `${playerCombatant?.x_percent ?? fallbackPlayerCombatant.x_percent}%`,
-                      top: `${playerCombatant?.y_percent ?? fallbackPlayerCombatant.y_percent}%`,
-                      transform: [{ translateX: -52 }, { translateY: -52 }],
-                    } as object,
-                  ]}
-                >
-                  <CombatPortraitFrame
-                    imageUri={character.portrait_url}
-                    imageFailed={playerImageFailed}
-                    onImageError={() => setPlayerImageFailed(true)}
-                    fallbackText={character.name}
-                    name={character.name}
-                    subtitle={character.origin || "Adventurer"}
-                    hp={playerHp}
-                    maxHp={resources.maxHp}
-                    stamina={stamina}
-                    maxStamina={resources.maxStamina}
-                    mana={magicka}
-                    maxMana={resources.maxMagicka}
-                    accent="player"
-                    compact
-                    active={playerTurnActive}
-                    indicators={playerIndicators}
-                  />
-                </View>
-              </View>
             </View>
+            <Text style={styles.stageHint}>{playerTurnActive ? "Choose an ability, then strike the selected target." : "Enemy action resolving."}</Text>
           </View>
           <View style={styles.abilityGrid}>
             {equippedAbilities.map((ability, index) => {
@@ -455,23 +462,42 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   battleArena: {
-    minHeight: 390,
     gap: 8,
     paddingHorizontal: 0,
     paddingVertical: 4,
   },
   stageLayer: {
     position: "relative",
-    minHeight: 390,
     borderRadius: 14,
     overflow: "visible",
   },
+  stageImageViewport: {
+    position: "relative",
+    width: "100%",
+    aspectRatio: 1,
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(232,181,94,0.24)",
+    backgroundColor: "rgba(2,5,5,0.86)",
+  },
+  stageImage: {
+    width: "100%",
+    height: "100%",
+  },
+  emptyStageImage: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
   enemyIntentBadge: {
     position: "absolute",
-    right: 0,
-    top: 0,
+    right: 8,
+    top: 8,
     zIndex: 6,
-    maxWidth: 184,
+    maxWidth: 164,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255,180,170,0.24)",
@@ -479,26 +505,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     backgroundColor: "rgba(0,0,0,0.42)",
   },
-  stageCenterText: {
-    position: "absolute",
-    left: "24%",
-    right: "24%",
-    top: "48%",
-    zIndex: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 48,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(232,181,94,0.18)",
-    backgroundColor: "rgba(0,0,0,0.18)",
-    paddingHorizontal: 12,
-  },
   stageHint: {
     color: colors.muted,
     fontSize: 11,
     fontWeight: "900",
     textAlign: "center",
+    paddingHorizontal: 10,
   },
   combatantSurface: {
     position: "absolute",
@@ -510,6 +522,11 @@ const styles = StyleSheet.create({
   stagedPlayer: {
     position: "absolute",
     zIndex: 4,
+  },
+  fallbackEnemyPosition: {
+    position: "absolute",
+    right: "8%",
+    top: "12%",
   },
   enemyIntentLabel: {
     color: "#ffb4aa",
@@ -602,7 +619,7 @@ const styles = StyleSheet.create({
   abilityGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 7,
+    gap: 6,
   },
   battleUtilityRow: {
     flexDirection: "row",
