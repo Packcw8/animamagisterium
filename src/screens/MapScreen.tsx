@@ -25,6 +25,7 @@ import { MarkerAdminList } from "../components/map/MarkerAdminList";
 import { GameToast, type GameToastData, type GameToastReward } from "../components/map/GameToast";
 import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
+import { MarkerStyleEditor } from "../components/map/MarkerStyleEditor";
 import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
 import { WorldMapSettingsPanel } from "../components/map/WorldMapSettingsPanel";
 import {
@@ -375,6 +376,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerIconLabel, setMarkerIconLabel] = useState("");
   const [markerIconImage, setMarkerIconImage] = useState("");
   const [markerIconColor, setMarkerIconColor] = useState("");
+  const [markerSize, setMarkerSize] = useState("100");
   const [markerInteractionRadius, setMarkerInteractionRadius] = useState("4");
   const [markerInteractable, setMarkerInteractable] = useState(true);
   const [markerRewardXp, setMarkerRewardXp] = useState("0");
@@ -1701,6 +1703,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markerIconLabel,
       markerIconImage,
       markerIconColor,
+      markerSize,
       markerLockType,
       markerLockMessage,
       markerStoryOrder,
@@ -1758,6 +1761,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerIconLabel(marker.icon_label ?? "");
     setMarkerIconImage(marker.icon_image_url ?? "");
     setMarkerIconColor(marker.icon_color ?? "");
+    setMarkerSize(String(marker.marker_size ?? 100));
     setMarkerLockType(marker.lock_type ?? "public");
     setMarkerLockMessage(marker.lock_message ?? "");
     setMarkerStoryOrder(String(marker.story_order ?? 0));
@@ -1835,6 +1839,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerIconLabel(marker.icon_label ?? "");
     setMarkerIconImage(marker.icon_image_url ?? "");
     setMarkerIconColor(marker.icon_color ?? "");
+    setMarkerSize(String(marker.marker_size ?? 100));
     setMarkerLockType(marker.lock_type ?? "public");
     setMarkerLockMessage(marker.lock_message ?? "");
     setMarkerStoryOrder(String(marker.story_order ?? 0));
@@ -4995,6 +5000,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerIconImage={setMarkerIconImage}
               markerIconColor={markerIconColor}
               setMarkerIconColor={setMarkerIconColor}
+              markerSize={markerSize}
+              setMarkerSize={setMarkerSize}
               markerShopImage={markerShopImage}
               setMarkerShopImage={setMarkerShopImage}
               markerShopBackground={markerShopBackground}
@@ -5515,10 +5522,18 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <AdminImageUploadButton folder="marker-backgrounds" onUploaded={setMarkerSceneBackground} onMessage={setAdminMessage} />
               <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
               <AdminImageUploadButton folder="marker-npcs" onUploaded={setMarkerNpcImage} onMessage={setAdminMessage} />
-              <TextInput value={markerIconLabel} onChangeText={setMarkerIconLabel} placeholder="Marker icon text, example MKT" placeholderTextColor={colors.muted} style={styles.input} />
-              <TextInput value={markerIconImage} onChangeText={setMarkerIconImage} placeholder="Marker icon image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
-              <AdminImageUploadButton folder="marker-icons" onUploaded={setMarkerIconImage} onMessage={setAdminMessage} />
-              <TextInput value={markerIconColor} onChangeText={setMarkerIconColor} placeholder="Marker icon color, example #d9a441" placeholderTextColor={colors.muted} style={styles.input} />
+              <MarkerStyleEditor
+                iconLabel={markerIconLabel}
+                iconImage={markerIconImage}
+                iconColor={markerIconColor}
+                markerSize={markerSize}
+                uploadFolder="marker-icons"
+                onChangeIconLabel={setMarkerIconLabel}
+                onChangeIconImage={setMarkerIconImage}
+                onChangeIconColor={setMarkerIconColor}
+                onChangeMarkerSize={setMarkerSize}
+                onUploadMessage={setAdminMessage}
+              />
               <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
               <LockPicker label="Marker lock" value={markerLockType} onSelect={setMarkerLockType} />
               {markerLockType !== "public" ? <TextInput value={markerLockMessage} onChangeText={setMarkerLockMessage} placeholder="Lock message shown to players" placeholderTextColor={colors.muted} style={styles.input} /> : null}
@@ -6126,6 +6141,8 @@ function MiniMapMarkerAdminForm({
   setMarkerIconImage,
   markerIconColor,
   setMarkerIconColor,
+  markerSize,
+  setMarkerSize,
   markerShopImage,
   setMarkerShopImage,
   markerShopBackground,
@@ -6242,6 +6259,8 @@ function MiniMapMarkerAdminForm({
   setMarkerIconImage: (value: string) => void;
   markerIconColor: string;
   setMarkerIconColor: (value: string) => void;
+  markerSize: string;
+  setMarkerSize: (value: string) => void;
   markerShopImage: string;
   setMarkerShopImage: (value: string) => void;
   markerShopBackground: string;
@@ -6356,10 +6375,18 @@ function MiniMapMarkerAdminForm({
       <AdminImageUploadButton folder="mini-marker-backgrounds" onUploaded={setMarkerSceneBackground} onMessage={() => undefined} />
       <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
       <AdminImageUploadButton folder="mini-marker-npcs" onUploaded={setMarkerNpcImage} onMessage={() => undefined} />
-      <TextInput value={markerIconLabel} onChangeText={setMarkerIconLabel} placeholder="Marker icon text, example MKT" placeholderTextColor={colors.muted} style={styles.input} />
-      <TextInput value={markerIconImage} onChangeText={setMarkerIconImage} placeholder="Marker icon image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
-      <AdminImageUploadButton folder="mini-marker-icons" onUploaded={setMarkerIconImage} onMessage={() => undefined} />
-      <TextInput value={markerIconColor} onChangeText={setMarkerIconColor} placeholder="Marker icon color, example #d9a441" placeholderTextColor={colors.muted} style={styles.input} />
+      <MarkerStyleEditor
+        iconLabel={markerIconLabel}
+        iconImage={markerIconImage}
+        iconColor={markerIconColor}
+        markerSize={markerSize}
+        uploadFolder="mini-marker-icons"
+        onChangeIconLabel={setMarkerIconLabel}
+        onChangeIconImage={setMarkerIconImage}
+        onChangeIconColor={setMarkerIconColor}
+        onChangeMarkerSize={setMarkerSize}
+        onUploadMessage={onMessage}
+      />
       <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
       <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
         <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>

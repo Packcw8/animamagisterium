@@ -15,6 +15,7 @@ export type MarkerPayloadState = {
   markerIconLabel: string;
   markerIconImage: string;
   markerIconColor: string;
+  markerSize: string;
   markerLockType: MapMarker["lock_type"];
   markerLockMessage: string;
   markerStoryOrder: string;
@@ -66,6 +67,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     icon_label: state.markerIconLabel.trim() || null,
     icon_image_url: state.markerIconImage.trim() || null,
     icon_color: state.markerIconColor.trim() || null,
+    marker_size: Math.max(50, Math.min(220, Number(state.markerSize) || 100)),
     lock_type: state.markerLockType,
     lock_message: state.markerLockMessage.trim() || null,
     story_order: Number(state.markerStoryOrder) || 0,
@@ -119,6 +121,7 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     icon_label: settings.icon_label,
     icon_image_url: settings.icon_image_url,
     icon_color: settings.icon_color,
+    marker_size: settings.marker_size,
     lock_type: settings.lock_type,
     lock_message: settings.lock_message,
     story_order: settings.story_order,

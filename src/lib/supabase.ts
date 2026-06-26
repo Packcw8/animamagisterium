@@ -670,6 +670,7 @@ export type Tables = {
     icon_label: string | null;
     icon_image_url: string | null;
     icon_color: string | null;
+    marker_size: number;
     lock_type: "public" | "story_locked" | "quest_locked";
     lock_message: string | null;
     story_order: number;

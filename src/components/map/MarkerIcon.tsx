@@ -6,6 +6,7 @@ export type MarkerIconSource = {
   icon_label?: string | null;
   icon_image_url?: string | null;
   icon_color?: string | null;
+  marker_size?: number | null;
 };
 
 export function MarkerIcon({ marker, compact = false, mini = false }: { marker: MarkerIconSource; compact?: boolean; mini?: boolean }) {
@@ -15,13 +16,17 @@ export function MarkerIcon({ marker, compact = false, mini = false }: { marker: 
   const iconStyle = mini ? styles.miniMapMarkerIcon : compact ? styles.legendIcon : styles.markerIcon;
   const imageStyle = mini ? styles.miniMapMarkerIconImage : compact ? styles.legendIconImage : styles.markerIconImage;
   const textStyle = mini ? styles.miniMapMarkerIconText : compact ? styles.legendIconText : styles.markerIconText;
+  const sizeScale = compact ? 1 : Math.max(0.5, Math.min(2.2, Number(marker.marker_size ?? 100) / 100 || 1));
+  const baseIconSize = mini ? 18 : compact ? 34 : 25;
+  const iconSize = Math.round(baseIconSize * sizeScale);
+  const baseFontSize = mini ? 6 : compact ? 11 : 8;
 
   return (
-    <View style={[iconStyle, { borderColor: iconColor } as object]}>
+    <View style={[iconStyle, { borderColor: iconColor, width: iconSize, height: iconSize, borderRadius: iconSize / 2 } as object]}>
       {iconUri ? (
         <Image source={{ uri: iconUri }} style={imageStyle} />
       ) : (
-        <Text style={[textStyle, { color: iconColor } as object]}>{iconText}</Text>
+        <Text style={[textStyle, { color: iconColor, fontSize: Math.max(6, Math.round(baseFontSize * sizeScale)) } as object]}>{iconText}</Text>
       )}
     </View>
   );

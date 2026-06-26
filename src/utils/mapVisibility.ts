@@ -58,12 +58,16 @@ export function getMarkerRenderStyle(marker: MapMarker, playerPosition: PercentP
   const distance = getPercentDistance(playerPosition, markerPosition);
   const scale = distance <= radius * 0.65 ? 1.48 : distance <= radius ? 1.34 : distance <= radius * 1.75 ? 1.16 : 1;
   const zIndex = distance <= radius ? 45 : 15;
+  const sizeScale = Math.max(0.5, Math.min(2.2, Number(marker.marker_size ?? 100) / 100 || 1));
+  const renderedSize = markerSize * sizeScale;
 
   return {
     left: `${markerPosition.x}%`,
     top: `${markerPosition.y}%`,
+    width: renderedSize,
+    height: renderedSize,
     zIndex,
-    transform: [{ translateX: -(markerSize / 2) }, { translateY: -(markerSize / 2) }, { scale }],
+    transform: [{ translateX: -(renderedSize / 2) }, { translateY: -(renderedSize / 2) }, { scale }],
   } as object;
 }
 
