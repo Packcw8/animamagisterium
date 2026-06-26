@@ -1028,8 +1028,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    if (activeMarkerEventId && activeEvent.id === getSyntheticMarkerEventId(activeMarkerEventId)) {
+      void loadDialogueForMarker(activeMarkerEventId);
+      return;
+    }
+
     void loadDialogueForEvent(activeEvent);
-  }, [activeEvent]);
+  }, [activeEvent, activeMarkerEventId]);
 
   async function loadMap() {
     setMapReady(false);
@@ -6560,7 +6565,7 @@ function createMarkerDialogueEvent(marker: MapMarker): MapEvent {
   const now = new Date().toISOString();
 
   return {
-    id: `marker-${marker.id}`,
+    id: getSyntheticMarkerEventId(marker.id),
     event_type: "dialogue",
     title: marker.quest_title || marker.title,
     route_id: marker.linked_route_id,
@@ -6595,6 +6600,10 @@ function createMarkerDialogueEvent(marker: MapMarker): MapEvent {
     created_at: now,
     updated_at: now,
   };
+}
+
+function getSyntheticMarkerEventId(markerId: string) {
+  return `marker-${markerId}`;
 }
 
 function isBattleMarkerType(type: string) {
