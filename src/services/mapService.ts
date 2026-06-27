@@ -26,6 +26,7 @@ export type StoryMarkerCompletion = Tables["story_marker_completions"];
 export type StoryMarkerStart = Tables["story_marker_starts"];
 export type StoryDialogueNode = Tables["story_dialogue_nodes"];
 export type StoryDialogueChoice = Tables["story_dialogue_choices"];
+export type DialogueChoiceReward = Tables["dialogue_choice_rewards"];
 export type PlayerStoryFlag = Tables["player_story_flags"];
 export type PlayerTutorialCompletion = Tables["player_tutorial_completions"];
 export type PlayerAttributeCheck = Tables["player_attribute_checks"];
@@ -1375,6 +1376,91 @@ export async function applyRewards(
   return { claimed: true, message: formatRewardMessage(xp, gold, reward.itemId ? quantity : 0, Boolean(reward.fullHeal)), currentHealth: healedHealth };
 }
 
+export async function applyDialogueChoiceRewards(
+  character: CharacterWithDetails,
+  choice: StoryDialogueChoice,
+  rewards: DialogueChoiceReward[],
+) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to claim rewards.");
+  }
+
+  const { data: existing, error: existingError } = await supabase
+    .from("marker_reward_claims")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("choice_id", choice.id)
+    .limit(1);
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  if ((existing ?? []).length > 0) {
+    return { claimed: false, message: "Reward already claimed.", xp: 0, gold: 0, items: [] as Array<{ itemId: string; quantity: number }> };
+  }
+
+  const xp =
+    Math.max(0, Number(choice.reward_xp) || 0) +
+    rewards
+      .filter((reward) => reward.reward_type === "xp")
+      .reduce((sum, reward) => sum + Math.max(0, Number(reward.amount) || 0), 0);
+  const gold =
+    Math.max(0, Number(choice.reward_gold) || 0) +
+    rewards
+      .filter((reward) => reward.reward_type === "gold")
+      .reduce((sum, reward) => sum + Math.max(0, Number(reward.amount) || 0), 0);
+  const items: Array<{ itemId: string; quantity: number }> = [];
+
+  if (choice.reward_item_id) {
+    items.push({
+      itemId: choice.reward_item_id,
+      quantity: Math.max(1, Number(choice.reward_item_quantity) || 1),
+    });
+  }
+
+  rewards
+    .filter((reward) => reward.reward_type === "item" && reward.item_id)
+    .forEach((reward) => {
+      items.push({
+        itemId: reward.item_id as string,
+        quantity: Math.max(1, Number(reward.quantity) || 1),
+      });
+    });
+
+  if (xp > 0 || gold > 0) {
+    await applyCharacterXpGold(character, xp, gold);
+  }
+
+  for (const item of items) {
+    await grantItemToCharacter(character.id, item.itemId, item.quantity);
+  }
+
+  const { error } = await supabase.from("marker_reward_claims").insert({
+    user_id: user.id,
+    character_id: character.id,
+    choice_id: choice.id,
+  });
+
+  if (error && error.code !== "23505") {
+    throw error;
+  }
+
+  const itemQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
+  return {
+    claimed: true,
+    message: formatRewardMessage(xp, gold, itemQuantity),
+    xp,
+    gold,
+    items,
+  };
+}
+
 export async function buyMarketItem(character: CharacterWithDetails, marketItem: MarkerMarketItem) {
   const {
     data: { user },
@@ -1567,6 +1653,26 @@ export async function getDialogueChoices(nodeIds: string[]) {
   }
 
   return (data ?? []) as StoryDialogueChoice[];
+}
+
+export async function getDialogueChoiceRewards(choiceIds: string[]) {
+  if (choiceIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("dialogue_choice_rewards")
+    .select("*")
+    .in("choice_id", choiceIds)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("[map] dialogue choice rewards unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as DialogueChoiceReward[];
 }
 
 export async function createDialogueNode(input: Omit<StoryDialogueNode, "id" | "created_at" | "updated_at">) {

@@ -579,6 +579,17 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  dialogue_choice_rewards: {
+    id: string;
+    choice_id: string;
+    reward_type: "gold" | "xp" | "item";
+    item_id: string | null;
+    quantity: number;
+    amount: number;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+  };
   player_story_flags: {
     id: string;
     user_id: string;

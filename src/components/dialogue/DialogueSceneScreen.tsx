@@ -4,7 +4,8 @@ import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
 import { resolveEnemyImageUri, type NpcDefinition } from "../../services/combatAdminService";
-import type { MapEvent, StoryDialogueChoice, StoryDialogueNode } from "../../services/mapService";
+import { resolveInventoryImageUri, type ItemDefinition } from "../../services/inventoryService";
+import type { DialogueChoiceReward, MapEvent, StoryDialogueChoice, StoryDialogueNode } from "../../services/mapService";
 import { getAttributeCheckSummary, getDialogueSceneState, type DialogueChoiceAvailability } from "../../utils/dialogueFlow";
 
 type DialogueSceneScreenProps = {
@@ -20,6 +21,8 @@ type DialogueSceneScreenProps = {
   onEndChat: (completeEvent: boolean) => void;
   onExitPreview?: () => void;
   choiceAvailability?: Record<string, DialogueChoiceAvailability>;
+  choiceRewards?: DialogueChoiceReward[];
+  itemDefinitions?: ItemDefinition[];
 };
 
 export function DialogueSceneScreen({
@@ -35,6 +38,8 @@ export function DialogueSceneScreen({
   onEndChat,
   onExitPreview,
   choiceAvailability = {},
+  choiceRewards = [],
+  itemDefinitions = [],
 }: DialogueSceneScreenProps) {
   const { activeNode, nodeChoices, legacyChoices, npcName, npcPortrait, backgroundImageUrl, dialogueText } =
     getDialogueSceneState({ event, nodes, choices, npcs, activeNodeId });
@@ -73,6 +78,7 @@ export function DialogueSceneScreen({
             <>
               {visibleNodeChoices.map((choice) => {
                 const availability = choiceAvailability[choice.id] ?? { met: true, hidden: false, disabled: false, message: null };
+                const rewardPreview = getChoiceRewardPreview(choice, choiceRewards, itemDefinitions);
                 return (
                   <Pressable
                     key={choice.id}
@@ -82,6 +88,19 @@ export function DialogueSceneScreen({
                   >
                     {getAttributeCheckSummary(choice) ? <Text style={styles.checkBadge}>{getAttributeCheckSummary(choice)}</Text> : null}
                     <Text style={[styles.primaryText, availability.disabled && styles.lockedText]}>{choice.button_text}</Text>
+                    {rewardPreview.length > 0 ? (
+                      <View style={styles.rewardPreview}>
+                        {rewardPreview.map((reward) => (
+                          <View key={reward.key} style={styles.rewardChip}>
+                            {reward.imageUri ? <Image source={{ uri: reward.imageUri }} style={styles.rewardImage} /> : null}
+                            <View style={styles.rewardTextWrap}>
+                              <Text style={styles.rewardName}>{reward.label}</Text>
+                              {reward.quantity ? <Text style={styles.rewardQuantity}>x{reward.quantity}</Text> : null}
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
                     {availability.disabled && availability.message ? <Text style={styles.requirementText}>{availability.message}</Text> : null}
                   </Pressable>
                 );
@@ -108,6 +127,54 @@ export function DialogueSceneScreen({
       </Frame>
     </Screen>
   );
+}
+
+function getChoiceRewardPreview(choice: StoryDialogueChoice, rewards: DialogueChoiceReward[], itemDefinitions: ItemDefinition[]) {
+  if (choice.action !== "give_reward") {
+    return [];
+  }
+
+  const preview: Array<{ key: string; label: string; quantity?: number; imageUri?: string | null }> = [];
+
+  const legacyGold = Math.max(0, Number(choice.reward_gold) || 0);
+  const legacyXp = Math.max(0, Number(choice.reward_xp) || 0);
+  if (legacyGold > 0) {
+    preview.push({ key: `${choice.id}-legacy-gold`, label: `${legacyGold} Gold` });
+  }
+  if (legacyXp > 0) {
+    preview.push({ key: `${choice.id}-legacy-xp`, label: `${legacyXp} XP` });
+  }
+  if (choice.reward_item_id) {
+    const item = itemDefinitions.find((definition) => definition.id === choice.reward_item_id);
+    preview.push({
+      key: `${choice.id}-legacy-item`,
+      label: item?.name ?? choice.reward_item ?? "Item",
+      quantity: Math.max(1, Number(choice.reward_item_quantity) || 1),
+      imageUri: item?.image_path ? resolveInventoryImageUri(item.image_path) : null,
+    });
+  }
+
+  rewards
+    .filter((reward) => reward.choice_id === choice.id)
+    .forEach((reward) => {
+      if (reward.reward_type === "gold") {
+        preview.push({ key: reward.id, label: `${Math.max(0, Number(reward.amount) || 0)} Gold` });
+        return;
+      }
+      if (reward.reward_type === "xp") {
+        preview.push({ key: reward.id, label: `${Math.max(0, Number(reward.amount) || 0)} XP` });
+        return;
+      }
+      const item = itemDefinitions.find((definition) => definition.id === reward.item_id);
+      preview.push({
+        key: reward.id,
+        label: item?.name ?? "Item",
+        quantity: Math.max(1, Number(reward.quantity) || 1),
+        imageUri: item?.image_path ? resolveInventoryImageUri(item.image_path) : null,
+      });
+    });
+
+  return preview;
 }
 
 function DialogueTypewriterText({ text }: { text: string }) {
@@ -217,6 +284,47 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gold,
     paddingHorizontal: 14,
     paddingVertical: 10,
+  },
+  rewardPreview: {
+    width: "100%",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+    justifyContent: "center",
+  },
+  rewardChip: {
+    minHeight: 44,
+    maxWidth: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(17, 11, 4, 0.25)",
+    backgroundColor: "rgba(17, 11, 4, 0.16)",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  rewardImage: {
+    width: 34,
+    height: 34,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(17, 11, 4, 0.25)",
+  },
+  rewardTextWrap: {
+    minWidth: 0,
+  },
+  rewardName: {
+    color: "#110b04",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  rewardQuantity: {
+    color: "#2b1a0a",
+    fontSize: 11,
+    fontWeight: "900",
   },
   primaryText: {
     color: "#110b04",
