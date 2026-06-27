@@ -23,6 +23,8 @@ type DialogueSceneScreenProps = {
   choiceAvailability?: Record<string, DialogueChoiceAvailability>;
   choiceRewards?: DialogueChoiceReward[];
   itemDefinitions?: ItemDefinition[];
+  pendingRewardChoice?: StoryDialogueChoice | null;
+  onClaimPendingReward?: (choice: StoryDialogueChoice) => void;
 };
 
 export function DialogueSceneScreen({
@@ -40,6 +42,8 @@ export function DialogueSceneScreen({
   choiceAvailability = {},
   choiceRewards = [],
   itemDefinitions = [],
+  pendingRewardChoice = null,
+  onClaimPendingReward,
 }: DialogueSceneScreenProps) {
   const { activeNode, nodeChoices, legacyChoices, npcName, npcPortrait, backgroundImageUrl, dialogueText } =
     getDialogueSceneState({ event, nodes, choices, npcs, activeNodeId });
@@ -47,14 +51,9 @@ export function DialogueSceneScreen({
     const availability = choiceAvailability[choice.id] ?? { met: true, hidden: false, disabled: false, message: null };
     return !availability.hidden;
   });
-  const rewardChoicePreviews = visibleNodeChoices
-    .filter((choice) => choice.action === "give_reward")
-    .map((choice) => ({
-      choiceId: choice.id,
-      buttonText: choice.button_text,
-      rewards: getChoiceRewardPreview(choice, choiceRewards, itemDefinitions),
-    }))
-    .filter((preview) => preview.rewards.length > 0);
+  const pendingRewardPreview = pendingRewardChoice
+    ? getChoiceRewardPreview(pendingRewardChoice, choiceRewards, itemDefinitions)
+    : [];
 
   return (
     <Screen>
@@ -81,26 +80,26 @@ export function DialogueSceneScreen({
             {line}
           </Text>
         ))}
-        {rewardChoicePreviews.length > 0 ? (
+        {pendingRewardChoice && pendingRewardPreview.length > 0 ? (
           <View style={styles.lootPanel}>
             <Text style={styles.lootEyebrow}>Found Supplies</Text>
-            <Text style={styles.lootTitle}>Choose what to take</Text>
-            {rewardChoicePreviews.map((preview) => (
-              <View key={preview.choiceId} style={styles.lootGroup}>
-                <Text style={styles.lootActionLabel}>{preview.buttonText}</Text>
-                <View style={styles.rewardPreview}>
-                  {preview.rewards.map((reward) => (
-                    <View key={reward.key} style={styles.rewardChip}>
-                      {reward.imageUri ? <Image source={{ uri: reward.imageUri }} style={styles.rewardImage} /> : <View style={styles.rewardIconFallback} />}
-                      <View style={styles.rewardTextWrap}>
-                        <Text style={styles.rewardName}>{reward.label}</Text>
-                        {reward.quantity ? <Text style={styles.rewardQuantity}>x{reward.quantity}</Text> : null}
-                      </View>
+            <Text style={styles.lootTitle}>Take what you found</Text>
+            <View style={styles.lootGroup}>
+              <View style={styles.rewardPreview}>
+                {pendingRewardPreview.map((reward) => (
+                  <View key={reward.key} style={styles.rewardChip}>
+                    {reward.imageUri ? <Image source={{ uri: reward.imageUri }} style={styles.rewardImage} /> : <View style={styles.rewardIconFallback} />}
+                    <View style={styles.rewardTextWrap}>
+                      <Text style={styles.rewardName}>{reward.label}</Text>
+                      {reward.quantity ? <Text style={styles.rewardQuantity}>x{reward.quantity}</Text> : null}
                     </View>
-                  ))}
-                </View>
+                  </View>
+                ))}
               </View>
-            ))}
+              <Pressable style={styles.takeButton} onPress={() => onClaimPendingReward?.(pendingRewardChoice)}>
+                <Text style={styles.takeButtonText}>Take Items</Text>
+              </Pressable>
+            </View>
           </View>
         ) : null}
         <View style={styles.choiceStack}>
@@ -311,10 +310,6 @@ const styles = StyleSheet.create({
   lootGroup: {
     gap: 8,
   },
-  lootActionLabel: {
-    color: colors.text,
-    fontWeight: "900",
-  },
   choiceStack: {
     gap: 10,
   },
@@ -375,6 +370,20 @@ const styles = StyleSheet.create({
     color: colors.gold,
     fontSize: 11,
     fontWeight: "900",
+  },
+  takeButton: {
+    minHeight: 48,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.gold,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  takeButtonText: {
+    color: "#110b04",
+    fontWeight: "900",
+    textAlign: "center",
   },
   primaryText: {
     color: "#110b04",

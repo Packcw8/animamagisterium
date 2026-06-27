@@ -254,6 +254,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [dialogueChoices, setDialogueChoices] = useState<StoryDialogueChoice[]>([]);
   const [dialogueChoiceRewards, setDialogueChoiceRewards] = useState<DialogueChoiceReward[]>([]);
   const [claimedChoiceRewardIds, setClaimedChoiceRewardIds] = useState<Set<string>>(new Set());
+  const [pendingRewardChoice, setPendingRewardChoice] = useState<StoryDialogueChoice | null>(null);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [dialogueLog, setDialogueLog] = useState<string[]>([]);
   const {
@@ -1044,6 +1045,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setDialogueNodes([]);
       setDialogueChoices([]);
       setDialogueChoiceRewards([]);
+      setPendingRewardChoice(null);
       setActiveNodeId(null);
       setDialogueLog([]);
       return;
@@ -3112,6 +3114,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setDialogueChoices(choices);
     setDialogueChoiceRewards(rewards);
     setClaimedChoiceRewardIds(claimedRewardChoices);
+    setPendingRewardChoice(null);
     setActiveNodeId(startNode?.id ?? null);
     setDialogueLog([]);
   }
@@ -3126,6 +3129,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setDialogueChoices(choices);
     setDialogueChoiceRewards(rewards);
     setClaimedChoiceRewardIds(claimedRewardChoices);
+    setPendingRewardChoice(null);
     setActiveNodeId(startNode?.id ?? null);
     setDialogueLog([]);
   }
@@ -3179,6 +3183,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setAdminPreviewMode(null);
     activeBattleRouteRef.current = null;
     resetBattleState();
+    setPendingRewardChoice(null);
     setDialogueLog([]);
     setDialogueChoiceRewards([]);
   }
@@ -3432,6 +3437,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    if (pendingRewardChoice && choice.id !== pendingRewardChoice.id) {
+      setPendingRewardChoice(null);
+    }
+
     if (choice.player_dialogue_text) {
       setDialogueLog((current) => [`You: ${choice.player_dialogue_text}`, ...current].slice(0, 4));
     }
@@ -3533,49 +3542,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (choice.action === "give_reward") {
-      const configuredRewards = dialogueChoiceRewards.filter((reward) => reward.choice_id === choice.id);
       if (adminPreviewMode) {
-        const previewXp =
-          Math.max(0, Number(choice.reward_xp) || 0) +
-          configuredRewards.filter((reward) => reward.reward_type === "xp").reduce((sum, reward) => sum + Math.max(0, Number(reward.amount) || 0), 0);
-        const previewGold =
-          Math.max(0, Number(choice.reward_gold) || 0) +
-          configuredRewards.filter((reward) => reward.reward_type === "gold").reduce((sum, reward) => sum + Math.max(0, Number(reward.amount) || 0), 0);
-        const previewItemCount =
-          (choice.reward_item_id ? 1 : 0) +
-          configuredRewards.filter((reward) => reward.reward_type === "item" && reward.item_id).length;
-        const previewParts = [
-          previewXp > 0 ? `${previewXp} XP` : null,
-          previewGold > 0 ? `${previewGold} gold` : null,
-          previewItemCount > 0 ? `${previewItemCount} item${previewItemCount === 1 ? "" : "s"}` : null,
-        ].filter(Boolean);
-        setDialogueLog((current) => [`Preview reward: ${previewParts.length > 0 ? previewParts.join(", ") : "no configured reward"}.`, ...current].slice(0, 4));
         if (choice.next_node_id && dialogueNodes.some((node) => node.id === choice.next_node_id)) {
           setActiveNodeId(choice.next_node_id);
         }
+        setPendingRewardChoice(choice);
         return;
       }
 
-      const rewardResult = await applyDialogueChoiceRewards(
-        character,
-        choice,
-        configuredRewards,
-      );
-      setDialogueLog((current) => [rewardResult.message, ...current].slice(0, 4));
-      setClaimedChoiceRewardIds((current) => new Set([...current, choice.id]));
-      if (rewardResult.claimed) {
-        const itemRewards = rewardResult.items.map((item) => ({
-          label: getItemName(itemDefinitions, item.itemId),
-          quantity: item.quantity,
-        }));
-        showGameToast({
-          title: "Reward Received",
-          message: "Your dialogue choice granted a reward.",
-          rewards: buildRewardToastItems({ xp: rewardResult.xp, gold: rewardResult.gold }, itemRewards),
-          actionLabel: "OK",
-        });
+      if (claimedChoiceRewardIds.has(choice.id) || await hasClaimedDialogueChoiceEffect(choice.id)) {
+        setClaimedChoiceRewardIds((current) => new Set([...current, choice.id]));
+        setDialogueLog((current) => ["You already took those supplies.", ...current].slice(0, 4));
+        return;
       }
-      await loadInventory();
+
+      setPendingRewardChoice(choice);
       if (choice.next_node_id && dialogueNodes.some((node) => node.id === choice.next_node_id)) {
         setActiveNodeId(choice.next_node_id);
       }
@@ -3591,8 +3572,55 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setActiveMarkerEventId(null);
   }
 
+  async function claimPendingDialogueReward(choice: StoryDialogueChoice) {
+    if (!activeEvent) {
+      return;
+    }
+
+    const configuredRewards = dialogueChoiceRewards.filter((reward) => reward.choice_id === choice.id);
+    if (adminPreviewMode) {
+      setDialogueLog((current) => ["Admin preview: reward would be granted here.", ...current].slice(0, 4));
+      setPendingRewardChoice(null);
+      return;
+    }
+
+    try {
+      if (claimedChoiceRewardIds.has(choice.id) || await hasClaimedDialogueChoiceEffect(choice.id)) {
+        setClaimedChoiceRewardIds((current) => new Set([...current, choice.id]));
+        setPendingRewardChoice(null);
+        setDialogueLog((current) => ["You already took those supplies.", ...current].slice(0, 4));
+        return;
+      }
+
+      const rewardResult = await applyDialogueChoiceRewards(
+        character,
+        choice,
+        configuredRewards,
+      );
+      setDialogueLog((current) => [rewardResult.message, ...current].slice(0, 4));
+      setClaimedChoiceRewardIds((current) => new Set([...current, choice.id]));
+      setPendingRewardChoice(null);
+      if (rewardResult.claimed) {
+        const itemRewards = rewardResult.items.map((item) => ({
+          label: getItemName(itemDefinitions, item.itemId),
+          quantity: item.quantity,
+        }));
+        showGameToast({
+          title: "Reward Received",
+          message: "Items and rewards were added to your character.",
+          rewards: buildRewardToastItems({ xp: rewardResult.xp, gold: rewardResult.gold }, itemRewards),
+          actionLabel: "OK",
+        });
+      }
+      await loadInventory();
+    } catch (error) {
+      setDialogueLog((current) => [getErrorMessage(error, "Unable to claim reward."), ...current].slice(0, 4));
+    }
+  }
+
   async function endDialogueChat(completeEvent: boolean) {
     if (adminPreviewMode && !completeEvent) {
+      setPendingRewardChoice(null);
       closeAdminPreview();
       return;
     }
@@ -3602,6 +3630,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    setPendingRewardChoice(null);
     setActiveEvent(null);
     setActiveMarkerEventId(null);
   }
@@ -4629,8 +4658,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           choiceAvailability={dialogueChoiceAvailability}
           choiceRewards={dialogueChoiceRewards}
           itemDefinitions={itemDefinitions}
+          pendingRewardChoice={pendingRewardChoice}
           onLegacyChoice={handleStoryChoice}
           onChoice={(choice) => void handleDialogueChoice(choice)}
+          onClaimPendingReward={(choice) => void claimPendingDialogueReward(choice)}
           onEndChat={(completeEvent) => void endDialogueChat(completeEvent)}
           onExitPreview={closeAdminPreview}
         />
