@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import { Image, ImageSourcePropType, Pressable, StyleSheet, Text, View } from "react-native";
 import type { MapMarker } from "../../services/mapService";
@@ -115,18 +115,48 @@ export function MiniMapCanvas({
   height?: number;
   canCapturePointer: boolean;
 }) {
+  const [imageAspectRatio, setImageAspectRatio] = useState(1.35);
+  const surfaceHeight = Math.max(280, Number(height) || 520);
+  const surfaceWidth = Math.max(320, Math.round(surfaceHeight * imageAspectRatio));
+
+  function handleMiniMapImageLoad(event: { nativeEvent?: { source?: { width?: number; height?: number } } }) {
+    const width = Number(event.nativeEvent?.source?.width) || 0;
+    const nextHeight = Number(event.nativeEvent?.source?.height) || 0;
+    if (width > 0 && nextHeight > 0) {
+      setImageAspectRatio(Math.max(0.4, Math.min(3.5, width / nextHeight)));
+    }
+  }
+
   return (
-    <View
-      style={[styles.miniMapSurface, height ? ({ height, aspectRatio: undefined } as object) : null]}
-      {...(canCapturePointer
-        ? ({
-            onClick: shared.onMapPointer,
-            onStartShouldSetResponder: () => true,
-          } as object)
-        : {})}
-    >
-      {imageUri ? <Image source={{ uri: imageUri }} style={styles.miniMapImage} /> : <View style={styles.miniMapFallback}><Text style={styles.copy}>{fallbackText}</Text></View>}
-      <MapCanvasLayers {...shared} markerSize={25} mini />
+    <View style={[styles.miniMapViewport, { height: surfaceHeight } as object]}>
+      <View
+        style={[
+          styles.miniMapSurface,
+          {
+            width: surfaceWidth,
+            height: surfaceHeight,
+          },
+        ]}
+        {...(canCapturePointer
+          ? ({
+              onClick: shared.onMapPointer,
+              onStartShouldSetResponder: () => true,
+            } as object)
+          : {})}
+      >
+        {imageUri ? (
+          <Image
+            source={{ uri: imageUri }}
+            style={styles.miniMapImage}
+            resizeMode="contain"
+            onLoad={handleMiniMapImageLoad}
+            {...({ pointerEvents: "none" } as object)}
+          />
+        ) : (
+          <View style={styles.miniMapFallback}><Text style={styles.copy}>{fallbackText}</Text></View>
+        )}
+        <MapCanvasLayers {...shared} markerSize={25} mini />
+      </View>
     </View>
   );
 }
@@ -356,14 +386,22 @@ const styles = StyleSheet.create({
   },
   miniMapSurface: {
     position: "relative",
-    width: "100%",
-    aspectRatio: 1.35,
     overflow: "hidden",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     backgroundColor: "rgba(0,0,0,0.35)",
   },
+  miniMapViewport: {
+    width: "100%",
+    overflow: "auto",
+    overflowX: "auto",
+    overflowY: "auto",
+    borderRadius: 8,
+    WebkitOverflowScrolling: "touch",
+    touchAction: "pan-x pan-y",
+    overscrollBehavior: "contain",
+  } as object,
   miniMapImage: {
     position: "absolute",
     width: "100%",
