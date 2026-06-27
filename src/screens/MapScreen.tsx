@@ -50,13 +50,17 @@ import {
 import { MiniMapEditor } from "../components/map/MiniMapEditor";
 import { WalkingPathAdminPanel } from "../components/map/WalkingPathAdminPanel";
 import { ProgressBar } from "../components/ProgressBar";
+import { CharacterAbilitiesSheet } from "../components/player/CharacterAbilitiesSheet";
+import { CharacterInventorySheet } from "../components/player/CharacterInventorySheet";
+import type { PlayerAbilityTab } from "../components/home/PlayerAbilitiesPanel";
+import type { PlayerInventoryTab } from "../components/home/PlayerInventoryPanel";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails, incrementCharacterDistanceWalked, spendCharacterGold } from "../services/characterService";
-import { AbilityDefinition, clampHealth, getCharacterResources, getCombatLoadout, getCurrentHealth } from "../services/abilityService";
+import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getCharacterResources, getCombatLoadout, getCurrentHealth, learnAbilityFromScroll } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
-import { canUseItemInContext, consumeInventoryItem, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri } from "../services/inventoryService";
+import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, unequipInventorySlot } from "../services/inventoryService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
@@ -296,7 +300,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
   const [knownAbilities, setKnownAbilities] = useState<AbilityDefinition[]>([]);
-  const [mapInventoryOpen, setMapInventoryOpen] = useState(false);
+  const [totalInventoryWeight, setTotalInventoryWeight] = useState(0);
+  const [carryCapacity, setCarryCapacity] = useState(50);
+  const [activeMapSheet, setActiveMapSheet] = useState<"inventory" | "abilities" | null>(null);
+  const [mapInventoryTab, setMapInventoryTab] = useState<PlayerInventoryTab>("Consumables");
+  const [selectedMapInventoryItemId, setSelectedMapInventoryItemId] = useState<string | null>(null);
+  const [mapAbilityTab, setMapAbilityTab] = useState<PlayerAbilityTab>("Attack");
+  const [selectedMapAbility, setSelectedMapAbility] = useState<AbilityDefinition | null>(null);
+  const [selectedMapAbilityKey, setSelectedMapAbilityKey] = useState<string | null>(null);
   const [mapItemMessage, setMapItemMessage] = useState<string | null>(null);
   const [gameToast, setGameToast] = useState<GameToastData | null>(null);
   const [role, setRole] = useState<Role>("player");
@@ -659,15 +670,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const routePotentialXp = useMemo(() => requiredRouteEvents.reduce((total, event) => total + Number(event.reward_xp ?? 0), 0), [requiredRouteEvents]);
   const routePotentialGold = useMemo(() => requiredRouteEvents.reduce((total, event) => total + Number(event.reward_gold ?? 0), 0), [requiredRouteEvents]);
   const currentRouteProgress = useMemo(() => routeProgressRows.find((row) => row.route_id === route.id) ?? null, [route.id, routeProgressRows]);
-  const mapConsumables = useMemo(
-    () =>
-      inventoryItems.filter(
-        (entry) =>
-          entry.quantity > 0 &&
-          ["potion", "revive potion", "consumable", "food"].includes(entry.item.type) &&
-          canUseItemInContext(entry.item, "outside"),
-      ),
-    [inventoryItems],
+  const selectedMapInventoryItem = useMemo(
+    () => inventoryItems.find((entry) => entry.id === selectedMapInventoryItemId) ?? null,
+    [inventoryItems, selectedMapInventoryItemId],
   );
 
   useEffect(() => {
@@ -707,6 +712,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setInventoryItems(state.items);
       setItemDefinitions(state.definitions);
       setEquippedItems(state.equipped);
+      setTotalInventoryWeight(state.totalWeight);
+      setCarryCapacity(state.carryCapacity);
       const bonuses = getInventoryResourceBonuses(state.equipped);
       setCombatResources(getCharacterResources(character, {
         maxHp: bonuses.maxHp,
@@ -2542,6 +2549,109 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setMapItemMessage(`Used ${item.name}. Health ${nextHealth} / ${combatResources.maxHp}.`);
     } catch (error) {
       setMapItemMessage(getErrorMessage(error, "Unable to use item."));
+    }
+  }
+
+  async function equipMapItem(entry: InventoryItem) {
+    try {
+      await equipInventoryItem(character.id, entry.item);
+      setMapItemMessage(`${entry.item.name} equipped.`);
+      await loadInventory();
+      await loadCombatLoadout();
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to equip item."));
+    }
+  }
+
+  async function unequipMapSlot(slot: EquipmentSlot) {
+    try {
+      await unequipInventorySlot(character.id, slot);
+      setMapItemMessage("Item unequipped.");
+      await loadInventory();
+      await loadCombatLoadout();
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to unequip item."));
+    }
+  }
+
+  async function dropMapItem(entry: InventoryItem) {
+    try {
+      await consumeInventoryItem(entry, 1);
+      setSelectedMapInventoryItemId(null);
+      setMapItemMessage(`Dropped ${entry.item.name}.`);
+      await loadInventory();
+      await loadCombatLoadout();
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to drop item."));
+    }
+  }
+
+  async function useMapInventoryItem(entry: InventoryItem) {
+    if (entry.item.type === "scroll" && entry.item.teaches_ability_id) {
+      try {
+        const result = await learnAbilityFromScroll(character.id, entry.item.teaches_ability_id);
+        if (!result.learned) {
+          setMapItemMessage(result.message);
+          return;
+        }
+
+        await consumeInventoryItem(entry, 1);
+        await loadInventory();
+        await loadCombatLoadout();
+        setMapItemMessage(result.message);
+      } catch (error) {
+        console.error("[map inventory] ability scroll use failed", error);
+        setMapItemMessage(getErrorMessage(error, "Unable to learn ability from scroll."));
+      }
+      return;
+    }
+
+    await useMapConsumable(entry);
+  }
+
+  async function equipMapAbility(slot: number) {
+    if (!selectedMapAbilityKey) {
+      setMapItemMessage("Select an ability first.");
+      return;
+    }
+
+    try {
+      await equipAbility(character.id, slot, selectedMapAbilityKey);
+      setMapItemMessage("Ability equipped.");
+      await loadCombatLoadout();
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to equip ability."));
+    }
+  }
+
+  async function clearMapAbilitySlot(slot: number) {
+    try {
+      await equipAbility(character.id, slot, null);
+      setMapItemMessage("Ability slot cleared.");
+      await loadCombatLoadout();
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to clear ability slot."));
+    }
+  }
+
+  async function useMapOutsideBattleAbility(ability: AbilityDefinition) {
+    if (!ability.adminAbility || ability.adminAbility.type !== "heal" || !canUseAbilityInContext(ability, "outside")) {
+      setMapItemMessage("This ability cannot be used while traveling.");
+      return;
+    }
+
+    if (currentHealth >= combatResources.maxHp) {
+      setMapItemMessage("Health is already full.");
+      return;
+    }
+
+    try {
+      const amount = Math.max(1, Number(ability.adminAbility.healing) || 1);
+      const nextHealth = clampHealth(currentHealth + amount, combatResources.maxHp);
+      await savePlayerHealth(nextHealth);
+      setMapItemMessage(`${ability.name} restored Health to ${nextHealth} / ${combatResources.maxHp}.`);
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to use healing ability."));
     }
   }
 
@@ -4573,6 +4683,54 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     );
   }
 
+  if (activeMapSheet === "inventory") {
+    return (
+      <CharacterInventorySheet
+        items={inventoryItems}
+        equippedItems={equippedItems}
+        selectedItem={selectedMapInventoryItem}
+        activeTab={mapInventoryTab}
+        totalWeight={totalInventoryWeight}
+        carryCapacity={carryCapacity}
+        currentHealth={currentHealth}
+        maxHealth={combatResources.maxHp}
+        message={mapItemMessage}
+        onClose={() => setActiveMapSheet(null)}
+        onSelectTab={setMapInventoryTab}
+        onSelectItem={setSelectedMapInventoryItemId}
+        onEquipItem={(entry) => void equipMapItem(entry)}
+        onUnequipSlot={(slot) => void unequipMapSlot(slot)}
+        onUseItem={(entry) => void useMapInventoryItem(entry)}
+        onUseScroll={(entry) => void useMapInventoryItem(entry)}
+        onDropItem={(entry) => void dropMapItem(entry)}
+      />
+    );
+  }
+
+  if (activeMapSheet === "abilities") {
+    return (
+      <CharacterAbilitiesSheet
+        abilities={knownAbilities}
+        equippedAbilities={equippedAbilities}
+        selectedAbility={selectedMapAbility}
+        selectedAbilityKey={selectedMapAbilityKey}
+        activeTab={mapAbilityTab}
+        currentHealth={currentHealth}
+        maxHealth={combatResources.maxHp}
+        message={mapItemMessage}
+        onClose={() => setActiveMapSheet(null)}
+        onSelectTab={setMapAbilityTab}
+        onSelectAbility={(ability) => {
+          setSelectedMapAbility(ability);
+          setSelectedMapAbilityKey(ability?.key ?? null);
+        }}
+        onEquipAbility={(slot) => void equipMapAbility(slot)}
+        onClearSlot={(slot) => void clearMapAbilitySlot(slot)}
+        onUseHeal={(ability) => void useMapOutsideBattleAbility(ability)}
+      />
+    );
+  }
+
   if (selectedMarker && (previewMarkerScene || (!isAdmin && canUseSelectedMarker && !selectedMarkerLocked))) {
     return (
       <>
@@ -4762,8 +4920,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         </View>
 
         <View style={styles.journeyActions}>
-          <Pressable style={[styles.journeySecondary, mapInventoryOpen && styles.gpsActive]} onPress={() => setMapInventoryOpen((value) => !value)}>
-            <Text style={styles.journeySecondaryText}>{mapInventoryOpen ? "Hide Items" : `Inventory (${mapConsumables.length})`}</Text>
+          <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("inventory")}>
+            <Text style={styles.journeySecondaryText}>Inventory ({inventoryItems.length})</Text>
+          </Pressable>
+          <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("abilities")}>
+            <Text style={styles.journeySecondaryText}>Abilities</Text>
           </Pressable>
         </View>
 
@@ -4777,40 +4938,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           <Text style={styles.walkingNoticeText}>Browser tracking only counts reliably while this screen stays active. Treadmill step tracking is planned for the future iOS app.</Text>
         </View>
         <Text style={styles.gpsMessage}>{gpsMessage}</Text>
-
-        {mapInventoryOpen ? (
-          <View style={styles.mapInventoryDrawer}>
-            <View style={styles.panelHeader}>
-              <View>
-                <Text style={styles.selectedTitle}>Inventory</Text>
-                <Text style={styles.copy}>Consumables</Text>
-              </View>
-              <Pressable style={styles.closeCircleButton} onPress={() => setMapInventoryOpen(false)}>
-                <Text style={styles.closeCircleText}>X</Text>
-              </Pressable>
-            </View>
-            {mapItemMessage ? <Text style={styles.adminMessage}>{mapItemMessage}</Text> : null}
-            {mapConsumables.length === 0 ? <Text style={styles.copy}>No usable consumables.</Text> : null}
-            <View style={styles.consumableGrid}>
-              {mapConsumables.map((entry) => {
-                const imageUri = resolveInventoryImageUri(entry.item.image_path);
-                return (
-                  <View key={entry.id} style={styles.consumableCard}>
-                    <View style={styles.consumableImageWrap}>
-                      {imageUri ? <Image source={{ uri: imageUri }} style={styles.consumableImage} /> : <Text style={styles.consumablePlaceholder}>{entry.item.name.slice(0, 1).toUpperCase()}</Text>}
-                      <Text style={styles.consumableQty}>{entry.quantity}</Text>
-                    </View>
-                    <Text style={styles.consumableName} numberOfLines={2}>{entry.item.name}</Text>
-                    <Text style={styles.consumableMeta}>{getConsumableSummary(entry.item)}</Text>
-                    <Pressable style={styles.consumableUseButton} onPress={() => void useMapConsumable(entry)}>
-                      <Text style={styles.consumableUseText}>Use</Text>
-                    </Pressable>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        ) : null}
       </Frame>
     );
   }
@@ -6078,27 +6205,6 @@ function resolveSceneImageUri(imagePath?: string | null) {
 
 function metersToMiles(meters: number) {
   return (meters / 1609.344).toFixed(2);
-}
-
-function getConsumableSummary(item: ItemDefinition) {
-  const target = item.potion_target ?? "health";
-  const targetLabel = target === "magika" ? "mana" : target;
-  const flat = Number(item.restore_amount ?? 0);
-  const percent = Number(item.restore_percent ?? 0);
-
-  if (flat > 0 && percent > 0) {
-    return `Restores ${flat} + ${percent}% ${targetLabel}`;
-  }
-
-  if (percent > 0) {
-    return `Restores ${percent}% ${targetLabel}`;
-  }
-
-  if (flat > 0) {
-    return `Restores ${flat} ${targetLabel}`;
-  }
-
-  return item.description || "Quick use item";
 }
 
 function getErrorMessage(error: unknown, fallback: string) {

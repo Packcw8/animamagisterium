@@ -30,7 +30,7 @@ type PlayerInventoryPanelProps = {
   onUnequipSlot: (slot: EquipmentSlot) => void;
   onUseItem: (entry: InventoryItem) => void;
   onUseScroll: (entry: InventoryItem) => void;
-  onSellItem: (entry: InventoryItem) => void;
+  onDropItem: (entry: InventoryItem) => void;
 };
 
 export function PlayerInventoryPanel({
@@ -49,7 +49,7 @@ export function PlayerInventoryPanel({
   onUnequipSlot,
   onUseItem,
   onUseScroll,
-  onSellItem,
+  onDropItem,
 }: PlayerInventoryPanelProps) {
   const filteredItems = items.filter((entry) => itemMatchesCategory(entry.item, activeTab));
   const overCapacity = totalWeight > carryCapacity;
@@ -107,7 +107,7 @@ export function PlayerInventoryPanel({
           onUnequipSlot={onUnequipSlot}
           onUseItem={onUseItem}
           onUseScroll={onUseScroll}
-          onSellItem={onSellItem}
+          onDropItem={onDropItem}
           onClose={() => onSelectItem(null)}
         />
       ) : null}
@@ -163,7 +163,7 @@ function EquipmentSlotCard({ slot, item, onUnequip }: { slot: EquipmentSlot; ite
   );
 }
 
-function ItemDetail({ entry, currentHealth, maxHealth, onEquipItem, onUnequipSlot, onUseItem, onUseScroll, onSellItem, onClose }: {
+function ItemDetail({ entry, currentHealth, maxHealth, onEquipItem, onUnequipSlot, onUseItem, onUseScroll, onDropItem, onClose }: {
   entry: InventoryItem;
   currentHealth: number;
   maxHealth: number;
@@ -171,7 +171,7 @@ function ItemDetail({ entry, currentHealth, maxHealth, onEquipItem, onUnequipSlo
   onUnequipSlot: (slot: EquipmentSlot) => void;
   onUseItem: (entry: InventoryItem) => void;
   onUseScroll: (entry: InventoryItem) => void;
-  onSellItem: (entry: InventoryItem) => void;
+  onDropItem: (entry: InventoryItem) => void;
   onClose: () => void;
 }) {
   const imageUri = resolveInventoryImageUri(entry.item.image_path);
@@ -206,7 +206,7 @@ function ItemDetail({ entry, currentHealth, maxHealth, onEquipItem, onUnequipSlo
         {entry.equippedSlot ? <Pressable style={styles.smallButton} onPress={() => onUnequipSlot(entry.equippedSlot as EquipmentSlot)}><Text style={styles.smallButtonText}>Unequip</Text></Pressable> : null}
         {isScroll ? <Pressable style={styles.smallButton} onPress={() => onUseScroll(entry)}><Text style={styles.smallButtonText}>Use Scroll</Text></Pressable> : null}
         {canUseOutside ? <Pressable style={[styles.smallButton, currentHealth >= maxHealth && styles.disabledAction]} onPress={() => onUseItem(entry)} disabled={currentHealth >= maxHealth}><Text style={styles.smallButtonText}>Use</Text></Pressable> : null}
-        {entry.item.sellable ? <Pressable style={styles.smallButton} onPress={() => onSellItem(entry)}><Text style={styles.smallButtonText}>Sell</Text></Pressable> : null}
+        <Pressable style={[styles.smallButton, styles.dropButton]} onPress={() => onDropItem(entry)}><Text style={styles.dropButtonText}>Drop</Text></Pressable>
       </View>
       <Pressable style={styles.secondaryButton} onPress={onClose}>
         <Text style={styles.smallButtonText}>Close Item</Text>
@@ -589,6 +589,15 @@ const styles = StyleSheet.create({
   },
   smallButtonText: {
     color: colors.blue,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  dropButton: {
+    borderColor: "rgba(255, 120, 120, 0.55)",
+    backgroundColor: "rgba(80, 10, 10, 0.22)",
+  },
+  dropButtonText: {
+    color: "#ffb1a9",
     fontWeight: "900",
     fontSize: 12,
   },

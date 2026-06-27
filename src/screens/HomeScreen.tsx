@@ -4,6 +4,8 @@ import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { PlayerAbilitiesPanel } from "../components/home/PlayerAbilitiesPanel";
 import { PlayerInventoryPanel } from "../components/home/PlayerInventoryPanel";
+import { CharacterAbilitiesSheet } from "../components/player/CharacterAbilitiesSheet";
+import { CharacterInventorySheet } from "../components/player/CharacterInventorySheet";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
@@ -73,7 +75,6 @@ import {
   resolveInventoryImageUri,
   saveCarrySettings,
   saveItemDefinition,
-  sellInventoryItem,
   unequipInventorySlot,
   usageContexts as itemUsageContexts,
   ItemDefinition,
@@ -141,6 +142,7 @@ function setAbilityCost(current: Partial<CombatAbility>, resource: AbilityCostRe
 
 export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenSettings }: HomeScreenProps) {
   const [activeTab, setActiveTab] = useState<(typeof homeTabs)[number]>("Overview");
+  const [activeSheet, setActiveSheet] = useState<"inventory" | "abilities" | null>(null);
   const [unlockedAbilities, setUnlockedAbilities] = useState<AbilityDefinition[]>([]);
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
   const [selectedAbilityKey, setSelectedAbilityKey] = useState<string | null>(null);
@@ -201,6 +203,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   });
   const currentHealth = getCurrentHealth(character, resources);
   const isAdmin = role === "admin";
+  const visibleHomeTabs = isAdmin ? homeTabs : homeTabs.filter((tab) => tab !== "Abilities" && tab !== "Inventory");
   const playerAbilityCounts = useMemo(() => getAbilityTypeCounts(unlockedAbilities), [unlockedAbilities]);
   const filteredPlayerAbilities = useMemo(() => unlockedAbilities.filter((ability) => getPlayerAbilityType(ability) === playerAbilityTab), [unlockedAbilities, playerAbilityTab]);
   const selectedInventoryItem = useMemo(() => inventoryItems.find((entry) => entry.id === selectedInventoryItemId) ?? null, [inventoryItems, selectedInventoryItemId]);
@@ -633,13 +636,15 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     }
   }
 
-  async function sellItem(entry: InventoryItem) {
+  async function dropItem(entry: InventoryItem) {
     try {
-      await sellInventoryItem(character, entry);
-      setInventoryMessage(`${entry.item.name} sold.`);
+      await consumeInventoryItem(entry, 1);
+      setSelectedInventoryItemId(null);
+      setInventoryMessage(`Dropped ${entry.item.name}.`);
       await loadInventory();
+      await loadAbilities();
     } catch (error) {
-      setInventoryMessage(error instanceof Error ? error.message : "Unable to sell item.");
+      setInventoryMessage(error instanceof Error ? error.message : "Unable to drop item.");
     }
   }
 
@@ -715,6 +720,54 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     }
   }
 
+  if (activeSheet === "inventory") {
+    return (
+      <CharacterInventorySheet
+        items={inventoryItems}
+        equippedItems={equippedItems}
+        selectedItem={selectedInventoryItem}
+        activeTab={inventoryCategory}
+        totalWeight={totalInventoryWeight}
+        carryCapacity={carryCapacity}
+        currentHealth={currentHealth}
+        maxHealth={resources.maxHp}
+        message={inventoryMessage}
+        onClose={() => setActiveSheet(null)}
+        onSelectTab={setInventoryCategory}
+        onSelectItem={setSelectedInventoryItemId}
+        onEquipItem={(entry) => void equipItem(entry)}
+        onUnequipSlot={(slot) => void unequipSlot(slot)}
+        onUseItem={(entry) => void useOutsideBattleItem(entry)}
+        onUseScroll={(entry) => void useAbilityScroll(entry)}
+        onDropItem={(entry) => void dropItem(entry)}
+      />
+    );
+  }
+
+  if (activeSheet === "abilities") {
+    return (
+      <CharacterAbilitiesSheet
+        abilities={unlockedAbilities}
+        equippedAbilities={equippedAbilities}
+        selectedAbility={selectedPlayerAbility}
+        selectedAbilityKey={selectedAbilityKey}
+        activeTab={playerAbilityTab}
+        currentHealth={currentHealth}
+        maxHealth={resources.maxHp}
+        message={abilityMessage}
+        onClose={() => setActiveSheet(null)}
+        onSelectTab={setPlayerAbilityTab}
+        onSelectAbility={(ability) => {
+          setSelectedPlayerAbility(ability);
+          setSelectedAbilityKey(ability?.key ?? null);
+        }}
+        onEquipAbility={(slot) => void equipSelectedAbility(slot)}
+        onClearSlot={(slot) => void clearSlot(slot)}
+        onUseHeal={(ability) => void useOutsideBattleAbility(ability)}
+      />
+    );
+  }
+
   return (
     <Screen>
       <View style={styles.homeChrome}>
@@ -773,7 +826,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
       </Frame>
 
       <View style={styles.tabs}>
-        {homeTabs.map((tab) => (
+        {visibleHomeTabs.map((tab) => (
           <Pressable key={tab} style={[styles.tab, activeTab === tab && styles.activeTab]} onPress={() => setActiveTab(tab)}>
             <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
           </Pressable>
@@ -784,14 +837,14 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
         {activeTab === "Overview" ? (
           <View style={styles.dashboardSection}>
             <View style={styles.quickGrid}>
-              <QuickTile icon="▣" label="Inventory" selected onPress={() => setActiveTab("Inventory")} />
-              <QuickTile icon="⚔" label="Abilities" onPress={() => setActiveTab("Abilities")} />
+              <QuickTile icon="▣" label="Inventory" selected onPress={() => setActiveSheet("inventory")} />
+              <QuickTile icon="⚔" label="Abilities" onPress={() => setActiveSheet("abilities")} />
               <QuickTile icon="☷" label="Attributes" onPress={() => setActiveTab("Attributes")} />
               <QuickTile icon="✎" label="Battle Stats" onPress={() => setActiveTab("Battle Stats")} />
             </View>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Equipped</Text>
-              <Pressable style={styles.viewAllButton} onPress={() => setActiveTab("Inventory")}>
+              <Pressable style={styles.viewAllButton} onPress={() => setActiveSheet("inventory")}>
                 <Text style={styles.viewAllText}>View All</Text>
               </Pressable>
             </View>
@@ -802,7 +855,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
             </View>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Inventory Items</Text>
-              <Pressable style={styles.viewAllButton} onPress={() => setActiveTab("Inventory")}>
+              <Pressable style={styles.viewAllButton} onPress={() => setActiveSheet("inventory")}>
                 <Text style={styles.viewAllText}>View All</Text>
               </Pressable>
             </View>
@@ -1184,7 +1237,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
               onUnequipSlot={(slot) => void unequipSlot(slot)}
               onUseItem={(entry) => void useOutsideBattleItem(entry)}
               onUseScroll={(entry) => void useAbilityScroll(entry)}
-              onSellItem={(entry) => void sellItem(entry)}
+              onDropItem={(entry) => void dropItem(entry)}
             />
             {isAdmin ? (
               <View style={styles.adminBuilder}>
