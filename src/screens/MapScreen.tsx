@@ -56,7 +56,7 @@ import type { PlayerAbilityTab } from "../components/home/PlayerAbilitiesPanel";
 import type { PlayerInventoryTab } from "../components/home/PlayerInventoryPanel";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
-import { CharacterWithDetails, incrementCharacterDistanceWalked, spendCharacterGold } from "../services/characterService";
+import { CharacterWithDetails, getCharacter, incrementCharacterDistanceWalked, spendCharacterGold } from "../services/characterService";
 import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getCharacterResources, getCombatLoadout, getCurrentHealth, learnAbilityFromScroll } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
@@ -3613,6 +3613,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         });
       }
       await loadInventory();
+      const refreshedCharacter = await getCharacter();
+      if (refreshedCharacter) {
+        onCharacterUpdated(refreshedCharacter);
+      }
     } catch (error) {
       setDialogueLog((current) => [getErrorMessage(error, "Unable to claim reward."), ...current].slice(0, 4));
     }
