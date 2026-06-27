@@ -281,6 +281,19 @@ export async function spendCharacterGold(characterId: string, amount: number) {
     return null;
   }
 
+  const { data: rpcData, error: rpcError } = await supabase.rpc("spend_character_gold_atomic", {
+    p_character_id: characterId,
+    p_amount: safeAmount,
+  });
+
+  if (!rpcError) {
+    return rpcData as Tables["characters"];
+  }
+
+  if (!isMissingRpcError(rpcError)) {
+    throw rpcError;
+  }
+
   const { data: currentCharacter, error: currentError } = await supabase
     .from("characters")
     .select("gold")
@@ -309,6 +322,15 @@ export async function spendCharacterGold(characterId: string, amount: number) {
   }
 
   return data as Tables["characters"];
+}
+
+function isMissingRpcError(error: { message?: string; code?: string } | null) {
+  if (!error) {
+    return false;
+  }
+
+  const message = error.message?.toLowerCase() ?? "";
+  return error.code === "42883" || message.includes("function") && message.includes("does not exist");
 }
 
 export async function incrementCharacterDistanceWalked(characterId: string, meters: number) {

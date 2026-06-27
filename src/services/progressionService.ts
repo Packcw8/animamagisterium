@@ -188,6 +188,23 @@ export async function applyCharacterXpGold(character: CharacterWithDetails, xpRe
     throw userError ?? new Error("You must be signed in to update character progress.");
   }
 
+  const safeXp = Math.max(0, Number(xpReward) || 0);
+  const safeGold = Math.max(0, Number(goldReward) || 0);
+  const { error: rpcError } = await supabase.rpc("apply_character_xp_gold_atomic", {
+    p_character_id: character.id,
+    p_xp: safeXp,
+    p_gold: safeGold,
+  });
+
+  if (!rpcError) {
+    await recordXpGoldContributions(user.id, character.id, safeXp, safeGold);
+    return;
+  }
+
+  if (!isMissingRpcError(rpcError)) {
+    throw rpcError;
+  }
+
   const { data: currentCharacter, error: characterError } = await supabase
     .from("characters")
     .select("xp,gold,level")
@@ -218,22 +235,35 @@ export async function applyCharacterXpGold(character: CharacterWithDetails, xpRe
     throw error;
   }
 
+  await recordXpGoldContributions(user.id, character.id, Math.max(0, Number(xpReward) || 0), Math.max(0, Number(goldReward) || 0));
+}
+
+async function recordXpGoldContributions(userId: string, characterId: string, xpReward: number, goldReward: number) {
   await Promise.all([
     xpReward > 0 ? recordSocialContribution({
-      userId: user.id,
+      userId,
       metricType: "xp_earned",
-      amount: Math.max(0, Number(xpReward) || 0),
+      amount: xpReward,
       sourceType: "character_progress",
-      sourceId: character.id,
+      sourceId: characterId,
     }) : Promise.resolve(),
     goldReward > 0 ? recordSocialContribution({
-      userId: user.id,
+      userId,
       metricType: "gold_earned",
-      amount: Math.max(0, Number(goldReward) || 0),
+      amount: goldReward,
       sourceType: "character_progress",
-      sourceId: character.id,
+      sourceId: characterId,
     }) : Promise.resolve(),
   ]);
+}
+
+function isMissingRpcError(error: { message?: string; code?: string } | null) {
+  if (!error) {
+    return false;
+  }
+
+  const message = error.message?.toLowerCase() ?? "";
+  return error.code === "42883" || message.includes("function") && message.includes("does not exist");
 }
 
 export function formatTrainingGoal(config: TrainingAttributeConfig, value: number) {

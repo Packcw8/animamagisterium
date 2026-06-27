@@ -1094,44 +1094,43 @@ export async function completeMapEvent(eventId: string) {
     throw userError ?? new Error("You must be signed in to complete an event.");
   }
 
-  const { data: existing, error: existingError } = await supabase
-    .from("map_event_completions")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("event_id", eventId)
-    .maybeSingle();
-
-  if (existingError) {
-    throw existingError;
-  }
-
   const { data, error } = await supabase
     .from("map_event_completions")
-    .upsert(
-      {
-        user_id: user.id,
-        event_id: eventId,
-        completed_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,event_id" },
-    )
+    .insert({
+      user_id: user.id,
+      event_id: eventId,
+      completed_at: new Date().toISOString(),
+    })
     .select()
     .single();
+
+  if (error?.code === "23505") {
+    const { data: existing, error: existingError } = await supabase
+      .from("map_event_completions")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("event_id", eventId)
+      .maybeSingle();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    return existing as MapEventCompletion;
+  }
 
   if (error) {
     throw error;
   }
 
-  if (!existing) {
-    await recordSocialContribution({
-      userId: user.id,
-      metricType: "map_event_completions",
-      metricFilter: eventId,
-      amount: 1,
-      sourceType: "map_event",
-      sourceId: eventId,
-    });
-  }
+  await recordSocialContribution({
+    userId: user.id,
+    metricType: "map_event_completions",
+    metricFilter: eventId,
+    amount: 1,
+    sourceType: "map_event",
+    sourceId: eventId,
+  });
 
   return data as MapEventCompletion;
 }
@@ -1252,44 +1251,43 @@ export async function completeStoryMarker(markerId: string) {
     throw userError ?? new Error("You must be signed in to complete story quests.");
   }
 
-  const { data: existing, error: existingError } = await supabase
-    .from("story_marker_completions")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("marker_id", markerId)
-    .maybeSingle();
-
-  if (existingError) {
-    throw existingError;
-  }
-
   const { data, error } = await supabase
     .from("story_marker_completions")
-    .upsert(
-      {
-        user_id: user.id,
-        marker_id: markerId,
-        completed_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id,marker_id" },
-    )
+    .insert({
+      user_id: user.id,
+      marker_id: markerId,
+      completed_at: new Date().toISOString(),
+    })
     .select()
     .single();
+
+  if (error?.code === "23505") {
+    const { data: existing, error: existingError } = await supabase
+      .from("story_marker_completions")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("marker_id", markerId)
+      .maybeSingle();
+
+    if (existingError) {
+      throw existingError;
+    }
+
+    return existing as StoryMarkerCompletion;
+  }
 
   if (error) {
     throw error;
   }
 
-  if (!existing) {
-    await recordSocialContribution({
-      userId: user.id,
-      metricType: "story_marker_completions",
-      metricFilter: markerId,
-      amount: 1,
-      sourceType: "story_marker",
-      sourceId: markerId,
-    });
-  }
+  await recordSocialContribution({
+    userId: user.id,
+    metricType: "story_marker_completions",
+    metricFilter: markerId,
+    amount: 1,
+    sourceType: "story_marker",
+    sourceId: markerId,
+  });
 
   return data as StoryMarkerCompletion;
 }

@@ -228,7 +228,22 @@ export async function grantItemToCharacter(characterId: string, itemId: string, 
     throw new Error("You must be signed in.");
   }
 
-  await assertCanCarryItem(characterId, itemId, quantity);
+  const safeQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
+  await assertCanCarryItem(characterId, itemId, safeQuantity);
+
+  const { error: rpcError } = await supabase.rpc("grant_item_to_character_atomic", {
+    p_character_id: characterId,
+    p_item_id: itemId,
+    p_quantity: safeQuantity,
+  });
+
+  if (!rpcError) {
+    return;
+  }
+
+  if (!isMissingRpcError(rpcError)) {
+    throw rpcError;
+  }
 
   const { data: existing, error: existingError } = await supabase.from("player_inventory").select("*").eq("character_id", characterId).eq("item_id", itemId).maybeSingle();
 
@@ -239,7 +254,7 @@ export async function grantItemToCharacter(characterId: string, itemId: string, 
   if (existing) {
     const { error } = await supabase
       .from("player_inventory")
-      .update({ quantity: existing.quantity + quantity, updated_at: new Date().toISOString() })
+      .update({ quantity: existing.quantity + safeQuantity, updated_at: new Date().toISOString() })
       .eq("id", existing.id);
 
     if (error) {
@@ -252,12 +267,21 @@ export async function grantItemToCharacter(characterId: string, itemId: string, 
     user_id: user.id,
     character_id: characterId,
     item_id: itemId,
-    quantity,
+    quantity: safeQuantity,
   });
 
   if (error) {
     throw error;
   }
+}
+
+function isMissingRpcError(error: { message?: string; code?: string } | null) {
+  if (!error) {
+    return false;
+  }
+
+  const message = error.message?.toLowerCase() ?? "";
+  return error.code === "42883" || message.includes("function") && message.includes("does not exist");
 }
 
 export async function equipInventoryItem(characterId: string, item: ItemDefinition) {
