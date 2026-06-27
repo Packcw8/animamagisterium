@@ -1388,6 +1388,39 @@ export async function applyDialogueChoiceRewards(
     throw userError ?? new Error("You must be signed in to claim rewards.");
   }
 
+  const { data: atomicClaim, error: atomicClaimError } = await supabase.rpc("claim_dialogue_choice_rewards_atomic", {
+    p_character_id: character.id,
+    p_choice_id: choice.id,
+  });
+
+  if (!atomicClaimError) {
+    const result = atomicClaim as {
+      claimed?: boolean;
+      message?: string;
+      xp?: number;
+      gold?: number;
+      items?: Array<{ itemId?: string; item_id?: string; quantity?: number }>;
+    } | null;
+    const items = (result?.items ?? [])
+      .map((item) => ({
+        itemId: item.itemId ?? item.item_id ?? "",
+        quantity: Math.max(1, Number(item.quantity) || 1),
+      }))
+      .filter((item) => item.itemId);
+
+    return {
+      claimed: Boolean(result?.claimed),
+      message: result?.message || (result?.claimed ? formatRewardMessage(Number(result?.xp) || 0, Number(result?.gold) || 0, items.reduce((sum, item) => sum + item.quantity, 0)) : "Reward already claimed."),
+      xp: Math.max(0, Number(result?.xp) || 0),
+      gold: Math.max(0, Number(result?.gold) || 0),
+      items,
+    };
+  }
+
+  if (!isMissingRpcError(atomicClaimError)) {
+    throw atomicClaimError;
+  }
+
   const { data: existing, error: existingError } = await supabase
     .from("marker_reward_claims")
     .select("id")
@@ -1856,4 +1889,12 @@ export async function deleteDialogueChoice(choiceId: string) {
   if (error) {
     throw error;
   }
+}
+
+function isMissingRpcError(error: { message?: string; code?: string } | null) {
+  if (!error) {
+    return false;
+  }
+
+  return error.code === "42883" || error.message?.toLowerCase().includes("function") || error.message?.toLowerCase().includes("schema cache");
 }
