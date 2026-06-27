@@ -150,15 +150,15 @@ function getLinkedMiniMapId(state: MarkerPayloadState) {
 }
 
 function isQuestType(type: string) {
-  return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
+  return ["Quest", "Side Quest", "Story", "Point of Interest", "NPC"].includes(type);
 }
 
 function supportsDialogueType(type: string) {
-  return ["Story", "Quest", "Side Quest", "Point of Interest"].includes(type);
+  return ["Story", "Quest", "Side Quest", "Point of Interest", "NPC"].includes(type);
 }
 
 function isBattleType(type: string) {
-  return type === "Battle" || type === "Battle Zone";
+  return type === "Battle" || type === "Battle Zone" || type === "NPC";
 }
 
 function isExitType(type: string) {

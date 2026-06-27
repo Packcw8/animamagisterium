@@ -148,6 +148,26 @@ export function MarkerInteractionPanel({
     );
   }
 
+  if (marker.type === "NPC") {
+    const hasOpponent = Boolean(marker.battle_event_id || marker.enemy_id || marker.npc_id);
+
+    return (
+      <PanelShell marker={marker} message={message} onClose={onClose}>
+        <View style={styles.storyEditor}>
+          {marker.scene_npc_image_url || marker.quest_image_url ? <Image source={{ uri: marker.scene_npc_image_url || marker.quest_image_url || "" }} style={styles.eventImage} /> : null}
+          <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
+          {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
+          <Text style={styles.copy}>Open this NPC from the full marker scene to use its linked dialogue tree.</Text>
+          {hasOpponent ? (
+            <Pressable style={styles.secondaryButton} onPress={onStartBattleEvent}>
+              <Text style={styles.secondaryText}>Challenge / Fight</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </PanelShell>
+    );
+  }
+
   if (marker.type === "Market") {
     const buyableItems = marketItems.filter(canMarketItemBeBought);
     const sellableItems = inventoryItems.filter((entry) => entry.item.sellable && marketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item)));

@@ -53,6 +53,7 @@ function getDefaultMarkerIconLabel(type: string) {
   if (type === "World Spawn") return "WSP";
   if (type === "Player Spawn") return "SPN";
   if (type === "Area/Town Entrance") return "IN";
+  if (type === "NPC") return "NPC";
   if (type === "Battle" || type === "Battle Zone") return "BTL";
   if (type === "Quest" || type === "Side Quest" || type === "Story") return "!";
   if (type === "Training" || type === "Training Spot") return "TRN";
@@ -69,6 +70,7 @@ function getDefaultMarkerIconColor(type: string) {
   if (type === "World Spawn") return "#7fe7ff";
   if (type === "Player Spawn") return colors.blue;
   if (type === "Area/Town Entrance") return colors.blue;
+  if (type === "NPC") return "#e1b15f";
   if (type === "Battle" || type === "Battle Zone") return "#e0574f";
   if (type === "Quest" || type === "Side Quest" || type === "Story") return "#8fe8a1";
   if (type === "Training" || type === "Training Spot") return "#7fe7ff";

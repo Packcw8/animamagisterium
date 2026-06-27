@@ -117,6 +117,23 @@ export function MarkerSceneScreen({
             routeProgressRows={routeProgressRows}
             onStartPath={onStartPath}
           />
+        ) : marker.type === "NPC" ? (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
+            <Text style={styles.copy}>Speak with this character, accept work, or challenge them if a battle is linked.</Text>
+            {markerHasDialogue ? (
+              <Pressable style={styles.primaryButton} onPress={onOpenDialogueEvent}>
+                <Text style={styles.primaryText}>Talk</Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.copy}>No dialogue tree is linked to this NPC yet.</Text>
+            )}
+            {marker.battle_event_id || marker.enemy_id || marker.npc_id ? (
+              <Pressable style={styles.secondaryButton} onPress={onStartBattleEvent}>
+                <Text style={styles.secondaryText}>Challenge / Fight</Text>
+              </Pressable>
+            ) : null}
+          </View>
         ) : markerHasDialogue && isDialogueMarkerType(marker.type) ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Dialogue</Text>
@@ -198,7 +215,7 @@ export function MarkerSceneScreen({
 }
 
 function isDialogueMarkerType(type: string) {
-  return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
+  return ["Quest", "Side Quest", "Story", "Point of Interest", "NPC"].includes(type);
 }
 
 function SignPostScene({

@@ -183,8 +183,8 @@ import {
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
-const markerTypes = ["World Spawn", "Story", "Side Quest", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
-const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "Point of Interest", "Market", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
+const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
+const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Market", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const editorModes = ["Marker", "Walking Path"] as const;
 const adminSections = ["World Map", "World Markers", "Area/Town Markers", "Mini Maps", "Walking Paths", "Tutorials", "Rewards/Interactions", "Legend"] as const;
@@ -5763,6 +5763,28 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   )}
                 </View>
               ) : null}
+              {draftType === "NPC" ? (
+                <View style={styles.storyEditor}>
+                  <Text style={styles.selectedTitle}>NPC Character</Text>
+                  <Text style={styles.copy}>Choose a reusable NPC. Its image can be used for the map marker, dialogue, and optional battle.</Text>
+                  <NpcPicker
+                    label="Linked NPC"
+                    npcs={npcDefinitions}
+                    selectedId={markerNpcId}
+                    onSelect={(id) => {
+                      setMarkerNpcId(id);
+                      const npc = npcDefinitions.find((item) => item.id === id);
+                      if (npc) {
+                        setDraftTitle((current) => current || npc.name);
+                        setMarkerQuestTitle((current) => current || npc.name);
+                        setMarkerNpcImage((current) => current || npc.image_url || "");
+                        setMarkerIconImage((current) => current || npc.image_url || "");
+                      }
+                    }}
+                  />
+                  <Text style={styles.copy}>Use the Marker Dialogue Tree below for conversation choices. If the NPC is battle-capable, the battle setup can also use this same NPC.</Text>
+                </View>
+              ) : null}
               {draftType !== "Sign Post" && !isBattleMarkerType(draftType) ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>{isStoryQuestMarker({ type: draftType }) ? "Story Path Sequence" : "Required Completed Paths"}</Text>
@@ -5795,7 +5817,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               {supportsMarkerDialogue(draftType) ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>Marker Dialogue Tree</Text>
-                  <Text style={styles.copy}>Story, Quest, Side Quest, and Point of Interest markers use their own dialogue tree. Use a Start Quest choice to begin this marker's linked path.</Text>
+                  <Text style={styles.copy}>Story, Quest, Side Quest, Point of Interest, and NPC markers use their own dialogue tree. Use dialogue choices to start quests, give rewards, branch the story, or start a battle.</Text>
                   {selectedMarker ? (
                     <>
                       <Pressable style={styles.secondaryButton} onPress={() => void loadMarkerDialogueEditor(selectedMarker)}>
@@ -5865,7 +5887,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   />
                 </View>
               ) : null}
-              {(draftType === "Side Quest" || draftType === "Story" || draftType === "Point of Interest") ? (
+              {(draftType === "Side Quest" || draftType === "Story" || draftType === "Point of Interest" || draftType === "NPC") ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>Marker Rewards / Quest Settings</Text>
                   <TextInput value={markerQuestTitle} onChangeText={setMarkerQuestTitle} placeholder="Quest title optional" placeholderTextColor={colors.muted} style={styles.input} />
@@ -6565,10 +6587,31 @@ function MiniMapMarkerAdminForm({
       <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
         <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
       </Pressable>
+      {draftType === "NPC" ? (
+        <View style={styles.storyEditor}>
+          <Text style={styles.selectedTitle}>NPC Character</Text>
+          <Text style={styles.copy}>Choose a reusable NPC for this mini-map marker. Dialogue, portrait, and optional battle can all use this same character.</Text>
+          <NpcPicker
+            label="Linked NPC"
+            npcs={npcDefinitions}
+            selectedId={markerNpcId}
+            onSelect={(id) => {
+              setMarkerNpcId(id);
+              const npc = npcDefinitions.find((item) => item.id === id);
+              if (npc) {
+                setDraftTitle((current) => current || npc.name);
+                setMarkerQuestTitle((current) => current || npc.name);
+                setMarkerNpcImage((current) => current || npc.image_url || "");
+                setMarkerIconImage((current) => current || npc.image_url || "");
+              }
+            }}
+          />
+        </View>
+      ) : null}
       {supportsMarkerDialogue(draftType) ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>Marker Dialogue Tree</Text>
-          <Text style={styles.copy}>This marker gets its own dialogue tree. Use a Start Quest choice to begin linked mini-map paths from the conversation.</Text>
+          <Text style={styles.copy}>This marker gets its own dialogue tree. Use choices to start quests, give rewards, branch the story, or start a battle.</Text>
           {selectedMarker ? (
             <>
               <Pressable style={styles.secondaryButton} onPress={() => onLoadMarkerDialogue(selectedMarker)}>
@@ -6875,11 +6918,11 @@ function compareEventsByRouteAndDistance(a: MapEvent, b: MapEvent) {
 }
 
 function isQuestMarkerType(type: string) {
-  return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
+  return ["Quest", "Side Quest", "Story", "Point of Interest", "NPC"].includes(type);
 }
 
 function supportsMarkerDialogue(type: string) {
-  return ["Quest", "Side Quest", "Story", "Point of Interest"].includes(type);
+  return ["Quest", "Side Quest", "Story", "Point of Interest", "NPC"].includes(type);
 }
 
 function createMarkerDialogueEvent(marker: MapMarker): MapEvent {
@@ -6894,8 +6937,8 @@ function createMarkerDialogueEvent(marker: MapMarker): MapEvent {
     background_image_url: marker.scene_background_image_url ?? marker.quest_image_url ?? null,
     npc_name: null,
     npc_portrait_url: marker.scene_npc_image_url ?? marker.quest_image_url ?? null,
-    dialogue_npc_id: null,
-    npc_id: null,
+    dialogue_npc_id: marker.type === "NPC" ? marker.npc_id ?? null : null,
+    npc_id: marker.type === "NPC" ? marker.npc_id ?? null : null,
     dialogue_text: marker.quest_dialogue || marker.description || "",
     choices: [],
     enemy_name: null,
@@ -6928,7 +6971,7 @@ function getSyntheticMarkerEventId(markerId: string) {
 }
 
 function isBattleMarkerType(type: string) {
-  return type === "Battle" || type === "Battle Zone";
+  return type === "Battle" || type === "Battle Zone" || type === "NPC";
 }
 
 function createMarkerBattleEvent(marker: MapMarker, enemies: EnemyDefinition[], npcs: NpcDefinition[]): MapEvent {
