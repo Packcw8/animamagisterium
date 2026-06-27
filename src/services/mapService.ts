@@ -334,6 +334,8 @@ export async function saveMiniMap(input: Partial<MiniMap>) {
     type: input.type ?? "area",
     background_image_url: input.background_image_url?.trim() || null,
     description: input.description?.trim() || null,
+    width: Math.max(320, Number(input.width) || 900),
+    height: Math.max(280, Number(input.height) || 650),
     is_active: input.is_active ?? true,
     season_number: Number(input.season_number) || 1,
     chapter_number: Number(input.chapter_number) || 1,

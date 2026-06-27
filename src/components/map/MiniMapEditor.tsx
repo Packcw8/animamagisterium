@@ -10,11 +10,15 @@ type MiniMapEditorProps<MiniMapType extends string> = {
   type: MiniMapType;
   background: string;
   description: string;
+  width: string;
+  height: string;
   active: boolean;
   onChangeName: (value: string) => void;
   onChangeType: (value: MiniMapType) => void;
   onChangeBackground: (value: string) => void;
   onChangeDescription: (value: string) => void;
+  onChangeWidth: (value: string) => void;
+  onChangeHeight: (value: string) => void;
   onToggleActive: () => void;
   onSave: () => void;
   onEdit: (miniMap: MiniMap) => void;
@@ -32,11 +36,15 @@ export function MiniMapEditor<MiniMapType extends string>({
   type,
   background,
   description,
+  width,
+  height,
   active,
   onChangeName,
   onChangeType,
   onChangeBackground,
   onChangeDescription,
+  onChangeWidth,
+  onChangeHeight,
   onToggleActive,
   onSave,
   onEdit,
@@ -62,6 +70,10 @@ export function MiniMapEditor<MiniMapType extends string>({
       </View>
       <TextInput value={background} onChangeText={onChangeBackground} placeholder="Background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
       <AdminImageUploadButton folder="mini-maps" onUploaded={onChangeBackground} onMessage={onUploadMessage} />
+      <View style={styles.modeRow}>
+        <TextInput value={width} onChangeText={onChangeWidth} placeholder="Frame width, example 900" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
+        <TextInput value={height} onChangeText={onChangeHeight} placeholder="Frame height, example 650" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
+      </View>
       <TextInput value={description} onChangeText={onChangeDescription} placeholder="Description" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
       <Pressable style={[styles.secondaryButton, active && styles.typeSelected]} onPress={onToggleActive}>
         <Text style={styles.secondaryText}>Active: {active ? "true" : "false"}</Text>
@@ -79,7 +91,7 @@ export function MiniMapEditor<MiniMapType extends string>({
       {miniMaps.map((miniMap) => (
         <View key={miniMap.id} style={styles.storyCard}>
           <Text style={styles.markerName}>{miniMap.name}</Text>
-          <Text style={styles.copy}>{miniMap.type} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
+          <Text style={styles.copy}>{miniMap.type} / {miniMap.width ?? 900} x {miniMap.height ?? 650} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
           <View style={styles.modeRow}>
             <Pressable style={[styles.secondaryButtonFlex, editingMiniMapId === miniMap.id && styles.typeSelected]} onPress={() => onEdit(miniMap)}>
               <Text style={styles.secondaryText}>Edit</Text>
@@ -119,6 +131,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: 48,
     paddingHorizontal: 12,
+  },
+  flexInput: {
+    flex: 1,
+    minWidth: 150,
   },
   markerName: {
     color: colors.text,

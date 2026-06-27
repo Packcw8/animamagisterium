@@ -364,7 +364,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [miniMapBackground, setMiniMapBackground] = useState("");
   const [miniMapDescription, setMiniMapDescription] = useState("");
   const [miniMapActive, setMiniMapActive] = useState(true);
-  const [miniMapEditorHeight, setMiniMapEditorHeight] = useState("520");
+  const [miniMapEditorWidth, setMiniMapEditorWidth] = useState("900");
+  const [miniMapEditorHeight, setMiniMapEditorHeight] = useState("650");
   const [tutorialSteps, setTutorialSteps] = useState<TutorialStep[]>([]);
   const [editingTutorialId, setEditingTutorialId] = useState<string | null>(null);
   const [tutorialTitle, setTutorialTitle] = useState("");
@@ -2760,6 +2761,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         type: miniMapType,
         background_image_url: miniMapBackground,
         description: miniMapDescription,
+        width: Number(miniMapEditorWidth) || 900,
+        height: Number(miniMapEditorHeight) || 650,
         is_active: miniMapActive,
         season_number: selectedSeason,
         chapter_number: selectedChapter,
@@ -2774,6 +2777,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         setMiniMapName("");
         setMiniMapBackground("");
         setMiniMapDescription("");
+        setMiniMapEditorWidth("900");
+        setMiniMapEditorHeight("650");
         setMiniMapActive(true);
       }
       setAdminMessage("Mini map saved.");
@@ -2789,6 +2794,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMiniMapType(miniMap.type);
     setMiniMapBackground(miniMap.background_image_url ?? "");
     setMiniMapDescription(miniMap.description ?? "");
+    setMiniMapEditorWidth(String(miniMap.width ?? 900));
+    setMiniMapEditorHeight(String(miniMap.height ?? 650));
     setMiniMapActive(miniMap.is_active);
   }
 
@@ -2799,6 +2806,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMiniMapType("town");
     setMiniMapBackground("");
     setMiniMapDescription("");
+    setMiniMapEditorWidth("900");
+    setMiniMapEditorHeight("650");
     setMiniMapActive(true);
   }
 
@@ -2883,6 +2892,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setMiniMapName("");
       setMiniMapBackground("");
       setMiniMapDescription("");
+      setMiniMapEditorWidth("900");
+      setMiniMapEditorHeight("650");
       setMiniMapActive(true);
       setSelectedMarker(null);
       setPreviewMarkerScene(false);
@@ -5079,7 +5090,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </View>
           <MiniMapCanvas
             imageUri={miniMapImage}
-            height={Math.max(280, Math.min(900, Number(miniMapEditorHeight) || 520))}
+            width={Math.max(320, Number(activeMiniMap.width) || 900)}
+            height={Math.max(280, Number(activeMiniMap.height) || 650)}
             canCapturePointer={isAdmin}
             onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini")}
             routeSegments={miniMapRouteSegments}
@@ -5114,14 +5126,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               </View>
               <TextInput value={miniMapBackground} onChangeText={setMiniMapBackground} placeholder="Background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
               <AdminImageUploadButton folder="mini-maps" onUploaded={setMiniMapBackground} onMessage={setAdminMessage} />
-              <TextInput value={miniMapEditorHeight} onChangeText={setMiniMapEditorHeight} placeholder="Editor preview height, example 520" placeholderTextColor={colors.muted} style={styles.input} />
+              <View style={styles.modeRow}>
+                <TextInput value={miniMapEditorWidth} onChangeText={setMiniMapEditorWidth} placeholder="Frame width, example 900" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
+                <TextInput value={miniMapEditorHeight} onChangeText={setMiniMapEditorHeight} placeholder="Frame height, example 650" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
+              </View>
               <View style={styles.storyRoutePicker}>
                 {[
-                  { label: "Compact", value: "360" },
-                  { label: "Normal", value: "520" },
-                  { label: "Large", value: "680" },
+                  { label: "Compact", width: "720", height: "520" },
+                  { label: "Normal", width: "900", height: "650" },
+                  { label: "Large", width: "1200", height: "860" },
                 ].map((option) => (
-                  <Pressable key={option.value} style={[styles.routeChip, miniMapEditorHeight === option.value && styles.routeChipActive]} onPress={() => setMiniMapEditorHeight(option.value)}>
+                  <Pressable key={option.label} style={[styles.routeChip, miniMapEditorWidth === option.width && miniMapEditorHeight === option.height && styles.routeChipActive]} onPress={() => {
+                    setMiniMapEditorWidth(option.width);
+                    setMiniMapEditorHeight(option.height);
+                  }}>
                     <Text style={styles.routeChipText}>{option.label}</Text>
                   </Pressable>
                 ))}
@@ -5693,11 +5711,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               type={miniMapType}
               background={miniMapBackground}
               description={miniMapDescription}
+              width={miniMapEditorWidth}
+              height={miniMapEditorHeight}
               active={miniMapActive}
               onChangeName={setMiniMapName}
               onChangeType={setMiniMapType}
               onChangeBackground={setMiniMapBackground}
               onChangeDescription={setMiniMapDescription}
+              onChangeWidth={setMiniMapEditorWidth}
+              onChangeHeight={setMiniMapEditorHeight}
               onToggleActive={() => setMiniMapActive((value) => !value)}
               onSave={() => void saveMiniMapForm()}
               onEdit={editMiniMap}
@@ -7699,6 +7721,10 @@ const styles = StyleSheet.create({
     color: colors.text,
     paddingHorizontal: 12,
     backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  flexInput: {
+    flex: 1,
+    minWidth: 150,
   },
   inlineInput: {
     minWidth: 190,

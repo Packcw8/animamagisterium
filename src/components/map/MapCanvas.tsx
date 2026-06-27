@@ -107,17 +107,19 @@ export function MiniMapCanvas({
   imageUri,
   fallbackText = "No mini map image set.",
   height,
+  width,
   canCapturePointer,
   ...shared
 }: SharedCanvasProps & {
   imageUri: string | null;
   fallbackText?: string;
   height?: number;
+  width?: number;
   canCapturePointer: boolean;
 }) {
   const [imageAspectRatio, setImageAspectRatio] = useState(1.35);
   const surfaceHeight = Math.max(280, Number(height) || 520);
-  const surfaceWidth = Math.max(320, Math.round(surfaceHeight * imageAspectRatio));
+  const surfaceWidth = Math.max(320, Number(width) || Math.round(surfaceHeight * imageAspectRatio));
 
   function handleMiniMapImageLoad(event: { nativeEvent?: { source?: { width?: number; height?: number } } }) {
     const width = Number(event.nativeEvent?.source?.width) || 0;
@@ -148,7 +150,7 @@ export function MiniMapCanvas({
           <Image
             source={{ uri: imageUri }}
             style={styles.miniMapImage}
-            resizeMode="contain"
+            resizeMode="stretch"
             onLoad={handleMiniMapImageLoad}
             {...({ pointerEvents: "none" } as object)}
           />

@@ -793,6 +793,8 @@ export type Tables = {
     type: "town" | "forest" | "dungeon" | "area" | "tutorial";
     background_image_url: string | null;
     description: string | null;
+    width: number;
+    height: number;
     is_active: boolean;
     season_number: number;
     chapter_number: number;
