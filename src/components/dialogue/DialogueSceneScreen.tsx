@@ -47,6 +47,14 @@ export function DialogueSceneScreen({
     const availability = choiceAvailability[choice.id] ?? { met: true, hidden: false, disabled: false, message: null };
     return !availability.hidden;
   });
+  const rewardChoicePreviews = visibleNodeChoices
+    .filter((choice) => choice.action === "give_reward")
+    .map((choice) => ({
+      choiceId: choice.id,
+      buttonText: choice.button_text,
+      rewards: getChoiceRewardPreview(choice, choiceRewards, itemDefinitions),
+    }))
+    .filter((preview) => preview.rewards.length > 0);
 
   return (
     <Screen>
@@ -73,12 +81,33 @@ export function DialogueSceneScreen({
             {line}
           </Text>
         ))}
+        {rewardChoicePreviews.length > 0 ? (
+          <View style={styles.lootPanel}>
+            <Text style={styles.lootEyebrow}>Found Supplies</Text>
+            <Text style={styles.lootTitle}>Choose what to take</Text>
+            {rewardChoicePreviews.map((preview) => (
+              <View key={preview.choiceId} style={styles.lootGroup}>
+                <Text style={styles.lootActionLabel}>{preview.buttonText}</Text>
+                <View style={styles.rewardPreview}>
+                  {preview.rewards.map((reward) => (
+                    <View key={reward.key} style={styles.rewardChip}>
+                      {reward.imageUri ? <Image source={{ uri: reward.imageUri }} style={styles.rewardImage} /> : <View style={styles.rewardIconFallback} />}
+                      <View style={styles.rewardTextWrap}>
+                        <Text style={styles.rewardName}>{reward.label}</Text>
+                        {reward.quantity ? <Text style={styles.rewardQuantity}>x{reward.quantity}</Text> : null}
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
         <View style={styles.choiceStack}>
           {activeNode ? (
             <>
               {visibleNodeChoices.map((choice) => {
                 const availability = choiceAvailability[choice.id] ?? { met: true, hidden: false, disabled: false, message: null };
-                const rewardPreview = getChoiceRewardPreview(choice, choiceRewards, itemDefinitions);
                 return (
                   <Pressable
                     key={choice.id}
@@ -88,19 +117,6 @@ export function DialogueSceneScreen({
                   >
                     {getAttributeCheckSummary(choice) ? <Text style={styles.checkBadge}>{getAttributeCheckSummary(choice)}</Text> : null}
                     <Text style={[styles.primaryText, availability.disabled && styles.lockedText]}>{choice.button_text}</Text>
-                    {rewardPreview.length > 0 ? (
-                      <View style={styles.rewardPreview}>
-                        {rewardPreview.map((reward) => (
-                          <View key={reward.key} style={styles.rewardChip}>
-                            {reward.imageUri ? <Image source={{ uri: reward.imageUri }} style={styles.rewardImage} /> : null}
-                            <View style={styles.rewardTextWrap}>
-                              <Text style={styles.rewardName}>{reward.label}</Text>
-                              {reward.quantity ? <Text style={styles.rewardQuantity}>x{reward.quantity}</Text> : null}
-                            </View>
-                          </View>
-                        ))}
-                      </View>
-                    ) : null}
                     {availability.disabled && availability.message ? <Text style={styles.requirementText}>{availability.message}</Text> : null}
                   </Pressable>
                 );
@@ -273,6 +289,32 @@ const styles = StyleSheet.create({
     color: colors.muted,
     lineHeight: 20,
   },
+  lootPanel: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0, 8, 10, 0.68)",
+    padding: 12,
+    gap: 10,
+  },
+  lootEyebrow: {
+    color: colors.blue,
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  lootTitle: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 18,
+  },
+  lootGroup: {
+    gap: 8,
+  },
+  lootActionLabel: {
+    color: colors.text,
+    fontWeight: "900",
+  },
   choiceStack: {
     gap: 10,
   },
@@ -294,35 +336,43 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   rewardChip: {
-    minHeight: 44,
+    minHeight: 54,
     maxWidth: "100%",
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: "rgba(17, 11, 4, 0.25)",
-    backgroundColor: "rgba(17, 11, 4, 0.16)",
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.42)",
     paddingHorizontal: 8,
     paddingVertical: 6,
   },
   rewardImage: {
-    width: 34,
-    height: 34,
+    width: 42,
+    height: 42,
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: "rgba(17, 11, 4, 0.25)",
+    borderColor: colors.blue,
+  },
+  rewardIconFallback: {
+    width: 42,
+    height: 42,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(20, 61, 86, 0.35)",
   },
   rewardTextWrap: {
     minWidth: 0,
   },
   rewardName: {
-    color: "#110b04",
-    fontSize: 12,
+    color: colors.text,
+    fontSize: 13,
     fontWeight: "900",
   },
   rewardQuantity: {
-    color: "#2b1a0a",
+    color: colors.gold,
     fontSize: 11,
     fontWeight: "900",
   },

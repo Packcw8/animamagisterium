@@ -3423,8 +3423,23 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (choice.action === "give_reward") {
+      const configuredRewards = dialogueChoiceRewards.filter((reward) => reward.choice_id === choice.id);
       if (adminPreviewMode) {
-        setDialogueLog((current) => [`Preview reward: ${choice.reward_xp} XP, ${choice.reward_gold} gold.`, ...current].slice(0, 4));
+        const previewXp =
+          Math.max(0, Number(choice.reward_xp) || 0) +
+          configuredRewards.filter((reward) => reward.reward_type === "xp").reduce((sum, reward) => sum + Math.max(0, Number(reward.amount) || 0), 0);
+        const previewGold =
+          Math.max(0, Number(choice.reward_gold) || 0) +
+          configuredRewards.filter((reward) => reward.reward_type === "gold").reduce((sum, reward) => sum + Math.max(0, Number(reward.amount) || 0), 0);
+        const previewItemCount =
+          (choice.reward_item_id ? 1 : 0) +
+          configuredRewards.filter((reward) => reward.reward_type === "item" && reward.item_id).length;
+        const previewParts = [
+          previewXp > 0 ? `${previewXp} XP` : null,
+          previewGold > 0 ? `${previewGold} gold` : null,
+          previewItemCount > 0 ? `${previewItemCount} item${previewItemCount === 1 ? "" : "s"}` : null,
+        ].filter(Boolean);
+        setDialogueLog((current) => [`Preview reward: ${previewParts.length > 0 ? previewParts.join(", ") : "no configured reward"}.`, ...current].slice(0, 4));
         if (choice.next_node_id && dialogueNodes.some((node) => node.id === choice.next_node_id)) {
           setActiveNodeId(choice.next_node_id);
         }
@@ -3434,7 +3449,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const rewardResult = await applyDialogueChoiceRewards(
         character,
         choice,
-        dialogueChoiceRewards.filter((reward) => reward.choice_id === choice.id),
+        configuredRewards,
       );
       setDialogueLog((current) => [rewardResult.message, ...current].slice(0, 4));
       setClaimedChoiceRewardIds((current) => new Set([...current, choice.id]));

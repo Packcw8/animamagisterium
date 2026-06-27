@@ -10,7 +10,7 @@ declare
   n_satchel uuid;
   n_surroundings uuid;
   n_leave uuid;
-  c_search_satchel uuid;
+  c_take_supplies uuid;
 begin
   select id
     into v_event_id
@@ -141,25 +141,26 @@ begin
   insert into public.story_dialogue_choices (node_id, button_text, action, next_node_id, sort_order)
   values
     (n_opening, 'Examine the body', 'go_to_node', n_body, 1),
+    (n_opening, 'Search the satchel', 'go_to_node', n_satchel, 2),
     (n_opening, 'Examine the surroundings', 'go_to_node', n_surroundings, 3),
     (n_opening, 'Continue on your journey', 'go_to_node', n_leave, 4);
 
   insert into public.story_dialogue_choices (node_id, button_text, action, next_node_id, sort_order)
-  values (n_opening, 'Search the satchel', 'give_reward', n_satchel, 2)
-  returning id into c_search_satchel;
+  values (n_satchel, 'Take the supplies', 'give_reward', null, 1)
+  returning id into c_take_supplies;
 
   insert into public.dialogue_choice_rewards (choice_id, reward_type, amount, sort_order)
-  values (c_search_satchel, 'gold', 80, 1);
+  values (c_take_supplies, 'gold', 80, 1);
 
   insert into public.dialogue_choice_rewards (choice_id, reward_type, item_id, quantity, sort_order)
   values
-    (c_search_satchel, 'item', v_common_sword_id, 1, 2),
-    (c_search_satchel, 'item', v_healing_potion_id, 1, 3);
+    (c_take_supplies, 'item', v_common_sword_id, 1, 2),
+    (c_take_supplies, 'item', v_healing_potion_id, 1, 3);
 
   insert into public.story_dialogue_choices (node_id, button_text, action, next_node_id, sort_order)
   values
     (n_body, 'Return', 'go_to_node', n_opening, 1),
-    (n_satchel, 'Return', 'go_to_node', n_opening, 1),
+    (n_satchel, 'Return', 'go_to_node', n_opening, 2),
     (n_surroundings, 'Return', 'go_to_node', n_opening, 1),
     (n_leave, 'End conversation', 'complete_event', null, 1);
 end $$;
