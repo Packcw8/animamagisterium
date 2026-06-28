@@ -575,6 +575,9 @@ export type Tables = {
     check_failure_node_id: string | null;
     check_success_text: string | null;
     check_failure_text: string | null;
+    unlock_marker_id: string | null;
+    update_notification_title: string | null;
+    update_notification_body: string | null;
     sort_order: number;
     created_at: string;
     updated_at: string;
@@ -697,6 +700,13 @@ export type Tables = {
     created_by: string | null;
     created_at: string;
     updated_at: string;
+  };
+  player_marker_unlocks: {
+    id: string;
+    user_id: string;
+    marker_id: string;
+    source_choice_id: string | null;
+    unlocked_at: string;
   };
   marker_legend_items: {
     id: string;

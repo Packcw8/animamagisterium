@@ -128,7 +128,7 @@ export function MarkerSceneScreen({
             ) : (
               <Text style={styles.copy}>No dialogue tree is linked to this NPC yet.</Text>
             )}
-            {marker.battle_event_id || marker.enemy_id || marker.npc_id ? (
+            {marker.battle_event_id || marker.enemy_id ? (
               <Pressable style={styles.secondaryButton} onPress={onStartBattleEvent}>
                 <Text style={styles.secondaryText}>Challenge / Fight</Text>
               </Pressable>

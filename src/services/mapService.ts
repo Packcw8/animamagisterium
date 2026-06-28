@@ -9,6 +9,7 @@ export type MapSeason = Tables["map_seasons"];
 export type MapChapter = Tables["map_chapters"];
 export type RouteProgress = Tables["route_progress"];
 export type PlayerMapState = Tables["player_map_state"];
+export type PlayerMarkerUnlock = Tables["player_marker_unlocks"];
 export type MapMarker = Tables["map_markers"];
 export type MarkerLegendItem = Tables["marker_legend_items"];
 export type WorldMapSetting = Tables["world_map_settings"];
@@ -62,6 +63,7 @@ export const fallbackRoute: MapRoute = {
 
 export const fallbackMarkers: MapMarker[] = [];
 let playerMapStateAvailable: boolean | null = null;
+let playerMarkerUnlocksAvailable: boolean | null = null;
 
 function isMissingRelationError(error: { code?: string; message?: string } | null | undefined) {
   const message = error?.message?.toLowerCase() ?? "";
@@ -71,6 +73,15 @@ function isMissingRelationError(error: { code?: string; message?: string } | nul
 function markPlayerMapStateUnavailable(error: { code?: string; message?: string } | null | undefined) {
   if (isMissingRelationError(error)) {
     playerMapStateAvailable = false;
+    return true;
+  }
+
+  return false;
+}
+
+function markPlayerMarkerUnlocksUnavailable(error: { code?: string; message?: string } | null | undefined) {
+  if (isMissingRelationError(error)) {
+    playerMarkerUnlocksAvailable = false;
     return true;
   }
 
@@ -590,6 +601,79 @@ export async function clearPlayerMapState() {
   }
 }
 
+export async function getPlayerMarkerUnlocks() {
+  if (playerMarkerUnlocksAvailable === false) {
+    return [];
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("player_marker_unlocks")
+    .select("*")
+    .eq("user_id", user.id);
+
+  if (error) {
+    if (markPlayerMarkerUnlocksUnavailable(error)) {
+      console.warn("[map] player marker unlocks table is unavailable; run the dialogue marker unlocks migration.");
+      return [];
+    }
+
+    console.warn("[map] player marker unlocks unavailable", error.message);
+    return [];
+  }
+
+  playerMarkerUnlocksAvailable = true;
+  return (data ?? []) as PlayerMarkerUnlock[];
+}
+
+export async function unlockPlayerMarker(markerId: string, sourceChoiceId?: string | null) {
+  if (playerMarkerUnlocksAvailable === false) {
+    return null;
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to unlock map markers.");
+  }
+
+  const { data, error } = await supabase
+    .from("player_marker_unlocks")
+    .upsert(
+      {
+        user_id: user.id,
+        marker_id: markerId,
+        source_choice_id: sourceChoiceId ?? null,
+        unlocked_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,marker_id" },
+    )
+    .select()
+    .single();
+
+  if (error) {
+    if (markPlayerMarkerUnlocksUnavailable(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+
+  playerMarkerUnlocksAvailable = true;
+  return data as PlayerMarkerUnlock;
+}
+
 export async function setCurrentRoute(routeId: string) {
   const {
     data: { user },
@@ -911,7 +995,7 @@ export async function updateMapMarker(markerId: string, values: Partial<Pick<Map
   return data as MapMarker;
 }
 
-export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "reward_full_heal" | "reward_timing" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "marker_size" | "lock_type" | "lock_message" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "season_number" | "chapter_number" | "dialogue_event_id" | "battle_event_id" | "enemy_id" | "npc_id">>) {
+export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_unlocked" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "reward_full_heal" | "reward_timing" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "linked_route_id" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "marker_size" | "lock_type" | "lock_message" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "season_number" | "chapter_number" | "dialogue_event_id" | "battle_event_id" | "enemy_id" | "npc_id">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({
@@ -1741,7 +1825,7 @@ export async function deleteDialogueNode(nodeId: string) {
   }
 }
 
-export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at">) {
+export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at" | "unlock_marker_id" | "update_notification_title" | "update_notification_body"> & Partial<Pick<StoryDialogueChoice, "unlock_marker_id" | "update_notification_title" | "update_notification_body">>) {
   const values = { ...input, consume_gold: input.consume_gold ?? 0 };
   const { data, error } = await supabase.from("story_dialogue_choices").insert(values).select().single();
 

@@ -35,6 +35,7 @@ export type MarkerPayloadState = {
   markerSceneBackground: string;
   markerNpcImage: string;
   markerInteractionRadius: string;
+  markerInitiallyUnlocked: boolean;
   markerRewardXp: string;
   markerRewardGold: string;
   markerRewardItemId: string | null;
@@ -79,6 +80,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     enemy_id: isBattleType(state.draftType) ? state.markerEnemyId : null,
     npc_id: isBattleType(state.draftType) ? state.markerNpcId : null,
     interaction_radius_percent: Math.max(0.5, Number(state.markerInteractionRadius) || 4),
+    is_unlocked: state.markerInitiallyUnlocked,
     reward_xp: Number(state.markerRewardXp) || 0,
     reward_gold: Number(state.markerRewardGold) || 0,
     reward_item_id: state.markerRewardItemId,
@@ -108,7 +110,7 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     x_percent: point.x,
     y_percent: point.y,
     is_active: true,
-    is_unlocked: true,
+    is_unlocked: state.markerInitiallyUnlocked,
     route_id: null,
     quest_key: null,
     linked_mini_map_id: settings.linked_mini_map_id,

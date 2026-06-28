@@ -126,6 +126,7 @@ import {
   getPlayerStoryFlags,
   getPlayerTutorialCompletions,
   getPlayerMapState,
+  getPlayerMarkerUnlocks,
   getWorldMapSettings,
   getMarkerLegendItems,
   getMarkerRouteLinks,
@@ -180,6 +181,7 @@ import {
   updateMapMarker,
   updateMarkerSettings,
   updateMapRoute,
+  unlockPlayerMarker,
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
@@ -396,6 +398,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerSize, setMarkerSize] = useState("100");
   const [markerInteractionRadius, setMarkerInteractionRadius] = useState("4");
   const [markerInteractable, setMarkerInteractable] = useState(true);
+  const [markerInitiallyUnlocked, setMarkerInitiallyUnlocked] = useState(true);
   const [markerRewardXp, setMarkerRewardXp] = useState("0");
   const [markerRewardGold, setMarkerRewardGold] = useState("0");
   const [markerRewardItemId, setMarkerRewardItemId] = useState<string | null>(null);
@@ -509,6 +512,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [choiceRewardItem, setChoiceRewardItem] = useState("");
   const [choiceRewardItemId, setChoiceRewardItemId] = useState<string | null>(null);
   const [choiceRewardItemQuantity, setChoiceRewardItemQuantity] = useState("1");
+  const [choiceUnlockMarkerId, setChoiceUnlockMarkerId] = useState<string | null>(null);
+  const [choiceUpdateTitle, setChoiceUpdateTitle] = useState("");
+  const [choiceUpdateBody, setChoiceUpdateBody] = useState("");
   const [choiceRequirementType, setChoiceRequirementType] = useState<StoryDialogueChoice["requirement_type"]>("none");
   const [choiceRequirementValue, setChoiceRequirementValue] = useState("");
   const [choiceRequirementQuantity, setChoiceRequirementQuantity] = useState("1");
@@ -531,6 +537,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [followPlayer, setFollowPlayer] = useState(true);
   const [completedRouteId, setCompletedRouteId] = useState<string | null>(null);
   const [miniMapExitInProgress, setMiniMapExitInProgress] = useState(false);
+  const [playerUnlockedMarkerIds, setPlayerUnlockedMarkerIds] = useState<Set<string>>(new Set());
   const viewportRef = useRef<MapViewportRef | null>(null);
   const watchId = useRef<number | null>(null);
   const distanceWalkedRef = useRef(0);
@@ -597,29 +604,33 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const miniMapRouteSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminMiniMapRoutes : hasActiveRoute && route.mini_map_id === activeMiniMap?.id ? [route] : [], route.id, mapSize, isAdmin), [activeMiniMap?.id, adminMiniMapRoutes, hasActiveRoute, isAdmin, route]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft, activeMiniMap ? mapSize : worldMapDimensions).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [activeMiniMap, pathDraft, worldMapDimensions]);
   const playerPathVisibility = useMemo(() => (hasActiveRoute ? getPathSegmentMetaAtProgress(route.path_points, route.path_segments ?? [], progressPercent).visibility : "visible"), [hasActiveRoute, progressPercent, route.path_points, route.path_segments]);
-  const worldMarkers = useMemo(() => markers.filter((marker) => !marker.mini_map_id), [markers]);
-  const miniMapMarkers = useMemo(() => markers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [markers, activeMiniMap?.id]);
+  const effectiveMarkers = useMemo(
+    () => markers.map((marker) => (playerUnlockedMarkerIds.has(marker.id) ? { ...marker, is_unlocked: true } : marker)),
+    [markers, playerUnlockedMarkerIds],
+  );
+  const worldMarkers = useMemo(() => effectiveMarkers.filter((marker) => !marker.mini_map_id), [effectiveMarkers]);
+  const miniMapMarkers = useMemo(() => effectiveMarkers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [effectiveMarkers, activeMiniMap?.id]);
   const miniMapSpawnMarker = useMemo(() => miniMapMarkers.find((marker) => marker.type === "Player Spawn") ?? null, [miniMapMarkers]);
   const miniMapSpawnPosition = miniMapSpawnMarker ? { x: Number(miniMapSpawnMarker.x_percent), y: Number(miniMapSpawnMarker.y_percent) } : { x: 50, y: 50 };
   const miniMapPlayerPosition = route.mini_map_id === activeMiniMap?.id ? playerPosition : savedMiniMapPosition ?? miniMapSpawnPosition;
   const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
   const adminWorldMarkers = useMemo(() => worldMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, worldMarkers]);
   const adminMiniMapMarkers = useMemo(() => miniMapMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMapMarkers, selectedChapter, selectedSeason]);
-  const adminStoryMarkers = useMemo(() => markers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter) && isStoryQuestMarker(item)), [markers, selectedChapter, selectedSeason]);
+  const adminStoryMarkers = useMemo(() => effectiveMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter) && isStoryQuestMarker(item)), [effectiveMarkers, selectedChapter, selectedSeason]);
   const adminMiniMaps = useMemo(() => miniMaps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMaps, selectedChapter, selectedSeason]);
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
   const adminMapEvents = useMemo(() => mapEvents.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [mapEvents, selectedChapter, selectedSeason]);
   const publishedWorldMapUri = resolveMapImageUri(activeWorldMapSetting?.image_url);
   const overworldImageSource = publishedWorldMapUri ? { uri: publishedWorldMapUri } : forgottenMarches;
-  const availableSeasons = useMemo(() => mergeSeasonRecords(mapSeasons, getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents, worldMapSettings].flat(), "season_number")), [legendItems, mapEvents, mapSeasons, markers, miniMaps, routes, tutorialSteps, worldMapSettings]);
+  const availableSeasons = useMemo(() => mergeSeasonRecords(mapSeasons, getAvailableNumbers([routes, effectiveMarkers, miniMaps, tutorialSteps, legendItems, mapEvents, worldMapSettings].flat(), "season_number")), [legendItems, mapEvents, mapSeasons, effectiveMarkers, miniMaps, routes, tutorialSteps, worldMapSettings]);
   const availableChapters = useMemo(
     () => mergeChapterRecords(
       mapChapters.filter((chapter) => Number(chapter.season_number) === selectedSeason),
-      getAvailableNumbers([routes, markers, miniMaps, tutorialSteps, legendItems, mapEvents, worldMapSettings].flat().filter((item) => Number(item.season_number ?? 1) === selectedSeason), "chapter_number"),
+      getAvailableNumbers([routes, effectiveMarkers, miniMaps, tutorialSteps, legendItems, mapEvents, worldMapSettings].flat().filter((item) => Number(item.season_number ?? 1) === selectedSeason), "chapter_number"),
       selectedSeason,
     ),
-    [legendItems, mapChapters, mapEvents, markers, miniMaps, routes, selectedSeason, tutorialSteps, worldMapSettings],
+    [legendItems, mapChapters, mapEvents, effectiveMarkers, miniMaps, routes, selectedSeason, tutorialSteps, worldMapSettings],
   );
   const effectiveRouteProgressRows = useMemo(() => {
     if (!hasActiveRoute) {
@@ -647,13 +658,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }, [distanceWalked, hasActiveRoute, playerPosition.x, playerPosition.y, progressPercent, route.id, routeDirection, routeProgressRows]);
   const visibleMarkers = isAdmin
     ? worldMarkers
-    : worldMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds, startedStoryMarkerIds));
+    : worldMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
   const visibleMiniMapMarkers = isAdmin
     ? adminMiniMapMarkers
-    : miniMapMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, markers, completedStoryMarkerIds, startedStoryMarkerIds));
+    : miniMapMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
-  const selectedDialogueMarker = useMemo(() => markers.find((marker) => marker.id === selectedDialogueMarkerId) ?? null, [markers, selectedDialogueMarkerId]);
+  const selectedDialogueMarker = useMemo(() => effectiveMarkers.find((marker) => marker.id === selectedDialogueMarkerId) ?? null, [effectiveMarkers, selectedDialogueMarkerId]);
   const selectedNodeChoices = useMemo(
     () => (choiceNodeId ? dialogueChoices.filter((choice) => choice.node_id === choiceNodeId).sort((a, b) => a.sort_order - b.sort_order) : []),
     [choiceNodeId, dialogueChoices],
@@ -1076,9 +1087,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       getAllMarkerRouteLinks(),
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
-    const [progressRows, playerMapState] = await Promise.all([
+    const [progressRows, playerMapState, markerUnlocks] = await Promise.all([
       getRouteProgressForRoutes(nextRoutes.map((item) => item.id)),
       getPlayerMapState(),
+      getPlayerMarkerUnlocks(),
     ]);
     const storyMarkerIds = loadedMarkers.filter(isStoryQuestMarker).map((item) => item.id);
     const [storyCompletions, storyStarts, loadedStoryFlags, tutorialCompletions, allEventCompletions] = await Promise.all([
@@ -1100,6 +1112,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setStoryFlags(new Map(loadedStoryFlags.map((flag) => [flag.flag_key, flag.flag_value])));
     setCompletedTutorialStepIds(new Set(tutorialCompletions.map((completion) => completion.tutorial_step_id)));
     setCompletedEventIds(new Set(allEventCompletions.map((completion) => completion.event_id)));
+    setPlayerUnlockedMarkerIds(new Set(markerUnlocks.map((unlock) => unlock.marker_id)));
     setRoutes(nextRoutes);
     setPathDraft([]);
     setPathSegmentDraft([]);
@@ -1738,6 +1751,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markerSceneBackground,
       markerNpcImage,
       markerInteractionRadius,
+      markerInitiallyUnlocked,
       markerRewardXp,
       markerRewardGold,
       markerRewardItemId,
@@ -1789,6 +1803,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerNpcId(marker.npc_id ?? null);
     setMarkerInteractionRadius(String(marker.interaction_radius_percent ?? 4));
     setMarkerInteractable(marker.is_interactable ?? true);
+    setMarkerInitiallyUnlocked(marker.is_unlocked ?? true);
     setMarkerRewardXp(String(marker.reward_xp ?? 0));
     setMarkerRewardGold(String(marker.reward_gold ?? 0));
     setMarkerRewardItemId(marker.reward_item_id ?? null);
@@ -3505,6 +3520,35 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
     }
 
+    if (choice.unlock_marker_id && !adminPreviewMode) {
+      const alreadyUnlocked = playerUnlockedMarkerIds.has(choice.unlock_marker_id);
+      try {
+        await unlockPlayerMarker(choice.unlock_marker_id, choice.id);
+        setPlayerUnlockedMarkerIds((current) => new Set([...current, choice.unlock_marker_id as string]));
+        const refreshedMarkers = await getMapMarkers();
+        setMarkers(refreshedMarkers);
+        if (!alreadyUnlocked) {
+          const unlockedMarker =
+            refreshedMarkers.find((marker) => marker.id === choice.unlock_marker_id) ??
+            effectiveMarkers.find((marker) => marker.id === choice.unlock_marker_id) ??
+            markers.find((marker) => marker.id === choice.unlock_marker_id) ??
+            null;
+          showGameToast({
+            title: choice.update_notification_title || "Quest Updated",
+            message: choice.update_notification_body || (unlockedMarker ? `${unlockedMarker.title} is now available on the map.` : "A new map marker is now available."),
+            nextMarker: unlockedMarker,
+            actionLabel: "OK",
+          });
+        }
+      } catch (error) {
+        setDialogueLog((current) => [getErrorMessage(error, "Unable to update the map marker for this choice."), ...current].slice(0, 4));
+        return;
+      }
+    } else if (choice.unlock_marker_id && adminPreviewMode) {
+      const unlockedMarker = effectiveMarkers.find((marker) => marker.id === choice.unlock_marker_id) ?? null;
+      setDialogueLog((current) => [`Admin preview: would reveal ${unlockedMarker?.title ?? "a map marker"}.`, ...current].slice(0, 4));
+    }
+
     if (choice.action === "go_to_node") {
       if (choice.next_node_id && dialogueNodes.some((node) => node.id === choice.next_node_id)) {
         setActiveNodeId(choice.next_node_id);
@@ -4081,6 +4125,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         check_failure_node_id: choice.check_failure_node_id ? nodeIdMap.get(choice.check_failure_node_id) ?? null : null,
         check_success_text: choice.check_success_text,
         check_failure_text: choice.check_failure_text,
+        unlock_marker_id: choice.unlock_marker_id,
+        update_notification_title: choice.update_notification_title,
+        update_notification_body: choice.update_notification_body,
         sort_order: choice.sort_order,
       });
     }
@@ -4218,6 +4265,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceCheckFailureNodeId(choice.check_failure_node_id ?? null);
     setChoiceCheckSuccessText(choice.check_success_text ?? "");
     setChoiceCheckFailureText(choice.check_failure_text ?? "");
+    setChoiceUnlockMarkerId(choice.unlock_marker_id ?? null);
+    setChoiceUpdateTitle(choice.update_notification_title ?? "");
+    setChoiceUpdateBody(choice.update_notification_body ?? "");
     setChoiceSortOrder(String(choice.sort_order));
   }
 
@@ -4256,6 +4306,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceCheckFailureNodeId(null);
     setChoiceCheckSuccessText("");
     setChoiceCheckFailureText("");
+    setChoiceUnlockMarkerId(null);
+    setChoiceUpdateTitle("");
+    setChoiceUpdateBody("");
     setChoiceSortOrder(String(choiceNodeId ? getNextChoiceOrder(dialogueChoices, choiceNodeId) : 0));
   }
 
@@ -4314,6 +4367,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         check_failure_node_id: choiceCheckEnabled ? choiceCheckFailureNodeId : null,
         check_success_text: choiceCheckSuccessText.trim() || null,
         check_failure_text: choiceCheckFailureText.trim() || null,
+        unlock_marker_id: choiceUnlockMarkerId,
+        update_notification_title: choiceUpdateTitle.trim() || null,
+        update_notification_body: choiceUpdateBody.trim() || null,
         sort_order: Number(choiceSortOrder) || 0,
       };
       const saved = editingChoice ? await updateDialogueChoice(editingChoice.id, input) : await createDialogueChoice({ ...input, node_id: choiceNodeId });
@@ -4633,12 +4689,19 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 rewardItemQuantity={choiceRewardItemQuantity}
                 legacyRewardItem={choiceRewardItem}
                 itemDefinitions={itemDefinitions}
+                markers={effectiveMarkers.filter((marker) => isInSelectedChapter(marker, selectedSeason, selectedChapter))}
+                unlockMarkerId={choiceUnlockMarkerId}
+                updateTitle={choiceUpdateTitle}
+                updateBody={choiceUpdateBody}
                 linkedBattleBuilder={choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
                 onChangeRewardXp={setChoiceRewardXp}
                 onChangeRewardGold={setChoiceRewardGold}
                 onChangeRewardItemId={setChoiceRewardItemId}
                 onChangeRewardItemQuantity={setChoiceRewardItemQuantity}
                 onChangeLegacyRewardItem={setChoiceRewardItem}
+                onChangeUnlockMarkerId={setChoiceUnlockMarkerId}
+                onChangeUpdateTitle={setChoiceUpdateTitle}
+                onChangeUpdateBody={setChoiceUpdateBody}
               />
             }
             requirementEditor={renderDialogueChoiceRequirementEditor()}
@@ -5227,6 +5290,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerInteractionRadius={setMarkerInteractionRadius}
               markerInteractable={markerInteractable}
               setMarkerInteractable={setMarkerInteractable}
+              markerInitiallyUnlocked={markerInitiallyUnlocked}
+              setMarkerInitiallyUnlocked={setMarkerInitiallyUnlocked}
               markerQuestTitle={markerQuestTitle}
               setMarkerQuestTitle={setMarkerQuestTitle}
               markerQuestDialogue={markerQuestDialogue}
@@ -5840,6 +5905,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
                 <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
               </Pressable>
+              <Pressable style={[styles.secondaryButton, markerInitiallyUnlocked && styles.typeSelected]} onPress={() => setMarkerInitiallyUnlocked((value) => !value)}>
+                <Text style={styles.secondaryText}>Initially Unlocked: {markerInitiallyUnlocked ? "true" : "false"}</Text>
+              </Pressable>
               {supportsMarkerDialogue(draftType) ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>Marker Dialogue Tree</Text>
@@ -6373,6 +6441,8 @@ function MiniMapMarkerAdminForm({
   setMarkerInteractionRadius,
   markerInteractable,
   setMarkerInteractable,
+  markerInitiallyUnlocked,
+  setMarkerInitiallyUnlocked,
   markerQuestTitle,
   setMarkerQuestTitle,
   markerQuestDialogue,
@@ -6491,6 +6561,8 @@ function MiniMapMarkerAdminForm({
   setMarkerInteractionRadius: (value: string) => void;
   markerInteractable: boolean;
   setMarkerInteractable: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerInitiallyUnlocked: boolean;
+  setMarkerInitiallyUnlocked: (value: boolean | ((current: boolean) => boolean)) => void;
   markerQuestTitle: string;
   setMarkerQuestTitle: (value: string) => void;
   markerQuestDialogue: string;
@@ -6612,6 +6684,9 @@ function MiniMapMarkerAdminForm({
       <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
       <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
         <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
+      </Pressable>
+      <Pressable style={[styles.secondaryButton, markerInitiallyUnlocked && styles.typeSelected]} onPress={() => setMarkerInitiallyUnlocked((value) => !value)}>
+        <Text style={styles.secondaryText}>Initially Unlocked: {markerInitiallyUnlocked ? "true" : "false"}</Text>
       </Pressable>
       {draftType === "NPC" ? (
         <View style={styles.storyEditor}>

@@ -149,7 +149,7 @@ export function MarkerInteractionPanel({
   }
 
   if (marker.type === "NPC") {
-    const hasOpponent = Boolean(marker.battle_event_id || marker.enemy_id || marker.npc_id);
+    const hasOpponent = Boolean(marker.battle_event_id || marker.enemy_id);
 
     return (
       <PanelShell marker={marker} message={message} onClose={onClose}>
