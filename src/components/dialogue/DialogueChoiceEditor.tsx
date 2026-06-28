@@ -17,6 +17,10 @@ type Props = {
   action: StoryDialogueChoice["action"];
   nextNodeId: string | null;
   sortOrder: string;
+  repeatable: boolean;
+  hideAfterSelected: boolean;
+  disableAfterSelected: boolean;
+  selectedMessage: string;
   itemDefinitions: ItemDefinition[];
   effectEditor: ReactNode;
   requirementEditor: ReactNode;
@@ -27,6 +31,10 @@ type Props = {
   onChangeAction: (value: StoryDialogueChoice["action"]) => void;
   onChangeNextNodeId: (value: string | null) => void;
   onChangeSortOrder: (value: string) => void;
+  onToggleRepeatable: () => void;
+  onToggleHideAfterSelected: () => void;
+  onToggleDisableAfterSelected: () => void;
+  onChangeSelectedMessage: (value: string) => void;
   onSave: () => void;
   onCancelEdit: () => void;
   onEditChoice: (choice: StoryDialogueChoice) => void;
@@ -46,6 +54,10 @@ export function DialogueChoiceEditor({
   action,
   nextNodeId,
   sortOrder,
+  repeatable,
+  hideAfterSelected,
+  disableAfterSelected,
+  selectedMessage,
   itemDefinitions,
   effectEditor,
   requirementEditor,
@@ -56,6 +68,10 @@ export function DialogueChoiceEditor({
   onChangeAction,
   onChangeNextNodeId,
   onChangeSortOrder,
+  onToggleRepeatable,
+  onToggleHideAfterSelected,
+  onToggleDisableAfterSelected,
+  onChangeSelectedMessage,
   onSave,
   onCancelEdit,
   onEditChoice,
@@ -91,6 +107,26 @@ export function DialogueChoiceEditor({
         </View>
       ) : null}
       {effectEditor}
+      <View style={styles.storyEditor}>
+        <Text style={styles.selectedTitle}>Choice Memory</Text>
+        <Text style={styles.copy}>Use this for quest-start, take-item, or one-time decision choices. This is saved per player, not globally.</Text>
+        <Pressable style={[styles.secondaryButton, repeatable && styles.typeSelected]} onPress={onToggleRepeatable}>
+          <Text style={styles.secondaryText}>Repeatable: {repeatable ? "Yes" : "No"}</Text>
+        </Pressable>
+        {!repeatable ? (
+          <>
+            <View style={styles.modeRow}>
+              <Pressable style={[styles.secondaryButtonFlex, hideAfterSelected && styles.typeSelected]} onPress={onToggleHideAfterSelected}>
+                <Text style={styles.secondaryText}>Hide After Selected: {hideAfterSelected ? "Yes" : "No"}</Text>
+              </Pressable>
+              <Pressable style={[styles.secondaryButtonFlex, disableAfterSelected && styles.typeSelected]} onPress={onToggleDisableAfterSelected}>
+                <Text style={styles.secondaryText}>Disable After Selected: {disableAfterSelected ? "Yes" : "No"}</Text>
+              </Pressable>
+            </View>
+            <TextInput value={selectedMessage} onChangeText={onChangeSelectedMessage} placeholder="Message if disabled, example Quest already started." placeholderTextColor={colors.muted} style={styles.input} />
+          </>
+        ) : null}
+      </View>
       {requirementEditor}
       {checkEditor}
       <TextInput value={sortOrder} onChangeText={onChangeSortOrder} placeholder="Choice order" placeholderTextColor={colors.muted} style={styles.input} />
@@ -103,6 +139,7 @@ export function DialogueChoiceEditor({
           <Text style={styles.flowStepTitle}>{choice.button_text}</Text>
           <Text style={styles.copy}>{choiceActionLabel(choice.action)}{choice.player_dialogue_text ? ` - "${choice.player_dialogue_text}"` : ""}</Text>
           {(choice.requirement_type ?? "none") !== "none" ? <Text style={styles.debugLine}>{getRequirementSummary(choice, itemDefinitions)}</Text> : null}
+          {!choice.repeatable ? <Text style={styles.debugLine}>{choice.hide_after_selected ? "One-time / hides after selected" : "One-time / disables after selected"}</Text> : null}
           {getAttributeCheckSummary(choice) ? <Text style={styles.debugLine}>{getAttributeCheckSummary(choice)}</Text> : null}
           <View style={styles.modeRow}>
             <Pressable style={styles.secondaryButtonFlex} onPress={() => onEditChoice(choice)}><Text style={styles.secondaryText}>Edit Choice</Text></Pressable>

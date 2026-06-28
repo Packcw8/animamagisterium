@@ -10,6 +10,7 @@ export type MapChapter = Tables["map_chapters"];
 export type RouteProgress = Tables["route_progress"];
 export type PlayerMapState = Tables["player_map_state"];
 export type PlayerMarkerUnlock = Tables["player_marker_unlocks"];
+export type PlayerDialogueChoiceHistory = Tables["player_dialogue_choice_history"];
 export type MapMarker = Tables["map_markers"];
 export type MarkerLegendItem = Tables["marker_legend_items"];
 export type WorldMapSetting = Tables["world_map_settings"];
@@ -64,6 +65,7 @@ export const fallbackRoute: MapRoute = {
 export const fallbackMarkers: MapMarker[] = [];
 let playerMapStateAvailable: boolean | null = null;
 let playerMarkerUnlocksAvailable: boolean | null = null;
+let playerDialogueChoiceHistoryAvailable: boolean | null = null;
 
 function isMissingRelationError(error: { code?: string; message?: string } | null | undefined) {
   const message = error?.message?.toLowerCase() ?? "";
@@ -82,6 +84,15 @@ function markPlayerMapStateUnavailable(error: { code?: string; message?: string 
 function markPlayerMarkerUnlocksUnavailable(error: { code?: string; message?: string } | null | undefined) {
   if (isMissingRelationError(error)) {
     playerMarkerUnlocksAvailable = false;
+    return true;
+  }
+
+  return false;
+}
+
+function markPlayerDialogueChoiceHistoryUnavailable(error: { code?: string; message?: string } | null | undefined) {
+  if (isMissingRelationError(error)) {
+    playerDialogueChoiceHistoryAvailable = false;
     return true;
   }
 
@@ -672,6 +683,94 @@ export async function unlockPlayerMarker(markerId: string, sourceChoiceId?: stri
 
   playerMarkerUnlocksAvailable = true;
   return data as PlayerMarkerUnlock;
+}
+
+export async function getPlayerDialogueChoiceHistory(choiceIds: string[]) {
+  if (playerDialogueChoiceHistoryAvailable === false) {
+    return new Set<string>();
+  }
+
+  const uniqueChoiceIds = Array.from(new Set(choiceIds.filter(Boolean)));
+  if (uniqueChoiceIds.length === 0) {
+    return new Set<string>();
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return new Set<string>();
+  }
+
+  const { data, error } = await supabase
+    .from("player_dialogue_choice_history")
+    .select("choice_id")
+    .eq("user_id", user.id)
+    .in("choice_id", uniqueChoiceIds);
+
+  if (error) {
+    if (markPlayerDialogueChoiceHistoryUnavailable(error)) {
+      console.warn("[dialogue] player choice history table is unavailable; run the dialogue choice history migration.");
+      return new Set<string>();
+    }
+
+    console.warn("[dialogue] player choice history unavailable", error.message);
+    return new Set<string>();
+  }
+
+  playerDialogueChoiceHistoryAvailable = true;
+  return new Set((data ?? []).map((row) => row.choice_id));
+}
+
+export async function recordPlayerDialogueChoice(input: {
+  characterId: string;
+  choiceId: string;
+  nodeId?: string | null;
+  eventId?: string | null;
+  markerId?: string | null;
+}) {
+  if (playerDialogueChoiceHistoryAvailable === false) {
+    return null;
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to save dialogue choices.");
+  }
+
+  const { data, error } = await supabase
+    .from("player_dialogue_choice_history")
+    .upsert(
+      {
+        user_id: user.id,
+        character_id: input.characterId,
+        choice_id: input.choiceId,
+        node_id: input.nodeId ?? null,
+        event_id: input.eventId ?? null,
+        marker_id: input.markerId ?? null,
+        selected_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id,choice_id" },
+    )
+    .select()
+    .single();
+
+  if (error) {
+    if (markPlayerDialogueChoiceHistoryUnavailable(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+
+  playerDialogueChoiceHistoryAvailable = true;
+  return data as PlayerDialogueChoiceHistory;
 }
 
 export async function setCurrentRoute(routeId: string) {
@@ -1825,8 +1924,15 @@ export async function deleteDialogueNode(nodeId: string) {
   }
 }
 
-export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at" | "unlock_marker_id" | "update_notification_title" | "update_notification_body"> & Partial<Pick<StoryDialogueChoice, "unlock_marker_id" | "update_notification_title" | "update_notification_body">>) {
-  const values = { ...input, consume_gold: input.consume_gold ?? 0 };
+export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at" | "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message"> & Partial<Pick<StoryDialogueChoice, "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message">>) {
+  const values = {
+    ...input,
+    consume_gold: input.consume_gold ?? 0,
+    repeatable: input.repeatable ?? true,
+    hide_after_selected: input.hide_after_selected ?? false,
+    disable_after_selected: input.disable_after_selected ?? false,
+    selected_message: input.selected_message ?? null,
+  };
   const { data, error } = await supabase.from("story_dialogue_choices").insert(values).select().single();
 
   if (error) {

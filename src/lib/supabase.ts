@@ -578,6 +578,10 @@ export type Tables = {
     unlock_marker_id: string | null;
     update_notification_title: string | null;
     update_notification_body: string | null;
+    repeatable: boolean;
+    hide_after_selected: boolean;
+    disable_after_selected: boolean;
+    selected_message: string | null;
     sort_order: number;
     created_at: string;
     updated_at: string;
@@ -707,6 +711,16 @@ export type Tables = {
     marker_id: string;
     source_choice_id: string | null;
     unlocked_at: string;
+  };
+  player_dialogue_choice_history: {
+    id: string;
+    user_id: string;
+    character_id: string | null;
+    choice_id: string;
+    node_id: string | null;
+    event_id: string | null;
+    marker_id: string | null;
+    selected_at: string;
   };
   marker_legend_items: {
     id: string;

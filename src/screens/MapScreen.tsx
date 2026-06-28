@@ -127,6 +127,7 @@ import {
   getPlayerTutorialCompletions,
   getPlayerMapState,
   getPlayerMarkerUnlocks,
+  getPlayerDialogueChoiceHistory,
   getWorldMapSettings,
   getMarkerLegendItems,
   getMarkerRouteLinks,
@@ -171,6 +172,7 @@ import {
   saveTutorialStep,
   startStoryMarker,
   recordDialogueChoiceEffectClaim,
+  recordPlayerDialogueChoice,
   recordPlayerAttributeCheck,
   setCurrentRoute,
   sellMarketInventoryItem,
@@ -256,6 +258,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [dialogueChoices, setDialogueChoices] = useState<StoryDialogueChoice[]>([]);
   const [dialogueChoiceRewards, setDialogueChoiceRewards] = useState<DialogueChoiceReward[]>([]);
   const [claimedChoiceRewardIds, setClaimedChoiceRewardIds] = useState<Set<string>>(new Set());
+  const [selectedDialogueChoiceIds, setSelectedDialogueChoiceIds] = useState<Set<string>>(new Set());
   const [pendingRewardChoice, setPendingRewardChoice] = useState<StoryDialogueChoice | null>(null);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [dialogueLog, setDialogueLog] = useState<string[]>([]);
@@ -515,6 +518,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [choiceUnlockMarkerId, setChoiceUnlockMarkerId] = useState<string | null>(null);
   const [choiceUpdateTitle, setChoiceUpdateTitle] = useState("");
   const [choiceUpdateBody, setChoiceUpdateBody] = useState("");
+  const [choiceRepeatable, setChoiceRepeatable] = useState(true);
+  const [choiceHideAfterSelected, setChoiceHideAfterSelected] = useState(false);
+  const [choiceDisableAfterSelected, setChoiceDisableAfterSelected] = useState(false);
+  const [choiceSelectedMessage, setChoiceSelectedMessage] = useState("");
   const [choiceRequirementType, setChoiceRequirementType] = useState<StoryDialogueChoice["requirement_type"]>("none");
   const [choiceRequirementValue, setChoiceRequirementValue] = useState("");
   const [choiceRequirementQuantity, setChoiceRequirementQuantity] = useState("1");
@@ -581,9 +588,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         ];
       }
 
+      if (!choice.repeatable && selectedDialogueChoiceIds.has(choice.id)) {
+        return [
+          choice.id,
+          {
+            met: false,
+            hidden: Boolean(choice.hide_after_selected),
+            disabled: Boolean(choice.disable_after_selected || !choice.hide_after_selected),
+            message: choice.selected_message ?? "You already chose this.",
+          },
+        ];
+      }
+
       return [choice.id, baseAvailability];
     })),
-    [character, claimedChoiceRewardIds, completedEventIds, completedStoryMarkerIds, completedTutorialStepIds, dialogueChoices, inventoryItems, itemDefinitions, knownAbilities, storyFlags],
+    [character, claimedChoiceRewardIds, completedEventIds, completedStoryMarkerIds, completedTutorialStepIds, dialogueChoices, inventoryItems, itemDefinitions, knownAbilities, selectedDialogueChoiceIds, storyFlags],
   );
   const activeWorldMapSetting = useMemo(
     () => worldMapSettings.find((item) => Number(item.season_number) === selectedSeason && Number(item.chapter_number) === selectedChapter) ?? null,
@@ -3134,12 +3153,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const nodes = await getDialogueNodes(event.id);
     const choices = await getDialogueChoices(nodes.map((node) => node.id));
     const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
-    const claimedRewardChoices = await getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id));
+    const [claimedRewardChoices, selectedChoices] = await Promise.all([
+      getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id)),
+      getPlayerDialogueChoiceHistory(choices.map((choice) => choice.id)),
+    ]);
     const startNode = nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
     setDialogueNodes(nodes);
     setDialogueChoices(choices);
     setDialogueChoiceRewards(rewards);
     setClaimedChoiceRewardIds(claimedRewardChoices);
+    setSelectedDialogueChoiceIds(selectedChoices);
     setPendingRewardChoice(null);
     setActiveNodeId(startNode?.id ?? null);
     setDialogueLog([]);
@@ -3149,12 +3172,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const nodes = existingNodes ?? await getDialogueNodesForMarker(markerId);
     const choices = await getDialogueChoices(nodes.map((node) => node.id));
     const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
-    const claimedRewardChoices = await getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id));
+    const [claimedRewardChoices, selectedChoices] = await Promise.all([
+      getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id)),
+      getPlayerDialogueChoiceHistory(choices.map((choice) => choice.id)),
+    ]);
     const startNode = nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
     setDialogueNodes(nodes);
     setDialogueChoices(choices);
     setDialogueChoiceRewards(rewards);
     setClaimedChoiceRewardIds(claimedRewardChoices);
+    setSelectedDialogueChoiceIds(selectedChoices);
     setPendingRewardChoice(null);
     setActiveNodeId(startNode?.id ?? null);
     setDialogueLog([]);
@@ -3170,6 +3197,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setDialogueChoices(choices);
     setDialogueChoiceRewards(rewards);
     setClaimedChoiceRewardIds(new Set());
+    setSelectedDialogueChoiceIds(new Set());
     setChoiceNodeId(nodes[0]?.id ?? null);
     clearDialogueNodeForm();
     clearDialogueChoiceForm();
@@ -3185,6 +3213,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setDialogueChoices(choices);
     setDialogueChoiceRewards(rewards);
     setClaimedChoiceRewardIds(new Set());
+    setSelectedDialogueChoiceIds(new Set());
     setChoiceNodeId(nodes[0]?.id ?? null);
     clearDialogueNodeForm();
     clearDialogueChoiceForm();
@@ -3471,6 +3500,25 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setDialogueLog((current) => [`You: ${choice.player_dialogue_text}`, ...current].slice(0, 4));
     }
 
+    async function recordThisChoice() {
+      if (adminPreviewMode) {
+        return;
+      }
+
+      try {
+        await recordPlayerDialogueChoice({
+          characterId: character.id,
+          choiceId: choice.id,
+          nodeId: choice.node_id,
+          eventId: activeMarkerEventId ? null : activeEvent.id,
+          markerId: activeMarkerEventId,
+        });
+        setSelectedDialogueChoiceIds((current) => new Set([...current, choice.id]));
+      } catch (error) {
+        console.warn("[dialogue] unable to save player choice history", error);
+      }
+    }
+
     if (Number(choice.consume_gold ?? 0) > 0 && !adminPreviewMode) {
       try {
         const alreadyPaid = claimedChoiceRewardIds.has(choice.id) || await hasClaimedDialogueChoiceEffect(choice.id);
@@ -3550,6 +3598,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (choice.action === "go_to_node") {
+      await recordThisChoice();
       if (choice.next_node_id && dialogueNodes.some((node) => node.id === choice.next_node_id)) {
         setActiveNodeId(choice.next_node_id);
         return;
@@ -3559,6 +3608,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (choice.action === "start_battle") {
+      await recordThisChoice();
       const battle =
         allMapEvents.find((event) => event.id === choice.battle_event_id) ??
         mapEvents.find((event) => event.event_type === "battle" && event.route_id === routeRef.current.id);
@@ -3580,6 +3630,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (choice.action === "start_quest") {
+      await recordThisChoice();
       const marker = activeMarkerEventId ? markers.find((item) => item.id === activeMarkerEventId) ?? null : null;
       if (!marker) {
         setDialogueLog((current) => ["This choice must be used from a marker dialogue tree.", ...current].slice(0, 4));
@@ -3592,6 +3643,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (choice.action === "complete_event" || choice.action === "unlock_next_event") {
+      await recordThisChoice();
       await finishEvent(activeEvent);
       return;
     }
@@ -3612,6 +3664,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
 
       setPendingRewardChoice(choice);
+      await recordThisChoice();
       if (choice.next_node_id && dialogueNodes.some((node) => node.id === choice.next_node_id)) {
         setActiveNodeId(choice.next_node_id);
       }
@@ -3623,6 +3676,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    await recordThisChoice();
     setActiveEvent(null);
     setActiveMarkerEventId(null);
   }
@@ -4128,6 +4182,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         unlock_marker_id: choice.unlock_marker_id,
         update_notification_title: choice.update_notification_title,
         update_notification_body: choice.update_notification_body,
+        repeatable: choice.repeatable ?? true,
+        hide_after_selected: choice.hide_after_selected ?? false,
+        disable_after_selected: choice.disable_after_selected ?? false,
+        selected_message: choice.selected_message,
         sort_order: choice.sort_order,
       });
     }
@@ -4268,6 +4326,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceUnlockMarkerId(choice.unlock_marker_id ?? null);
     setChoiceUpdateTitle(choice.update_notification_title ?? "");
     setChoiceUpdateBody(choice.update_notification_body ?? "");
+    setChoiceRepeatable(choice.repeatable ?? true);
+    setChoiceHideAfterSelected(choice.hide_after_selected ?? false);
+    setChoiceDisableAfterSelected(choice.disable_after_selected ?? false);
+    setChoiceSelectedMessage(choice.selected_message ?? "");
     setChoiceSortOrder(String(choice.sort_order));
   }
 
@@ -4309,6 +4371,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceUnlockMarkerId(null);
     setChoiceUpdateTitle("");
     setChoiceUpdateBody("");
+    setChoiceRepeatable(true);
+    setChoiceHideAfterSelected(false);
+    setChoiceDisableAfterSelected(false);
+    setChoiceSelectedMessage("");
     setChoiceSortOrder(String(choiceNodeId ? getNextChoiceOrder(dialogueChoices, choiceNodeId) : 0));
   }
 
@@ -4370,6 +4436,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         unlock_marker_id: choiceUnlockMarkerId,
         update_notification_title: choiceUpdateTitle.trim() || null,
         update_notification_body: choiceUpdateBody.trim() || null,
+        repeatable: choiceRepeatable,
+        hide_after_selected: !choiceRepeatable && choiceHideAfterSelected,
+        disable_after_selected: !choiceRepeatable && choiceDisableAfterSelected,
+        selected_message: choiceSelectedMessage.trim() || null,
         sort_order: Number(choiceSortOrder) || 0,
       };
       const saved = editingChoice ? await updateDialogueChoice(editingChoice.id, input) : await createDialogueChoice({ ...input, node_id: choiceNodeId });
@@ -4679,6 +4749,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             action={choiceAction}
             nextNodeId={choiceNextNodeId}
             sortOrder={choiceSortOrder}
+            repeatable={choiceRepeatable}
+            hideAfterSelected={choiceHideAfterSelected}
+            disableAfterSelected={choiceDisableAfterSelected}
+            selectedMessage={choiceSelectedMessage}
             itemDefinitions={itemDefinitions}
             effectEditor={
               <DialogueChoiceEffectEditor
@@ -4712,6 +4786,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             onChangeAction={setChoiceAction}
             onChangeNextNodeId={setChoiceNextNodeId}
             onChangeSortOrder={setChoiceSortOrder}
+            onToggleRepeatable={() => setChoiceRepeatable((value) => !value)}
+            onToggleHideAfterSelected={() => setChoiceHideAfterSelected((value) => !value)}
+            onToggleDisableAfterSelected={() => setChoiceDisableAfterSelected((value) => !value)}
+            onChangeSelectedMessage={setChoiceSelectedMessage}
             onSave={() => void saveDialogueChoice()}
             onCancelEdit={clearDialogueChoiceForm}
             onEditChoice={editDialogueChoice}
