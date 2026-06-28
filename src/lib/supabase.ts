@@ -578,6 +578,9 @@ export type Tables = {
     unlock_marker_id: string | null;
     update_notification_title: string | null;
     update_notification_body: string | null;
+    restore_health: boolean;
+    restore_stamina: boolean;
+    restore_mana: boolean;
     repeatable: boolean;
     hide_after_selected: boolean;
     disable_after_selected: boolean;

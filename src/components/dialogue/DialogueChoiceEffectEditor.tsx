@@ -18,6 +18,9 @@ type Props = {
   unlockMarkerId: string | null;
   updateTitle: string;
   updateBody: string;
+  restoreHealth: boolean;
+  restoreStamina: boolean;
+  restoreMana: boolean;
   linkedBattleBuilder: ReactNode;
   onChangeRewardXp: (value: string) => void;
   onChangeRewardGold: (value: string) => void;
@@ -27,6 +30,9 @@ type Props = {
   onChangeUnlockMarkerId: (value: string | null) => void;
   onChangeUpdateTitle: (value: string) => void;
   onChangeUpdateBody: (value: string) => void;
+  onToggleRestoreHealth: () => void;
+  onToggleRestoreStamina: () => void;
+  onToggleRestoreMana: () => void;
 };
 
 export function DialogueChoiceEffectEditor({
@@ -41,6 +47,9 @@ export function DialogueChoiceEffectEditor({
   unlockMarkerId,
   updateTitle,
   updateBody,
+  restoreHealth,
+  restoreStamina,
+  restoreMana,
   linkedBattleBuilder,
   onChangeRewardXp,
   onChangeRewardGold,
@@ -50,6 +59,9 @@ export function DialogueChoiceEffectEditor({
   onChangeUnlockMarkerId,
   onChangeUpdateTitle,
   onChangeUpdateBody,
+  onToggleRestoreHealth,
+  onToggleRestoreStamina,
+  onToggleRestoreMana,
 }: Props) {
   if (action === "start_battle") {
     return (
@@ -64,21 +76,25 @@ export function DialogueChoiceEffectEditor({
           onChangeUpdateTitle={onChangeUpdateTitle}
           onChangeUpdateBody={onChangeUpdateBody}
         />
+        <ResourceRestoreEditor restoreHealth={restoreHealth} restoreStamina={restoreStamina} restoreMana={restoreMana} onToggleRestoreHealth={onToggleRestoreHealth} onToggleRestoreStamina={onToggleRestoreStamina} onToggleRestoreMana={onToggleRestoreMana} />
       </>
     );
   }
 
   if (action !== "give_reward") {
     return (
-      <MarkerUnlockEditor
-        markers={markers}
-        selectedId={unlockMarkerId}
-        updateTitle={updateTitle}
-        updateBody={updateBody}
-        onSelect={onChangeUnlockMarkerId}
-        onChangeUpdateTitle={onChangeUpdateTitle}
-        onChangeUpdateBody={onChangeUpdateBody}
-      />
+      <>
+        <MarkerUnlockEditor
+          markers={markers}
+          selectedId={unlockMarkerId}
+          updateTitle={updateTitle}
+          updateBody={updateBody}
+          onSelect={onChangeUnlockMarkerId}
+          onChangeUpdateTitle={onChangeUpdateTitle}
+          onChangeUpdateBody={onChangeUpdateBody}
+        />
+        <ResourceRestoreEditor restoreHealth={restoreHealth} restoreStamina={restoreStamina} restoreMana={restoreMana} onToggleRestoreHealth={onToggleRestoreHealth} onToggleRestoreStamina={onToggleRestoreStamina} onToggleRestoreMana={onToggleRestoreMana} />
+      </>
     );
   }
 
@@ -102,7 +118,42 @@ export function DialogueChoiceEffectEditor({
         onChangeUpdateTitle={onChangeUpdateTitle}
         onChangeUpdateBody={onChangeUpdateBody}
       />
+      <ResourceRestoreEditor restoreHealth={restoreHealth} restoreStamina={restoreStamina} restoreMana={restoreMana} onToggleRestoreHealth={onToggleRestoreHealth} onToggleRestoreStamina={onToggleRestoreStamina} onToggleRestoreMana={onToggleRestoreMana} />
     </>
+  );
+}
+
+function ResourceRestoreEditor({
+  restoreHealth,
+  restoreStamina,
+  restoreMana,
+  onToggleRestoreHealth,
+  onToggleRestoreStamina,
+  onToggleRestoreMana,
+}: {
+  restoreHealth: boolean;
+  restoreStamina: boolean;
+  restoreMana: boolean;
+  onToggleRestoreHealth: () => void;
+  onToggleRestoreStamina: () => void;
+  onToggleRestoreMana: () => void;
+}) {
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Rest / Recovery</Text>
+      <Text style={styles.copy}>Use this for innkeepers, campfires, healers, and rest dialogue choices.</Text>
+      <View style={styles.modeRow}>
+        <Pressable style={[styles.secondaryButtonFlex, restoreHealth && styles.typeSelected]} onPress={onToggleRestoreHealth}>
+          <Text style={styles.secondaryText}>Health: {restoreHealth ? "Full" : "No"}</Text>
+        </Pressable>
+        <Pressable style={[styles.secondaryButtonFlex, restoreStamina && styles.typeSelected]} onPress={onToggleRestoreStamina}>
+          <Text style={styles.secondaryText}>Stamina: {restoreStamina ? "Full" : "No"}</Text>
+        </Pressable>
+        <Pressable style={[styles.secondaryButtonFlex, restoreMana && styles.typeSelected]} onPress={onToggleRestoreMana}>
+          <Text style={styles.secondaryText}>Mana: {restoreMana ? "Full" : "No"}</Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 

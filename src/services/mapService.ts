@@ -1924,10 +1924,13 @@ export async function deleteDialogueNode(nodeId: string) {
   }
 }
 
-export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at" | "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message"> & Partial<Pick<StoryDialogueChoice, "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message">>) {
+export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at" | "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "restore_health" | "restore_stamina" | "restore_mana" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message"> & Partial<Pick<StoryDialogueChoice, "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "restore_health" | "restore_stamina" | "restore_mana" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message">>) {
   const values = {
     ...input,
     consume_gold: input.consume_gold ?? 0,
+    restore_health: input.restore_health ?? false,
+    restore_stamina: input.restore_stamina ?? false,
+    restore_mana: input.restore_mana ?? false,
     repeatable: input.repeatable ?? true,
     hide_after_selected: input.hide_after_selected ?? false,
     disable_after_selected: input.disable_after_selected ?? false,

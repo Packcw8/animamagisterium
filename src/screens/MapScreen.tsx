@@ -56,7 +56,7 @@ import type { PlayerAbilityTab } from "../components/home/PlayerAbilitiesPanel";
 import type { PlayerInventoryTab } from "../components/home/PlayerInventoryPanel";
 import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
-import { CharacterWithDetails, getCharacter, incrementCharacterDistanceWalked, spendCharacterGold } from "../services/characterService";
+import { CharacterWithDetails, getCharacter, incrementCharacterDistanceWalked, spendCharacterGold, updateCharacter } from "../services/characterService";
 import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getCharacterResources, getCombatLoadout, getCurrentHealth, learnAbilityFromScroll } from "../services/abilityService";
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
@@ -518,6 +518,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [choiceUnlockMarkerId, setChoiceUnlockMarkerId] = useState<string | null>(null);
   const [choiceUpdateTitle, setChoiceUpdateTitle] = useState("");
   const [choiceUpdateBody, setChoiceUpdateBody] = useState("");
+  const [choiceRestoreHealth, setChoiceRestoreHealth] = useState(false);
+  const [choiceRestoreStamina, setChoiceRestoreStamina] = useState(false);
+  const [choiceRestoreMana, setChoiceRestoreMana] = useState(false);
   const [choiceRepeatable, setChoiceRepeatable] = useState(true);
   const [choiceHideAfterSelected, setChoiceHideAfterSelected] = useState(false);
   const [choiceDisableAfterSelected, setChoiceDisableAfterSelected] = useState(false);
@@ -3157,7 +3160,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id)),
       getPlayerDialogueChoiceHistory(choices.map((choice) => choice.id)),
     ]);
-    const startNode = nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
+    const startNode = getDialogueStartNode(nodes, choices, selectedChoices);
     setDialogueNodes(nodes);
     setDialogueChoices(choices);
     setDialogueChoiceRewards(rewards);
@@ -3176,7 +3179,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id)),
       getPlayerDialogueChoiceHistory(choices.map((choice) => choice.id)),
     ]);
-    const startNode = nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
+    const startNode = getDialogueStartNode(nodes, choices, selectedChoices);
     setDialogueNodes(nodes);
     setDialogueChoices(choices);
     setDialogueChoiceRewards(rewards);
@@ -3185,6 +3188,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setPendingRewardChoice(null);
     setActiveNodeId(startNode?.id ?? null);
     setDialogueLog([]);
+  }
+
+  function getDialogueStartNode(nodes: StoryDialogueNode[], choices: StoryDialogueChoice[], selectedChoices: Set<string>) {
+    const repeatNode = nodes.find((node) => node.node_key.endsWith("_repeat_after_story_start"));
+    const hasStartedStory = choices.some((choice) => selectedChoices.has(choice.id) && choice.repeatable === false && (choice.hide_after_selected || choice.disable_after_selected));
+    if (repeatNode && hasStartedStory) {
+      return repeatNode;
+    }
+
+    return nodes.find((node) => node.is_start) ?? nodes[0] ?? null;
   }
 
   async function loadDialogueEditor(eventId: string) {
@@ -3500,6 +3513,34 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setDialogueLog((current) => [`You: ${choice.player_dialogue_text}`, ...current].slice(0, 4));
     }
 
+    async function applyResourceRest() {
+      if (!choice.restore_health && !choice.restore_stamina && !choice.restore_mana) {
+        return true;
+      }
+
+      if (adminPreviewMode) {
+        setDialogueLog((current) => ["Admin preview: would restore selected resources.", ...current].slice(0, 4));
+        return true;
+      }
+
+      try {
+        if (choice.restore_health) {
+          const updated = await updateCharacter(character.id, { current_health: combatResources.maxHp });
+          onCharacterUpdated({ ...character, current_health: updated.current_health });
+        }
+        const restoredResources = [
+          choice.restore_health ? "Health" : null,
+          choice.restore_stamina ? "Stamina" : null,
+          choice.restore_mana ? "Mana" : null,
+        ].filter(Boolean);
+        setDialogueLog((current) => [`Restored ${restoredResources.join(", ")}.`, ...current].slice(0, 4));
+        return true;
+      } catch (error) {
+        setDialogueLog((current) => [getErrorMessage(error, "Unable to restore resources."), ...current].slice(0, 4));
+        return false;
+      }
+    }
+
     async function recordThisChoice() {
       if (adminPreviewMode) {
         return;
@@ -3517,6 +3558,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       } catch (error) {
         console.warn("[dialogue] unable to save player choice history", error);
       }
+    }
+
+    const didRestore = await applyResourceRest();
+    if (!didRestore) {
+      return;
     }
 
     if (Number(choice.consume_gold ?? 0) > 0 && !adminPreviewMode) {
@@ -4182,6 +4228,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         unlock_marker_id: choice.unlock_marker_id,
         update_notification_title: choice.update_notification_title,
         update_notification_body: choice.update_notification_body,
+        restore_health: choice.restore_health ?? false,
+        restore_stamina: choice.restore_stamina ?? false,
+        restore_mana: choice.restore_mana ?? false,
         repeatable: choice.repeatable ?? true,
         hide_after_selected: choice.hide_after_selected ?? false,
         disable_after_selected: choice.disable_after_selected ?? false,
@@ -4326,6 +4375,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceUnlockMarkerId(choice.unlock_marker_id ?? null);
     setChoiceUpdateTitle(choice.update_notification_title ?? "");
     setChoiceUpdateBody(choice.update_notification_body ?? "");
+    setChoiceRestoreHealth(choice.restore_health ?? false);
+    setChoiceRestoreStamina(choice.restore_stamina ?? false);
+    setChoiceRestoreMana(choice.restore_mana ?? false);
     setChoiceRepeatable(choice.repeatable ?? true);
     setChoiceHideAfterSelected(choice.hide_after_selected ?? false);
     setChoiceDisableAfterSelected(choice.disable_after_selected ?? false);
@@ -4371,6 +4423,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceUnlockMarkerId(null);
     setChoiceUpdateTitle("");
     setChoiceUpdateBody("");
+    setChoiceRestoreHealth(false);
+    setChoiceRestoreStamina(false);
+    setChoiceRestoreMana(false);
     setChoiceRepeatable(true);
     setChoiceHideAfterSelected(false);
     setChoiceDisableAfterSelected(false);
@@ -4436,6 +4491,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         unlock_marker_id: choiceUnlockMarkerId,
         update_notification_title: choiceUpdateTitle.trim() || null,
         update_notification_body: choiceUpdateBody.trim() || null,
+        restore_health: choiceRestoreHealth,
+        restore_stamina: choiceRestoreStamina,
+        restore_mana: choiceRestoreMana,
         repeatable: choiceRepeatable,
         hide_after_selected: !choiceRepeatable && choiceHideAfterSelected,
         disable_after_selected: !choiceRepeatable && choiceDisableAfterSelected,
@@ -4767,6 +4825,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 unlockMarkerId={choiceUnlockMarkerId}
                 updateTitle={choiceUpdateTitle}
                 updateBody={choiceUpdateBody}
+                restoreHealth={choiceRestoreHealth}
+                restoreStamina={choiceRestoreStamina}
+                restoreMana={choiceRestoreMana}
                 linkedBattleBuilder={choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
                 onChangeRewardXp={setChoiceRewardXp}
                 onChangeRewardGold={setChoiceRewardGold}
@@ -4776,6 +4837,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 onChangeUnlockMarkerId={setChoiceUnlockMarkerId}
                 onChangeUpdateTitle={setChoiceUpdateTitle}
                 onChangeUpdateBody={setChoiceUpdateBody}
+                onToggleRestoreHealth={() => setChoiceRestoreHealth((value) => !value)}
+                onToggleRestoreStamina={() => setChoiceRestoreStamina((value) => !value)}
+                onToggleRestoreMana={() => setChoiceRestoreMana((value) => !value)}
               />
             }
             requirementEditor={renderDialogueChoiceRequirementEditor()}
