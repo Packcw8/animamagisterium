@@ -21,6 +21,8 @@ type Props = {
   restoreHealth: boolean;
   restoreStamina: boolean;
   restoreMana: boolean;
+  storyFlagKey: string;
+  storyFlagValue: boolean;
   linkedBattleBuilder: ReactNode;
   onChangeRewardXp: (value: string) => void;
   onChangeRewardGold: (value: string) => void;
@@ -33,6 +35,8 @@ type Props = {
   onToggleRestoreHealth: () => void;
   onToggleRestoreStamina: () => void;
   onToggleRestoreMana: () => void;
+  onChangeStoryFlagKey: (value: string) => void;
+  onToggleStoryFlagValue: () => void;
 };
 
 export function DialogueChoiceEffectEditor({
@@ -50,6 +54,8 @@ export function DialogueChoiceEffectEditor({
   restoreHealth,
   restoreStamina,
   restoreMana,
+  storyFlagKey,
+  storyFlagValue,
   linkedBattleBuilder,
   onChangeRewardXp,
   onChangeRewardGold,
@@ -62,7 +68,11 @@ export function DialogueChoiceEffectEditor({
   onToggleRestoreHealth,
   onToggleRestoreStamina,
   onToggleRestoreMana,
+  onChangeStoryFlagKey,
+  onToggleStoryFlagValue,
 }: Props) {
+  const storyFlagEditor = <StoryFlagEffectEditor storyFlagKey={storyFlagKey} storyFlagValue={storyFlagValue} onChangeStoryFlagKey={onChangeStoryFlagKey} onToggleStoryFlagValue={onToggleStoryFlagValue} />;
+
   if (action === "start_battle") {
     return (
       <>
@@ -77,6 +87,7 @@ export function DialogueChoiceEffectEditor({
           onChangeUpdateBody={onChangeUpdateBody}
         />
         <ResourceRestoreEditor restoreHealth={restoreHealth} restoreStamina={restoreStamina} restoreMana={restoreMana} onToggleRestoreHealth={onToggleRestoreHealth} onToggleRestoreStamina={onToggleRestoreStamina} onToggleRestoreMana={onToggleRestoreMana} />
+        {storyFlagEditor}
       </>
     );
   }
@@ -94,6 +105,7 @@ export function DialogueChoiceEffectEditor({
           onChangeUpdateBody={onChangeUpdateBody}
         />
         <ResourceRestoreEditor restoreHealth={restoreHealth} restoreStamina={restoreStamina} restoreMana={restoreMana} onToggleRestoreHealth={onToggleRestoreHealth} onToggleRestoreStamina={onToggleRestoreStamina} onToggleRestoreMana={onToggleRestoreMana} />
+        {storyFlagEditor}
       </>
     );
   }
@@ -119,7 +131,33 @@ export function DialogueChoiceEffectEditor({
         onChangeUpdateBody={onChangeUpdateBody}
       />
       <ResourceRestoreEditor restoreHealth={restoreHealth} restoreStamina={restoreStamina} restoreMana={restoreMana} onToggleRestoreHealth={onToggleRestoreHealth} onToggleRestoreStamina={onToggleRestoreStamina} onToggleRestoreMana={onToggleRestoreMana} />
+      {storyFlagEditor}
     </>
+  );
+}
+
+function StoryFlagEffectEditor({
+  storyFlagKey,
+  storyFlagValue,
+  onChangeStoryFlagKey,
+  onToggleStoryFlagValue,
+}: {
+  storyFlagKey: string;
+  storyFlagValue: boolean;
+  onChangeStoryFlagKey: (value: string) => void;
+  onToggleStoryFlagValue: () => void;
+}) {
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Story Flag</Text>
+      <Text style={styles.copy}>Set a per-player story flag after this choice. Later choices can require this flag.</Text>
+      <TextInput value={storyFlagKey} onChangeText={onChangeStoryFlagKey} placeholder="Flag key, example sided_with_elara" placeholderTextColor={colors.muted} style={styles.input} />
+      {storyFlagKey.trim() ? (
+        <Pressable style={[styles.secondaryButton, storyFlagValue && styles.typeSelected]} onPress={onToggleStoryFlagValue}>
+          <Text style={styles.secondaryText}>Set Flag Value: {storyFlagValue ? "True" : "False"}</Text>
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 

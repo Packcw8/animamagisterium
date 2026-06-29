@@ -170,6 +170,7 @@ import {
   saveRouteProgress,
   saveWorldMapSetting,
   saveTutorialStep,
+  setPlayerStoryFlag,
   startStoryMarker,
   recordDialogueChoiceEffectClaim,
   recordPlayerDialogueChoice,
@@ -521,6 +522,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [choiceRestoreHealth, setChoiceRestoreHealth] = useState(false);
   const [choiceRestoreStamina, setChoiceRestoreStamina] = useState(false);
   const [choiceRestoreMana, setChoiceRestoreMana] = useState(false);
+  const [choiceGroupKey, setChoiceGroupKey] = useState("");
+  const [choiceGroupLockMessage, setChoiceGroupLockMessage] = useState("");
+  const [choiceHideWhenGroupLocked, setChoiceHideWhenGroupLocked] = useState(false);
+  const [choiceStoryFlagKey, setChoiceStoryFlagKey] = useState("");
+  const [choiceStoryFlagValue, setChoiceStoryFlagValue] = useState(true);
   const [choiceRepeatable, setChoiceRepeatable] = useState(true);
   const [choiceHideAfterSelected, setChoiceHideAfterSelected] = useState(false);
   const [choiceDisableAfterSelected, setChoiceDisableAfterSelected] = useState(false);
@@ -567,7 +573,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const adminWorldRoutes = useMemo(() => adminRoutes.filter((item) => !item.mini_map_id), [adminRoutes]);
   const adminMiniMapRoutes = useMemo(() => adminRoutes.filter((item) => item.mini_map_id === activeMiniMap?.id), [activeMiniMap?.id, adminRoutes]);
   const dialogueChoiceAvailability = useMemo(
-    () => Object.fromEntries(dialogueChoices.map((choice) => {
+    () => {
+      const selectedChoiceGroupKeys = new Map<string, StoryDialogueChoice>();
+      for (const choice of dialogueChoices) {
+        const groupKey = choice.choice_group_key?.trim();
+        if (groupKey && selectedDialogueChoiceIds.has(choice.id)) {
+          selectedChoiceGroupKeys.set(groupKey, choice);
+        }
+      }
+
+      return Object.fromEntries(dialogueChoices.map((choice) => {
       const baseAvailability = evaluateDialogueChoiceRequirement(choice, {
         character,
         inventoryItems,
@@ -578,6 +593,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         storyFlags,
         knownAbilities,
       });
+
+      const choiceGroupKey = choice.choice_group_key?.trim();
+      const selectedGroupChoice = choiceGroupKey ? selectedChoiceGroupKeys.get(choiceGroupKey) : null;
+      if (selectedGroupChoice && selectedGroupChoice.id !== choice.id) {
+        return [
+          choice.id,
+          {
+            met: false,
+            hidden: Boolean(choice.hide_when_group_locked),
+            disabled: true,
+            message: choice.choice_group_lock_message?.trim() || `You already chose: ${selectedGroupChoice.button_text}`,
+          },
+        ];
+      }
 
       if (choice.action === "give_reward" && claimedChoiceRewardIds.has(choice.id)) {
         return [
@@ -604,7 +633,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
 
       return [choice.id, baseAvailability];
-    })),
+    }));
+    },
     [character, claimedChoiceRewardIds, completedEventIds, completedStoryMarkerIds, completedTutorialStepIds, dialogueChoices, inventoryItems, itemDefinitions, knownAbilities, selectedDialogueChoiceIds, storyFlags],
   );
   const activeWorldMapSetting = useMemo(
@@ -3560,8 +3590,38 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
     }
 
+    async function applyStoryFlagEffect() {
+      const flagKey = choice.set_story_flag_key?.trim();
+      if (!flagKey) {
+        return true;
+      }
+
+      if (adminPreviewMode) {
+        setDialogueLog((current) => [`Admin preview: would set story flag ${flagKey} = ${choice.set_story_flag_value ? "true" : "false"}.`, ...current].slice(0, 4));
+        return true;
+      }
+
+      try {
+        await setPlayerStoryFlag(character.id, flagKey, choice.set_story_flag_value ?? true);
+        setStoryFlags((current) => {
+          const next = new Map(current);
+          next.set(flagKey, choice.set_story_flag_value ?? true);
+          return next;
+        });
+        return true;
+      } catch (error) {
+        setDialogueLog((current) => [getErrorMessage(error, "Unable to save story decision."), ...current].slice(0, 4));
+        return false;
+      }
+    }
+
     const didRestore = await applyResourceRest();
     if (!didRestore) {
+      return;
+    }
+
+    const didSetStoryFlag = await applyStoryFlagEffect();
+    if (!didSetStoryFlag) {
       return;
     }
 
@@ -4231,6 +4291,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         restore_health: choice.restore_health ?? false,
         restore_stamina: choice.restore_stamina ?? false,
         restore_mana: choice.restore_mana ?? false,
+        choice_group_key: choice.choice_group_key,
+        choice_group_lock_message: choice.choice_group_lock_message,
+        hide_when_group_locked: choice.hide_when_group_locked ?? false,
+        set_story_flag_key: choice.set_story_flag_key,
+        set_story_flag_value: choice.set_story_flag_value ?? true,
         repeatable: choice.repeatable ?? true,
         hide_after_selected: choice.hide_after_selected ?? false,
         disable_after_selected: choice.disable_after_selected ?? false,
@@ -4378,6 +4443,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceRestoreHealth(choice.restore_health ?? false);
     setChoiceRestoreStamina(choice.restore_stamina ?? false);
     setChoiceRestoreMana(choice.restore_mana ?? false);
+    setChoiceGroupKey(choice.choice_group_key ?? "");
+    setChoiceGroupLockMessage(choice.choice_group_lock_message ?? "");
+    setChoiceHideWhenGroupLocked(choice.hide_when_group_locked ?? false);
+    setChoiceStoryFlagKey(choice.set_story_flag_key ?? "");
+    setChoiceStoryFlagValue(choice.set_story_flag_value ?? true);
     setChoiceRepeatable(choice.repeatable ?? true);
     setChoiceHideAfterSelected(choice.hide_after_selected ?? false);
     setChoiceDisableAfterSelected(choice.disable_after_selected ?? false);
@@ -4426,6 +4496,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setChoiceRestoreHealth(false);
     setChoiceRestoreStamina(false);
     setChoiceRestoreMana(false);
+    setChoiceGroupKey("");
+    setChoiceGroupLockMessage("");
+    setChoiceHideWhenGroupLocked(false);
+    setChoiceStoryFlagKey("");
+    setChoiceStoryFlagValue(true);
     setChoiceRepeatable(true);
     setChoiceHideAfterSelected(false);
     setChoiceDisableAfterSelected(false);
@@ -4494,6 +4569,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         restore_health: choiceRestoreHealth,
         restore_stamina: choiceRestoreStamina,
         restore_mana: choiceRestoreMana,
+        choice_group_key: choiceGroupKey.trim() || null,
+        choice_group_lock_message: choiceGroupLockMessage.trim() || null,
+        hide_when_group_locked: choiceHideWhenGroupLocked,
+        set_story_flag_key: choiceStoryFlagKey.trim() || null,
+        set_story_flag_value: choiceStoryFlagValue,
         repeatable: choiceRepeatable,
         hide_after_selected: !choiceRepeatable && choiceHideAfterSelected,
         disable_after_selected: !choiceRepeatable && choiceDisableAfterSelected,
@@ -4811,6 +4891,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             hideAfterSelected={choiceHideAfterSelected}
             disableAfterSelected={choiceDisableAfterSelected}
             selectedMessage={choiceSelectedMessage}
+            choiceGroupKey={choiceGroupKey}
+            choiceGroupLockMessage={choiceGroupLockMessage}
+            hideWhenGroupLocked={choiceHideWhenGroupLocked}
             itemDefinitions={itemDefinitions}
             effectEditor={
               <DialogueChoiceEffectEditor
@@ -4828,6 +4911,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 restoreHealth={choiceRestoreHealth}
                 restoreStamina={choiceRestoreStamina}
                 restoreMana={choiceRestoreMana}
+                storyFlagKey={choiceStoryFlagKey}
+                storyFlagValue={choiceStoryFlagValue}
                 linkedBattleBuilder={choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
                 onChangeRewardXp={setChoiceRewardXp}
                 onChangeRewardGold={setChoiceRewardGold}
@@ -4840,6 +4925,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 onToggleRestoreHealth={() => setChoiceRestoreHealth((value) => !value)}
                 onToggleRestoreStamina={() => setChoiceRestoreStamina((value) => !value)}
                 onToggleRestoreMana={() => setChoiceRestoreMana((value) => !value)}
+                onChangeStoryFlagKey={setChoiceStoryFlagKey}
+                onToggleStoryFlagValue={() => setChoiceStoryFlagValue((value) => !value)}
               />
             }
             requirementEditor={renderDialogueChoiceRequirementEditor()}
@@ -4854,6 +4941,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             onToggleHideAfterSelected={() => setChoiceHideAfterSelected((value) => !value)}
             onToggleDisableAfterSelected={() => setChoiceDisableAfterSelected((value) => !value)}
             onChangeSelectedMessage={setChoiceSelectedMessage}
+            onChangeChoiceGroupKey={setChoiceGroupKey}
+            onChangeChoiceGroupLockMessage={setChoiceGroupLockMessage}
+            onToggleHideWhenGroupLocked={() => setChoiceHideWhenGroupLocked((value) => !value)}
             onSave={() => void saveDialogueChoice()}
             onCancelEdit={clearDialogueChoiceForm}
             onEditChoice={editDialogueChoice}

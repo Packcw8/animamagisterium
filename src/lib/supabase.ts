@@ -581,6 +581,11 @@ export type Tables = {
     restore_health: boolean;
     restore_stamina: boolean;
     restore_mana: boolean;
+    choice_group_key: string | null;
+    choice_group_lock_message: string | null;
+    hide_when_group_locked: boolean;
+    set_story_flag_key: string | null;
+    set_story_flag_value: boolean;
     repeatable: boolean;
     hide_after_selected: boolean;
     disable_after_selected: boolean;

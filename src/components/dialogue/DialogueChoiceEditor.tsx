@@ -21,6 +21,9 @@ type Props = {
   hideAfterSelected: boolean;
   disableAfterSelected: boolean;
   selectedMessage: string;
+  choiceGroupKey: string;
+  choiceGroupLockMessage: string;
+  hideWhenGroupLocked: boolean;
   itemDefinitions: ItemDefinition[];
   effectEditor: ReactNode;
   requirementEditor: ReactNode;
@@ -35,6 +38,9 @@ type Props = {
   onToggleHideAfterSelected: () => void;
   onToggleDisableAfterSelected: () => void;
   onChangeSelectedMessage: (value: string) => void;
+  onChangeChoiceGroupKey: (value: string) => void;
+  onChangeChoiceGroupLockMessage: (value: string) => void;
+  onToggleHideWhenGroupLocked: () => void;
   onSave: () => void;
   onCancelEdit: () => void;
   onEditChoice: (choice: StoryDialogueChoice) => void;
@@ -58,6 +64,9 @@ export function DialogueChoiceEditor({
   hideAfterSelected,
   disableAfterSelected,
   selectedMessage,
+  choiceGroupKey,
+  choiceGroupLockMessage,
+  hideWhenGroupLocked,
   itemDefinitions,
   effectEditor,
   requirementEditor,
@@ -72,6 +81,9 @@ export function DialogueChoiceEditor({
   onToggleHideAfterSelected,
   onToggleDisableAfterSelected,
   onChangeSelectedMessage,
+  onChangeChoiceGroupKey,
+  onChangeChoiceGroupLockMessage,
+  onToggleHideWhenGroupLocked,
   onSave,
   onCancelEdit,
   onEditChoice,
@@ -126,6 +138,15 @@ export function DialogueChoiceEditor({
             <TextInput value={selectedMessage} onChangeText={onChangeSelectedMessage} placeholder="Message if disabled, example Quest already started." placeholderTextColor={colors.muted} style={styles.input} />
           </>
         ) : null}
+        <TextInput value={choiceGroupKey} onChangeText={onChangeChoiceGroupKey} placeholder="Exclusive choice group key, example elara_harlen_choice" placeholderTextColor={colors.muted} style={styles.input} />
+        {choiceGroupKey.trim() ? (
+          <>
+            <TextInput value={choiceGroupLockMessage} onChangeText={onChangeChoiceGroupLockMessage} placeholder="Message for locked alternate choices" placeholderTextColor={colors.muted} style={styles.input} />
+            <Pressable style={[styles.secondaryButton, hideWhenGroupLocked && styles.typeSelected]} onPress={onToggleHideWhenGroupLocked}>
+              <Text style={styles.secondaryText}>Hide Other Group Choices: {hideWhenGroupLocked ? "Yes" : "No"}</Text>
+            </Pressable>
+          </>
+        ) : null}
       </View>
       {requirementEditor}
       {checkEditor}
@@ -139,6 +160,8 @@ export function DialogueChoiceEditor({
           <Text style={styles.flowStepTitle}>{choice.button_text}</Text>
           <Text style={styles.copy}>{choiceActionLabel(choice.action)}{choice.player_dialogue_text ? ` - "${choice.player_dialogue_text}"` : ""}</Text>
           {(choice.requirement_type ?? "none") !== "none" ? <Text style={styles.debugLine}>{getRequirementSummary(choice, itemDefinitions)}</Text> : null}
+          {choice.choice_group_key ? <Text style={styles.debugLine}>Exclusive group: {choice.choice_group_key}</Text> : null}
+          {choice.set_story_flag_key ? <Text style={styles.debugLine}>Sets flag: {choice.set_story_flag_key} = {choice.set_story_flag_value ? "true" : "false"}</Text> : null}
           {!choice.repeatable ? <Text style={styles.debugLine}>{choice.hide_after_selected ? "One-time / hides after selected" : "One-time / disables after selected"}</Text> : null}
           {getAttributeCheckSummary(choice) ? <Text style={styles.debugLine}>{getAttributeCheckSummary(choice)}</Text> : null}
           <View style={styles.modeRow}>

@@ -1382,6 +1382,44 @@ export async function getPlayerStoryFlags(characterId: string) {
   return (data ?? []) as PlayerStoryFlag[];
 }
 
+export async function setPlayerStoryFlag(characterId: string, flagKey: string, flagValue = true, textValue?: string | null) {
+  const cleanKey = flagKey.trim();
+  if (!cleanKey) {
+    return null;
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to update story flags.");
+  }
+
+  const { data, error } = await supabase
+    .from("player_story_flags")
+    .upsert(
+      {
+        user_id: user.id,
+        character_id: characterId,
+        flag_key: cleanKey,
+        flag_value: flagValue,
+        text_value: textValue ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "character_id,flag_key" },
+    )
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as PlayerStoryFlag;
+}
+
 export async function getPlayerTutorialCompletions(characterId: string) {
   const { data, error } = await supabase
     .from("player_tutorial_completions")
@@ -1924,13 +1962,18 @@ export async function deleteDialogueNode(nodeId: string) {
   }
 }
 
-export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at" | "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "restore_health" | "restore_stamina" | "restore_mana" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message"> & Partial<Pick<StoryDialogueChoice, "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "restore_health" | "restore_stamina" | "restore_mana" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message">>) {
+export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at" | "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "restore_health" | "restore_stamina" | "restore_mana" | "choice_group_key" | "choice_group_lock_message" | "hide_when_group_locked" | "set_story_flag_key" | "set_story_flag_value" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message"> & Partial<Pick<StoryDialogueChoice, "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "restore_health" | "restore_stamina" | "restore_mana" | "choice_group_key" | "choice_group_lock_message" | "hide_when_group_locked" | "set_story_flag_key" | "set_story_flag_value" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message">>) {
   const values = {
     ...input,
     consume_gold: input.consume_gold ?? 0,
     restore_health: input.restore_health ?? false,
     restore_stamina: input.restore_stamina ?? false,
     restore_mana: input.restore_mana ?? false,
+    choice_group_key: input.choice_group_key?.trim() || null,
+    choice_group_lock_message: input.choice_group_lock_message?.trim() || null,
+    hide_when_group_locked: input.hide_when_group_locked ?? false,
+    set_story_flag_key: input.set_story_flag_key?.trim() || null,
+    set_story_flag_value: input.set_story_flag_value ?? true,
     repeatable: input.repeatable ?? true,
     hide_after_selected: input.hide_after_selected ?? false,
     disable_after_selected: input.disable_after_selected ?? false,
