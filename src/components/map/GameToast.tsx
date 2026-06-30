@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, fonts } from "../theme";
 import type { MapMarker } from "../../services/mapService";
 import { MarkerIcon } from "./MarkerIcon";
@@ -43,7 +43,7 @@ export function GameToast({ toast, onDismiss }: GameToastProps) {
         ) : null}
         {toast.nextMarker ? (
           <View style={styles.markerRow}>
-            <MarkerIcon marker={toast.nextMarker} compact />
+            <ToastMarkerPreview marker={toast.nextMarker} />
             <View style={styles.markerCopy}>
               <Text style={styles.markerLabel}>Look for</Text>
               <Text style={styles.markerTitle}>{toast.nextMarker.title}</Text>
@@ -57,6 +57,45 @@ export function GameToast({ toast, onDismiss }: GameToastProps) {
       </View>
     </View>
   );
+}
+
+function ToastMarkerPreview({ marker }: { marker: MapMarker }) {
+  const imageUri = resolveToastMarkerImageUri(marker);
+
+  if (!imageUri) {
+    return <MarkerIcon marker={marker} compact />;
+  }
+
+  return (
+    <View style={styles.markerImageFrame}>
+      <Image source={{ uri: imageUri }} style={styles.markerImage} />
+      <View style={styles.markerImageIcon}>
+        <MarkerIcon marker={marker} compact />
+      </View>
+    </View>
+  );
+}
+
+function resolveToastMarkerImageUri(marker: MapMarker) {
+  const imagePath =
+    marker.scene_background_image_url ||
+    marker.quest_image_url ||
+    marker.shop_background_image_url ||
+    marker.shop_image_url ||
+    marker.scene_npc_image_url ||
+    marker.icon_image_url;
+  const trimmed = imagePath?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const normalized = trimmed.replaceAll("\\", "/");
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
 }
 
 const styles = StyleSheet.create({
@@ -130,6 +169,24 @@ const styles = StyleSheet.create({
   },
   markerCopy: {
     flex: 1,
+  },
+  markerImageFrame: {
+    width: 76,
+    height: 54,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: "hidden",
+    backgroundColor: "rgba(217, 164, 65, 0.1)",
+  },
+  markerImage: {
+    width: "100%",
+    height: "100%",
+  },
+  markerImageIcon: {
+    position: "absolute",
+    left: 6,
+    bottom: 5,
   },
   markerLabel: {
     color: colors.muted,

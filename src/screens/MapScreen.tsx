@@ -3634,9 +3634,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
     if (choice.set_story_flag_key && !choice.unlock_marker_id && (choice.update_notification_title || choice.update_notification_body) && !adminPreviewMode) {
+      const flagKey = choice.set_story_flag_key.trim();
+      const flagValue = choice.set_story_flag_value ?? true;
+      const unlockedMarker =
+        effectiveMarkers.find((marker) => marker.visible_story_flag_key?.trim() === flagKey && (marker.visible_story_flag_value ?? true) === flagValue) ??
+        markers.find((marker) => marker.visible_story_flag_key?.trim() === flagKey && (marker.visible_story_flag_value ?? true) === flagValue) ??
+        null;
       showGameToast({
         title: choice.update_notification_title || "Story Updated",
-        message: choice.update_notification_body || "Your story progress has been updated.",
+        message: choice.update_notification_body || (unlockedMarker ? `${unlockedMarker.title} is now available.` : "Your story progress has been updated."),
+        nextMarker: unlockedMarker,
         actionLabel: "OK",
       });
     }
