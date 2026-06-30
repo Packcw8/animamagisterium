@@ -318,6 +318,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
             <View style={styles.classGrid}>
               {classes.map((classItem) => (
                 <Pressable key={classItem.key} style={[styles.classCard, isCompact && styles.classCardCompact, classItem.unlocked && styles.classCardUnlocked, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
+                  <ClassCardBackground classItem={classItem} />
                   <ClassArt classItem={classItem} />
                   <Text style={styles.className} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{classItem.name}</Text>
                   <Text style={styles.classPair}>{formatAttributeName(classItem.firstAttribute).slice(0, 3).toUpperCase()} + {formatAttributeName(classItem.secondAttribute).slice(0, 3).toUpperCase()}</Text>
@@ -346,6 +347,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
             <View style={styles.classGrid}>
               {classes.map((classItem) => (
                 <Pressable key={classItem.key} style={[styles.classCard, isCompact && styles.classCardCompact, classItem.unlocked && styles.classCardUnlocked, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
+                  <ClassCardBackground classItem={classItem} />
                   <ClassArt classItem={classItem} />
                   <Text style={styles.className} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{classItem.name}</Text>
                   <Text style={styles.classPair}>{formatAttributeName(classItem.firstAttribute)} + {formatAttributeName(classItem.secondAttribute)}</Text>
@@ -493,6 +495,20 @@ function ClassArt({ classItem }: { classItem: PlayerClassState }) {
     <View style={styles.classImageFallback}>
       <Text style={styles.classImageFallbackText}>{classItem.name.slice(0, 1).toUpperCase()}</Text>
     </View>
+  );
+}
+
+function ClassCardBackground({ classItem }: { classItem: PlayerClassState }) {
+  const backgroundUri = resolveClassImageUri(classItem.backgroundImageUrl);
+  if (!backgroundUri) {
+    return null;
+  }
+
+  return (
+    <>
+      <Image source={{ uri: backgroundUri }} style={styles.classCardBackgroundImage} />
+      <View style={styles.classCardBackgroundScrim} />
+    </>
   );
 }
 
@@ -1185,6 +1201,17 @@ const styles = StyleSheet.create({
     gap: 5,
     backgroundColor: "rgba(0,0,0,0.34)",
     opacity: 0.72,
+    overflow: "hidden",
+  },
+  classCardBackgroundImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  classCardBackgroundScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.58)",
   },
   classCardCompact: {
     width: "48.5%",
