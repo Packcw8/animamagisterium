@@ -1,5 +1,5 @@
 import { distance as turfDistance } from "@turf/turf";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButton";
 import { AdminCollapsibleSection } from "../components/admin/AdminCollapsibleSection";
@@ -708,12 +708,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     return [...routeProgressRows.filter((row) => row.route_id !== route.id), activeProgress];
   }, [distanceWalked, hasActiveRoute, playerPosition.x, playerPosition.y, progressPercent, route.id, routeDirection, routeProgressRows]);
+  const markerStoryFlagIsVisible = useCallback((marker: MapMarker) => {
+    const flagKey = marker.visible_story_flag_key?.trim();
+    if (!flagKey) {
+      return true;
+    }
+
+    const expectedValue = marker.visible_story_flag_value ?? true;
+    return storyFlags.get(flagKey) === expectedValue;
+  }, [storyFlags]);
   const visibleMarkers = isAdmin
     ? worldMarkers
-    : worldMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
+    : worldMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
   const visibleMiniMapMarkers = isAdmin
     ? adminMiniMapMarkers
-    : miniMapMarkers.filter((marker) => getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
+    : miniMapMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedDialogueMarker = useMemo(() => effectiveMarkers.find((marker) => marker.id === selectedDialogueMarkerId) ?? null, [effectiveMarkers, selectedDialogueMarkerId]);
@@ -3623,6 +3632,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const didSetStoryFlag = await applyStoryFlagEffect();
     if (!didSetStoryFlag) {
       return;
+    }
+    if (choice.set_story_flag_key && !choice.unlock_marker_id && (choice.update_notification_title || choice.update_notification_body) && !adminPreviewMode) {
+      showGameToast({
+        title: choice.update_notification_title || "Story Updated",
+        message: choice.update_notification_body || "Your story progress has been updated.",
+        actionLabel: "OK",
+      });
     }
 
     if (Number(choice.consume_gold ?? 0) > 0 && !adminPreviewMode) {

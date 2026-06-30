@@ -699,6 +699,8 @@ export type Tables = {
     marker_size: number;
     lock_type: "public" | "story_locked" | "quest_locked";
     lock_message: string | null;
+    visible_story_flag_key: string | null;
+    visible_story_flag_value: boolean;
     story_order: number;
     unlock_after_marker_id: string | null;
     hide_when_completed: boolean;
