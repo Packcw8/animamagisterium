@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Frame } from "../components/Frame";
 import { Header } from "../components/Header";
 import { ProgressBar } from "../components/ProgressBar";
@@ -17,6 +17,15 @@ import {
   saveTrainingConfig,
   TrainingAttributeConfig,
 } from "../services/progressionService";
+import {
+  classUnlockLevel,
+  formatAttributeName,
+  getPlayerClassState,
+  PlayerClassState,
+  resolveClassImageUri,
+  saveClassDefinition,
+  selectActiveClass,
+} from "../services/classService";
 
 type QuestsScreenProps = {
   character: CharacterWithDetails;
@@ -38,6 +47,9 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const [trainingConfigs, setTrainingConfigs] = useState<TrainingAttributeConfig[]>([]);
   const [balanceMessage, setBalanceMessage] = useState<string | null>(null);
   const [showAdminBalance, setShowAdminBalance] = useState(false);
+  const [classes, setClasses] = useState<PlayerClassState[]>([]);
+  const [classMessage, setClassMessage] = useState<string | null>(null);
+  const [editingClassKey, setEditingClassKey] = useState<string | null>(null);
 
   useEffect(() => {
     void loadTraining();
@@ -54,7 +66,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
 
     try {
       const state = await getTrainingState(character);
-      const [settings, configs, currentRole] = await Promise.all([getProgressionSettings(), getTrainingConfigs(), getCurrentRole()]);
+      const [settings, configs, currentRole, classState] = await Promise.all([getProgressionSettings(), getTrainingConfigs(), getCurrentRole(), getPlayerClassState(character)]);
       setCards(state.cards);
       setDailyCompleted(state.dailyCompleted);
       setDailyLimit(state.dailyLimit);
@@ -62,6 +74,8 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
       setProgressionSettings(settings);
       setTrainingConfigs(configs);
       setRole(currentRole);
+      setClasses(classState);
+      setEditingClassKey((current) => current ?? classState[0]?.key ?? null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load training.");
     } finally {
@@ -81,6 +95,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
       setCards(state.cards);
       setDailyCompleted(state.dailyCompleted);
       setDailyLimit(state.dailyLimit);
+      setClasses(await getPlayerClassState(result.character));
     } catch (completeError) {
       setError(completeError instanceof Error ? completeError.message : "Unable to complete training.");
     } finally {
@@ -91,6 +106,9 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const selectedCard = cards.find((card) => card.key === selectedAttribute) ?? cards[0] ?? null;
   const selectedLevelProgress = selectedCard ? getTrainingLevelProgress(selectedCard.currentXp, selectedCard.levelCap) : null;
   const selectedConfig = trainingConfigs.find((config) => config.attribute_key === selectedCard?.key) ?? null;
+  const unlockedClassCount = classes.filter((item) => item.unlocked).length;
+  const activeClass = classes.find((item) => item.selected) ?? null;
+  const editingClass = classes.find((item) => item.key === editingClassKey) ?? classes[0] ?? null;
 
   async function saveGlobalBalance() {
     try {
@@ -124,6 +142,49 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
     }
 
     setTrainingConfigs((current) => current.map((config) => (config.attribute_key === selectedConfig.attribute_key ? { ...config, ...values } : config)));
+  }
+
+  async function chooseClass(classItem: PlayerClassState) {
+    if (!classItem.unlocked) {
+      setClassMessage(`${classItem.name} unlocks at ${formatAttributeName(classItem.firstAttribute)} ${classUnlockLevel} and ${formatAttributeName(classItem.secondAttribute)} ${classUnlockLevel}.`);
+      return;
+    }
+
+    try {
+      await selectActiveClass(character, classItem.key);
+      setClassMessage(`${classItem.name} is now your active class.`);
+      setClasses(await getPlayerClassState(character));
+    } catch (classError) {
+      setClassMessage(classError instanceof Error ? classError.message : "Unable to select class.");
+    }
+  }
+
+  async function saveClassVisuals() {
+    if (!editingClass) {
+      return;
+    }
+
+    try {
+      const saved = await saveClassDefinition({
+        class_key: editingClass.key,
+        name: editingClass.name,
+        description: editingClass.description,
+        image_url: editingClass.imageUrl,
+        background_image_url: editingClass.backgroundImageUrl,
+      });
+      setClassMessage(`${saved.name} class visuals saved.`);
+      setClasses(await getPlayerClassState(character));
+    } catch (classError) {
+      setClassMessage(classError instanceof Error ? classError.message : "Unable to save class visuals.");
+    }
+  }
+
+  function updateEditingClass(values: Partial<Pick<PlayerClassState, "name" | "description" | "imageUrl" | "backgroundImageUrl">>) {
+    if (!editingClass) {
+      return;
+    }
+
+    setClasses((current) => current.map((item) => item.key === editingClass.key ? { ...item, ...values } : item));
   }
 
   return (
@@ -228,6 +289,32 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
               </View>
             </Frame>
           ) : null}
+
+          <Frame style={styles.classPanel}>
+            <View style={styles.classHeader}>
+              <View>
+                <Text style={styles.kicker}>Class Combinations</Text>
+                <Text style={styles.classTitle}>{activeClass ? activeClass.name : "No Active Class"}</Text>
+              </View>
+              <Text style={styles.classCount}>{unlockedClassCount} / {classes.length}</Text>
+            </View>
+            <Text style={styles.copy}>Classes unlock automatically when both linked attributes reach level {classUnlockLevel}. Unlock them all, then choose which one is active.</Text>
+            {classMessage ? <Text style={styles.successText}>{classMessage}</Text> : null}
+            <View style={styles.classGrid}>
+              {classes.map((classItem) => (
+                <Pressable key={classItem.key} style={[styles.classCard, classItem.unlocked && styles.classCardUnlocked, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
+                  <ClassArt classItem={classItem} />
+                  <Text style={styles.className}>{classItem.name}</Text>
+                  <Text style={styles.classPair}>{formatAttributeName(classItem.firstAttribute).slice(0, 3).toUpperCase()} + {formatAttributeName(classItem.secondAttribute).slice(0, 3).toUpperCase()}</Text>
+                  <View style={styles.classProgressRow}>
+                    <Text style={classItem.firstLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.firstLevel}/{classUnlockLevel}</Text>
+                    <Text style={classItem.secondLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.secondLevel}/{classUnlockLevel}</Text>
+                  </View>
+                  <Text style={classItem.unlocked ? styles.classUnlockedText : styles.classLockedText}>{classItem.selected ? "Active" : classItem.unlocked ? "Unlocked" : "Locked"}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </Frame>
         </View>
       )}
 
@@ -274,6 +361,8 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                   <BalanceText label="Training name" value={selectedConfig.name} onChange={(value) => updateSelectedConfig({ name: value })} />
                   <BalanceText label="Session effect text" value={selectedConfig.effect} onChange={(value) => updateSelectedConfig({ effect: value })} />
                   <BalanceText label="Activity examples" value={selectedConfig.activities} onChange={(value) => updateSelectedConfig({ activities: value })} />
+                  <BalanceText label="Training icon image URL/path" value={selectedConfig.image_url ?? ""} onChange={(value) => updateSelectedConfig({ image_url: value })} />
+                  <BalanceText label="Training background image URL/path" value={selectedConfig.background_image_url ?? ""} onChange={(value) => updateSelectedConfig({ background_image_url: value })} />
                   <BalanceText label="Goal text template" value={selectedConfig.goal_template} onChange={(value) => updateSelectedConfig({ goal_template: value })} />
                   <Text style={styles.copy}>Template tokens: {"{value}"}, {"{unit}"}, {"{attribute}"}</Text>
                   <View style={styles.balanceGrid}>
@@ -286,6 +375,27 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                   </View>
                   <Pressable style={styles.primaryButton} onPress={() => void saveAttributeBalance()}>
                     <Text style={styles.primaryText}>Save Selected Training</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+
+              {editingClass ? (
+                <View style={styles.attributeBalance}>
+                  <Text style={styles.balanceGroupTitle}>Class Visuals</Text>
+                  <Text style={styles.copy}>Classes still unlock from attributes. These fields only control player-facing text and images.</Text>
+                  <View style={styles.classAdminGrid}>
+                    {classes.map((classItem) => (
+                      <Pressable key={classItem.key} style={[styles.classAdminChip, editingClass.key === classItem.key && styles.classAdminChipActive]} onPress={() => setEditingClassKey(classItem.key)}>
+                        <Text style={styles.classAdminChipText}>{classItem.name}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <BalanceText label="Class name" value={editingClass.name} onChange={(value) => updateEditingClass({ name: value })} />
+                  <BalanceText label="Class description" value={editingClass.description} onChange={(value) => updateEditingClass({ description: value })} />
+                  <BalanceText label="Class image URL/path" value={editingClass.imageUrl ?? ""} onChange={(value) => updateEditingClass({ imageUrl: value })} />
+                  <BalanceText label="Class background image URL/path" value={editingClass.backgroundImageUrl ?? ""} onChange={(value) => updateEditingClass({ backgroundImageUrl: value })} />
+                  <Pressable style={styles.primaryButton} onPress={() => void saveClassVisuals()}>
+                    <Text style={styles.primaryText}>Save Class Visuals</Text>
                   </Pressable>
                 </View>
               ) : null}
@@ -314,6 +424,20 @@ function Info({ label, value, compact = false }: { label: string; value: string;
     <View style={[styles.infoRow, compact && styles.infoRowCompact]}>
       <Text style={styles.infoLabel}>{label}</Text>
       <Text style={styles.infoValue}>{value}</Text>
+    </View>
+  );
+}
+
+function ClassArt({ classItem }: { classItem: PlayerClassState }) {
+  const imageUri = resolveClassImageUri(classItem.imageUrl);
+
+  if (imageUri) {
+    return <Image source={{ uri: imageUri }} style={styles.classImage} />;
+  }
+
+  return (
+    <View style={styles.classImageFallback}>
+      <Text style={styles.classImageFallbackText}>{classItem.name.slice(0, 1).toUpperCase()}</Text>
     </View>
   );
 }
@@ -710,6 +834,125 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
     backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  classPanel: {
+    padding: 14,
+    gap: 12,
+  },
+  classHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  classTitle: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  classCount: {
+    color: colors.gold,
+    fontWeight: "900",
+  },
+  classGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  classCard: {
+    width: "31.5%",
+    minHeight: 142,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 8,
+    gap: 5,
+    backgroundColor: "rgba(0,0,0,0.34)",
+    opacity: 0.72,
+  },
+  classCardUnlocked: {
+    opacity: 1,
+    borderColor: "rgba(217,164,65,0.5)",
+  },
+  classCardSelected: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.45)",
+  },
+  classImage: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  classImageFallback: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(217,164,65,0.08)",
+  },
+  classImageFallbackText: {
+    color: colors.gold,
+    fontWeight: "900",
+  },
+  className: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  classPair: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: "800",
+  },
+  classProgressRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  classProgress: {
+    color: "#ff8a8a",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  classProgressReady: {
+    color: colors.blue,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  classLockedText: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  classUnlockedText: {
+    color: colors.gold,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  classAdminGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  classAdminChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  classAdminChipActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20, 61, 86, 0.45)",
+  },
+  classAdminChipText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "900",
   },
   comingSoon: {
     margin: 14,

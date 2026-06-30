@@ -185,6 +185,8 @@ export type Tables = {
     name: string;
     effect: string;
     activities: string;
+    image_url: string | null;
+    background_image_url: string | null;
     unit: string;
     goal_template: string;
     starting_goal: number;
@@ -193,6 +195,27 @@ export type Tables = {
     attribute_xp_reward: number;
     level_cap: number;
     is_active: boolean;
+    updated_at: string;
+  };
+  class_definitions: {
+    id: string;
+    class_key: string;
+    name: string;
+    first_attribute: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit";
+    second_attribute: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit";
+    unlock_level: number;
+    description: string | null;
+    image_url: string | null;
+    background_image_url: string | null;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  player_class_selection: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    class_key: string;
     updated_at: string;
   };
   avatar_assets: {
