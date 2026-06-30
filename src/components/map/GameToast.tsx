@@ -13,6 +13,7 @@ export type GameToastData = {
   message: string;
   rewards?: GameToastReward[];
   nextMarker?: MapMarker | null;
+  nextImageUri?: string | null;
   actionLabel?: string;
 };
 
@@ -43,7 +44,7 @@ export function GameToast({ toast, onDismiss }: GameToastProps) {
         ) : null}
         {toast.nextMarker ? (
           <View style={styles.markerRow}>
-            <ToastMarkerPreview marker={toast.nextMarker} />
+            <ToastMarkerPreview marker={toast.nextMarker} imageUri={toast.nextImageUri} />
             <View style={styles.markerCopy}>
               <Text style={styles.markerLabel}>Look for</Text>
               <Text style={styles.markerTitle}>{toast.nextMarker.title}</Text>
@@ -59,8 +60,8 @@ export function GameToast({ toast, onDismiss }: GameToastProps) {
   );
 }
 
-function ToastMarkerPreview({ marker }: { marker: MapMarker }) {
-  const imageUri = resolveToastMarkerImageUri(marker);
+function ToastMarkerPreview({ marker, imageUri: overrideImageUri }: { marker: MapMarker; imageUri?: string | null }) {
+  const imageUri = overrideImageUri || resolveToastMarkerImageUri(marker);
 
   if (!imageUri) {
     return <MarkerIcon marker={marker} compact />;

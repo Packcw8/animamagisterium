@@ -875,12 +875,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markers.find((marker) => marker.title.trim().toLowerCase() === "fresh start") ??
       markers.find((marker) => marker.title.toLowerCase().includes("fresh start")) ??
       null;
+    const freshStartRouteImage = getMarkerLinkedRouteImage(freshStartMarker, routes, allMarkerRouteLinks);
 
     openingToastShownRef.current = true;
     showGameToast({
       title: "A Fresh Start",
       message: "The Forgotten Marches stretch before you. Ten coins left. No name here yet. Maybe that is a mercy. Maybe this road is where you become someone new.",
       nextMarker: freshStartMarker,
+      nextImageUri: freshStartRouteImage ? resolveMapImageUri(freshStartRouteImage) : null,
       actionLabel: "Begin",
     });
 
@@ -896,7 +898,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         console.warn("[map] unable to save opening toast flag", error);
         openingToastShownRef.current = false;
       });
-  }, [actualIsAdmin, character.id, mapReady, markers, storyFlags]);
+  }, [actualIsAdmin, allMarkerRouteLinks, character.id, mapReady, markers, routes, storyFlags]);
 
   async function loadEnemies() {
     try {
@@ -7301,6 +7303,25 @@ function getJourneyDestinationMarker(route: MapRoute, markers: MapMarker[], rout
     const bRank = rankedTypes.indexOf(b.type);
     return (aRank === -1 ? 99 : aRank) - (bRank === -1 ? 99 : bRank) || a.title.localeCompare(b.title);
   })[0] ?? null;
+}
+
+function getMarkerLinkedRouteImage(marker: MapMarker | null, routes: MapRoute[], routeLinks: MarkerRouteLink[]) {
+  if (!marker) {
+    return null;
+  }
+
+  const routeId =
+    marker.linked_route_id ??
+    routeLinks
+      .filter((link) => link.marker_id === marker.id)
+      .sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0))[0]?.route_id ??
+    null;
+
+  if (!routeId) {
+    return null;
+  }
+
+  return routes.find((route) => route.id === routeId)?.image_url ?? null;
 }
 
 function compareEventsByRouteAndDistance(a: MapEvent, b: MapEvent) {
