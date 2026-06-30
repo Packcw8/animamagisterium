@@ -14,6 +14,9 @@
     "supabase:link": "supabase link --project-ref xasccgfbwluyommimqis",
     "supabase:push": "supabase db push",
     "supabase:migrations": "supabase migration list",
+    "eas:ios:preview": "eas build --platform ios --profile preview",
+    "eas:ios:production": "eas build --platform ios --profile production",
+    "eas:ios:submit": "eas submit --platform ios --profile production",
     "typecheck": "node --stack-size=8192 node_modules/typescript/lib/tsc.js --noEmit"
   },
   "dependencies": {

@@ -3631,7 +3631,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           characterId: character.id,
           choiceId: choice.id,
           nodeId: choice.node_id,
-          eventId: activeMarkerEventId ? null : activeEvent.id,
+          eventId: activeMarkerEventId ? null : activeEvent?.id ?? null,
           markerId: activeMarkerEventId,
         });
         setSelectedDialogueChoiceIds((current) => new Set([...current, choice.id]));
@@ -7064,10 +7064,10 @@ function MiniMapMarkerAdminForm({
               setMarkerNpcId(id);
               const npc = npcDefinitions.find((item) => item.id === id);
               if (npc) {
-                setDraftTitle((current) => current || npc.name);
-                setMarkerQuestTitle((current) => current || npc.name);
-                setMarkerNpcImage((current) => current || npc.image_url || "");
-                setMarkerIconImage((current) => current || npc.image_url || "");
+                if (!draftTitle.trim()) setDraftTitle(npc.name);
+                if (!markerQuestTitle.trim()) setMarkerQuestTitle(npc.name);
+                if (!markerNpcImage.trim()) setMarkerNpcImage(npc.image_url || "");
+                if (!markerIconImage.trim()) setMarkerIconImage(npc.image_url || "");
               }
             }}
           />

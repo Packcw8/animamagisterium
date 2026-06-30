@@ -230,8 +230,8 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
         </Frame>
       ) : activeSection === "training" ? (
         <View style={styles.content}>
-          <View style={[styles.trainingBoard, isCompact && styles.trainingBoardCompact]}>
-            <Frame style={[styles.attributeColumn, isCompact && styles.attributeColumnCompact]}>
+          <View style={[styles.trainingBoard, isCompact ? styles.trainingBoardCompact : undefined]}>
+            <Frame style={isCompact ? [styles.attributeColumn, styles.attributeColumnCompact] : styles.attributeColumn}>
               <View style={styles.panelHeaderRow}>
                 <Text style={styles.sectionTitle}>Attributes</Text>
                 <Pressable style={styles.infoDotButton} onPress={() => setShowTrainingInfo(true)}>
@@ -262,7 +262,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
               })}
             </Frame>
             {selectedCard ? (
-              <Frame style={[styles.trainingCard, isCompact && styles.trainingCardCompact]}>
+              <Frame style={isCompact ? [styles.trainingCard, styles.trainingCardCompact] : styles.trainingCard}>
                 <View style={styles.trainingHeader}>
                   <TrainingHeroIcon name={selectedCard.name} imageUrl={selectedConfig?.image_url ?? null} />
                   <View style={styles.trainingHeaderText}>
