@@ -813,7 +813,10 @@ const styles = StyleSheet.create({
   },
   attributeColumnCompact: {
     flex: undefined,
+    flexGrow: 0,
+    flexShrink: 0,
     minWidth: 0,
+    minHeight: 505,
     width: "100%",
     marginBottom: 8,
   },
