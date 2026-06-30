@@ -793,7 +793,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 14,
-    paddingBottom: 112,
+    paddingBottom: 150,
     gap: 12,
   },
   trainingBoard: {
@@ -802,8 +802,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   trainingBoardCompact: {
-    flexDirection: "column-reverse",
-    gap: 10,
+    flexDirection: "column",
+    gap: 14,
   },
   attributeColumn: {
     flex: 0.42,
@@ -815,6 +815,7 @@ const styles = StyleSheet.create({
     flex: undefined,
     minWidth: 0,
     width: "100%",
+    marginBottom: 8,
   },
   panelHeaderRow: {
     flexDirection: "row",
