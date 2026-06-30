@@ -101,11 +101,15 @@ function resolveToastMarkerImageUri(marker: MapMarker) {
 const styles = StyleSheet.create({
   overlay: {
     position: "absolute",
-    top: 14,
+    top: 0,
+    bottom: 0,
     left: 12,
     right: 12,
     zIndex: 999,
     alignItems: "center",
+    justifyContent: "center",
+    paddingTop: 72,
+    paddingBottom: 110,
   },
   card: {
     width: "100%",
