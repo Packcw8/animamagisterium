@@ -1,6 +1,6 @@
 import { distance as turfDistance } from "@turf/turf";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButton";
 import { AdminCollapsibleSection } from "../components/admin/AdminCollapsibleSection";
 import { ActiveBattleView } from "../components/battle/ActiveBattleView";
@@ -1462,6 +1462,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   function startGpsTracking() {
     if (!hasActiveRoute) {
       setGpsMessage("Choose a story path or sign post path before tracking a walk.");
+      return;
+    }
+
+    if (Platform.OS !== "web") {
+      setGpsMessage("Native walk tracking is not enabled in this build yet. Use the browser map for GPS walks until the iOS pedometer/location pass is added.");
       return;
     }
 

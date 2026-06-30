@@ -1,5 +1,5 @@
 import { Session } from "@supabase/supabase-js";
-import { Component, ErrorInfo, ReactNode } from "react";
+import { Component, ErrorInfo, lazy, ReactNode, Suspense } from "react";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
 import { BottomNav } from "./src/components/BottomNav";
@@ -10,13 +10,14 @@ import { BadgesScreen } from "./src/screens/BadgesScreen";
 import { CharacterCreationScreen } from "./src/screens/CharacterCreationScreen";
 import { HomeScreen } from "./src/screens/HomeScreen";
 import { InboxScreen } from "./src/screens/InboxScreen";
-import { MapScreen } from "./src/screens/MapScreen";
 import { QuestsScreen } from "./src/screens/QuestsScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { SocialScreen } from "./src/screens/SocialScreen";
 import { CharacterWithDetails, createProfileIfMissing, getAvatarAssets, getCharacter } from "./src/services/characterService";
 import { Tables } from "./src/lib/supabase";
 import { ScreenKey } from "./src/types";
+
+const LazyMapScreen = lazy(() => import("./src/screens/MapScreen").then((module) => ({ default: module.MapScreen })));
 
 export default function App() {
   return (
@@ -122,7 +123,9 @@ function AppShell() {
                 onOpenSettings={() => setActiveUtilityScreen("settings")}
               />
             ) : activeScreen === "map" ? (
-              <MapScreen character={character} onCharacterUpdated={setCharacter} />
+              <Suspense fallback={<LoadingState message="Opening the map..." />}>
+                <LazyMapScreen character={character} onCharacterUpdated={setCharacter} />
+              </Suspense>
             ) : activeScreen === "quests" ? (
               <QuestsScreen character={character} onCharacterUpdated={setCharacter} />
             ) : activeScreen === "social" ? (
@@ -169,6 +172,15 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: strin
       </SafeAreaView>
     );
   }
+}
+
+function LoadingState({ message }: { message: string }) {
+  return (
+    <View style={styles.loading}>
+      <ActivityIndicator color={colors.gold} />
+      <Text style={styles.loadingText}>{message}</Text>
+    </View>
+  );
 }
 
 function AuthenticatedLayout({
