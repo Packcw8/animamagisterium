@@ -38,13 +38,13 @@ export const defaultProgressionSettings: GameProgressionSettings = {
 };
 
 export const defaultTrainingConfigs: Record<AttributeKey, TrainingAttributeConfig> = {
-  strength: makeDefaultTrainingConfig("strength", "Strength", "Increases physical attack bonus and carry capacity.", "Workouts, pushups, weights, bodyweight training, physical labor", "pushups", "{value} pushups or equivalent strength work", 5, 5),
-  endurance: makeDefaultTrainingConfig("endurance", "Endurance", "Increases max stamina and long-form survivability.", "Walking, hiking, labor, long physical activity", "steps", "{value} steps or equivalent endurance work", 1000, 1000),
-  agility: makeDefaultTrainingConfig("agility", "Agility", "Improves initiative, hit chance, critical chance, and evasion.", "Running, basketball, martial arts, jump rope", "miles", "{value} mile run or agility practice", 0.25, 0.25),
-  intelligence: makeDefaultTrainingConfig("intelligence", "Intelligence", "Increases magic power and crafting knowledge.", "Reading, studying, learning a language, taking a course", "pages", "{value} pages read or focused study", 5, 5),
-  wisdom: makeDefaultTrainingConfig("wisdom", "Wisdom", "Increases mana, focus, and resistance.", "Meditation, journaling, breathing, yoga", "minutes", "{value} minutes meditation, journaling, or breathwork", 3, 2),
-  charisma: makeDefaultTrainingConfig("charisma", "Charisma", "Increases merchant discounts, reputation, and leadership.", "Social practice, talking to a stranger, calling someone, community activity", "interactions", "{value} meaningful social interaction(s)", 1, 1),
-  spirit: makeDefaultTrainingConfig("spirit", "Spirit", "Increases blessing power, corruption resistance, and special story choices.", "Kindness, helping someone, prayer, faith activity, reflection, service", "acts", "{value} act(s) of kindness, service, or reflection", 1, 1),
+  strength: makeDefaultTrainingConfig("strength", "Strength", "Builds physical power for attack bonus and carrying capacity.", "Strength training, lifting heavy things, weighted exercise, bodyweight work, or physical labor.", "minutes", "{value}+ minutes of focused strength work", 30, 0),
+  endurance: makeDefaultTrainingConfig("endurance", "Endurance", "Builds stamina for longer journeys and sustained effort.", "Hiking, jogging, power walking, long walks, or steady physical work.", "minutes", "{value}+ minutes of endurance work", 30, 0),
+  agility: makeDefaultTrainingConfig("agility", "Agility", "Improves initiative, hit chance, critical chance, and evasion.", "Stretching, yoga, sprint intervals, balance drills, mobility work, or sport practice.", "minutes", "{value}+ minutes of agility work", 30, 0),
+  intelligence: makeDefaultTrainingConfig("intelligence", "Intelligence", "Improves magical knowledge, learning, and problem solving.", "Reading, studying, language learning, courses, writing notes, or focused research.", "minutes", "{value}+ minutes of study or learning", 30, 0),
+  wisdom: makeDefaultTrainingConfig("wisdom", "Wisdom", "Improves healing, focus, insight, and calm decision making.", "Meditation, journaling, breathing practice, reflection, slow walks, or mindful rest.", "minutes", "{value}+ minutes of wisdom practice", 30, 0),
+  charisma: makeDefaultTrainingConfig("charisma", "Charisma", "Improves social confidence, reputation, and leadership.", "Going out, socializing, calling someone, community activity, conversation practice, or encouraging others.", "minutes", "{value}+ minutes of social practice", 30, 0),
+  spirit: makeDefaultTrainingConfig("spirit", "Spirit", "Improves resolve, support power, resistance, and inner discipline.", "Prayer, faith study, religious study, gratitude practice, kindness, service, or personal reflection.", "minutes", "{value}+ minutes of spirit practice", 30, 0),
 };
 
 export async function getProgressionSettings() {

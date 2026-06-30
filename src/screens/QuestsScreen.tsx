@@ -139,10 +139,19 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
       </View>
 
       <Frame style={styles.summary}>
-        <Text style={styles.sectionTitle}>Daily Training Ledger</Text>
-        <Text style={styles.copy}>Complete up to {dailyLimit} full training sessions per day. Only one attribute can be trained at a time.</Text>
+        <View style={styles.summaryHeader}>
+          <View>
+            <Text style={styles.kicker}>Daily Discipline</Text>
+            <Text style={styles.summaryTitle}>Training Ledger</Text>
+          </View>
+          <View style={styles.sessionSeal}>
+            <Text style={styles.sessionSealValue}>{dailyCompleted}/{dailyLimit}</Text>
+            <Text style={styles.sessionSealLabel}>Today</Text>
+          </View>
+        </View>
+        <Text style={styles.copy}>Choose one attribute and record a focused session. Each session should be at least 30 minutes unless you set a stricter rule later.</Text>
         <View style={styles.limitRow}>
-          <Text style={styles.limitText}>{dailyCompleted} / {dailyLimit} sessions today</Text>
+          <Text style={styles.limitText}>{dailyLimit - dailyCompleted} session{dailyLimit - dailyCompleted === 1 ? "" : "s"} remaining</Text>
           <Text style={styles.limitText}>Character XP {character.xp}</Text>
         </View>
         <ProgressBar value={dailyCompleted} max={dailyLimit} color={colors.gold} height={8} />
@@ -163,20 +172,34 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                 style={[styles.attributeCard, selectedCard?.key === card.key && styles.attributeCardActive]}
                 onPress={() => setSelectedAttribute(card.key)}
               >
+                <View style={styles.attributeTopRow}>
+                  <View style={[styles.attributeSigil, selectedCard?.key === card.key && styles.attributeSigilActive]}>
+                    <Text style={styles.attributeSigilText}>{card.name.slice(0, 2).toUpperCase()}</Text>
+                  </View>
+                  <Text style={styles.attributeLevel}>Lv {card.currentLevel}</Text>
+                </View>
                 <Text style={styles.attributeName}>{card.name}</Text>
-                <Text style={styles.attributeMeta}>Level {card.currentLevel}</Text>
-                <Text style={styles.attributeMeta}>{card.currentXp} sessions</Text>
+                <Text style={styles.attributeMeta}>{card.currentXp} training XP</Text>
               </Pressable>
             ))}
           </View>
 
           {selectedCard ? (
             <Frame style={styles.trainingCard}>
-              <Text style={styles.trainingTitle}>{selectedCard.name} Training</Text>
+              <View style={styles.trainingHeader}>
+                <View>
+                  <Text style={styles.kicker}>Selected Focus</Text>
+                  <Text style={styles.trainingTitle}>{selectedCard.name}</Text>
+                </View>
+                <View style={styles.readyBadge}>
+                  <Text style={styles.readyBadgeText}>{getCooldownText(selectedCard.cooldownUntil, now)}</Text>
+                </View>
+              </View>
               <Text style={styles.effect}>{selectedCard.effect}</Text>
-              <Info label="Current Goal" value={selectedCard.goalLabel} />
-              <Info label="Cooldown" value={getCooldownText(selectedCard.cooldownUntil, now)} />
-              <Info label="Activities" value={selectedCard.activities} />
+              <View style={styles.trainingInfoGrid}>
+                <Info label="Session Minimum" value={selectedCard.goalLabel} compact />
+                <Info label="Suggested Work" value={selectedCard.activities} compact />
+              </View>
               <View style={styles.xpBlock}>
                 <Text style={styles.xpText}>Level Progress</Text>
                 <ProgressBar value={selectedLevelProgress?.progress ?? 0} max={selectedLevelProgress?.required ?? 1} color={colors.blue} height={8} />
@@ -286,9 +309,9 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   );
 }
 
-function Info({ label, value }: { label: string; value: string }) {
+function Info({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
   return (
-    <View style={styles.infoRow}>
+    <View style={[styles.infoRow, compact && styles.infoRowCompact]}>
       <Text style={styles.infoLabel}>{label}</Text>
       <Text style={styles.infoValue}>{value}</Text>
     </View>
@@ -385,8 +408,47 @@ const styles = StyleSheet.create({
   },
   summary: {
     margin: 14,
-    padding: 14,
-    gap: 10,
+    padding: 16,
+    gap: 12,
+    overflow: "hidden",
+  },
+  summaryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  kicker: {
+    color: colors.blue,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  summaryTitle: {
+    color: colors.gold,
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  sessionSeal: {
+    minWidth: 76,
+    minHeight: 76,
+    borderRadius: 38,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(217, 164, 65, 0.08)",
+  },
+  sessionSealValue: {
+    color: colors.text,
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  sessionSealLabel: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
   },
   adminBalance: {
     marginHorizontal: 14,
@@ -504,22 +566,51 @@ const styles = StyleSheet.create({
   },
   attributeCard: {
     width: "48%",
-    minHeight: 96,
+    minHeight: 116,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     padding: 12,
-    justifyContent: "center",
-    backgroundColor: "rgba(0,0,0,0.24)",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(5, 8, 8, 0.68)",
   },
   attributeCardActive: {
     borderColor: colors.blue,
-    backgroundColor: "rgba(20, 61, 86, 0.55)",
+    backgroundColor: "rgba(20, 61, 86, 0.5)",
+  },
+  attributeTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  attributeSigil: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(217,164,65,0.08)",
+  },
+  attributeSigilActive: {
+    borderColor: colors.blue,
+  },
+  attributeSigilText: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  attributeLevel: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "900",
   },
   attributeName: {
     color: colors.gold,
     fontWeight: "900",
-    marginBottom: 8,
+    marginTop: 10,
   },
   attributeMeta: {
     color: colors.text,
@@ -527,24 +618,55 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   trainingCard: {
-    padding: 14,
+    padding: 16,
+    gap: 14,
+  },
+  trainingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
   },
   trainingTitle: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "900",
+  },
+  readyBadge: {
+    maxWidth: 140,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  readyBadgeText: {
+    color: colors.blue,
+    fontSize: 12,
+    fontWeight: "900",
+    textAlign: "center",
   },
   effect: {
     color: colors.blue,
     lineHeight: 20,
     fontWeight: "800",
   },
+  trainingInfoGrid: {
+    gap: 10,
+  },
   infoRow: {
     gap: 6,
     borderBottomWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
     paddingBottom: 10,
+  },
+  infoRowCompact: {
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "rgba(0,0,0,0.22)",
   },
   infoLabel: {
     color: colors.gold,
