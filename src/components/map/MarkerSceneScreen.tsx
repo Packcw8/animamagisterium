@@ -120,7 +120,6 @@ export function MarkerSceneScreen({
         ) : marker.type === "NPC" ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
-            <Text style={styles.copy}>Speak with this character, accept work, or challenge them if a battle is linked.</Text>
             {markerHasDialogue ? (
               <Pressable style={styles.primaryButton} onPress={onOpenDialogueEvent}>
                 <Text style={styles.primaryText}>Talk</Text>
