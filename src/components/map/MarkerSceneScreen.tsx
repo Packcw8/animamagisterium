@@ -136,7 +136,6 @@ export function MarkerSceneScreen({
         ) : markerHasDialogue && isDialogueMarkerType(marker.type) ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Dialogue</Text>
-            <Text style={styles.copy}>Open the linked dialogue tree for this marker.</Text>
             <Pressable style={styles.primaryButton} onPress={onOpenDialogueEvent}>
               <Text style={styles.primaryText}>Start Dialogue</Text>
             </Pressable>

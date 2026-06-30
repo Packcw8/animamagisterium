@@ -5108,7 +5108,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           routeProgressRows={effectiveRouteProgressRows}
           inventoryItems={inventoryItems}
           itemDefinitions={itemDefinitions}
-          markerHasDialogue={supportsMarkerDialogue(selectedMarker.type) || markerDialogueIds.has(selectedMarker.id) || Boolean(selectedMarker.dialogue_event_id)}
+          markerHasDialogue={markerDialogueIds.has(selectedMarker.id) || Boolean(selectedMarker.dialogue_event_id)}
           message={markerPanelMessage}
           onExit={closeMarkerScene}
           onBuy={(marketItem) => void buyFromMarker(marketItem)}
