@@ -6114,6 +6114,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
               <LockPicker label="Marker lock" value={markerLockType} onSelect={setMarkerLockType} />
               {markerLockType !== "public" ? <TextInput value={markerLockMessage} onChangeText={setMarkerLockMessage} placeholder="Lock message shown to players" placeholderTextColor={colors.muted} style={styles.input} /> : null}
+              <LinkedMarkerPathNotice
+                markerType={draftType}
+                selectedRouteIds={selectedMarkerRouteIds}
+                routes={activeRouteScopeRoutes}
+                startsRouteOnAccept={markerStartsRouteOnAccept}
+                requireAllLinkedRoutes={markerRequireAllLinkedRoutes}
+              />
               {draftType === "Area/Town Entrance" ? <MiniMapPicker miniMaps={adminMiniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} /> : null}
               {isExitMarkerType(draftType) ? (
                 <ExitTargetEditor
@@ -6702,6 +6709,60 @@ function LegendStylePicker({ items, onApply }: { items: MarkerLegendItem[]; onAp
   );
 }
 
+function LinkedMarkerPathNotice({
+  markerType,
+  selectedRouteIds,
+  routes,
+  startsRouteOnAccept,
+  requireAllLinkedRoutes,
+}: {
+  markerType: string;
+  selectedRouteIds: string[];
+  routes: MapRoute[];
+  startsRouteOnAccept: boolean;
+  requireAllLinkedRoutes: boolean;
+}) {
+  const linkedRoutes = selectedRouteIds
+    .map((routeId) => routes.find((route) => route.id === routeId))
+    .filter((route): route is MapRoute => Boolean(route));
+
+  if (linkedRoutes.length === 0) {
+    return null;
+  }
+
+  const isNpc = markerType === "NPC";
+  const isStoryOrQuest = isStoryQuestMarker({ type: markerType });
+  const roleText = startsRouteOnAccept
+    ? "Starts travel when accepted"
+    : isStoryOrQuest
+      ? "Story path sequence"
+      : requireAllLinkedRoutes
+        ? "Requires all linked paths complete"
+        : "Requires any linked path complete";
+
+  return (
+    <View style={[styles.linkedPathNotice, isNpc && styles.linkedPathWarning]}>
+      <View style={styles.linkedPathNoticeHeader}>
+        <Text style={styles.selectedTitle}>Linked Path Notice</Text>
+        <Text style={styles.linkedPathBadge}>{roleText}</Text>
+      </View>
+      {isNpc ? (
+        <Text style={styles.lockText}>
+          This NPC has linked walking paths selected. In the new flow, NPCs should usually unlock Story markers instead of requiring paths.
+        </Text>
+      ) : null}
+      <View style={styles.storyRoutePicker}>
+        {linkedRoutes.map((route) => (
+          <View key={route.id} style={styles.linkedPathPill}>
+            <Text style={styles.routeChipText}>{route.sort_order}. {route.name}{route.mini_map_id ? " (Mini)" : " (World)"}</Text>
+          </View>
+        ))}
+      </View>
+      <Text style={styles.debugLine}>To remove these links, deselect the highlighted path chips below and save the marker.</Text>
+    </View>
+  );
+}
+
 function MiniMapMarkerAdminForm({
   activeSectionMarkerTypes,
   legendItems,
@@ -6979,6 +7040,13 @@ function MiniMapMarkerAdminForm({
       <Pressable style={[styles.secondaryButton, markerInitiallyUnlocked && styles.typeSelected]} onPress={() => setMarkerInitiallyUnlocked((value) => !value)}>
         <Text style={styles.secondaryText}>Initially Unlocked: {markerInitiallyUnlocked ? "true" : "false"}</Text>
       </Pressable>
+      <LinkedMarkerPathNotice
+        markerType={draftType}
+        selectedRouteIds={selectedMarkerRouteIds}
+        routes={routes}
+        startsRouteOnAccept={markerStartsRouteOnAccept}
+        requireAllLinkedRoutes={markerRequireAllLinkedRoutes}
+      />
       {draftType === "NPC" ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>NPC Character</Text>
@@ -8097,6 +8165,45 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: "800",
     fontSize: 12,
+  },
+  linkedPathNotice: {
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.blue,
+    borderRadius: 10,
+    padding: 12,
+    backgroundColor: "rgba(20, 61, 86, 0.24)",
+  },
+  linkedPathWarning: {
+    borderColor: "#f0a0a0",
+    backgroundColor: "rgba(62, 15, 15, 0.22)",
+  },
+  linkedPathNoticeHeader: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  linkedPathBadge: {
+    color: colors.blue,
+    fontWeight: "900",
+    fontSize: 11,
+    textTransform: "uppercase",
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  linkedPathPill: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: "rgba(218,164,65,0.1)",
   },
   input: {
     minHeight: 48,
