@@ -28,19 +28,30 @@ npx eas-cli@latest login
 npx eas-cli@latest build:configure
 ```
 
-3. Create an internal iOS build:
+3. Add the public Supabase variables to EAS for native builds. Use the same values as `.env.local` / Vercel:
+
+```bash
+eas env:create preview --name EXPO_PUBLIC_SUPABASE_URL --value "https://YOUR_PROJECT.supabase.co" --visibility plaintext --force
+eas env:create preview --name EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY --value "YOUR_PUBLISHABLE_KEY" --visibility sensitive --force
+eas env:create production --name EXPO_PUBLIC_SUPABASE_URL --value "https://YOUR_PROJECT.supabase.co" --visibility plaintext --force
+eas env:create production --name EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY --value "YOUR_PUBLISHABLE_KEY" --visibility sensitive --force
+```
+
+Do not add `OPENAI_API_KEY` as an Expo public variable. It must stay server-side only.
+
+4. Create an internal iOS build:
 
 ```bash
 npx eas-cli@latest build --platform ios --profile preview
 ```
 
-4. Create the App Store / TestFlight build:
+5. Create the App Store / TestFlight build:
 
 ```bash
 npx eas-cli@latest build --platform ios --profile production
 ```
 
-5. Upload to App Store Connect:
+6. Upload to App Store Connect:
 
 ```bash
 npx eas-cli@latest submit --platform ios --profile production

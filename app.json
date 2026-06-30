@@ -40,6 +40,11 @@
       "favicon": "./assets/favicon.png",
       "name": "Anima Magisterium",
       "shortName": "Anima"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "f2ae9cc7-8928-4ec5-b47b-eac653236097"
+      }
     }
   }
 }

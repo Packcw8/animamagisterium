@@ -1,5 +1,5 @@
 import { Session } from "@supabase/supabase-js";
-import { ReactNode } from "react";
+import { Component, ErrorInfo, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
 import { BottomNav } from "./src/components/BottomNav";
@@ -19,6 +19,14 @@ import { Tables } from "./src/lib/supabase";
 import { ScreenKey } from "./src/types";
 
 export default function App() {
+  return (
+    <AppErrorBoundary>
+      <AppShell />
+    </AppErrorBoundary>
+  );
+}
+
+function AppShell() {
   const [connectionStatus, setConnectionStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [character, setCharacter] = useState<CharacterWithDetails | null>(null);
@@ -133,6 +141,36 @@ export default function App() {
   );
 }
 
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  state = { error: null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return {
+      error: error instanceof Error ? error.message : "The app hit an unknown startup error.",
+    };
+  }
+
+  componentDidCatch(error: unknown, errorInfo: ErrorInfo) {
+    console.error("[app] startup render error", error, errorInfo.componentStack);
+  }
+
+  render() {
+    if (!this.state.error) {
+      return this.props.children;
+    }
+
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.error}>
+          <Text style={styles.errorTitle}>Anima Magisterium could not open.</Text>
+          <Text style={styles.errorText}>{this.state.error}</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+}
+
 function AuthenticatedLayout({
   activeScreen,
   onChangeScreen,
@@ -185,5 +223,12 @@ const styles = StyleSheet.create({
     color: "#ffb4aa",
     textAlign: "center",
     lineHeight: 22,
+  },
+  errorTitle: {
+    color: colors.gold,
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 10,
+    textAlign: "center",
   },
 });
