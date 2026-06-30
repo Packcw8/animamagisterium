@@ -61,9 +61,10 @@ export function getCharacterResources(character: CharacterWithDetails, bonuses?:
   const intelligence = attributes?.intelligence ?? 0;
   const wisdom = attributes?.wisdom ?? 0;
   const spirit = attributes?.spirit ?? 0;
+  const level = Math.max(1, Math.floor(Number(character.level) || 1));
 
   return {
-    maxHp: 30 + endurance * 8 + strength * 2 + (bonuses?.maxHp ?? 0),
+    maxHp: 30 + (level - 1) * 5 + (bonuses?.maxHp ?? 0),
     maxStamina: 12 + strength * 3 + endurance * 4 + (bonuses?.maxStamina ?? 0),
     maxMagicka: 10 + intelligence * 4 + wisdom * 3 + spirit * 4 + (bonuses?.maxMagicka ?? 0),
   };

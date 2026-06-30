@@ -24,6 +24,7 @@ export type EnemyKillInput = {
 };
 
 export const attributeKeys: AttributeKey[] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"];
+export const dailyTrainingSessionLimit = 2;
 
 export const defaultProgressionSettings: GameProgressionSettings = {
   id: true,
@@ -31,15 +32,15 @@ export const defaultProgressionSettings: GameProgressionSettings = {
   character_xp_base: 100,
   character_xp_growth: 0,
   default_attribute_level_cap: 100,
-  daily_training_limit: 2,
+  daily_training_limit: dailyTrainingSessionLimit,
   training_cooldown_minutes: 60,
   updated_at: new Date(0).toISOString(),
 };
 
 export const defaultTrainingConfigs: Record<AttributeKey, TrainingAttributeConfig> = {
-  strength: makeDefaultTrainingConfig("strength", "Strength", "Increases melee damage and carry power.", "Workouts, pushups, weights, bodyweight training, physical labor", "pushups", "{value} pushups or equivalent strength work", 5, 5),
-  endurance: makeDefaultTrainingConfig("endurance", "Endurance", "Increases HP and stamina.", "Walking, hiking, labor, long physical activity", "steps", "{value} steps or equivalent endurance work", 1000, 1000),
-  agility: makeDefaultTrainingConfig("agility", "Agility", "Increases dodge, speed, and critical chance.", "Running, basketball, martial arts, jump rope", "miles", "{value} mile run or agility practice", 0.25, 0.25),
+  strength: makeDefaultTrainingConfig("strength", "Strength", "Increases physical attack bonus and carry capacity.", "Workouts, pushups, weights, bodyweight training, physical labor", "pushups", "{value} pushups or equivalent strength work", 5, 5),
+  endurance: makeDefaultTrainingConfig("endurance", "Endurance", "Increases max stamina and long-form survivability.", "Walking, hiking, labor, long physical activity", "steps", "{value} steps or equivalent endurance work", 1000, 1000),
+  agility: makeDefaultTrainingConfig("agility", "Agility", "Improves initiative, hit chance, critical chance, and evasion.", "Running, basketball, martial arts, jump rope", "miles", "{value} mile run or agility practice", 0.25, 0.25),
   intelligence: makeDefaultTrainingConfig("intelligence", "Intelligence", "Increases magic power and crafting knowledge.", "Reading, studying, learning a language, taking a course", "pages", "{value} pages read or focused study", 5, 5),
   wisdom: makeDefaultTrainingConfig("wisdom", "Wisdom", "Increases mana, focus, and resistance.", "Meditation, journaling, breathing, yoga", "minutes", "{value} minutes meditation, journaling, or breathwork", 3, 2),
   charisma: makeDefaultTrainingConfig("charisma", "Charisma", "Increases merchant discounts, reputation, and leadership.", "Social practice, talking to a stranger, calling someone, community activity", "interactions", "{value} meaningful social interaction(s)", 1, 1),
@@ -55,7 +56,7 @@ export async function getProgressionSettings() {
     throw error;
   }
 
-  return { ...defaultProgressionSettings, ...(data as GameProgressionSettings | null ?? {}) };
+  return { ...defaultProgressionSettings, ...(data as GameProgressionSettings | null ?? {}), daily_training_limit: dailyTrainingSessionLimit };
 }
 
 export async function saveProgressionSettings(input: Partial<GameProgressionSettings>) {
@@ -288,7 +289,7 @@ function normalizeProgressionSettings(input: Partial<GameProgressionSettings>) {
     character_xp_base: Math.max(1, Math.floor(Number(input.character_xp_base) || defaultProgressionSettings.character_xp_base)),
     character_xp_growth: Math.max(0, Math.floor(Number(input.character_xp_growth) || 0)),
     default_attribute_level_cap: Math.max(1, Math.floor(Number(input.default_attribute_level_cap) || defaultProgressionSettings.default_attribute_level_cap)),
-    daily_training_limit: Math.max(1, Math.floor(Number(input.daily_training_limit) || defaultProgressionSettings.daily_training_limit)),
+    daily_training_limit: dailyTrainingSessionLimit,
     training_cooldown_minutes: Math.max(0, Math.floor(Number(input.training_cooldown_minutes) || 0)),
   };
 }

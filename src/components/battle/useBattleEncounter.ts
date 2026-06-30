@@ -5,7 +5,7 @@ import { EnemyWithLoadout, NpcWithLoadout, getEnemyLoadout, getNpcLoadout, resol
 import { BattleEventCombatant, MarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants } from "../../services/battlefieldService";
 import { InventoryItem, ItemDefinition, consumeInventoryItem, getInventoryResourceBonuses, isReviveBattleItem } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
-import { chooseWeightedEnemyAbility, getDefenseAttributeBonus, rollD20Attack } from "../../utils/combatMath";
+import { chooseWeightedEnemyAbility, getD20StatBonus, rollD20Attack } from "../../utils/combatMath";
 import { type CombatIndicator } from "./BattleDisplay";
 
 type PreviewMode = "story" | "battle" | null;
@@ -369,7 +369,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     const enemyDefense = getEnemyDefense();
-    const attackRoll = rollD20Attack(getAbilityAttributeLevel(ability, "player"), getAbilityAttackBonus(ability), enemyDefense, ability.adminAbility?.critical_chance ?? 0, ability.adminAbility?.critical_multiplier ?? 2);
+    const attackRoll = rollD20Attack(getPlayerAbilityAttackBonus(ability), getAbilityAttackBonus(ability), enemyDefense, ability.adminAbility?.critical_chance ?? 0, ability.adminAbility?.critical_multiplier ?? 2);
     const nextLog = [`${ability.name}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
 
     if (!attackRoll.hit) {
@@ -483,7 +483,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
     const bonuses = getInventoryResourceBonuses(context.equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
     const enemyDefense = getEnemyDefense();
-    const attackRoll = rollD20Attack(character.attributes?.strength ?? 0, bonuses.damage, enemyDefense, 0, 2);
+    const attackRoll = rollD20Attack(getStrengthAttackBonus(character.attributes?.strength ?? 0), bonuses.damage, enemyDefense, 0, 2);
     const actionName = weapon.ability_name || weapon.name;
     const nextLog = [`${actionName}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
 
@@ -505,7 +505,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
 
-    const weaponDamage = Number(weapon.damage_amount ?? 0) + Number(weapon.elemental_damage_amount ?? 0) + bonuses.damage + Math.floor((character.attributes?.strength ?? 0) / 2);
+    const weaponDamage = Number(weapon.damage_amount ?? 0) + Number(weapon.elemental_damage_amount ?? 0) + bonuses.damage + getStrengthAttackBonus(character.attributes?.strength ?? 0);
     const totalDamage = attackRoll.critical ? Math.ceil(Math.max(1, weaponDamage - getEnemyArmorReduction()) * 2) : Math.max(1, weaponDamage - getEnemyArmorReduction());
     const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
     pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c");
@@ -608,7 +608,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     if (!ability) {
-      const roll = rollD20Attack(Number(enemy.strength ?? 0), getEnemyAttackBonus(enemy), playerDefense, 0, 2);
+      const roll = rollD20Attack(getEnemyStatAttackBonus(enemy, "strength"), getEnemyAttackBonus(enemy), playerDefense, 0, 2);
       if (!roll.hit) {
         pushCombatIndicator("player", "MISS", "#9ca3af");
         return { damage: 0, log: [`${enemyName} misses. d20 ${roll.roll} + bonuses = ${roll.total} vs Defense ${playerDefense}.`] };
@@ -656,7 +656,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return { damage: 0, log: [`${enemyName} uses ${ability.name}. ${ability.status_effect !== "none" ? `Status: ${ability.status_effect}.` : "It braces for the next exchange."}`] };
     }
 
-    const statBonus = Number(enemy.strength ?? 0);
+    const statBonus = getEnemyStatAttackBonus(enemy, ability.required_attribute);
     const roll = rollD20Attack(statBonus, Number(ability.attack_bonus ?? 0) + getEnemyAttackBonus(enemy), playerDefense, ability.critical_chance, ability.critical_multiplier);
     if (!roll.hit) {
       pushCombatIndicator("player", "MISS", "#9ca3af");
@@ -674,11 +674,11 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
   function getPlayerDefense(equippedItems: Record<string, ItemDefinition | null>, extraDefense = 0) {
     const bonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
-    return 10 + getDefenseAttributeBonus(character.attributes?.endurance ?? 0) + getDefenseAttributeBonus(character.attributes?.agility ?? 0) + bonuses.defense + extraDefense;
+    return 10 + bonuses.defense + extraDefense;
   }
 
   function getEnemyDefense() {
-    return Number(activeEnemy?.defense ?? 10) + getDefenseAttributeBonus(Number(activeEnemy?.endurance ?? 0)) + getDefenseAttributeBonus(Number(activeEnemy?.agility ?? 0)) + Number(activeEnemy?.armor_rating ?? 0);
+    return Number(activeEnemy?.defense ?? 10) + Number(activeEnemy?.armor_rating ?? 0);
   }
 
   function getEnemyAttackBonus(enemy: EnemyWithLoadout | NpcWithLoadout | null = activeEnemy) {
@@ -714,6 +714,23 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     return Number(character.attributes?.[key] ?? 0);
+  }
+
+  function getStrengthAttackBonus(strengthLevel: number) {
+    return Math.max(0, Math.floor(Number(strengthLevel) || 0));
+  }
+
+  function getPlayerAbilityAttackBonus(ability: AbilityDefinition) {
+    const key = ability.attribute ?? ability.adminAbility?.required_attribute ?? (ability.adminAbility?.linked_stat && ability.adminAbility.linked_stat !== "none" && ability.adminAbility.linked_stat !== "weapon" && ability.adminAbility.linked_stat !== "item" ? ability.adminAbility.linked_stat : null);
+    const attributeLevel = getAbilityAttributeLevel(ability, "player");
+    return key === "strength" ? getStrengthAttackBonus(attributeLevel) : getD20StatBonus(attributeLevel);
+  }
+
+  function getEnemyStatAttackBonus(enemy: EnemyWithLoadout | NpcWithLoadout | null, key: string | null | undefined) {
+    if (!enemy || !key || key === "none" || key === "weapon" || key === "item") {
+      return 0;
+    }
+    return getD20StatBonus(Number(enemy[key as keyof typeof enemy] ?? 0));
   }
 
   function applyAbilityStatusToTarget(ability: AbilityDefinition, target: CombatIndicator["target"], log: string[]) {

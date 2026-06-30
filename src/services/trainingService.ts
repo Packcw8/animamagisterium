@@ -5,6 +5,7 @@ import { recordSocialContribution } from "./partyGuildService";
 import {
   applyCharacterXpGold,
   attributeKeys,
+  dailyTrainingSessionLimit,
   defaultTrainingConfigs,
   formatTrainingGoal,
   getAttributeLevelFromXp,
@@ -114,7 +115,7 @@ export async function getTrainingState(character: CharacterWithDetails) {
       };
     }),
     dailyCompleted: dailyResult.count ?? 0,
-    dailyLimit: settings.daily_training_limit,
+    dailyLimit: dailyTrainingSessionLimit,
   };
 }
 
@@ -147,8 +148,8 @@ export async function completeTrainingSession(character: CharacterWithDetails, a
   const [settings, configs] = await Promise.all([getProgressionSettings(), getTrainingConfigs()]);
   const configMap = getConfigMap(configs);
 
-  if ((count ?? 0) >= settings.daily_training_limit) {
-    throw new Error(`Daily training limit reached. You can complete ${settings.daily_training_limit} full session${settings.daily_training_limit === 1 ? "" : "s"} per day.`);
+  if ((count ?? 0) >= dailyTrainingSessionLimit) {
+    throw new Error(`Daily training limit reached. You can complete ${dailyTrainingSessionLimit} full sessions per day.`);
   }
 
   await ensureAttributeProgress(user.id, character.id, configMap);

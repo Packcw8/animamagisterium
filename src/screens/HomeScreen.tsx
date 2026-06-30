@@ -363,7 +363,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     const attributeAverage = attributeKeys.reduce((sum, key) => sum + Number(attributes?.[key] ?? 0), 0) / attributeKeys.length;
     const topPhysical = Math.max(Number(attributes?.strength ?? 0), Number(attributes?.agility ?? 0), Number(attributes?.endurance ?? 0));
     const topMental = Math.max(Number(attributes?.intelligence ?? 0), Number(attributes?.wisdom ?? 0), Number(attributes?.spirit ?? 0));
-    const playerDefense = 10 + Math.floor(Number(attributes?.endurance ?? 0) / 5) + Math.floor(Number(attributes?.agility ?? 0) / 5) + equipmentBonuses.defense;
+    const playerDefense = 10 + equipmentBonuses.defense;
     const level = Math.max(1, Number(character.level) || 1);
     const profileTuning: Record<EnemyBalanceProfile, { hp: number; attack: number; defense: number; armor: number; xp: number; gold: number; stat: number }> = {
       minion: { hp: 0.55, attack: -3, defense: -2, armor: 0, xp: 0.45, gold: 0.35, stat: 0.55 },
@@ -890,7 +890,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
               <CombatStat label="Health" value={`${currentHealth} / ${battleStats.maxHp}`} note="Persistent Health / max Health" />
               <CombatStat label="Stamina" value={battleStats.maxStamina} note="Strength, Endurance, gear" />
               <CombatStat label="Mana" value={battleStats.maxMagicka} note="Intelligence, Wisdom, Spirit" />
-              <CombatStat label="Defense" value={battleStats.defense} note="10 + slow Endurance/Agility scaling + armor" />
+              <CombatStat label="Defense" value={battleStats.defense} note="Armor Class: 10 + equipped armor bonuses" />
               <CombatStat label="Melee Attack" value={`+${battleStats.meleeAttackBonus}`} note="Strength + gear damage" />
               <CombatStat label="Ranged / Dodge" value={`+${battleStats.agilityBonus}`} note="Agility accuracy and evasion" />
               <CombatStat label="Spell Power" value={`+${battleStats.spellPower}`} note="Intelligence + Mana scaling" />
@@ -1738,16 +1738,15 @@ function getDerivedBattleStats(
 ) {
   const attributes = character.attributes;
   const strength = attributes?.strength ?? 0;
-  const endurance = attributes?.endurance ?? 0;
   const agility = attributes?.agility ?? 0;
   const intelligence = attributes?.intelligence ?? 0;
   const wisdom = attributes?.wisdom ?? 0;
   const spirit = attributes?.spirit ?? 0;
   const weaponDamage = Number(equipped.weapon?.damage_amount ?? 0) + Number(equipped.weapon?.elemental_damage_amount ?? 0);
   const armorValue = Object.values(equipped).reduce((sum, item) => sum + Number(item?.armor_value ?? 0), 0);
-  const meleeAttackBonus = Math.floor(strength / 2) + weaponDamage + inventoryBonuses.damage;
+  const meleeAttackBonus = strength + weaponDamage + inventoryBonuses.damage;
   const agilityBonus = Math.floor(agility / 2);
-  const defense = 10 + Math.floor(endurance / 5) + Math.floor(agility / 5) + inventoryBonuses.defense;
+  const defense = 10 + inventoryBonuses.defense;
 
   return {
     maxHp: resources.maxHp,

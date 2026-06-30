@@ -233,7 +233,11 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                 <BalanceNumber grid label="XP for next level base" value={progressionSettings.character_xp_base} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_base: value }))} />
                 <BalanceNumber grid label="XP growth per level" value={progressionSettings.character_xp_growth} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_growth: value }))} />
                 <BalanceNumber grid label="Default attribute cap" value={progressionSettings.default_attribute_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, default_attribute_level_cap: value }))} />
-                <BalanceNumber grid label="Daily training limit" value={progressionSettings.daily_training_limit} onChange={(value) => setProgressionSettings((current) => ({ ...current, daily_training_limit: value }))} />
+                <View style={styles.fixedBalanceBox}>
+                  <Text style={styles.infoLabel}>Daily training limit</Text>
+                  <Text style={styles.fixedBalanceValue}>2 sessions</Text>
+                  <Text style={styles.copy}>Fixed system rule.</Text>
+                </View>
                 <BalanceNumber grid label="Cooldown minutes" value={progressionSettings.training_cooldown_minutes} onChange={(value) => setProgressionSettings((current) => ({ ...current, training_cooldown_minutes: value }))} />
               </View>
               <Pressable style={styles.primaryButton} onPress={() => void saveGlobalBalance()}>
@@ -433,6 +437,23 @@ const styles = StyleSheet.create({
     flexBasis: 240,
     minWidth: 220,
     maxWidth: "100%",
+  },
+  fixedBalanceBox: {
+    flexGrow: 1,
+    flexBasis: 240,
+    minWidth: 220,
+    maxWidth: "100%",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  fixedBalanceValue: {
+    color: colors.text,
+    fontWeight: "900",
   },
   balanceInput: {
     minHeight: 44,
