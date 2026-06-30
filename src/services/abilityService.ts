@@ -2,6 +2,7 @@ import { supabase, Tables } from "../lib/supabase";
 import type { CharacterWithDetails } from "./characterService";
 import type { AttributeKey } from "./trainingService";
 import type { CombatAbility } from "./combatAdminService";
+import { classCombinations, classUnlockLevel } from "./classService";
 
 export type PlayerAbility = Tables["player_abilities"];
 export type EquippedAbility = Tables["equipped_abilities"];
@@ -335,7 +336,15 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
       return true;
     }
 
+    if (ability.required_class_key && !isClassUnlocked(character, ability.required_class_key)) {
+      return false;
+    }
+
     const attribute = ability.required_attribute;
+    if (!attribute && ability.required_class_key) {
+      return true;
+    }
+
     return attribute && (character.attributes?.[attribute] ?? 0) >= ability.required_attribute_level;
   });
 
@@ -364,6 +373,16 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
   if (error) {
     throw error;
   }
+}
+
+function isClassUnlocked(character: CharacterWithDetails, classKey: string) {
+  const combo = classCombinations.find((item) => item.key === classKey);
+  if (!combo) {
+    return false;
+  }
+
+  return (character.attributes?.[combo.firstAttribute] ?? 0) >= classUnlockLevel
+    && (character.attributes?.[combo.secondAttribute] ?? 0) >= classUnlockLevel;
 }
 
 export async function learnAbilityFromScroll(characterId: string, abilityId: string) {

@@ -39,6 +39,7 @@ import {
   learnMethods,
   linkedStats,
   requiredAttributes,
+  requiredClassKeys,
   resolveEnemyImageUri,
   saveCombatAbility,
   saveEnemy,
@@ -50,6 +51,7 @@ import {
   statusEffects,
   usageContexts as abilityUsageContexts,
 } from "../services/combatAdminService";
+import { classCombinations } from "../services/classService";
 import {
   blankItemDefinition,
   boostTargets,
@@ -954,7 +956,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     <Text style={styles.muted}>{selectedAdminAbility.type} / Damage {selectedAdminAbility.damage} / Healing {selectedAdminAbility.healing} / Defense {selectedAdminAbility.defense_amount}</Text>
                     <Text style={styles.muted}>Restores: {selectedAdminAbility.stamina_restore} Stamina / {selectedAdminAbility.magika_restore} Mana</Text>
                     <Text style={styles.muted}>Costs: {selectedAdminAbility.stamina_cost} Stamina / {selectedAdminAbility.magika_cost} Mana / {selectedAdminAbility.health_cost} Health</Text>
-                    <Text style={styles.muted}>Unlock: {selectedAdminAbility.required_attribute ? `${selectedAdminAbility.required_attribute} ${selectedAdminAbility.required_attribute_level}` : selectedAdminAbility.learn_method}</Text>
+                    <Text style={styles.muted}>Unlock: {formatAbilityUnlockText(selectedAdminAbility)}</Text>
                     <View style={styles.slotActions}>
                       <Pressable style={styles.smallButton} onPress={() => void editAdminAbility(selectedAdminAbility)}><Text style={styles.smallButtonText}>Edit Selected</Text></Pressable>
                       <Pressable style={styles.smallButton} onPress={() => void removeAdminAbility(selectedAdminAbility.id)}><Text style={styles.smallButtonText}>Delete Selected</Text></Pressable>
@@ -1012,6 +1014,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 <ItemText label="Required level" value={String(abilityForm.required_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_level: Number(value) || 0 }))} />
                 <ChoiceRow label="Required Attribute" options={["", ...requiredAttributes]} value={abilityForm.required_attribute ?? ""} onSelect={(value) => setAbilityForm((current) => ({ ...current, required_attribute: value || null, linked_stat: value || current.linked_stat }))} />
                 <ItemText label="Required Attribute Level" value={String(abilityForm.required_attribute_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_attribute_level: Number(value) || 0, required_level: Number(value) || current.required_level || 0 }))} />
+                <ChoiceRow label="Required Class" options={["", ...requiredClassKeys]} value={abilityForm.required_class_key ?? ""} labels={getClassChoiceLabels()} onSelect={(value) => setAbilityForm((current) => ({ ...current, required_class_key: value || null }))} />
                 <View style={styles.slotActions}>
                   <ItemText label="Stamina Restore" value={String(abilityForm.stamina_restore ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, stamina_restore: Number(value) || 0 }))} />
                   <ItemText label="Mana Restore" value={String(abilityForm.magika_restore ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, magika_restore: Number(value) || 0 }))} />
@@ -1036,7 +1039,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     <Text style={styles.abilityName}>{ability.name}</Text>
                     <Text style={styles.muted}>{ability.type} / {ability.damage} damage / {ability.healing} healing / {ability.status_effect}</Text>
                     <Text style={styles.muted}>Restores {ability.stamina_restore} Stamina / {ability.magika_restore} Mana</Text>
-                    <Text style={styles.muted}>Unlock: {ability.learn_method === "starter" ? "Starter" : ability.required_attribute ? `${ability.required_attribute} ${ability.required_attribute_level}` : "manual/gear/quest"}</Text>
+                    <Text style={styles.muted}>Unlock: {formatAbilityUnlockText(ability)}</Text>
                       </View>
                     </View>
                     <View style={styles.slotActions}>
@@ -1726,6 +1729,31 @@ function toInventoryCategory(type: ItemDefinition["type"]): (typeof inventoryCat
 
 function toAbilityTypeTab(type: CombatAbility["type"]): (typeof abilityTypeTabs)[number] {
   return type === "attack" ? "Attack" : type === "heal" ? "Heal" : type === "buff" ? "Buff" : type === "debuff" ? "Debuff" : type === "defense" ? "Defense" : "Passive";
+}
+
+function getClassChoiceLabels() {
+  return classCombinations.reduce<Record<string, string>>((labels, combo) => {
+    labels[combo.key] = combo.name;
+    return labels;
+  }, { "": "None" });
+}
+
+function formatAbilityUnlockText(ability: CombatAbility) {
+  const parts: string[] = [];
+  if (ability.learn_method === "starter") {
+    parts.push("Starter");
+  } else if (ability.required_attribute) {
+    parts.push(`${ability.required_attribute} ${ability.required_attribute_level}`);
+  } else {
+    parts.push(ability.learn_method || "manual/gear/quest");
+  }
+
+  if (ability.required_class_key) {
+    const className = classCombinations.find((combo) => combo.key === ability.required_class_key)?.name ?? ability.required_class_key;
+    parts.push(className);
+  }
+
+  return parts.join(" + ");
 }
 
 function getDerivedBattleStats(

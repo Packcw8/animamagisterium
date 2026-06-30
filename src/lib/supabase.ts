@@ -904,6 +904,7 @@ export type Tables = {
     required_level: number;
     required_attribute: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | null;
     required_attribute_level: number;
+    required_class_key: string | null;
     image_path: string | null;
     usage_context: "battle_only" | "outside_battle_only" | "both";
     attack_bonus: number;

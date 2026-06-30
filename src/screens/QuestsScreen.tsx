@@ -226,69 +226,90 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
         </Frame>
       ) : (
         <View style={styles.content}>
-          <View style={styles.attributeGrid}>
-            {cards.map((card) => (
-              <Pressable
-                key={card.key}
-                style={[styles.attributeCard, selectedCard?.key === card.key && styles.attributeCardActive]}
-                onPress={() => setSelectedAttribute(card.key)}
-              >
-                <View style={styles.attributeTopRow}>
-                  <View style={[styles.attributeSigil, selectedCard?.key === card.key && styles.attributeSigilActive]}>
-                    <Text style={styles.attributeSigilText}>{card.name.slice(0, 2).toUpperCase()}</Text>
-                  </View>
-                  <Text style={styles.attributeLevel}>Lv {card.currentLevel}</Text>
-                </View>
-                <Text style={styles.attributeName}>{card.name}</Text>
-                <Text style={styles.attributeMeta}>{card.currentXp} training XP</Text>
-              </Pressable>
-            ))}
-          </View>
-
-          {selectedCard ? (
-            <Frame style={styles.trainingCard}>
-              <View style={styles.trainingHeader}>
-                <View>
-                  <Text style={styles.kicker}>Selected Focus</Text>
-                  <Text style={styles.trainingTitle}>{selectedCard.name}</Text>
-                </View>
-                <View style={styles.readyBadge}>
-                  <Text style={styles.readyBadgeText}>{getCooldownText(selectedCard.cooldownUntil, now)}</Text>
-                </View>
+          <View style={styles.trainingBoard}>
+            <Frame style={styles.attributeColumn}>
+              <View style={styles.panelHeaderRow}>
+                <Text style={styles.sectionTitle}>Attributes</Text>
+                <Text style={styles.infoDot}>i</Text>
               </View>
-              <Text style={styles.effect}>{selectedCard.effect}</Text>
-              <View style={styles.trainingInfoGrid}>
-                <Info label="Session Minimum" value={selectedCard.goalLabel} compact />
-                <Info label="Suggested Work" value={selectedCard.activities} compact />
-              </View>
-              <View style={styles.xpBlock}>
-                <Text style={styles.xpText}>Level Progress</Text>
-                <ProgressBar value={selectedLevelProgress?.progress ?? 0} max={selectedLevelProgress?.required ?? 1} color={colors.blue} height={8} />
-                <Text style={styles.copy}>
-                  {selectedLevelProgress?.progress ?? 0} / {selectedLevelProgress?.required ?? 1} sessions to level {(selectedLevelProgress?.level ?? 0) + 1}
-                </Text>
-              </View>
-              <Pressable
-                style={[styles.primaryButton, (!canTrain(selectedCard, dailyCompleted, dailyLimit, now) || isCompleting !== null) && styles.disabledButton]}
-                onPress={() => void completeTraining(selectedCard.key)}
-                disabled={!canTrain(selectedCard, dailyCompleted, dailyLimit, now) || isCompleting !== null}
-              >
-                <Text style={styles.primaryText}>{isCompleting === selectedCard.key ? "Recording Training..." : "Complete Training Session"}</Text>
-              </Pressable>
-              <View style={styles.history}>
-                <Text style={styles.sectionTitle}>Completion History</Text>
-                {selectedCard.history.length === 0 ? (
-                  <Text style={styles.copy}>No sessions recorded yet.</Text>
-                ) : (
-                  selectedCard.history.map((session) => (
-                    <Text key={session.id} style={styles.historyItem}>
-                      {new Date(session.completed_at).toLocaleDateString()} - {session.activity_label} - session {session.attribute_xp}
-                    </Text>
-                  ))
-                )}
+              {cards.map((card) => {
+                const config = trainingConfigs.find((item) => item.attribute_key === card.key);
+                const levelProgress = getTrainingLevelProgress(card.currentXp, card.levelCap);
+                return (
+                  <Pressable
+                    key={card.key}
+                    style={[styles.attributeListCard, selectedCard?.key === card.key && styles.attributeListCardActive]}
+                    onPress={() => setSelectedAttribute(card.key)}
+                  >
+                    <TrainingIcon name={card.name} imageUrl={config?.image_url ?? null} active={selectedCard?.key === card.key} />
+                    <View style={styles.attributeListBody}>
+                      <View style={styles.attributeListHeader}>
+                        <Text style={styles.attributeName}>{card.name}</Text>
+                        <Text style={styles.attributeProgressText}>{levelProgress.progress} / {levelProgress.required}</Text>
+                      </View>
+                      <Text style={styles.attributeMeta}>Level {card.currentLevel}</Text>
+                      <ProgressBar value={levelProgress.progress} max={levelProgress.required} color={selectedCard?.key === card.key ? colors.gold : colors.blue} height={5} />
+                    </View>
+                    <Text style={styles.attributeChevron}>›</Text>
+                  </Pressable>
+                );
+              })}
+              <View style={styles.attributeGuideCard}>
+                <Text style={styles.attributeGuideIcon}>▥</Text>
+                <View style={styles.attributeListBody}>
+                  <Text style={styles.attributeName}>Attribute Guide</Text>
+                  <Text style={styles.attributeMeta}>Learn how attributes work</Text>
+                </View>
               </View>
             </Frame>
-          ) : null}
+            {selectedCard ? (
+              <Frame style={styles.trainingCard}>
+                <View style={styles.trainingHeader}>
+                  <TrainingHeroIcon name={selectedCard.name} imageUrl={selectedConfig?.image_url ?? null} />
+                  <View style={styles.trainingHeaderText}>
+                    <Text style={styles.kicker}>Selected Focus</Text>
+                    <Text style={styles.trainingTitle}>{selectedCard.name}</Text>
+                    <Text style={styles.effect}>{selectedCard.effect}</Text>
+                  </View>
+                  <View style={styles.levelShield}>
+                    <Text style={styles.levelShieldLabel}>Level</Text>
+                    <Text style={styles.levelShieldValue}>{selectedCard.currentLevel}</Text>
+                  </View>
+                </View>
+                <View style={styles.bonusBox}>
+                  <Text style={styles.sectionTitle}>Attribute Bonuses</Text>
+                  <Info label="Session Minimum" value={selectedCard.goalLabel} compact />
+                  <Info label="Suggested Work" value={selectedCard.activities} compact />
+                </View>
+                <View style={styles.xpBlock}>
+                  <View style={styles.levelProgressHeader}>
+                    <Text style={styles.xpText}>Level Progress</Text>
+                    <Text style={styles.attributeMeta}>Level {(selectedLevelProgress?.level ?? 0) + 1}</Text>
+                  </View>
+                  <ProgressBar value={selectedLevelProgress?.progress ?? 0} max={selectedLevelProgress?.required ?? 1} color={colors.gold} height={8} />
+                  <Text style={styles.copy}>
+                    {selectedLevelProgress?.progress ?? 0} / {selectedLevelProgress?.required ?? 1} sessions to level {(selectedLevelProgress?.level ?? 0) + 1}
+                  </Text>
+                </View>
+                <Pressable
+                  style={[styles.primaryButton, (!canTrain(selectedCard, dailyCompleted, dailyLimit, now) || isCompleting !== null) && styles.disabledButton]}
+                  onPress={() => void completeTraining(selectedCard.key)}
+                  disabled={!canTrain(selectedCard, dailyCompleted, dailyLimit, now) || isCompleting !== null}
+                >
+                  <Text style={styles.primaryText}>{isCompleting === selectedCard.key ? "Recording Training..." : "Complete Training Session"}</Text>
+                </Pressable>
+                <Text style={styles.cooldownText}>Cooldown: {getCooldownText(selectedCard.cooldownUntil, now)}</Text>
+                <View style={styles.historyCompact}>
+                  <Text style={styles.historyIcon}>▤</Text>
+                  <View style={styles.attributeListBody}>
+                    <Text style={styles.sectionTitle}>Completion History</Text>
+                    <Text style={styles.copy}>{selectedCard.history.length} session{selectedCard.history.length === 1 ? "" : "s"} recorded</Text>
+                  </View>
+                  <Text style={styles.attributeChevron}>›</Text>
+                </View>
+              </Frame>
+            ) : null}
+          </View>
 
           <Frame style={styles.classPanel}>
             <View style={styles.classHeader}>
@@ -440,6 +461,50 @@ function ClassArt({ classItem }: { classItem: PlayerClassState }) {
       <Text style={styles.classImageFallbackText}>{classItem.name.slice(0, 1).toUpperCase()}</Text>
     </View>
   );
+}
+
+function TrainingIcon({ name, imageUrl, active }: { name: string; imageUrl: string | null; active: boolean }) {
+  const uri = resolveTrainingImageUri(imageUrl);
+  if (uri) {
+    return <Image source={{ uri }} style={[styles.trainingIconImage, active && styles.trainingIconImageActive]} />;
+  }
+
+  return (
+    <View style={[styles.trainingIconFallback, active && styles.trainingIconImageActive]}>
+      <Text style={styles.trainingIconText}>{name.slice(0, 2).toUpperCase()}</Text>
+    </View>
+  );
+}
+
+function TrainingHeroIcon({ name, imageUrl }: { name: string; imageUrl: string | null }) {
+  const uri = resolveTrainingImageUri(imageUrl);
+  if (uri) {
+    return <Image source={{ uri }} style={styles.trainingHeroImage} />;
+  }
+
+  return (
+    <View style={styles.trainingHeroFallback}>
+      <Text style={styles.trainingHeroText}>{name.slice(0, 2).toUpperCase()}</Text>
+    </View>
+  );
+}
+
+function resolveTrainingImageUri(imagePath?: string | null) {
+  const trimmed = imagePath?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
+    return trimmed;
+  }
+  const normalized = trimmed.replaceAll("\\", "/").replace(/^\/?assets\/training\//i, "/assets/training/");
+  if (normalized.startsWith("/assets/training/")) {
+    return normalized;
+  }
+  if (!normalized.includes("/")) {
+    return `/assets/training/${normalized}`;
+  }
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
 }
 
 function BalanceText({ label, value, onChange, grid = false }: { label: string; value: string; onChange: (value: string) => void; grid?: boolean }) {
@@ -683,6 +748,111 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     gap: 12,
   },
+  trainingBoard: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    gap: 8,
+  },
+  attributeColumn: {
+    flex: 0.42,
+    minWidth: 140,
+    padding: 10,
+    gap: 7,
+  },
+  panelHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  infoDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "900",
+    textAlign: "center",
+    lineHeight: 16,
+  },
+  attributeListCard: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 7,
+    backgroundColor: "rgba(0,0,0,0.32)",
+  },
+  attributeListCardActive: {
+    borderColor: colors.gold,
+    backgroundColor: "rgba(84, 45, 20, 0.55)",
+  },
+  attributeListBody: {
+    flex: 1,
+    gap: 3,
+  },
+  attributeListHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 4,
+  },
+  attributeProgressText: {
+    color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  attributeChevron: {
+    color: colors.gold,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  attributeGuideCard: {
+    minHeight: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 8,
+    backgroundColor: "rgba(217,164,65,0.08)",
+  },
+  attributeGuideIcon: {
+    color: colors.gold,
+    fontSize: 20,
+    fontWeight: "900",
+  },
+  trainingIconImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  trainingIconImageActive: {
+    borderColor: colors.gold,
+  },
+  trainingIconFallback: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(217,164,65,0.08)",
+  },
+  trainingIconText: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: "900",
+  },
   attributeGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -742,14 +912,40 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   trainingCard: {
+    flex: 0.58,
     padding: 16,
     gap: 14,
   },
   trainingHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     gap: 12,
+  },
+  trainingHeaderText: {
+    flex: 1,
+    gap: 4,
+  },
+  trainingHeroImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: colors.gold,
+  },
+  trainingHeroFallback: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(217,164,65,0.12)",
+  },
+  trainingHeroText: {
+    color: colors.gold,
+    fontSize: 16,
+    fontWeight: "900",
   },
   trainingTitle: {
     color: colors.text,
@@ -771,6 +967,27 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textAlign: "center",
   },
+  levelShield: {
+    width: 42,
+    minHeight: 54,
+    borderWidth: 1,
+    borderColor: "#7f2c2c",
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(103, 22, 22, 0.55)",
+  },
+  levelShieldLabel: {
+    color: colors.gold,
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  levelShieldValue: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: "900",
+  },
   effect: {
     color: colors.blue,
     lineHeight: 20,
@@ -778,6 +995,14 @@ const styles = StyleSheet.create({
   },
   trainingInfoGrid: {
     gap: 10,
+  },
+  bonusBox: {
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
   },
   infoRow: {
     gap: 6,
@@ -804,6 +1029,17 @@ const styles = StyleSheet.create({
   },
   xpBlock: {
     gap: 6,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  levelProgressHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
   },
   xpText: {
     color: colors.text,
@@ -823,6 +1059,11 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.45,
   },
+  cooldownText: {
+    color: colors.muted,
+    fontSize: 12,
+    textAlign: "center",
+  },
   history: {
     gap: 8,
     paddingTop: 4,
@@ -834,6 +1075,22 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 10,
     backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  historyCompact: {
+    minHeight: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  historyIcon: {
+    color: colors.gold,
+    fontSize: 18,
+    fontWeight: "900",
   },
   classPanel: {
     padding: 14,
