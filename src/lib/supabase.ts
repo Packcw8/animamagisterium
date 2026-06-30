@@ -7,18 +7,16 @@ function firstConfiguredValue(...values: Array<string | undefined>) {
   return values.find((value) => Boolean(value)) ?? "";
 }
 
-const processEnv = typeof process !== "undefined" && process.env ? process.env : {};
-
 const supabaseUrl = firstConfiguredValue(
   runtimeEnv.supabaseUrl,
-  processEnv.EXPO_PUBLIC_SUPABASE_URL,
-  processEnv.VITE_SUPABASE_URL,
+  typeof process !== "undefined" ? process.env.EXPO_PUBLIC_SUPABASE_URL : undefined,
+  typeof process !== "undefined" ? process.env.VITE_SUPABASE_URL : undefined,
 );
 
 const supabasePublishableKey = firstConfiguredValue(
   runtimeEnv.supabasePublishableKey,
-  processEnv.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-  processEnv.VITE_SUPABASE_PUBLISHABLE_KEY,
+  typeof process !== "undefined" ? process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY : undefined,
+  typeof process !== "undefined" ? process.env.VITE_SUPABASE_PUBLISHABLE_KEY : undefined,
 );
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
