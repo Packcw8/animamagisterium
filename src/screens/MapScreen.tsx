@@ -561,6 +561,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const routeDirectionRef = useRef<"forward" | "reverse">("forward");
   const activeBattleRouteRef = useRef<MapRoute | null>(null);
   const exitingMiniMapRef = useRef(false);
+  const openingToastShownRef = useRef(false);
   const movementStateRef = useRef<PlayerMovementState>("IDLE");
   const movementCandidateRef = useRef<{ state: PlayerMovementState; since: number } | null>(null);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
@@ -863,6 +864,39 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       actionLabel: "OK",
     });
   }
+
+  useEffect(() => {
+    if (!mapReady || openingToastShownRef.current || actualIsAdmin || storyFlags.get("opening_toast_seen")) {
+      return;
+    }
+
+    const freshStartMarker =
+      markers.find((marker) => marker.quest_key === "opening_fresh_start") ??
+      markers.find((marker) => marker.title.trim().toLowerCase() === "fresh start") ??
+      markers.find((marker) => marker.title.toLowerCase().includes("fresh start")) ??
+      null;
+
+    openingToastShownRef.current = true;
+    showGameToast({
+      title: "A Fresh Start",
+      message: "The Forgotten Marches stretch before you. Ten coins left. No name here yet. Maybe that is a mercy. Maybe this road is where you become someone new.",
+      nextMarker: freshStartMarker,
+      actionLabel: "Begin",
+    });
+
+    void setPlayerStoryFlag(character.id, "opening_toast_seen", true)
+      .then(() => {
+        setStoryFlags((current) => {
+          const next = new Map(current);
+          next.set("opening_toast_seen", true);
+          return next;
+        });
+      })
+      .catch((error) => {
+        console.warn("[map] unable to save opening toast flag", error);
+        openingToastShownRef.current = false;
+      });
+  }, [actualIsAdmin, character.id, mapReady, markers, storyFlags]);
 
   async function loadEnemies() {
     try {
