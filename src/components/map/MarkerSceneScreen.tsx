@@ -139,13 +139,6 @@ export function MarkerSceneScreen({
             <Pressable style={styles.primaryButton} onPress={onOpenDialogueEvent}>
               <Text style={styles.primaryText}>Start Dialogue</Text>
             </Pressable>
-            {(storyLinkedRoutes.length > 0 || (marker.linked_route_id && marker.starts_route_on_accept)) ? (
-              <Pressable style={[styles.secondaryButton, nextStoryRouteLocked && !storyRoutesComplete && styles.disabledAction]} onPress={onAcceptQuest} disabled={nextStoryRouteLocked && !storyRoutesComplete}>
-                <Text style={styles.secondaryText}>
-                  {storyRoutesComplete ? "Complete Story Quest" : nextStoryRoute ? `Start ${nextStoryRoute.name}` : "Start Linked Path"}
-                </Text>
-              </Pressable>
-            ) : null}
           </View>
         ) : isStoryQuestMarker(marker) && storyLinkedRoutes.length > 0 ? (
           <View style={styles.storyEditor}>
