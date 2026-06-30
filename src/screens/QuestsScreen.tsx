@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { Frame } from "../components/Frame";
 import { Header } from "../components/Header";
 import { ProgressBar } from "../components/ProgressBar";
@@ -33,6 +33,8 @@ type QuestsScreenProps = {
 };
 
 export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProps) {
+  const { width } = useWindowDimensions();
+  const isCompact = width < 760;
   const [cards, setCards] = useState<TrainingCardState[]>([]);
   const [dailyCompleted, setDailyCompleted] = useState(0);
   const [dailyLimit, setDailyLimit] = useState(2);
@@ -192,10 +194,10 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
       <Header title="Quests / Training" />
       <View style={styles.tabs}>
         <View style={styles.activeTab}>
-          <Text style={styles.activeTabText}>Training</Text>
+          <Text style={styles.activeTabText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>Training</Text>
         </View>
         <View style={styles.inactiveTab}>
-          <Text style={styles.inactiveTabText}>Quest Goals / Coming Soon</Text>
+          <Text style={styles.inactiveTabText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>Quest Goals</Text>
         </View>
       </View>
 
@@ -226,8 +228,8 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
         </Frame>
       ) : (
         <View style={styles.content}>
-          <View style={styles.trainingBoard}>
-            <Frame style={styles.attributeColumn}>
+          <View style={[styles.trainingBoard, isCompact && styles.trainingBoardCompact]}>
+            <Frame style={[styles.attributeColumn, isCompact && styles.attributeColumnCompact]}>
               <View style={styles.panelHeaderRow}>
                 <Text style={styles.sectionTitle}>Attributes</Text>
                 <Text style={styles.infoDot}>i</Text>
@@ -250,12 +252,12 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                       <Text style={styles.attributeMeta}>Level {card.currentLevel}</Text>
                       <ProgressBar value={levelProgress.progress} max={levelProgress.required} color={selectedCard?.key === card.key ? colors.gold : colors.blue} height={5} />
                     </View>
-                    <Text style={styles.attributeChevron}>›</Text>
+                    <Text style={styles.attributeChevron}>{">"}</Text>
                   </Pressable>
                 );
               })}
               <View style={styles.attributeGuideCard}>
-                <Text style={styles.attributeGuideIcon}>▥</Text>
+                <Text style={styles.attributeGuideIcon}>?</Text>
                 <View style={styles.attributeListBody}>
                   <Text style={styles.attributeName}>Attribute Guide</Text>
                   <Text style={styles.attributeMeta}>Learn how attributes work</Text>
@@ -263,7 +265,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
               </View>
             </Frame>
             {selectedCard ? (
-              <Frame style={styles.trainingCard}>
+              <Frame style={[styles.trainingCard, isCompact && styles.trainingCardCompact]}>
                 <View style={styles.trainingHeader}>
                   <TrainingHeroIcon name={selectedCard.name} imageUrl={selectedConfig?.image_url ?? null} />
                   <View style={styles.trainingHeaderText}>
@@ -300,12 +302,12 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                 </Pressable>
                 <Text style={styles.cooldownText}>Cooldown: {getCooldownText(selectedCard.cooldownUntil, now)}</Text>
                 <View style={styles.historyCompact}>
-                  <Text style={styles.historyIcon}>▤</Text>
+                  <Text style={styles.historyIcon}>#</Text>
                   <View style={styles.attributeListBody}>
                     <Text style={styles.sectionTitle}>Completion History</Text>
                     <Text style={styles.copy}>{selectedCard.history.length} session{selectedCard.history.length === 1 ? "" : "s"} recorded</Text>
                   </View>
-                  <Text style={styles.attributeChevron}>›</Text>
+                  <Text style={styles.attributeChevron}>{">"}</Text>
                 </View>
               </Frame>
             ) : null}
@@ -323,9 +325,9 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
             {classMessage ? <Text style={styles.successText}>{classMessage}</Text> : null}
             <View style={styles.classGrid}>
               {classes.map((classItem) => (
-                <Pressable key={classItem.key} style={[styles.classCard, classItem.unlocked && styles.classCardUnlocked, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
+                <Pressable key={classItem.key} style={[styles.classCard, isCompact && styles.classCardCompact, classItem.unlocked && styles.classCardUnlocked, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
                   <ClassArt classItem={classItem} />
-                  <Text style={styles.className}>{classItem.name}</Text>
+                  <Text style={styles.className} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{classItem.name}</Text>
                   <Text style={styles.classPair}>{formatAttributeName(classItem.firstAttribute).slice(0, 3).toUpperCase()} + {formatAttributeName(classItem.secondAttribute).slice(0, 3).toUpperCase()}</Text>
                   <View style={styles.classProgressRow}>
                     <Text style={classItem.firstLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.firstLevel}/{classUnlockLevel}</Text>
@@ -753,11 +755,20 @@ const styles = StyleSheet.create({
     alignItems: "stretch",
     gap: 8,
   },
+  trainingBoardCompact: {
+    flexDirection: "column",
+    gap: 10,
+  },
   attributeColumn: {
     flex: 0.42,
     minWidth: 140,
     padding: 10,
     gap: 7,
+  },
+  attributeColumnCompact: {
+    flex: undefined,
+    minWidth: 0,
+    width: "100%",
   },
   panelHeaderRow: {
     flexDirection: "row",
@@ -778,7 +789,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   attributeListCard: {
-    minHeight: 58,
+    minHeight: 54,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -794,6 +805,7 @@ const styles = StyleSheet.create({
   },
   attributeListBody: {
     flex: 1,
+    minWidth: 0,
     gap: 3,
   },
   attributeListHeader: {
@@ -806,6 +818,7 @@ const styles = StyleSheet.create({
     color: colors.blue,
     fontSize: 10,
     fontWeight: "900",
+    flexShrink: 0,
   },
   attributeChevron: {
     color: colors.gold,
@@ -903,8 +916,9 @@ const styles = StyleSheet.create({
   },
   attributeName: {
     color: colors.gold,
+    fontSize: 13,
     fontWeight: "900",
-    marginTop: 10,
+    marginTop: 0,
   },
   attributeMeta: {
     color: colors.text,
@@ -916,6 +930,12 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 14,
   },
+  trainingCardCompact: {
+    flex: undefined,
+    width: "100%",
+    padding: 12,
+    gap: 12,
+  },
   trainingHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -923,6 +943,7 @@ const styles = StyleSheet.create({
   },
   trainingHeaderText: {
     flex: 1,
+    minWidth: 0,
     gap: 4,
   },
   trainingHeroImage: {
@@ -949,7 +970,7 @@ const styles = StyleSheet.create({
   },
   trainingTitle: {
     color: colors.text,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
   },
   readyBadge: {
@@ -990,6 +1011,7 @@ const styles = StyleSheet.create({
   },
   effect: {
     color: colors.blue,
+    fontSize: 13,
     lineHeight: 20,
     fontWeight: "800",
   },
@@ -1101,6 +1123,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+    flexWrap: "wrap",
   },
   classTitle: {
     color: colors.text,
@@ -1126,6 +1149,10 @@ const styles = StyleSheet.create({
     gap: 5,
     backgroundColor: "rgba(0,0,0,0.34)",
     opacity: 0.72,
+  },
+  classCardCompact: {
+    width: "48.5%",
+    minHeight: 132,
   },
   classCardUnlocked: {
     opacity: 1,
@@ -1160,6 +1187,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 12,
     fontWeight: "900",
+    maxWidth: "100%",
   },
   classPair: {
     color: colors.muted,
