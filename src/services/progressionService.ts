@@ -25,26 +25,27 @@ export type EnemyKillInput = {
 
 export const attributeKeys: AttributeKey[] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"];
 export const dailyTrainingSessionLimit = 2;
+export const seasonOneAttributeLevelCap = 10;
 
 export const defaultProgressionSettings: GameProgressionSettings = {
   id: true,
   character_level_cap: 100,
   character_xp_base: 100,
   character_xp_growth: 0,
-  default_attribute_level_cap: 100,
+  default_attribute_level_cap: seasonOneAttributeLevelCap,
   daily_training_limit: dailyTrainingSessionLimit,
   training_cooldown_minutes: 60,
   updated_at: new Date(0).toISOString(),
 };
 
 export const defaultTrainingConfigs: Record<AttributeKey, TrainingAttributeConfig> = {
-  strength: makeDefaultTrainingConfig("strength", "Strength", "Builds physical power for attack bonus and carrying capacity.", "Strength training, lifting heavy things, weighted exercise, bodyweight work, or physical labor.", "minutes", "{value}+ minutes of focused strength work", 30, 0),
-  endurance: makeDefaultTrainingConfig("endurance", "Endurance", "Builds stamina for longer journeys and sustained effort.", "Hiking, jogging, power walking, long walks, or steady physical work.", "minutes", "{value}+ minutes of endurance work", 30, 0),
-  agility: makeDefaultTrainingConfig("agility", "Agility", "Improves initiative, hit chance, critical chance, and evasion.", "Stretching, yoga, sprint intervals, balance drills, mobility work, or sport practice.", "minutes", "{value}+ minutes of agility work", 30, 0),
-  intelligence: makeDefaultTrainingConfig("intelligence", "Intelligence", "Improves magical knowledge, learning, and problem solving.", "Reading, studying, language learning, courses, writing notes, or focused research.", "minutes", "{value}+ minutes of study or learning", 30, 0),
-  wisdom: makeDefaultTrainingConfig("wisdom", "Wisdom", "Improves healing, focus, insight, and calm decision making.", "Meditation, journaling, breathing practice, reflection, slow walks, or mindful rest.", "minutes", "{value}+ minutes of wisdom practice", 30, 0),
-  charisma: makeDefaultTrainingConfig("charisma", "Charisma", "Improves social confidence, reputation, and leadership.", "Going out, socializing, calling someone, community activity, conversation practice, or encouraging others.", "minutes", "{value}+ minutes of social practice", 30, 0),
-  spirit: makeDefaultTrainingConfig("spirit", "Spirit", "Improves resolve, support power, resistance, and inner discipline.", "Prayer, faith study, religious study, gratitude practice, kindness, service, or personal reflection.", "minutes", "{value}+ minutes of spirit practice", 30, 0),
+  strength: makeDefaultTrainingConfig("strength", "Strength", "Builds physical power for attack bonus and carrying capacity.", "30 minutes of strength training, lifting heavy things, weighted exercise, bodyweight work, or physical labor.", "minutes", "30 minute strength session", 30, 0),
+  endurance: makeDefaultTrainingConfig("endurance", "Endurance", "Builds stamina for longer journeys and sustained effort.", "30 minutes of hiking, jogging, power walking, long walks, or steady physical work.", "minutes", "30 minute endurance session", 30, 0),
+  agility: makeDefaultTrainingConfig("agility", "Agility", "Improves initiative, hit chance, critical chance, and evasion.", "30 minutes of stretching, yoga, sprint intervals, balance drills, mobility work, or sport practice.", "minutes", "30 minute agility session", 30, 0),
+  intelligence: makeDefaultTrainingConfig("intelligence", "Intelligence", "Improves magical knowledge, learning, and problem solving.", "30 minutes of reading, studying, language learning, courses, writing notes, or focused research.", "minutes", "30 minute study session", 30, 0),
+  wisdom: makeDefaultTrainingConfig("wisdom", "Wisdom", "Improves healing, focus, insight, and calm decision making.", "30 minutes of meditation, journaling, breathing practice, reflection, slow walks, or mindful rest.", "minutes", "30 minute wisdom session", 30, 0),
+  charisma: makeDefaultTrainingConfig("charisma", "Charisma", "Improves social confidence, reputation, and leadership.", "30 minutes of going out, socializing, calling someone, community activity, conversation practice, or encouraging others.", "minutes", "30 minute charisma session", 30, 0),
+  spirit: makeDefaultTrainingConfig("spirit", "Spirit", "Improves resolve, support power, resistance, and inner discipline.", "30 minutes of prayer, faith study, religious study, gratitude practice, kindness, service, or personal reflection.", "minutes", "30 minute spirit session", 30, 0),
 };
 
 export async function getProgressionSettings() {
@@ -56,7 +57,12 @@ export async function getProgressionSettings() {
     throw error;
   }
 
-  return { ...defaultProgressionSettings, ...(data as GameProgressionSettings | null ?? {}), daily_training_limit: dailyTrainingSessionLimit };
+  return {
+    ...defaultProgressionSettings,
+    ...(data as GameProgressionSettings | null ?? {}),
+    default_attribute_level_cap: seasonOneAttributeLevelCap,
+    daily_training_limit: dailyTrainingSessionLimit,
+  };
 }
 
 export async function saveProgressionSettings(input: Partial<GameProgressionSettings>) {
@@ -84,7 +90,13 @@ export async function getTrainingConfigs() {
   }
 
   const rows = (data ?? []) as TrainingAttributeConfig[];
-  return attributeKeys.map((key) => ({ ...defaultTrainingConfigs[key], ...(rows.find((row) => row.attribute_key === key) ?? {}) }));
+  return attributeKeys.map((key) => ({
+    ...defaultTrainingConfigs[key],
+    ...(rows.find((row) => row.attribute_key === key) ?? {}),
+    level_cap: seasonOneAttributeLevelCap,
+    starting_goal: 30,
+    goal_increment: 0,
+  }));
 }
 
 export async function saveTrainingConfig(input: Partial<TrainingAttributeConfig>) {
@@ -146,37 +158,39 @@ export function getCharacterXpProgress(xp: number, settings = defaultProgression
 
 export function getAttributeLevelFromXp(xp: number, levelCap: number) {
   let level = 0;
-  let remaining = Math.max(0, Math.floor(Number(xp) || 0));
-  let required = 1;
-  const cap = Math.max(0, Math.floor(Number(levelCap) || 0));
+  const sessions = Math.max(0, Math.floor(Number(xp) || 0));
+  const cap = Math.min(seasonOneAttributeLevelCap, Math.max(0, Math.floor(Number(levelCap) || 0)));
 
-  while (remaining >= required && level < cap) {
+  while (level < cap && sessions >= getTotalSessionsForAttributeLevel(level + 1)) {
     level += 1;
-    remaining -= required;
-    required += 1;
   }
 
   return level;
 }
 
 export function getAttributeLevelProgress(xp: number, levelCap: number) {
-  let level = 0;
-  let remaining = Math.max(0, Math.floor(Number(xp) || 0));
-  let required = 1;
-  const cap = Math.max(0, Math.floor(Number(levelCap) || 0));
-
-  while (remaining >= required && level < cap) {
-    level += 1;
-    remaining -= required;
-    required += 1;
-  }
+  const sessions = Math.max(0, Math.floor(Number(xp) || 0));
+  const cap = Math.min(seasonOneAttributeLevelCap, Math.max(0, Math.floor(Number(levelCap) || 0)));
+  const level = getAttributeLevelFromXp(sessions, cap);
+  const currentLevelTotal = getTotalSessionsForAttributeLevel(level);
+  const nextLevelTotal = getTotalSessionsForAttributeLevel(level + 1);
+  const required = Math.max(1, nextLevelTotal - currentLevelTotal);
+  const progress = Math.max(0, sessions - currentLevelTotal);
 
   return {
     level,
-    progress: level >= cap ? required : remaining,
+    progress: level >= cap ? required : progress,
     required,
     isCapped: level >= cap,
   };
+}
+
+export function getTotalSessionsForAttributeLevel(level: number) {
+  if (level <= 0) {
+    return 0;
+  }
+
+  return Math.pow(2, level) - 1;
 }
 
 export async function applyCharacterXpGold(character: CharacterWithDetails, xpReward = 0, goldReward = 0) {
@@ -288,7 +302,7 @@ function normalizeProgressionSettings(input: Partial<GameProgressionSettings>) {
     character_level_cap: Math.max(1, Math.floor(Number(input.character_level_cap) || defaultProgressionSettings.character_level_cap)),
     character_xp_base: Math.max(1, Math.floor(Number(input.character_xp_base) || defaultProgressionSettings.character_xp_base)),
     character_xp_growth: Math.max(0, Math.floor(Number(input.character_xp_growth) || 0)),
-    default_attribute_level_cap: Math.max(1, Math.floor(Number(input.default_attribute_level_cap) || defaultProgressionSettings.default_attribute_level_cap)),
+    default_attribute_level_cap: seasonOneAttributeLevelCap,
     daily_training_limit: dailyTrainingSessionLimit,
     training_cooldown_minutes: Math.max(0, Math.floor(Number(input.training_cooldown_minutes) || 0)),
   };
@@ -302,13 +316,13 @@ function normalizeTrainingConfig(input: TrainingAttributeConfig) {
     activities: input.activities?.trim() || defaultTrainingConfigs[input.attribute_key].activities,
     image_url: input.image_url?.trim() || null,
     background_image_url: input.background_image_url?.trim() || null,
-    unit: input.unit?.trim() || defaultTrainingConfigs[input.attribute_key].unit,
-    goal_template: input.goal_template?.trim() || defaultTrainingConfigs[input.attribute_key].goal_template,
-    starting_goal: Math.max(0, Number(input.starting_goal) || 0),
-    goal_increment: Math.max(0, Number(input.goal_increment) || 0),
+    unit: "minutes",
+    goal_template: defaultTrainingConfigs[input.attribute_key].goal_template,
+    starting_goal: 30,
+    goal_increment: 0,
     character_xp_reward: Math.max(0, Math.floor(Number(input.character_xp_reward) || 0)),
     attribute_xp_reward: Math.max(1, Math.floor(Number(input.attribute_xp_reward) || 1)),
-    level_cap: Math.max(1, Math.floor(Number(input.level_cap) || 1)),
+    level_cap: seasonOneAttributeLevelCap,
     is_active: input.is_active ?? true,
   };
 }
@@ -336,7 +350,7 @@ function makeDefaultTrainingConfig(
     goal_increment: goalIncrement,
     character_xp_reward: 25,
     attribute_xp_reward: 1,
-    level_cap: 100,
+    level_cap: seasonOneAttributeLevelCap,
     is_active: true,
     updated_at: new Date(0).toISOString(),
   };

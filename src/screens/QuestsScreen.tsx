@@ -42,8 +42,9 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const [isLoading, setIsLoading] = useState(true);
   const [isCompleting, setIsCompleting] = useState<AttributeKey | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [showTrainingInfo, setShowTrainingInfo] = useState(false);
+  const [activeSection, setActiveSection] = useState<"training" | "classes">("training");
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(Date.now());
   const [role, setRole] = useState<Role>("player");
   const [progressionSettings, setProgressionSettings] = useState<GameProgressionSettings>(defaultProgressionSettings);
   const [trainingConfigs, setTrainingConfigs] = useState<TrainingAttributeConfig[]>([]);
@@ -56,11 +57,6 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   useEffect(() => {
     void loadTraining();
   }, [character.id, character.xp, character.level]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   async function loadTraining() {
     setIsLoading(true);
@@ -110,6 +106,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const selectedConfig = trainingConfigs.find((config) => config.attribute_key === selectedCard?.key) ?? null;
   const unlockedClassCount = classes.filter((item) => item.unlocked).length;
   const activeClass = classes.find((item) => item.selected) ?? null;
+  const classProgressFocus = activeClass ?? classes.find((item) => !item.unlocked) ?? classes[0] ?? null;
   const editingClass = classes.find((item) => item.key === editingClassKey) ?? classes[0] ?? null;
 
   async function saveGlobalBalance() {
@@ -193,12 +190,12 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
     <Screen>
       <Header title="Quests / Training" />
       <View style={styles.tabs}>
-        <View style={styles.activeTab}>
-          <Text style={styles.activeTabText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>Training</Text>
-        </View>
-        <View style={styles.inactiveTab}>
-          <Text style={styles.inactiveTabText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>Quest Goals</Text>
-        </View>
+        <Pressable style={activeSection === "training" ? styles.activeTab : styles.inactiveTab} onPress={() => setActiveSection("training")}>
+          <Text style={activeSection === "training" ? styles.activeTabText : styles.inactiveTabText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>Training</Text>
+        </Pressable>
+        <Pressable style={activeSection === "classes" ? styles.activeTab : styles.inactiveTab} onPress={() => setActiveSection("classes")}>
+          <Text style={activeSection === "classes" ? styles.activeTabText : styles.inactiveTabText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>Class Progression</Text>
+        </Pressable>
       </View>
 
       <Frame style={styles.summary}>
@@ -212,9 +209,9 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
             <Text style={styles.sessionSealLabel}>Today</Text>
           </View>
         </View>
-        <Text style={styles.copy}>Choose one attribute and record a focused session. Each session should be at least 30 minutes unless you set a stricter rule later.</Text>
+        <Text style={styles.copy}>Complete up to 2 full 30-minute training sessions per day. Each session must train a different attribute.</Text>
         <View style={styles.limitRow}>
-          <Text style={styles.limitText}>{dailyLimit - dailyCompleted} session{dailyLimit - dailyCompleted === 1 ? "" : "s"} remaining</Text>
+          <Text style={styles.limitText}>{Math.max(0, dailyLimit - dailyCompleted)} session{Math.max(0, dailyLimit - dailyCompleted) === 1 ? "" : "s"} remaining</Text>
           <Text style={styles.limitText}>Character XP {character.xp}</Text>
         </View>
         <ProgressBar value={dailyCompleted} max={dailyLimit} color={colors.gold} height={8} />
@@ -226,13 +223,15 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
           <ActivityIndicator color={colors.gold} />
           <Text style={styles.copy}>Opening the training ledger...</Text>
         </Frame>
-      ) : (
+      ) : activeSection === "training" ? (
         <View style={styles.content}>
           <View style={[styles.trainingBoard, isCompact && styles.trainingBoardCompact]}>
             <Frame style={[styles.attributeColumn, isCompact && styles.attributeColumnCompact]}>
               <View style={styles.panelHeaderRow}>
                 <Text style={styles.sectionTitle}>Attributes</Text>
-                <Text style={styles.infoDot}>i</Text>
+                <Pressable style={styles.infoDotButton} onPress={() => setShowTrainingInfo(true)}>
+                  <Text style={styles.infoDot}>i</Text>
+                </Pressable>
               </View>
               {cards.map((card) => {
                 const config = trainingConfigs.find((item) => item.attribute_key === card.key);
@@ -256,13 +255,6 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                   </Pressable>
                 );
               })}
-              <View style={styles.attributeGuideCard}>
-                <Text style={styles.attributeGuideIcon}>?</Text>
-                <View style={styles.attributeListBody}>
-                  <Text style={styles.attributeName}>Attribute Guide</Text>
-                  <Text style={styles.attributeMeta}>Learn how attributes work</Text>
-                </View>
-              </View>
             </Frame>
             {selectedCard ? (
               <Frame style={[styles.trainingCard, isCompact && styles.trainingCardCompact]}>
@@ -290,22 +282,22 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                   </View>
                   <ProgressBar value={selectedLevelProgress?.progress ?? 0} max={selectedLevelProgress?.required ?? 1} color={colors.gold} height={8} />
                   <Text style={styles.copy}>
-                    {selectedLevelProgress?.progress ?? 0} / {selectedLevelProgress?.required ?? 1} sessions to level {(selectedLevelProgress?.level ?? 0) + 1}
+                    {selectedLevelProgress?.progress ?? 0} / {selectedLevelProgress?.required ?? 1} sessions toward level {(selectedLevelProgress?.level ?? 0) + 1}
                   </Text>
                 </View>
                 <Pressable
-                  style={[styles.primaryButton, (!canTrain(selectedCard, dailyCompleted, dailyLimit, now) || isCompleting !== null) && styles.disabledButton]}
+                  style={[styles.primaryButton, (!canTrain(selectedCard, dailyCompleted, dailyLimit) || isCompleting !== null) && styles.disabledButton]}
                   onPress={() => void completeTraining(selectedCard.key)}
-                  disabled={!canTrain(selectedCard, dailyCompleted, dailyLimit, now) || isCompleting !== null}
+                  disabled={!canTrain(selectedCard, dailyCompleted, dailyLimit) || isCompleting !== null}
                 >
                   <Text style={styles.primaryText}>{isCompleting === selectedCard.key ? "Recording Training..." : "Complete Training Session"}</Text>
                 </Pressable>
-                <Text style={styles.cooldownText}>Cooldown: {getCooldownText(selectedCard.cooldownUntil, now)}</Text>
+                <Text style={styles.cooldownText}>{selectedCard.trainedToday ? "Already trained today. Choose a different attribute." : "30 minute session"}</Text>
                 <View style={styles.historyCompact}>
                   <Text style={styles.historyIcon}>#</Text>
                   <View style={styles.attributeListBody}>
                     <Text style={styles.sectionTitle}>Completion History</Text>
-                    <Text style={styles.copy}>{selectedCard.history.length} session{selectedCard.history.length === 1 ? "" : "s"} recorded</Text>
+                    <Text style={styles.copy}>{selectedCard.currentXp} total session{selectedCard.currentXp === 1 ? "" : "s"} recorded</Text>
                   </View>
                   <Text style={styles.attributeChevron}>{">"}</Text>
                 </View>
@@ -339,19 +331,50 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
             </View>
           </Frame>
         </View>
+      ) : (
+        <View style={styles.content}>
+          <Frame style={styles.classPanel}>
+            <View style={styles.classHeader}>
+              <View>
+                <Text style={styles.kicker}>Class Progression</Text>
+                <Text style={styles.classTitle}>{activeClass ? activeClass.name : "Choose An Unlocked Class"}</Text>
+              </View>
+              <Text style={styles.classCount}>{unlockedClassCount} / {classes.length}</Text>
+            </View>
+            <Text style={styles.copy}>Classes unlock when both linked attributes reach level {classUnlockLevel}. Keep training the real-life goals tied to each attribute to open new class paths.</Text>
+            {classMessage ? <Text style={styles.successText}>{classMessage}</Text> : null}
+            <View style={styles.classGrid}>
+              {classes.map((classItem) => (
+                <Pressable key={classItem.key} style={[styles.classCard, isCompact && styles.classCardCompact, classItem.unlocked && styles.classCardUnlocked, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
+                  <ClassArt classItem={classItem} />
+                  <Text style={styles.className} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{classItem.name}</Text>
+                  <Text style={styles.classPair}>{formatAttributeName(classItem.firstAttribute)} + {formatAttributeName(classItem.secondAttribute)}</Text>
+                  <View style={styles.classProgressRow}>
+                    <Text style={classItem.firstLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.firstLevel}/{classUnlockLevel}</Text>
+                    <Text style={classItem.secondLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.secondLevel}/{classUnlockLevel}</Text>
+                  </View>
+                  <Text style={classItem.unlocked ? styles.classUnlockedText : styles.classLockedText}>{classItem.selected ? "Active" : classItem.unlocked ? "Unlocked" : "Locked"}</Text>
+                </Pressable>
+              ))}
+            </View>
+            {classProgressFocus ? (
+              <View style={styles.classGoalPanel}>
+                <Text style={styles.sectionTitle}>{classProgressFocus.name} Goals</Text>
+                <Text style={styles.copy}>{classProgressFocus.description}</Text>
+                <ClassTrainingGoal classItem={classProgressFocus} attributeKey={classProgressFocus.firstAttribute} trainingConfigs={trainingConfigs} />
+                <ClassTrainingGoal classItem={classProgressFocus} attributeKey={classProgressFocus.secondAttribute} trainingConfigs={trainingConfigs} />
+              </View>
+            ) : null}
+          </Frame>
+        </View>
       )}
-
-      <Frame style={styles.comingSoon}>
-        <Text style={styles.sectionTitle}>Quest Goals / Coming Soon</Text>
-        <Text style={styles.copy}>Story quests, seasonal objectives, map discoveries, and event rewards will connect here after the map/event system grows.</Text>
-      </Frame>
 
       {role === "admin" ? (
         <Frame style={styles.adminBalance}>
           <Pressable style={styles.adminBalanceHeader} onPress={() => setShowAdminBalance((current) => !current)}>
             <View style={styles.headerText}>
               <Text style={styles.sectionTitle}>Admin Game Balance</Text>
-              <Text style={styles.copy}>Tune level caps, XP curves, cooldowns, and selected training rules.</Text>
+              <Text style={styles.copy}>Tune character XP rules plus player-facing training and class visuals.</Text>
             </View>
             <Text style={styles.toggleText}>{showAdminBalance ? "Hide" : "Show"}</Text>
           </Pressable>
@@ -365,13 +388,16 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                 <BalanceNumber grid label="Overall level cap" value={progressionSettings.character_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_level_cap: value }))} />
                 <BalanceNumber grid label="XP for next level base" value={progressionSettings.character_xp_base} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_base: value }))} />
                 <BalanceNumber grid label="XP growth per level" value={progressionSettings.character_xp_growth} onChange={(value) => setProgressionSettings((current) => ({ ...current, character_xp_growth: value }))} />
-                <BalanceNumber grid label="Default attribute cap" value={progressionSettings.default_attribute_level_cap} onChange={(value) => setProgressionSettings((current) => ({ ...current, default_attribute_level_cap: value }))} />
                 <View style={styles.fixedBalanceBox}>
                   <Text style={styles.infoLabel}>Daily training limit</Text>
                   <Text style={styles.fixedBalanceValue}>2 sessions</Text>
-                  <Text style={styles.copy}>Fixed system rule.</Text>
+                  <Text style={styles.copy}>Fixed system rule. Sessions must train different attributes.</Text>
                 </View>
-                <BalanceNumber grid label="Cooldown minutes" value={progressionSettings.training_cooldown_minutes} onChange={(value) => setProgressionSettings((current) => ({ ...current, training_cooldown_minutes: value }))} />
+                <View style={styles.fixedBalanceBox}>
+                  <Text style={styles.infoLabel}>Attribute cap</Text>
+                  <Text style={styles.fixedBalanceValue}>10</Text>
+                  <Text style={styles.copy}>Season 1 cap.</Text>
+                </View>
               </View>
               <Pressable style={styles.primaryButton} onPress={() => void saveGlobalBalance()}>
                 <Text style={styles.primaryText}>Save Global Balance</Text>
@@ -380,22 +406,12 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
               {selectedConfig ? (
                 <View style={styles.attributeBalance}>
                   <Text style={styles.balanceGroupTitle}>Selected Training: {selectedConfig.name}</Text>
-                  <Text style={styles.copy}>Choose an attribute card above, then edit its training text and scaling here.</Text>
+                  <Text style={styles.copy}>Choose an attribute card above, then edit its player-facing text and images. Training duration, caps, and level curve are fixed for Season 1.</Text>
                   <BalanceText label="Training name" value={selectedConfig.name} onChange={(value) => updateSelectedConfig({ name: value })} />
                   <BalanceText label="Session effect text" value={selectedConfig.effect} onChange={(value) => updateSelectedConfig({ effect: value })} />
                   <BalanceText label="Activity examples" value={selectedConfig.activities} onChange={(value) => updateSelectedConfig({ activities: value })} />
                   <BalanceText label="Training icon image URL/path" value={selectedConfig.image_url ?? ""} onChange={(value) => updateSelectedConfig({ image_url: value })} />
                   <BalanceText label="Training background image URL/path" value={selectedConfig.background_image_url ?? ""} onChange={(value) => updateSelectedConfig({ background_image_url: value })} />
-                  <BalanceText label="Goal text template" value={selectedConfig.goal_template} onChange={(value) => updateSelectedConfig({ goal_template: value })} />
-                  <Text style={styles.copy}>Template tokens: {"{value}"}, {"{unit}"}, {"{attribute}"}</Text>
-                  <View style={styles.balanceGrid}>
-                    <BalanceText grid label="Unit" value={selectedConfig.unit} onChange={(value) => updateSelectedConfig({ unit: value })} />
-                    <BalanceNumber grid label="Starting goal" value={selectedConfig.starting_goal} onChange={(value) => updateSelectedConfig({ starting_goal: value })} />
-                    <BalanceNumber grid label="Goal increase" value={selectedConfig.goal_increment} onChange={(value) => updateSelectedConfig({ goal_increment: value })} />
-                    <BalanceNumber grid label="Character XP reward" value={selectedConfig.character_xp_reward} onChange={(value) => updateSelectedConfig({ character_xp_reward: value })} />
-                    <BalanceNumber grid label="Attribute XP reward" value={selectedConfig.attribute_xp_reward} onChange={(value) => updateSelectedConfig({ attribute_xp_reward: value })} />
-                    <BalanceNumber grid label="Attribute level cap" value={selectedConfig.level_cap} onChange={(value) => updateSelectedConfig({ level_cap: value })} />
-                  </View>
                   <Pressable style={styles.primaryButton} onPress={() => void saveAttributeBalance()}>
                     <Text style={styles.primaryText}>Save Selected Training</Text>
                   </Pressable>
@@ -438,6 +454,21 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
           </View>
         </View>
       </Modal>
+
+      <Modal transparent visible={showTrainingInfo} animationType="fade" onRequestClose={() => setShowTrainingInfo(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Training Rules</Text>
+            <Text style={styles.modalText}>Each training session represents 30 focused minutes.</Text>
+            <Text style={styles.modalText}>You can complete 2 sessions per day, but they must be different attributes.</Text>
+            <Text style={styles.modalText}>Attribute levels require cumulative sessions: level 1 at 1 session, level 2 at 3 total, level 3 at 7 total, then the requirement keeps growing.</Text>
+            <Text style={styles.modalText}>Season 1 attributes cap at level 10. Classes unlock when both linked attributes reach level {classUnlockLevel}.</Text>
+            <Pressable style={styles.primaryButton} onPress={() => setShowTrainingInfo(false)}>
+              <Text style={styles.primaryText}>Got It</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -461,6 +492,20 @@ function ClassArt({ classItem }: { classItem: PlayerClassState }) {
   return (
     <View style={styles.classImageFallback}>
       <Text style={styles.classImageFallbackText}>{classItem.name.slice(0, 1).toUpperCase()}</Text>
+    </View>
+  );
+}
+
+function ClassTrainingGoal({ classItem, attributeKey, trainingConfigs }: { classItem: PlayerClassState; attributeKey: AttributeKey; trainingConfigs: TrainingAttributeConfig[] }) {
+  const level = attributeKey === classItem.firstAttribute ? classItem.firstLevel : classItem.secondLevel;
+  const config = trainingConfigs.find((item) => item.attribute_key === attributeKey);
+  return (
+    <View style={styles.classGoalRow}>
+      <View style={styles.classGoalTop}>
+        <Text style={styles.infoLabel}>{formatAttributeName(attributeKey)}</Text>
+        <Text style={level >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{level}/{classUnlockLevel}</Text>
+      </View>
+      <Text style={styles.infoValue}>{config?.activities ?? "Complete focused 30 minute sessions for this attribute."}</Text>
     </View>
   );
 }
@@ -529,33 +574,12 @@ function BalanceNumber({ label, value, onChange, grid = false }: { label: string
   );
 }
 
-function canTrain(card: TrainingCardState, dailyCompleted: number, dailyLimit: number, now: number) {
+function canTrain(card: TrainingCardState, dailyCompleted: number, dailyLimit: number) {
   if (dailyCompleted >= dailyLimit) {
     return false;
   }
 
-  if (!card.cooldownUntil) {
-    return true;
-  }
-
-  return new Date(card.cooldownUntil).getTime() <= now;
-}
-
-function getCooldownText(cooldownUntil: string | null, now: number) {
-  if (!cooldownUntil) {
-    return "Ready";
-  }
-
-  const remainingMs = new Date(cooldownUntil).getTime() - now;
-
-  if (remainingMs <= 0) {
-    return "Ready";
-  }
-
-  const totalSeconds = Math.ceil(remainingMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")} remaining`;
+  return !card.trainedToday;
 }
 
 const styles = StyleSheet.create({
@@ -788,6 +812,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 16,
   },
+  infoDotButton: {
+    minWidth: 34,
+    minHeight: 34,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   attributeListCard: {
     minHeight: 54,
     flexDirection: "row",
@@ -823,22 +853,6 @@ const styles = StyleSheet.create({
   attributeChevron: {
     color: colors.gold,
     fontSize: 18,
-    fontWeight: "900",
-  },
-  attributeGuideCard: {
-    minHeight: 54,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: 8,
-    padding: 8,
-    backgroundColor: "rgba(217,164,65,0.08)",
-  },
-  attributeGuideIcon: {
-    color: colors.gold,
-    fontSize: 20,
     fontWeight: "900",
   },
   trainingIconImage: {
@@ -1138,6 +1152,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  classGoalPanel: {
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "rgba(0,0,0,0.25)",
+  },
+  classGoalRow: {
+    gap: 6,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 10,
+    backgroundColor: "rgba(217,164,65,0.06)",
+  },
+  classGoalTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
   },
   classCard: {
     width: "31.5%",

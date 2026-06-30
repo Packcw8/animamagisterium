@@ -34,6 +34,7 @@ export type TrainingCardState = {
   cooldownUntil: string | null;
   lastCompletedAt: string | null;
   history: TrainingSession[];
+  trainedToday: boolean;
 };
 
 export function getTodayKey(date = new Date()) {
@@ -60,7 +61,7 @@ export async function getTrainingState(character: CharacterWithDetails) {
   await ensureAttributeProgress(user.id, character.id, configMap);
 
   const today = getTodayKey();
-  const [progressResult, sessionsResult, dailyResult] = await Promise.all([
+  const [progressResult, sessionsResult, dailyResult, todaySessionsResult] = await Promise.all([
     supabase.from("attribute_progress").select("*").eq("user_id", user.id).eq("character_id", character.id),
     supabase
       .from("training_sessions")
@@ -72,6 +73,12 @@ export async function getTrainingState(character: CharacterWithDetails) {
     supabase
       .from("training_sessions")
       .select("id", { count: "exact", head: true })
+      .eq("user_id", user.id)
+      .eq("character_id", character.id)
+      .eq("training_date", today),
+    supabase
+      .from("training_sessions")
+      .select("attribute_key")
       .eq("user_id", user.id)
       .eq("character_id", character.id)
       .eq("training_date", today),
@@ -89,14 +96,21 @@ export async function getTrainingState(character: CharacterWithDetails) {
     throw dailyResult.error;
   }
 
+  if (todaySessionsResult.error) {
+    throw todaySessionsResult.error;
+  }
+
   const progressRows = (progressResult.data ?? []) as AttributeProgress[];
   const sessions = (sessionsResult.data ?? []) as TrainingSession[];
+  const trainedToday = new Set(((todaySessionsResult.data ?? []) as Pick<TrainingSession, "attribute_key">[]).map((session) => session.attribute_key));
 
   return {
     cards: attributeKeys.map((key) => {
       const config = configMap[key];
       const progress = progressRows.find((row) => row.attribute_key === key);
       const nextGoalValue = Number(progress?.next_goal_value ?? config.starting_goal);
+      const currentXp = Number(progress?.current_xp ?? 0);
+      const levelCap = config.level_cap || settings.default_attribute_level_cap;
 
       return {
         key,
@@ -105,13 +119,14 @@ export async function getTrainingState(character: CharacterWithDetails) {
         activities: config.activities,
         unit: config.unit,
         goalLabel: formatTrainingGoal(config, nextGoalValue),
-        currentLevel: progress?.current_level ?? 0,
-        currentXp: progress?.current_xp ?? 0,
+        currentLevel: getAttributeLevelFromXp(currentXp, levelCap),
+        currentXp,
         nextGoalValue,
-        levelCap: config.level_cap || settings.default_attribute_level_cap,
+        levelCap,
         cooldownUntil: progress?.cooldown_until ?? null,
         lastCompletedAt: progress?.last_completed_at ?? null,
         history: sessions.filter((session) => session.attribute_key === key).slice(0, 3),
+        trainedToday: trainedToday.has(key),
       };
     }),
     dailyCompleted: dailyResult.count ?? 0,
@@ -152,6 +167,22 @@ export async function completeTrainingSession(character: CharacterWithDetails, a
     throw new Error(`Daily training limit reached. You can complete ${dailyTrainingSessionLimit} full sessions per day.`);
   }
 
+  const { count: sameAttributeCount, error: sameAttributeError } = await supabase
+    .from("training_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("character_id", character.id)
+    .eq("attribute_key", attributeKey)
+    .eq("training_date", today);
+
+  if (sameAttributeError) {
+    throw sameAttributeError;
+  }
+
+  if ((sameAttributeCount ?? 0) > 0) {
+    throw new Error("You already trained that attribute today. Choose a different attribute for your second session.");
+  }
+
   await ensureAttributeProgress(user.id, character.id, configMap);
 
   const { data: progress, error: progressError } = await supabase
@@ -168,18 +199,12 @@ export async function completeTrainingSession(character: CharacterWithDetails, a
 
   const currentProgress = progress as AttributeProgress;
   const now = new Date();
-  const cooldownUntil = currentProgress.cooldown_until ? new Date(currentProgress.cooldown_until) : null;
-
-  if (cooldownUntil && cooldownUntil.getTime() > now.getTime()) {
-    throw new Error(`Training is cooling down until ${cooldownUntil.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`);
-  }
 
   const config = configMap[attributeKey];
   const currentGoal = Number(currentProgress.next_goal_value || config.starting_goal);
   const nextGoal = getNextGoalValue(config, currentGoal);
   const nextAttributeXp = currentProgress.current_xp + config.attribute_xp_reward;
   const nextAttributeLevel = getAttributeLevelFromXp(nextAttributeXp, config.level_cap || settings.default_attribute_level_cap);
-  const nextCooldown = new Date(now.getTime() + settings.training_cooldown_minutes * 60 * 1000).toISOString();
 
   const { error: sessionError } = await supabase.from("training_sessions").insert({
     user_id: user.id,
@@ -205,7 +230,7 @@ export async function completeTrainingSession(character: CharacterWithDetails, a
       current_level: nextAttributeLevel,
       next_goal_value: nextGoal,
       last_completed_at: now.toISOString(),
-      cooldown_until: nextCooldown,
+      cooldown_until: null,
       updated_at: now.toISOString(),
     })
     .eq("id", currentProgress.id);
