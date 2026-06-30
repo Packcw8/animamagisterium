@@ -3266,6 +3266,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   function getDialogueStartNode(nodes: StoryDialogueNode[], choices: StoryDialogueChoice[], selectedChoices: Set<string>) {
+    const guardReturnNode = nodes.find((node) => node.node_key === "forgotten_marches_opening_10_return_after_refusal");
+    if (guardReturnNode && storyFlags.get("iron_pass_toll_avoided") === true && storyFlags.get("iron_pass_toll_paid") !== true) {
+      return guardReturnNode;
+    }
+
     const repeatNode = nodes.find((node) => node.node_key.endsWith("_repeat_after_story_start"));
     const hasStartedStory = choices.some((choice) => selectedChoices.has(choice.id) && choice.repeatable === false && (choice.hide_after_selected || choice.disable_after_selected));
     if (repeatNode && hasStartedStory) {
