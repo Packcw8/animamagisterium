@@ -52,6 +52,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const [showAdminBalance, setShowAdminBalance] = useState(false);
   const [classes, setClasses] = useState<PlayerClassState[]>([]);
   const [classMessage, setClassMessage] = useState<string | null>(null);
+  const [previewClassKey, setPreviewClassKey] = useState<string | null>(null);
   const [editingClassKey, setEditingClassKey] = useState<string | null>(null);
 
   useEffect(() => {
@@ -73,6 +74,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
       setTrainingConfigs(configs);
       setRole(currentRole);
       setClasses(classState);
+      setPreviewClassKey((current) => current ?? classState.find((item) => !item.unlocked)?.key ?? classState[0]?.key ?? null);
       setEditingClassKey((current) => current ?? classState[0]?.key ?? null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load training.");
@@ -106,7 +108,8 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const selectedConfig = trainingConfigs.find((config) => config.attribute_key === selectedCard?.key) ?? null;
   const unlockedClassCount = classes.filter((item) => item.unlocked).length;
   const activeClass = classes.find((item) => item.selected) ?? null;
-  const classProgressFocus = activeClass ?? classes.find((item) => !item.unlocked) ?? classes[0] ?? null;
+  const previewClass = classes.find((item) => item.key === previewClassKey) ?? null;
+  const classProgressFocus = previewClass ?? activeClass ?? classes.find((item) => !item.unlocked) ?? classes[0] ?? null;
   const editingClass = classes.find((item) => item.key === editingClassKey) ?? classes[0] ?? null;
 
   async function saveGlobalBalance() {
@@ -144,6 +147,8 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   }
 
   async function chooseClass(classItem: PlayerClassState) {
+    setPreviewClassKey(classItem.key);
+
     if (!classItem.unlocked) {
       setClassMessage(`${classItem.name} unlocks at ${formatAttributeName(classItem.firstAttribute)} ${classUnlockLevel} and ${formatAttributeName(classItem.secondAttribute)} ${classUnlockLevel}.`);
       return;
@@ -317,7 +322,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
             {classMessage ? <Text style={styles.successText}>{classMessage}</Text> : null}
             <View style={styles.classGrid}>
               {classes.map((classItem) => (
-                <Pressable key={classItem.key} style={[styles.classCard, isCompact && styles.classCardCompact, classItem.unlocked && styles.classCardUnlocked, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
+                <Pressable key={classItem.key} style={[styles.classCard, isCompact && styles.classCardCompact, classItem.unlocked && styles.classCardUnlocked, classItem.key === previewClassKey && styles.classCardPreviewed, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
                   <ClassCardBackground classItem={classItem} />
                   <ClassArt classItem={classItem} />
                   <Text style={styles.className} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{classItem.name}</Text>
@@ -338,15 +343,15 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
             <View style={styles.classHeader}>
               <View>
                 <Text style={styles.kicker}>Class Progression</Text>
-                <Text style={styles.classTitle}>{activeClass ? activeClass.name : "Choose An Unlocked Class"}</Text>
+                <Text style={styles.classTitle}>{classProgressFocus ? classProgressFocus.name : "Choose A Class Path"}</Text>
               </View>
               <Text style={styles.classCount}>{unlockedClassCount} / {classes.length}</Text>
             </View>
-            <Text style={styles.copy}>Classes unlock when both linked attributes reach level {classUnlockLevel}. Keep training the real-life goals tied to each attribute to open new class paths.</Text>
+            <Text style={styles.copy}>Tap a locked class to preview what it needs. Once unlocked, tapping it makes it your active class.</Text>
             {classMessage ? <Text style={styles.successText}>{classMessage}</Text> : null}
             <View style={styles.classGrid}>
               {classes.map((classItem) => (
-                <Pressable key={classItem.key} style={[styles.classCard, isCompact && styles.classCardCompact, classItem.unlocked && styles.classCardUnlocked, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
+                <Pressable key={classItem.key} style={[styles.classCard, isCompact && styles.classCardCompact, classItem.unlocked && styles.classCardUnlocked, classItem.key === previewClassKey && styles.classCardPreviewed, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
                   <ClassCardBackground classItem={classItem} />
                   <ClassArt classItem={classItem} />
                   <Text style={styles.className} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{classItem.name}</Text>
@@ -1220,6 +1225,11 @@ const styles = StyleSheet.create({
   classCardUnlocked: {
     opacity: 1,
     borderColor: "rgba(217,164,65,0.5)",
+  },
+  classCardPreviewed: {
+    opacity: 1,
+    borderColor: colors.gold,
+    backgroundColor: "rgba(84, 45, 20, 0.45)",
   },
   classCardSelected: {
     borderColor: colors.blue,
