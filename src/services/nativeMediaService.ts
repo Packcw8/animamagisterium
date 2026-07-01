@@ -4,7 +4,7 @@ export type PickedImage = {
   previewUrl: string;
   fileName: string;
   contentType: string;
-  uploadBody: Blob | File;
+  uploadBody: Blob | File | ArrayBuffer;
 };
 
 export type PhotoSource = "camera" | "library";
@@ -49,16 +49,31 @@ export async function pickCharacterPhoto(source: PhotoSource = "library"): Promi
   }
 
   const contentType = normalizeImageContentType(asset.mimeType, source);
-  const dataUri = `data:${contentType};base64,${asset.base64}`;
-  const response = await fetch(dataUri);
-  const blob = await response.blob();
+  const uploadBody = base64ToArrayBuffer(asset.base64);
+
+  if (uploadBody.byteLength <= 0) {
+    throw new Error("The selected image was empty. Try taking a new photo or choose Custom Avatar.");
+  }
 
   return {
     previewUrl: asset.uri,
     fileName: `character-photo-${Date.now()}.${contentType === "image/png" ? "png" : "jpg"}`,
     contentType,
-    uploadBody: blob,
+    uploadBody,
   };
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  if (typeof globalThis.atob !== "function") {
+    throw new Error("This device cannot prepare the selected photo. Try Custom Avatar for now.");
+  }
+
+  const binary = globalThis.atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes.buffer;
 }
 
 function normalizeImageContentType(mimeType: string | undefined, source: PhotoSource) {
