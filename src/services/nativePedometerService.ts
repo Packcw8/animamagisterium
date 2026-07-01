@@ -56,6 +56,11 @@ export async function requestPedometerPermission() {
   }
 
   try {
+    const existing = await Pedometer.getPermissionsAsync();
+    if (existing.granted) {
+      return true;
+    }
+
     const permission = await Pedometer.requestPermissionsAsync();
     return permission.granted;
   } catch (error) {
@@ -75,6 +80,12 @@ export async function watchPedometerDistance(onSample: (sample: PedometerDistanc
   }
 
   try {
+    const permission = await Pedometer.getPermissionsAsync();
+    if (!permission.granted) {
+      console.warn("[pedometer] step watcher not started because permission is not granted", permission.status);
+      return { remove: () => undefined };
+    }
+
     return Pedometer.watchStepCount((result) => {
       const steps = Math.max(0, Number(result.steps) || 0);
       onSample({

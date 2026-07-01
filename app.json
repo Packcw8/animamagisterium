@@ -21,7 +21,14 @@
         "expo-image-picker",
         {
           "photosPermission": "Anima Magisterium uses your photo library so you can choose a character photo for avatar generation.",
-          "cameraPermission": "Anima Magisterium uses the camera so you can take a character photo for avatar generation."
+          "cameraPermission": "Anima Magisterium uses the camera so you can take a character photo for avatar generation.",
+          "microphonePermission": "Anima Magisterium does not record video, but iOS may request microphone access when opening the camera."
+        }
+      ],
+      [
+        "expo-sensors",
+        {
+          "motionPermission": "Anima Magisterium uses motion and fitness data to count steps toward fantasy journey progress."
         }
       ],
       "expo-notifications"
@@ -33,6 +40,7 @@
       "icon": "./assets/icon.png",
       "infoPlist": {
         "NSCameraUsageDescription": "Anima Magisterium uses the camera so you can take a character photo for avatar generation.",
+        "NSMicrophoneUsageDescription": "Anima Magisterium does not record video, but iOS may request microphone access when opening the camera.",
         "NSPhotoLibraryUsageDescription": "Anima Magisterium uses your photo library so you can choose a character photo for avatar generation.",
         "NSLocationWhenInUseUsageDescription": "Anima Magisterium uses location while the app is open to estimate walking distance for fantasy journeys.",
         "NSMotionUsageDescription": "Anima Magisterium uses motion and fitness data to count steps toward fantasy journey progress.",

@@ -26,16 +26,18 @@ export async function pickCharacterPhoto(source: PhotoSource = "library"): Promi
   }
 
   const ImagePicker = await loadImagePicker();
-  const permission = source === "camera"
-    ? await ImagePicker.requestCameraPermissionsAsync()
-    : await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) {
-    throw new Error(source === "camera" ? "Camera permission is required to take a character photo." : "Photo library permission is required to choose a character photo.");
+  if (source === "camera") {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      throw new Error("Camera permission is required to take a character photo.");
+    }
   }
 
   const pickerOptions = {
     allowsEditing: false,
+    mediaTypes: ["images"],
     quality: 0.86,
+    base64: false,
   } satisfies Parameters<ImagePickerModule["launchCameraAsync"]>[0];
 
   const result = source === "camera"
@@ -48,7 +50,7 @@ export async function pickCharacterPhoto(source: PhotoSource = "library"): Promi
 
   const asset = result.assets[0];
   const normalized = await normalizeImage(asset.uri);
-  const response = await fetch(normalized.uri);
+  const response = await fetch(normalized.dataUri);
   const blob = await response.blob();
 
   return {
@@ -59,27 +61,31 @@ export async function pickCharacterPhoto(source: PhotoSource = "library"): Promi
   };
 }
 
-async function normalizeImage(uri: string): Promise<{ uri: string; contentType: string }> {
+async function normalizeImage(uri: string): Promise<{ uri: string; dataUri: string; contentType: string }> {
   try {
     const ImageManipulator = await loadImageManipulator();
     const normalized = await ImageManipulator.manipulateAsync(
       uri,
       [{ resize: { width: 1024 } }],
       {
+        base64: true,
         compress: 0.9,
         format: ImageManipulator.SaveFormat.JPEG,
       },
     );
+
+    if (!normalized.base64) {
+      throw new Error("Image normalization did not return JPEG data.");
+    }
+
     return {
       uri: normalized.uri,
+      dataUri: `data:image/jpeg;base64,${normalized.base64}`,
       contentType: "image/jpeg",
     };
   } catch (error) {
-    console.warn("[native-media] image normalization failed, using picker asset", error);
-    return {
-      uri,
-      contentType: "image/jpeg",
-    };
+    console.warn("[native-media] image normalization failed", error);
+    throw new Error("The image could not be prepared for avatar generation. Try a different photo or choose Custom Avatar.");
   }
 }
 
