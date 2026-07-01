@@ -64,7 +64,7 @@ import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, Equipmen
 import { isNativePedometerAvailable, requestPedometerPermission, watchPedometerDistance, type PedometerSubscription } from "../services/nativePedometerService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
-import { scheduleLocalNotification } from "../services/pushNotificationService";
+import { requestPushNotificationPermission, scheduleLocalNotification } from "../services/pushNotificationService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { clamp, getPathSegmentMetaAtProgress, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, normalizePathSegments, roundPercent, type PathSegmentMeta } from "../utils/mapGeometry";
@@ -1188,9 +1188,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       ? `${event.title} is blocking your path.`
       : `${event.title} is ready on ${route.name}.`;
 
-    void scheduleLocalNotification(title, body).catch((error) => {
-      console.warn("[notifications] unable to send event notification", error);
-    });
+    void scheduleLocalNotification(title, body)
+      .then((notificationId) => {
+        if (!notificationId) {
+          console.warn("[notifications] route event notification was not scheduled. Check notification permission on this device.");
+        }
+      })
+      .catch((error) => {
+        console.warn("[notifications] unable to send event notification", error);
+      });
   }
 
   useEffect(() => {
@@ -1542,6 +1548,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setGpsMessage("Choose a story path or sign post path before tracking a walk.");
       return;
     }
+
+    void requestPushNotificationPermission().then((permission) => {
+      if (!permission.granted) {
+        console.warn("[notifications] trail alerts are disabled", permission.status);
+      }
+    });
 
     if (Platform.OS !== "web") {
       if (pedometerSubscriptionRef.current) {
@@ -5369,7 +5381,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         </View>
 
         <View style={styles.journeyProgressRow}>
-          <ProgressBar value={progressPercent} max={100} color={colors.gold} height={8} />
+          <View style={styles.journeyProgressTrack}>
+            <ProgressBar value={progressPercent} max={100} color={colors.gold} height={8} />
+          </View>
           <Text style={styles.journeyPercent}>{Math.round(progressPercent)}%</Text>
         </View>
 
@@ -7820,6 +7834,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    width: "100%",
+  },
+  journeyProgressTrack: {
+    flex: 1,
+    minWidth: 0,
   },
   journeyQuestCard: {
     borderRadius: 10,
@@ -7888,7 +7907,8 @@ const styles = StyleSheet.create({
   },
   journeyPercent: {
     color: colors.gold,
-    minWidth: 38,
+    width: 44,
+    flexShrink: 0,
     textAlign: "right",
     fontWeight: "900",
   },

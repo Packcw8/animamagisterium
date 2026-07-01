@@ -46,7 +46,7 @@ export function PlayerAbilitiesPanel({
       <View style={styles.sectionHeader}>
         <View>
           <Text style={styles.sectionTitle}>Ability Management</Text>
-          <Text style={styles.copy}>Equip up to four abilities before combat. Punch is always known.</Text>
+          <Text style={styles.copy}>Equip up to four learned or item-granted abilities before combat.</Text>
         </View>
       </View>
       {message ? <Text style={styles.message}>{message}</Text> : null}

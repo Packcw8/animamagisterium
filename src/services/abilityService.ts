@@ -39,20 +39,6 @@ export type CombatLoadout = {
   resources: CharacterResources;
 };
 
-export const defaultAttack: AbilityDefinition = {
-  key: "default_punch",
-  name: "Punch",
-  attribute: "strength",
-  unlockLevel: 0,
-  kind: "physical",
-  resource: "none",
-  cost: 0,
-  baseDamage: 3,
-  scaling: 1,
-  description: "A basic attack everyone knows. Costs nothing.",
-  source: "default",
-};
-
 export const abilityDefinitions: AbilityDefinition[] = [];
 
 export function getCharacterResources(character: CharacterWithDetails, bonuses?: Partial<CharacterResources>): CharacterResources {
@@ -125,7 +111,6 @@ export async function getCombatLoadout(character: CharacterWithDetails): Promise
     .filter((ability) => unlockedRows.some((row) => row.ability_key === getAdminAbilityKey(ability.id)))
     .map(adminAbilityToDefinition);
   const availableAbilities = [
-    defaultAttack,
     ...abilityDefinitions.filter((ability) => unlockedRows.some((row) => row.ability_key === ability.key)),
     ...adminAbilityDefinitions,
   ];
@@ -157,7 +142,7 @@ export async function equipAbility(characterId: string, slot: number, abilityKey
     throw new Error("You must be signed in to equip abilities.");
   }
 
-  if (abilityKey && abilityKey !== defaultAttack.key) {
+  if (abilityKey) {
     const { data: owned, error: ownedError } = await supabase
       .from("player_abilities")
       .select("id")
