@@ -1,22 +1,15 @@
-import { SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 
 export default function App() {
   return (
-    <SafeAreaView style={styles.safe}>
-      <StatusBar barStyle="light-content" />
-      <View style={styles.container}>
-        <Text style={styles.title}>Native boot OK</Text>
-        <Text style={styles.message}>React Native rendered before loading game systems.</Text>
-      </View>
-    </SafeAreaView>
+    <View style={styles.container}>
+      <Text style={styles.title}>Native boot OK</Text>
+      <Text style={styles.message}>React Native rendered before loading game systems.</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: "#123f2d",
-  },
   container: {
     flex: 1,
     alignItems: "center",
