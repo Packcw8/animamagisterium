@@ -15,7 +15,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#020807",
+    backgroundColor: "#123f2d",
   },
   container: {
     flex: 1,
@@ -24,14 +24,14 @@ const styles = StyleSheet.create({
     padding: 24,
   },
   title: {
-    color: "#d9a441",
+    color: "#ffffff",
     fontSize: 28,
     fontWeight: "800",
     marginBottom: 12,
     textAlign: "center",
   },
   message: {
-    color: "#f4ead8",
+    color: "#d7ffe6",
     fontSize: 16,
     lineHeight: 24,
     maxWidth: 320,
