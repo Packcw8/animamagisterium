@@ -61,7 +61,7 @@ import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, g
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
 import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, unequipInventorySlot } from "../services/inventoryService";
-import { isNativePedometerAvailable, requestPedometerPermission, startPedometerDistancePolling, type PedometerSubscription } from "../services/nativePedometerService";
+import { isNativePedometerAvailable, requestPedometerPermission, watchPedometerDistance, type PedometerSubscription } from "../services/nativePedometerService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission, scheduleLocalNotification } from "../services/pushNotificationService";
@@ -1578,7 +1578,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         });
         setIsTracking(true);
         setGpsMessage("Pedometer is tracking steps toward your active path.");
-        pedometerSubscriptionRef.current = await startPedometerDistancePolling((sample) => {
+        pedometerSubscriptionRef.current = await watchPedometerDistance((sample) => {
           const deltaMeters = Math.max(0, sample.distanceMeters - nativePedometerMetersRef.current);
           nativePedometerMetersRef.current = sample.distanceMeters;
           if (deltaMeters <= 0) {

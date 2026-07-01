@@ -1,6 +1,4 @@
 import { Platform } from "react-native";
-import * as ImagePicker from "expo-image-picker";
-import * as ImageManipulator from "expo-image-manipulator";
 
 export type PickedImage = {
   previewUrl: string;
@@ -9,11 +7,24 @@ export type PickedImage = {
   uploadBody: Blob | File;
 };
 
+type ImagePickerModule = typeof import("expo-image-picker");
+type ImageManipulatorModule = typeof import("expo-image-manipulator");
+
+async function loadImagePicker(): Promise<ImagePickerModule> {
+  return await import("expo-image-picker");
+}
+
+async function loadImageManipulator(): Promise<ImageManipulatorModule> {
+  return await import("expo-image-manipulator");
+}
+
 export async function pickCharacterPhoto(): Promise<PickedImage | null> {
   if (Platform.OS === "web") {
     return pickWebImage();
   }
 
+  const ImagePicker = await loadImagePicker();
+  const ImageManipulator = await loadImageManipulator();
   const permission = await ImagePicker.requestCameraPermissionsAsync();
   if (!permission.granted) {
     throw new Error("Camera permission is required to take a character photo.");
