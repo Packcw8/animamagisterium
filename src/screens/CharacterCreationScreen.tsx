@@ -6,7 +6,7 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { supabase, Tables } from "../lib/supabase";
 import { CharacterCreationInput, CharacterWithDetails, createCharacter } from "../services/characterService";
-import { pickCharacterPhoto, PickedImage } from "../services/nativeMediaService";
+import { pickCharacterPhoto, PickedImage, PhotoSource } from "../services/nativeMediaService";
 
 type CharacterCreationScreenProps = {
   assets: Tables["avatar_assets"][];
@@ -49,11 +49,11 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function pickPhoto() {
+  async function pickPhoto(source: PhotoSource = "library") {
     setError(null);
 
     try {
-      const pickedPhoto = await pickCharacterPhoto();
+      const pickedPhoto = await pickCharacterPhoto(source);
 
       if (!pickedPhoto) {
         return;
@@ -64,7 +64,7 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
       setOriginalPhotoUrl("");
       setPortraitUrl("");
     } catch (photoError) {
-      setError(photoError instanceof Error ? photoError.message : "Unable to open camera or photo picker.");
+      setError(photoError instanceof Error ? photoError.message : "Unable to open camera or photo library.");
     }
   }
 
@@ -271,9 +271,14 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
             {avatarMode === "photo" ? (
               <>
                 {photo ? <Image source={{ uri: photo.previewUrl }} style={styles.preview} /> : <View style={styles.emptyPreview}><Text style={styles.emptyText}>No image selected</Text></View>}
-                <Pressable style={styles.primaryButton} onPress={() => void pickPhoto()} disabled={isUploading}>
-                  <Text style={styles.primaryText}>{photo ? "Choose Different Image" : "Upload / Take Photo"}</Text>
-                </Pressable>
+                <View style={styles.photoActions}>
+                  <Pressable style={styles.primaryButton} onPress={() => void pickPhoto("camera")} disabled={isUploading}>
+                    <Text style={styles.primaryText}>Take Photo</Text>
+                  </Pressable>
+                  <Pressable style={styles.secondaryButton} onPress={() => void pickPhoto("library")} disabled={isUploading}>
+                    <Text style={styles.secondaryText}>{photo ? "Choose Different Image" : "Choose From Library"}</Text>
+                  </Pressable>
+                </View>
               </>
             ) : (
               <View style={styles.customNotice}>
@@ -526,6 +531,22 @@ const styles = StyleSheet.create({
   },
   primaryText: {
     color: "#120e08",
+    fontWeight: "900",
+  },
+  photoActions: {
+    gap: 10,
+  },
+  secondaryButton: {
+    minHeight: 54,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  secondaryText: {
+    color: colors.blue,
     fontWeight: "900",
   },
   error: {

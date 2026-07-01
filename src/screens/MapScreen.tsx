@@ -61,7 +61,7 @@ import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, g
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
 import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, unequipInventorySlot } from "../services/inventoryService";
-import { isNativePedometerAvailable, requestPedometerPermission, watchPedometerDistance, type PedometerSubscription } from "../services/nativePedometerService";
+import type { PedometerSubscription } from "../services/nativePedometerService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission, scheduleLocalNotification } from "../services/pushNotificationService";
@@ -328,7 +328,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [savedMiniMapPosition, setSavedMiniMapPosition] = useState<{ x: number; y: number } | null>(null);
   const [lastPosition, setLastPosition] = useState<Coordinate | null>(null);
   const [isTracking, setIsTracking] = useState(false);
-  const [gpsMessage, setGpsMessage] = useState(Platform.OS === "web" ? "GPS is off. Start tracking to count real-world walking distance." : "Pedometer is off. Start tracking to count steps toward your path.");
+  const [gpsMessage, setGpsMessage] = useState(Platform.OS === "web" ? "GPS is off. Start tracking to count real-world walking distance." : "Native walking tracking is paused in this preview build.");
   const [playerMovementState, setPlayerMovementState] = useState<PlayerMovementState>("IDLE");
   const [movementStatus, setMovementStatus] = useState<MovementStatus>({
     label: "IDLE",
@@ -1551,56 +1551,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (Platform.OS !== "web") {
-      if (pedometerSubscriptionRef.current) {
-        return;
-      }
-      void (async () => {
-        const available = await isNativePedometerAvailable();
-        if (!available) {
-          setGpsMessage("Pedometer tracking is not available on this device.");
-          return;
-        }
-        const granted = await requestPedometerPermission();
-        if (!granted) {
-          setGpsMessage("Motion permission is required for iOS pedometer walking.");
-          return;
-        }
-
-        nativePedometerMetersRef.current = 0;
-        movementStateRef.current = "MOVING";
-        movementCandidateRef.current = null;
-        setPlayerMovementState("MOVING");
-        setMovementStatus({
-          label: "MOVING",
-          speedMph: 0,
-          countedMeters: 0,
-          blockedReason: null,
-        });
-        setIsTracking(true);
-        setGpsMessage("Pedometer is tracking steps toward your active path.");
-        pedometerSubscriptionRef.current = await watchPedometerDistance((sample) => {
-          const deltaMeters = Math.max(0, sample.distanceMeters - nativePedometerMetersRef.current);
-          nativePedometerMetersRef.current = sample.distanceMeters;
-          if (deltaMeters <= 0) {
-            return;
-          }
-          setMovementStatus({
-            label: "MOVING",
-            speedMph: 0,
-            countedMeters: deltaMeters,
-            blockedReason: null,
-          });
-          void advanceActiveRouteByMeters(deltaMeters);
-        });
-        void requestPushNotificationPermission().then((permission) => {
-          if (!permission.granted) {
-            console.warn("[notifications] trail alerts are disabled", permission.status);
-          }
-        });
-      })().catch((error) => {
-        setIsTracking(false);
-        setGpsMessage(getErrorMessage(error, "Unable to start iOS pedometer tracking."));
+      setIsTracking(false);
+      setPlayerMovementState("IDLE");
+      setMovementStatus({
+        label: "IDLE",
+        speedMph: 0,
+        countedMeters: 0,
+        blockedReason: "Native walking tracking is temporarily disabled for this iOS preview build.",
       });
+      setGpsMessage("Native walking tracking is temporarily disabled while we stabilize iOS. You can still open markers, battles, inventory, and story content.");
       return;
     }
 
@@ -1719,7 +1678,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     movementStateRef.current = "IDLE";
     movementCandidateRef.current = null;
     setPlayerMovementState("IDLE");
-    setGpsMessage(Platform.OS === "web" ? "GPS paused. Route progress is saved in Supabase." : "Pedometer paused. Route progress is saved in Supabase.");
+    setGpsMessage(Platform.OS === "web" ? "GPS paused. Route progress is saved in Supabase." : "Native walking tracking is paused in this preview build.");
     setMovementStatus((current) => ({ ...current, label: "IDLE", speedMph: 0, countedMeters: 0 }));
   }
 
