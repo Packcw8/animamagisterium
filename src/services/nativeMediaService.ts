@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from "expo-image-manipulator";
 
 export type PickedImage = {
   previewUrl: string;
@@ -29,15 +30,21 @@ export async function pickCharacterPhoto(): Promise<PickedImage | null> {
   }
 
   const asset = result.assets[0];
-  const response = await fetch(asset.uri);
+  const normalized = await ImageManipulator.manipulateAsync(
+    asset.uri,
+    [{ resize: { width: 1024 } }],
+    {
+      compress: 0.9,
+      format: ImageManipulator.SaveFormat.JPEG,
+    },
+  );
+  const response = await fetch(normalized.uri);
   const blob = await response.blob();
-  const contentType = asset.mimeType || blob.type || "image/jpeg";
-  const extension = contentType.includes("/") ? contentType.split("/").pop() || "jpg" : "jpg";
 
   return {
-    previewUrl: asset.uri,
-    fileName: asset.fileName || `character-photo-${Date.now()}.${extension}`,
-    contentType,
+    previewUrl: normalized.uri,
+    fileName: `character-photo-${Date.now()}.jpg`,
+    contentType: "image/jpeg",
     uploadBody: blob,
   };
 }

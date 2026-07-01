@@ -128,6 +128,32 @@ Identity direction:
 ${buildSharedStylePrompt(input)}`;
 }
 
+function normalizeImageMimeType(contentType) {
+  const cleanType = String(contentType || "").split(";")[0].trim().toLowerCase();
+
+  if (cleanType === "image/jpg") {
+    return "image/jpeg";
+  }
+
+  if (["image/jpeg", "image/png", "image/webp"].includes(cleanType)) {
+    return cleanType;
+  }
+
+  return null;
+}
+
+function getImageFileName(mimeType) {
+  if (mimeType === "image/png") {
+    return "selfie.png";
+  }
+
+  if (mimeType === "image/webp") {
+    return "selfie.webp";
+  }
+
+  return "selfie.jpg";
+}
+
 async function claimGenerationSlot(supabase, userId, mode) {
   const { data, error } = await supabase
     .from("user_avatar_generations")
@@ -246,8 +272,23 @@ module.exports = async function handler(request, response) {
       }
 
       const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-      const mimeType = imageResponse.headers.get("content-type") || "image/png";
-      const imageFile = await toFile(imageBuffer, "selfie.png", { type: mimeType });
+      const mimeType = normalizeImageMimeType(imageResponse.headers.get("content-type"));
+
+      console.log("[generate-avatar] source image", {
+        content_type: imageResponse.headers.get("content-type") || null,
+        normalized_type: mimeType,
+        bytes: imageBuffer.byteLength,
+      });
+
+      if (!mimeType) {
+        throw new Error("Unsupported photo format. Please use a JPEG, PNG, or WebP image. On iPhone, retake or re-upload the photo so the app can convert it to JPEG.");
+      }
+
+      if (imageBuffer.byteLength <= 0) {
+        throw new Error("Uploaded selfie image was empty.");
+      }
+
+      const imageFile = await toFile(imageBuffer, getImageFileName(mimeType), { type: mimeType });
 
       result = await client.images.edit({
         model,
