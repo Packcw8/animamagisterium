@@ -1,22 +1,26 @@
 import { Session } from "@supabase/supabase-js";
-import { Component, ErrorInfo, ReactNode } from "react";
+import { Component, ComponentType, ErrorInfo, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
 import { BottomNav } from "./src/components/BottomNav";
 import { colors } from "./src/components/theme";
 import { supabase, testSupabaseConnection } from "./src/lib/supabase";
 import { AuthScreen } from "./src/screens/AuthScreen";
-import { BadgesScreen } from "./src/screens/BadgesScreen";
-import { CharacterCreationScreen } from "./src/screens/CharacterCreationScreen";
-import { HomeScreen } from "./src/screens/HomeScreen";
-import { InboxScreen } from "./src/screens/InboxScreen";
-import { MapScreen } from "./src/screens/MapScreen";
-import { QuestsScreen } from "./src/screens/QuestsScreen";
-import { SettingsScreen } from "./src/screens/SettingsScreen";
-import { SocialScreen } from "./src/screens/SocialScreen";
 import { CharacterWithDetails, createProfileIfMissing, getAvatarAssets, getCharacter } from "./src/services/characterService";
 import { Tables } from "./src/lib/supabase";
 import { ScreenKey } from "./src/types";
+
+declare const require: <T = unknown>(path: string) => T;
+
+const loadedScreens = new Map<string, unknown>();
+
+function loadScreen<T>(key: string, loader: () => T): T {
+  if (!loadedScreens.has(key)) {
+    loadedScreens.set(key, loader());
+  }
+
+  return loadedScreens.get(key) as T;
+}
 
 export default function App() {
   return (
@@ -34,6 +38,7 @@ function AppShell() {
   const [activeScreen, setActiveScreen] = useState<ScreenKey>("home");
   const [activeUtilityScreen, setActiveUtilityScreen] = useState<"settings" | "inbox" | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [startupMessage, setStartupMessage] = useState("Starting Anima Magisterium...");
   const [error, setError] = useState<string | null>(null);
 
   async function loadMvpState(activeSession: Session | null) {
@@ -61,20 +66,38 @@ function AppShell() {
   useEffect(() => {
     let mounted = true;
 
+    setStartupMessage("Checking Supabase connection...");
     testSupabaseConnection().then((result) => {
       if (mounted) {
         setConnectionStatus(result);
       }
-    });
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) {
-        return;
+    }).catch((connectionError) => {
+      if (mounted) {
+        setConnectionStatus({
+          ok: false,
+          message: connectionError instanceof Error ? connectionError.message : "Unable to test Supabase connection.",
+        });
       }
-
-      setSession(data.session);
-      void loadMvpState(data.session);
     });
+
+    setStartupMessage("Restoring your session...");
+    supabase.auth.getSession()
+      .then(({ data }) => {
+        if (!mounted) {
+          return;
+        }
+
+        setSession(data.session);
+        void loadMvpState(data.session);
+      })
+      .catch((sessionError) => {
+        if (!mounted) {
+          return;
+        }
+
+        setError(sessionError instanceof Error ? sessionError.message : "Unable to restore your session.");
+        setIsLoading(false);
+      });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
@@ -94,10 +117,7 @@ function AppShell() {
         {!session ? (
           <AuthScreen connectionStatus={connectionStatus} />
         ) : isLoading ? (
-          <View style={styles.loading}>
-            <ActivityIndicator color={colors.gold} />
-            <Text style={styles.loadingText}>Opening your character ledger...</Text>
-          </View>
+          <LoadingState message={startupMessage || "Opening your character ledger..."} />
         ) : error ? (
           <View style={styles.error}>
             <Text style={styles.errorText}>{error}</Text>
@@ -111,29 +131,29 @@ function AppShell() {
             }}
           >
             {activeUtilityScreen === "settings" ? (
-              <SettingsScreen character={character} onBack={() => setActiveUtilityScreen(null)} />
+              <SettingsScreenView character={character} onBack={() => setActiveUtilityScreen(null)} />
             ) : activeUtilityScreen === "inbox" ? (
-              <InboxScreen character={character} onBack={() => setActiveUtilityScreen(null)} onCharacterUpdated={setCharacter} />
+              <InboxScreenView character={character} onBack={() => setActiveUtilityScreen(null)} onCharacterUpdated={setCharacter} />
             ) : activeScreen === "home" ? (
-              <HomeScreen
+              <HomeScreenView
                 character={character}
                 onCharacterUpdated={setCharacter}
                 onOpenInbox={() => setActiveUtilityScreen("inbox")}
                 onOpenSettings={() => setActiveUtilityScreen("settings")}
               />
             ) : activeScreen === "map" ? (
-              <MapScreen character={character} onCharacterUpdated={setCharacter} />
+              <MapScreenView character={character} onCharacterUpdated={setCharacter} />
             ) : activeScreen === "quests" ? (
-              <QuestsScreen character={character} onCharacterUpdated={setCharacter} />
+              <QuestsScreenView character={character} onCharacterUpdated={setCharacter} />
             ) : activeScreen === "social" ? (
-              <SocialScreen />
+              <SocialScreenView />
             ) : (
-              <BadgesScreen character={character} />
+              <BadgesScreenView character={character} />
             )}
           </AuthenticatedLayout>
         ) : (
           <AuthenticatedLayout activeScreen={activeScreen} onChangeScreen={setActiveScreen}>
-            <CharacterCreationScreen assets={avatarAssets} onCreated={setCharacter} />
+            <CharacterCreationScreenView assets={avatarAssets} onCreated={setCharacter} />
           </AuthenticatedLayout>
         )}
       </View>
@@ -169,6 +189,58 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, { error: strin
       </SafeAreaView>
     );
   }
+}
+
+function LoadingState({ message }: { message: string }) {
+  return (
+    <View style={styles.loading}>
+      <ActivityIndicator color={colors.gold} />
+      <Text style={styles.loadingText}>{message}</Text>
+    </View>
+  );
+}
+
+function HomeScreenView(props: Record<string, unknown>) {
+  const Screen = loadScreen<ComponentType<Record<string, unknown>>>("HomeScreen", () => require<{ HomeScreen: ComponentType<Record<string, unknown>> }>("./src/screens/HomeScreen").HomeScreen);
+  return <Screen {...props} />;
+}
+
+function MapScreenView(props: Record<string, unknown>) {
+  const Screen = loadScreen<ComponentType<Record<string, unknown>>>("MapScreen", () => require<{ MapScreen: ComponentType<Record<string, unknown>> }>("./src/screens/MapScreen").MapScreen);
+  return <Screen {...props} />;
+}
+
+function QuestsScreenView(props: Record<string, unknown>) {
+  const Screen = loadScreen<ComponentType<Record<string, unknown>>>("QuestsScreen", () => require<{ QuestsScreen: ComponentType<Record<string, unknown>> }>("./src/screens/QuestsScreen").QuestsScreen);
+  return <Screen {...props} />;
+}
+
+function SocialScreenView() {
+  const Screen = loadScreen<ComponentType>("SocialScreen", () => require<{ SocialScreen: ComponentType }>("./src/screens/SocialScreen").SocialScreen);
+  return <Screen />;
+}
+
+function BadgesScreenView(props: Record<string, unknown>) {
+  const Screen = loadScreen<ComponentType<Record<string, unknown>>>("BadgesScreen", () => require<{ BadgesScreen: ComponentType<Record<string, unknown>> }>("./src/screens/BadgesScreen").BadgesScreen);
+  return <Screen {...props} />;
+}
+
+function SettingsScreenView(props: Record<string, unknown>) {
+  const Screen = loadScreen<ComponentType<Record<string, unknown>>>("SettingsScreen", () => require<{ SettingsScreen: ComponentType<Record<string, unknown>> }>("./src/screens/SettingsScreen").SettingsScreen);
+  return <Screen {...props} />;
+}
+
+function InboxScreenView(props: Record<string, unknown>) {
+  const Screen = loadScreen<ComponentType<Record<string, unknown>>>("InboxScreen", () => require<{ InboxScreen: ComponentType<Record<string, unknown>> }>("./src/screens/InboxScreen").InboxScreen);
+  return <Screen {...props} />;
+}
+
+function CharacterCreationScreenView(props: Record<string, unknown>) {
+  const Screen = loadScreen<ComponentType<Record<string, unknown>>>(
+    "CharacterCreationScreen",
+    () => require<{ CharacterCreationScreen: ComponentType<Record<string, unknown>> }>("./src/screens/CharacterCreationScreen").CharacterCreationScreen,
+  );
+  return <Screen {...props} />;
 }
 
 function AuthenticatedLayout({
