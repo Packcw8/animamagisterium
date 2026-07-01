@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { Screen } from "../components/Screen";
@@ -13,13 +13,30 @@ type CharacterCreationScreenProps = {
   onCreated: (character: CharacterWithDetails) => void;
 };
 
+type AvatarMode = "photo" | "custom";
+
 const genders = ["Male", "Female"];
 const races = ["Human", "Elf", "Dwarf", "Beastkin", "Orc", "Halfling"];
 const origins = ["Farmhand", "Scholar", "Hunter", "Orphan", "Merchant's Child", "Exiled Noble", "Street Survivor", "Wanderer"];
-const steps = ["Upload Image", "Generate Avatar", "Begin Adventure"];
+const steps = ["Avatar Source", "Generate Avatar", "Begin Adventure"];
+const productionApiBaseUrl = "https://animamagisterium.app";
+
+function getGenerateAvatarUrl() {
+  if (Platform.OS === "web") {
+    return "/api/generate-avatar";
+  }
+
+  const configuredBase =
+    (typeof process !== "undefined" ? process.env.EXPO_PUBLIC_API_BASE_URL : undefined) ||
+    (typeof process !== "undefined" ? process.env.EXPO_PUBLIC_APP_URL : undefined) ||
+    productionApiBaseUrl;
+
+  return `${configuredBase.replace(/\/$/, "")}/api/generate-avatar`;
+}
 
 export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenProps) {
   const [step, setStep] = useState(0);
+  const [avatarMode, setAvatarMode] = useState<AvatarMode>("photo");
   const [photo, setPhoto] = useState<PickedImage | null>(null);
   const [originalPhotoUrl, setOriginalPhotoUrl] = useState("");
   const [portraitUrl, setPortraitUrl] = useState("");
@@ -42,6 +59,7 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
         return;
       }
 
+      setAvatarMode("photo");
       setPhoto(pickedPhoto);
       setOriginalPhotoUrl("");
       setPortraitUrl("");
@@ -50,9 +68,21 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
     }
   }
 
+  function chooseCustomAvatar() {
+    setAvatarMode("custom");
+    setPhoto(null);
+    setOriginalPhotoUrl("");
+    setPortraitUrl("");
+    setError(null);
+  }
+
   async function uploadOriginalPhoto() {
+    if (avatarMode === "custom") {
+      return "";
+    }
+
     if (!photo) {
-      throw new Error("Upload a selfie or profile image first.");
+      throw new Error("Upload a selfie or profile image first, or choose Custom Avatar.");
     }
 
     if (originalPhotoUrl) {
@@ -98,6 +128,11 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
   }
 
   async function generateAvatar() {
+    if (portraitUrl) {
+      setStep(2);
+      return;
+    }
+
     setIsGenerating(true);
     setError(null);
 
@@ -110,7 +145,9 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
       }
 
       const payload = {
-        original_photo_url: uploadedOriginalPhotoUrl,
+        original_photo_url: uploadedOriginalPhotoUrl || undefined,
+        custom_avatar: avatarMode === "custom",
+        avatar_mode: avatarMode,
         gender,
         race,
         origin,
@@ -118,7 +155,7 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
 
       console.log("[character-creation] generate-avatar request payload", payload);
 
-      const response = await fetch("/api/generate-avatar", {
+      const response = await fetch(getGenerateAvatarUrl(), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -144,6 +181,7 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
         portrait_url,
       });
 
+      setOriginalPhotoUrl(result.original_photo_url || uploadedOriginalPhotoUrl || "");
       setPortraitUrl(portrait_url);
       setStep(2);
     } catch (generateError) {
@@ -159,7 +197,7 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
       return;
     }
 
-    if (!originalPhotoUrl || !portraitUrl) {
+    if (!portraitUrl) {
       setError("Generate your fantasy portrait before beginning your adventure.");
       return;
     }
@@ -189,8 +227,8 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
   }
 
   function goNext() {
-    if (step === 0 && !photo) {
-      setError("Upload an image before continuing.");
+    if (step === 0 && avatarMode === "photo" && !photo) {
+      setError("Upload an image or choose Custom Avatar before continuing.");
       return;
     }
 
@@ -206,7 +244,7 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
   return (
     <Screen>
       <View style={styles.header}>
-        <BrandLogo size={54} />
+        <BrandLogo size={48} />
         <View style={styles.headerText}>
           <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
           <Text style={styles.stepLabel}>Step {step + 1} of {steps.length}: {steps[step]}</Text>
@@ -216,25 +254,47 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
       <Frame style={styles.panel}>
         {step === 0 ? (
           <View style={styles.section}>
-            <Text style={styles.title}>Upload Image</Text>
-            <Text style={styles.copy}>Begin with a clear front-facing selfie or profile image. This image becomes the foundation for your fantasy portrait.</Text>
-            {photo ? <Image source={{ uri: photo.previewUrl }} style={styles.preview} /> : <View style={styles.emptyPreview}><Text style={styles.emptyText}>No image selected</Text></View>}
-            <Pressable style={styles.primaryButton} onPress={() => void pickPhoto()} disabled={isUploading}>
-              <Text style={styles.primaryText}>{photo ? "Choose Different Image" : "Upload Image"}</Text>
-            </Pressable>
+            <Text style={styles.title}>Create Your Avatar</Text>
+            <Text style={styles.copy}>Use a clear front-facing photo for the closest likeness, or create an original custom fantasy portrait without uploading a picture.</Text>
+
+            <View style={styles.modeGrid}>
+              <Pressable style={[styles.modeCard, avatarMode === "photo" && styles.modeSelected]} onPress={() => setAvatarMode("photo")}>
+                <Text style={styles.modeTitle}>Use Photo</Text>
+                <Text style={styles.modeText}>Best likeness. Uploads your image, then transforms it.</Text>
+              </Pressable>
+              <Pressable style={[styles.modeCard, avatarMode === "custom" && styles.modeSelected]} onPress={chooseCustomAvatar}>
+                <Text style={styles.modeTitle}>Custom Avatar</Text>
+                <Text style={styles.modeText}>No photo. Generates an original fantasy portrait.</Text>
+              </Pressable>
+            </View>
+
+            {avatarMode === "photo" ? (
+              <>
+                {photo ? <Image source={{ uri: photo.previewUrl }} style={styles.preview} /> : <View style={styles.emptyPreview}><Text style={styles.emptyText}>No image selected</Text></View>}
+                <Pressable style={styles.primaryButton} onPress={() => void pickPhoto()} disabled={isUploading}>
+                  <Text style={styles.primaryText}>{photo ? "Choose Different Image" : "Upload / Take Photo"}</Text>
+                </Pressable>
+              </>
+            ) : (
+              <View style={styles.customNotice}>
+                <Text style={styles.customNoticeTitle}>No photo required</Text>
+                <Text style={styles.copy}>Your race, gender, and origin will guide the portrait. This still uses your one avatar generation.</Text>
+              </View>
+            )}
           </View>
         ) : step === 1 ? (
           <View style={styles.section}>
             <Text style={styles.title}>Generate Fantasy Avatar</Text>
             {photo ? <Image source={{ uri: photo.previewUrl }} style={styles.preview} /> : null}
+            {avatarMode === "custom" ? <View style={styles.emptyPreview}><Text style={styles.emptyText}>Custom avatar selected</Text></View> : null}
             <Text style={styles.copy}>Gender, race, and origin shape story flavor and future dialogue only. They do not grant stat bonuses, XP bonuses, passive abilities, or starting skills.</Text>
             <ChoiceGrid title="Gender" options={genders} selected={gender} onSelect={setGender} />
             <ChoiceGrid title="Race" options={races} selected={race} onSelect={setRace} />
             <ChoiceGrid title="Origin" options={origins} selected={origin} onSelect={setOrigin} />
-            <Text style={styles.copy}>Your generated portrait will preserve your recognizable facial features while adapting you into Animamagisterium's dark fantasy style.</Text>
+            <Text style={styles.warningText}>Each account currently gets one avatar generation. Choose carefully before generating.</Text>
             {isGenerating || isUploading ? <Text style={styles.loadingText}>Generating avatar - this may take 20-60 seconds.</Text> : null}
-            <Pressable style={[styles.primaryButton, (isGenerating || isUploading) && styles.disabledButton]} onPress={() => void generateAvatar()} disabled={isGenerating || isUploading}>
-              {isGenerating || isUploading ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>Generate Avatar</Text>}
+            <Pressable style={[styles.primaryButton, (isGenerating || isUploading || Boolean(portraitUrl)) && styles.disabledButton]} onPress={() => void generateAvatar()} disabled={isGenerating || isUploading || Boolean(portraitUrl)}>
+              {isGenerating || isUploading ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>{portraitUrl ? "Avatar Generated" : "Generate Avatar"}</Text>}
             </Pressable>
           </View>
         ) : (
@@ -257,9 +317,9 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
           <Pressable style={styles.navButton} onPress={() => setStep(Math.max(0, step - 1))} disabled={step === 0 || isSaving || isGenerating}>
             <Text style={styles.navText}>Back</Text>
           </Pressable>
-          {step === 0 ? (
-            <Pressable style={styles.nextButton} onPress={goNext} disabled={isSaving || isGenerating}>
-              <Text style={styles.nextText}>Next</Text>
+          {step < 2 ? (
+            <Pressable style={styles.nextButton} onPress={step === 1 ? () => void generateAvatar() : goNext} disabled={isSaving || isGenerating}>
+              <Text style={styles.nextText}>{step === 1 ? "Generate" : "Next"}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -297,8 +357,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     paddingHorizontal: 18,
-    paddingTop: 22,
-    paddingBottom: 16,
+    paddingTop: 18,
+    paddingBottom: 14,
     alignItems: "center",
     borderBottomWidth: 1,
     borderColor: colors.borderSoft,
@@ -309,17 +369,17 @@ const styles = StyleSheet.create({
   brand: {
     color: colors.gold,
     fontFamily: fonts.title,
-    fontSize: 23,
+    fontSize: 21,
     letterSpacing: 0,
   },
   stepLabel: {
     color: colors.blue,
-    marginTop: 8,
+    marginTop: 6,
     fontWeight: "700",
   },
   panel: {
-    margin: 12,
-    padding: 14,
+    margin: 10,
+    padding: 13,
   },
   section: {
     gap: 12,
@@ -329,16 +389,52 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 25,
+    fontSize: 24,
     fontWeight: "800",
   },
   copy: {
     color: colors.muted,
     lineHeight: 20,
   },
+  modeGrid: {
+    gap: 10,
+  },
+  modeCard: {
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 13,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    gap: 5,
+  },
+  modeSelected: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(18, 73, 99, 0.58)",
+  },
+  modeTitle: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 16,
+  },
+  modeText: {
+    color: colors.muted,
+    lineHeight: 19,
+  },
+  customNotice: {
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 14,
+    backgroundColor: "rgba(13, 14, 12, 0.78)",
+    gap: 6,
+  },
+  customNoticeTitle: {
+    color: colors.gold,
+    fontWeight: "900",
+  },
   preview: {
     width: "100%",
-    height: 300,
+    height: 260,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.borderSoft,
@@ -346,14 +442,14 @@ const styles = StyleSheet.create({
   },
   portrait: {
     width: "100%",
-    height: 360,
+    height: 330,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: colors.blue,
     backgroundColor: "rgba(0,0,0,0.28)",
   },
   emptyPreview: {
-    height: 240,
+    minHeight: 170,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 8,
@@ -363,6 +459,7 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     color: colors.muted,
+    textAlign: "center",
   },
   input: {
     minHeight: 52,
@@ -379,7 +476,7 @@ const styles = StyleSheet.create({
   },
   choice: {
     width: "100%",
-    minHeight: 58,
+    minHeight: 52,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     borderRadius: 8,
@@ -399,7 +496,7 @@ const styles = StyleSheet.create({
   subhead: {
     color: colors.gold,
     fontFamily: fonts.title,
-    fontSize: 17,
+    fontSize: 16,
     textTransform: "uppercase",
   },
   summaryRow: {
@@ -441,6 +538,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 20,
   },
+  warningText: {
+    color: colors.gold,
+    fontWeight: "800",
+    lineHeight: 20,
+  },
   disabledButton: {
     opacity: 0.48,
   },
@@ -451,7 +553,7 @@ const styles = StyleSheet.create({
   },
   navButton: {
     width: "100%",
-    minHeight: 54,
+    minHeight: 52,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 6,

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { Screen } from "../components/Screen";
@@ -49,77 +49,90 @@ export function AuthScreen({ connectionStatus }: AuthScreenProps) {
 
   return (
     <Screen>
-      <View style={styles.header}>
-        <BrandLogo size={92} />
-        <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
-        <Text style={styles.subtitle}>Enter the first gate</Text>
-        <View style={[styles.connection, connectionStatus?.ok ? styles.connected : styles.disconnected]}>
-          <Text style={styles.connectionText}>{connectionStatus?.message ?? "Testing Supabase..."}</Text>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.keyboardWrap}>
+        <View style={styles.header}>
+          <BrandLogo size={70} />
+          <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
+          <Text style={styles.subtitle}>Enter the first gate</Text>
+          <View style={[styles.connection, connectionStatus?.ok ? styles.connected : styles.disconnected]}>
+            <Text style={styles.connectionText}>{connectionStatus?.message ?? "Testing Supabase..."}</Text>
+          </View>
         </View>
-      </View>
 
-      <Frame style={styles.card}>
-        <Text style={styles.cardTitle}>{mode === "signin" ? "User Login" : "Create Account"}</Text>
-        <Text style={styles.copy}>Save your character, avatar choices, and progression to Supabase.</Text>
+        <Frame style={styles.card}>
+          <View style={styles.cardHeadingRow}>
+            <Text style={styles.cardTitle}>{mode === "signin" ? "Sign In" : "Create Account"}</Text>
+            <Text style={styles.cardBadge}>{mode === "signin" ? "RETURN" : "NEW"}</Text>
+          </View>
+          <Text style={styles.copy}>Save your character, portrait, inventory, and journey progress.</Text>
 
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          placeholder="email"
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-        />
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          placeholder="password"
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-        />
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            placeholder="Email"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+          />
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            textContentType={mode === "signin" ? "password" : "newPassword"}
+            placeholder="Password"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+          />
 
-        <Pressable style={styles.primaryButton} onPress={() => void handleSubmit()} disabled={isLoading || !email || !password}>
-          {isLoading ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>{mode === "signin" ? "Sign In" : "Sign Up"}</Text>}
-        </Pressable>
+          <Pressable style={[styles.primaryButton, (isLoading || !email || !password) && styles.disabledButton]} onPress={() => void handleSubmit()} disabled={isLoading || !email || !password}>
+            {isLoading ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>{mode === "signin" ? "Sign In" : "Sign Up"}</Text>}
+          </Pressable>
 
-        <Pressable style={styles.switchButton} onPress={() => setMode(mode === "signin" ? "signup" : "signin")}>
-          <Text style={styles.switchText}>{mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}</Text>
-        </Pressable>
+          <Pressable style={styles.switchButton} onPress={() => setMode(mode === "signin" ? "signup" : "signin")}>
+            <Text style={styles.switchText}>{mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}</Text>
+          </Pressable>
 
-        {message ? <Text style={styles.message}>{message}</Text> : null}
-      </Frame>
+          {message ? <Text style={styles.message}>{message}</Text> : null}
+        </Frame>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardWrap: {
+    flex: 1,
+    justifyContent: "center",
+    paddingVertical: 18,
+  },
   header: {
-    paddingTop: 34,
+    paddingTop: 8,
     paddingHorizontal: 18,
-    paddingBottom: 24,
+    paddingBottom: 16,
     alignItems: "center",
-    borderBottomWidth: 1,
-    borderColor: colors.borderSoft,
   },
   brand: {
     color: colors.gold,
     fontFamily: fonts.title,
-    fontSize: 24,
+    fontSize: 23,
     letterSpacing: 0,
-    marginTop: 12,
+    marginTop: 10,
+    textAlign: "center",
   },
   subtitle: {
     color: colors.muted,
-    marginTop: 6,
+    marginTop: 5,
   },
   connection: {
-    marginTop: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    marginTop: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
+    maxWidth: "100%",
   },
   connected: {
     borderColor: "rgba(64, 210, 68, 0.55)",
@@ -135,35 +148,56 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   card: {
-    margin: 18,
-    padding: 18,
+    marginHorizontal: 10,
+    marginBottom: 20,
+    padding: 16,
+    gap: 12,
+  },
+  cardHeadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: 12,
   },
   cardTitle: {
     color: colors.text,
-    fontSize: 27,
+    fontSize: 26,
     fontWeight: "800",
+  },
+  cardBadge: {
+    color: colors.gold,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    fontSize: 11,
+    fontWeight: "900",
   },
   copy: {
     color: colors.muted,
     lineHeight: 20,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   input: {
-    minHeight: 50,
+    minHeight: 52,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    borderRadius: 6,
+    borderRadius: 8,
     paddingHorizontal: 14,
     color: colors.text,
     backgroundColor: "rgba(0,0,0,0.3)",
+    fontSize: 16,
   },
   primaryButton: {
-    minHeight: 50,
-    borderRadius: 6,
+    minHeight: 52,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.gold,
+  },
+  disabledButton: {
+    opacity: 0.52,
   },
   primaryText: {
     color: "#120e08",
@@ -176,9 +210,11 @@ const styles = StyleSheet.create({
   switchText: {
     color: colors.blue,
     fontWeight: "700",
+    textAlign: "center",
   },
   message: {
     color: colors.text,
     lineHeight: 20,
+    textAlign: "center",
   },
 });

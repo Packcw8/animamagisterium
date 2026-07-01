@@ -21,7 +21,7 @@ function loadLocalEnv() {
     const [key, ...valueParts] = trimmed.split("=");
 
     if (!process.env[key]) {
-      process.env[key] = valueParts.join("=").replace(/^['"]|['"]$/g, "");
+      process.env[key] = valueParts.join("=").replace(/^[']|[']$/g, "").replace(/^[\"]|[\"]$/g, "");
     }
   }
 }
@@ -37,8 +37,17 @@ const raceGuidance = {
   Halfling: "warm expressive face, compact heroic presence, practical adventurer styling",
 };
 
+function isCustomAvatar(input) {
+  return input.custom_avatar === true || input.avatar_mode === "custom";
+}
+
 function validateInput(input) {
-  const requiredFields = ["original_photo_url", "gender", "race", "origin"];
+  const requiredFields = ["gender", "race", "origin"];
+
+  if (!isCustomAvatar(input)) {
+    requiredFields.unshift("original_photo_url");
+  }
+
   const missingFields = requiredFields.filter((field) => !input[field]);
 
   if (missingFields.length > 0) {
@@ -48,18 +57,8 @@ function validateInput(input) {
   return null;
 }
 
-function buildPrompt(input) {
-  return `Transform the uploaded person into an Animamagisterium fantasy RPG character.
-
-Preserve:
-- facial identity
-- eye shape
-- facial structure
-- recognizable likeness
-- apparent age and youthful/aged cues from the uploaded photo
-- natural facial proportions, skin texture, and face fullness
-
-Apply:
+function buildSharedStylePrompt(input) {
+  return `Apply:
 - front-facing head-and-shoulders character portrait composition
 - primary player avatar framing suitable for a game profile image
 - dark fantasy realism
@@ -93,13 +92,74 @@ Avoid:
 - glowing blue jewelry
 - glowing blue object on the neck or chest
 - distorted face
-- aging the person up
-- adding wrinkles, gray hair, gaunt cheeks, or age lines that are not in the photo
 - exaggerated horns
 - oversexualized clothing
 - unreadable background
-- changing the person beyond recognition
 - preset combat-role weapons, uniforms, or starting-role identity`;
+}
+
+function buildPhotoPrompt(input) {
+  return `Transform the uploaded person into an Animamagisterium fantasy RPG character.
+
+Preserve:
+- facial identity
+- eye shape
+- facial structure
+- recognizable likeness
+- apparent age and youthful/aged cues from the uploaded photo
+- natural facial proportions, skin texture, and face fullness
+
+${buildSharedStylePrompt(input)}
+
+Additional avoid rules:
+- changing the person beyond recognition
+- aging the person up
+- adding wrinkles, gray hair, gaunt cheeks, or age lines that are not in the photo`;
+}
+
+function buildCustomPrompt(input) {
+  return `Create an original Animamagisterium fantasy RPG character portrait for a player who chose not to upload a photo.
+
+Identity direction:
+- Do not resemble a real private person or celebrity.
+- Make the character feel like a grounded, believable adventurer at the beginning of a long journey.
+- Use a front-facing face-focused portrait suitable as the player's primary avatar.
+
+${buildSharedStylePrompt(input)}`;
+}
+
+async function claimGenerationSlot(supabase, userId, mode) {
+  const { data, error } = await supabase
+    .from("user_avatar_generations")
+    .insert({ user_id: userId, status: "started", mode })
+    .select("id")
+    .single();
+
+  if (error?.code === "23505") {
+    throw new Error("This account has already used its avatar generation. You can continue with the generated portrait or contact support if generation failed.");
+  }
+
+  if (error) {
+    console.warn("[generate-avatar] generation limit table unavailable", { message: error.message });
+    return null;
+  }
+
+  return data?.id ?? null;
+}
+
+async function updateGenerationSlot(supabase, generationId, values) {
+  if (!generationId) {
+    return;
+  }
+
+  const { error } = await supabase
+    .from("user_avatar_generations")
+    .update({ ...values, updated_at: new Date().toISOString() })
+    .eq("id", generationId);
+
+  if (error) {
+    console.warn("[generate-avatar] could not update generation slot", { message: error.message });
+  }
 }
 
 module.exports = async function handler(request, response) {
@@ -112,8 +172,12 @@ module.exports = async function handler(request, response) {
     return response.status(500).json({ error: "OPENAI_API_KEY is not configured on the server." });
   }
 
+  let generationId = null;
+  let supabase = null;
+
   try {
     const input = request.body || {};
+    const mode = isCustomAvatar(input) ? "custom" : "photo";
     const authHeader = request.headers.authorization || "";
     const supabaseUrl = process.env.VITE_SUPABASE_URL;
     const supabasePublishableKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
@@ -131,7 +195,7 @@ module.exports = async function handler(request, response) {
       return response.status(500).json({ error: "Supabase environment variables are not configured on the server." });
     }
 
-    const supabase = createClient(supabaseUrl, supabasePublishableKey, {
+    supabase = createClient(supabaseUrl, supabasePublishableKey, {
       global: {
         headers: {
           Authorization: authHeader,
@@ -151,30 +215,53 @@ module.exports = async function handler(request, response) {
       return response.status(401).json({ error: userError?.message || "Invalid Supabase session." });
     }
 
+    const existingCharacter = await supabase
+      .from("characters")
+      .select("id, portrait_url")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (existingCharacter.data?.portrait_url) {
+      return response.status(409).json({ error: "This account already has a character portrait." });
+    }
+
+    generationId = await claimGenerationSlot(supabase, user.id, mode);
+
     const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
 
-    console.log("[generate-avatar] received original_photo_url", {
-      original_photo_url: input.original_photo_url,
+    console.log("[generate-avatar] request", {
+      mode,
+      original_photo_url: input.original_photo_url || null,
     });
     console.log("[generate-avatar] using OpenAI image model", { model });
 
-    const imageResponse = await fetch(input.original_photo_url);
-
-    if (!imageResponse.ok) {
-      return response.status(400).json({ error: "Unable to read uploaded selfie image." });
-    }
-
-    const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-    const mimeType = imageResponse.headers.get("content-type") || "image/png";
-    const imageFile = await toFile(imageBuffer, "selfie.png", { type: mimeType });
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    let result;
 
-    const result = await client.images.edit({
-      model,
-      image: imageFile,
-      prompt: buildPrompt(input),
-      size: "1024x1024",
-    });
+    if (mode === "photo") {
+      const imageResponse = await fetch(input.original_photo_url);
+
+      if (!imageResponse.ok) {
+        throw new Error("Unable to read uploaded selfie image.");
+      }
+
+      const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
+      const mimeType = imageResponse.headers.get("content-type") || "image/png";
+      const imageFile = await toFile(imageBuffer, "selfie.png", { type: mimeType });
+
+      result = await client.images.edit({
+        model,
+        image: imageFile,
+        prompt: buildPhotoPrompt(input),
+        size: "1024x1024",
+      });
+    } else {
+      result = await client.images.generate({
+        model,
+        prompt: buildCustomPrompt(input),
+        size: "1024x1024",
+      });
+    }
 
     const imageBase64 = result.data?.[0]?.b64_json;
     const generatedImageUrl = result.data?.[0]?.url;
@@ -192,12 +279,12 @@ module.exports = async function handler(request, response) {
       const generatedResponse = await fetch(generatedImageUrl);
 
       if (!generatedResponse.ok) {
-        return response.status(500).json({ error: "OpenAI returned an image URL, but it could not be downloaded." });
+        throw new Error("OpenAI returned an image URL, but it could not be downloaded.");
       }
 
       binary = Buffer.from(await generatedResponse.arrayBuffer());
     } else {
-      return response.status(502).json({ error: "OpenAI did not return an image." });
+      throw new Error("OpenAI did not return an image.");
     }
 
     console.log("[generate-avatar] generated file size", {
@@ -216,15 +303,17 @@ module.exports = async function handler(request, response) {
     });
 
     if (uploadError) {
-      return response.status(500).json({ error: uploadError.message });
+      throw new Error(uploadError.message);
     }
 
     const { data } = supabase.storage.from("character-portraits").getPublicUrl(portraitPath);
     const portrait_url = data.publicUrl;
 
     if (!portrait_url) {
-      return response.status(500).json({ error: "Supabase did not return a public portrait URL." });
+      throw new Error("Supabase did not return a public portrait URL.");
     }
+
+    await updateGenerationSlot(supabase, generationId, { status: "succeeded", portrait_url });
 
     console.log("[generate-avatar] final portrait_url", {
       portrait_url,
@@ -232,13 +321,23 @@ module.exports = async function handler(request, response) {
 
     return response.status(200).json({
       portrait_url,
+      original_photo_url: input.original_photo_url || null,
+      mode,
     });
   } catch (error) {
+    if (supabase && generationId) {
+      await updateGenerationSlot(supabase, generationId, {
+        status: "failed",
+        error_message: error instanceof Error ? error.message : "Unable to generate avatar.",
+      });
+    }
+
     console.error("[generate-avatar] failed", {
       message: error instanceof Error ? error.message : "Unable to generate avatar.",
     });
 
-    return response.status(500).json({
+    const status = error instanceof Error && error.message.includes("already used") ? 429 : 500;
+    return response.status(status).json({
       error: error instanceof Error ? error.message : "Unable to generate avatar.",
     });
   }
