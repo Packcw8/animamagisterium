@@ -23,8 +23,7 @@
           "photosPermission": "Anima Magisterium uses your photo library so you can choose a character photo for avatar generation.",
           "cameraPermission": "Anima Magisterium uses the camera so you can take a character photo for avatar generation."
         }
-      ],
-      "expo-notifications"
+      ]
     ],
     "ios": {
       "supportsTablet": true,
