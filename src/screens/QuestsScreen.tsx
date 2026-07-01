@@ -312,34 +312,6 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
             ) : null}
           </View>
 
-          <Frame style={styles.classPanel}>
-            <View style={styles.classHeader}>
-              <View>
-                <Text style={styles.kicker}>Class Combinations</Text>
-                <Text style={styles.classTitle}>{activeClass ? activeClass.name : "No Active Class"}</Text>
-              </View>
-              <Text style={styles.classCount}>{unlockedClassCount} / {classes.length}</Text>
-            </View>
-            <Text style={styles.copy}>Classes unlock automatically when both linked attributes reach level {classUnlockLevel}. Unlock them all, then choose which one is active.</Text>
-            {classMessage ? <Text style={styles.successText}>{classMessage}</Text> : null}
-            <View style={styles.classGrid}>
-              {classes.map((classItem) => (
-                <Pressable key={classItem.key} style={[styles.classCard, isCompact && styles.classCardCompact, classItem.unlocked && styles.classCardUnlocked, classItem.key === previewClassKey && styles.classCardPreviewed, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
-                  <ClassCardBackground classItem={classItem} />
-                  <ClassArt classItem={classItem} />
-                  <Text style={styles.className} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{classItem.name}</Text>
-                  <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={styles.classPair}>
-                    {formatAttributeName(classItem.firstAttribute).slice(0, 3).toUpperCase()} + {formatAttributeName(classItem.secondAttribute).slice(0, 3).toUpperCase()}
-                  </Text>
-                  <View style={styles.classProgressRow}>
-                    <Text style={classItem.firstLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.firstLevel}/{classUnlockLevel}</Text>
-                    <Text style={classItem.secondLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.secondLevel}/{classUnlockLevel}</Text>
-                  </View>
-                  <Text style={classItem.unlocked ? styles.classUnlockedText : styles.classLockedText}>{classItem.selected ? "Active" : classItem.unlocked ? "Unlocked" : "Locked"}</Text>
-                </Pressable>
-              ))}
-            </View>
-          </Frame>
         </View>
       ) : (
         <View style={styles.content}>
@@ -803,17 +775,18 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   trainingBoard: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: 8,
+    flexDirection: "column",
+    gap: 14,
   },
   trainingBoardCompact: {
     flexDirection: "column",
     gap: 14,
   },
   attributeColumn: {
-    flex: 0.42,
-    minWidth: 140,
+    width: "100%",
+    flexGrow: 0,
+    flexShrink: 0,
+    minWidth: 0,
     padding: 10,
     gap: 7,
   },
@@ -971,7 +944,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   trainingCard: {
-    flex: 0.58,
+    width: "100%",
+    flexGrow: 0,
+    flexShrink: 0,
     padding: 16,
     gap: 14,
   },
