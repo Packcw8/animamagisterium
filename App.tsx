@@ -1,16 +1,17 @@
-import { Session } from "@supabase/supabase-js";
 import { Component, ComponentType, ErrorInfo, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, SafeAreaView, StatusBar, StyleSheet, Text, View } from "react-native";
-import { BottomNav } from "./src/components/BottomNav";
-import { colors } from "./src/components/theme";
-import { supabase, testSupabaseConnection } from "./src/lib/supabase";
-import { AuthScreen } from "./src/screens/AuthScreen";
-import { CharacterWithDetails, createProfileIfMissing, getAvatarAssets, getCharacter } from "./src/services/characterService";
-import { Tables } from "./src/lib/supabase";
-import { ScreenKey } from "./src/types";
+import type { Session } from "@supabase/supabase-js";
+import type { Tables } from "./src/lib/supabase";
+import type { CharacterWithDetails } from "./src/services/characterService";
+import type { ScreenKey } from "./src/types";
 
 declare const require: <T = unknown>(path: string) => T;
+
+const colors = {
+  gold: "#d9a441",
+  muted: "#a89b83",
+};
 
 const loadedScreens = new Map<string, unknown>();
 
@@ -37,11 +38,18 @@ function AppShell() {
   const [avatarAssets, setAvatarAssets] = useState<Tables["avatar_assets"][]>([]);
   const [activeScreen, setActiveScreen] = useState<ScreenKey>("home");
   const [activeUtilityScreen, setActiveUtilityScreen] = useState<"settings" | "inbox" | null>(null);
+  const [isBooting, setIsBooting] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [startupMessage, setStartupMessage] = useState("Starting Anima Magisterium...");
   const [error, setError] = useState<string | null>(null);
 
   async function loadMvpState(activeSession: Session | null) {
+    const characterService = loadScreen<{
+      createProfileIfMissing: (user: Session["user"]) => Promise<unknown>;
+      getAvatarAssets: () => Promise<Tables["avatar_assets"][]>;
+      getCharacter: () => Promise<CharacterWithDetails | null>;
+    }>("characterService", () => require("./src/services/characterService"));
+
     setIsLoading(true);
     setError(null);
 
@@ -52,8 +60,8 @@ function AppShell() {
         return;
       }
 
-      await createProfileIfMissing(activeSession.user);
-      const [loadedCharacter, loadedAssets] = await Promise.all([getCharacter(), getAvatarAssets()]);
+      await characterService.createProfileIfMissing(activeSession.user);
+      const [loadedCharacter, loadedAssets] = await Promise.all([characterService.getCharacter(), characterService.getAvatarAssets()]);
       setCharacter(loadedCharacter);
       setAvatarAssets(loadedAssets);
     } catch (loadError) {
@@ -65,48 +73,68 @@ function AppShell() {
 
   useEffect(() => {
     let mounted = true;
+    let authListener: { subscription: { unsubscribe: () => void } } | null = null;
 
-    setStartupMessage("Checking Supabase connection...");
-    testSupabaseConnection().then((result) => {
-      if (mounted) {
-        setConnectionStatus(result);
-      }
-    }).catch((connectionError) => {
-      if (mounted) {
-        setConnectionStatus({
-          ok: false,
-          message: connectionError instanceof Error ? connectionError.message : "Unable to test Supabase connection.",
+    async function boot() {
+      try {
+        setStartupMessage("Loading native runtime...");
+        const supabaseModule = loadScreen<{
+          supabase: {
+            auth: {
+              getSession: () => Promise<{ data: { session: Session | null } }>;
+              onAuthStateChange: (
+                callback: (event: string, nextSession: Session | null) => void,
+              ) => { data: { subscription: { unsubscribe: () => void } } };
+            };
+          };
+          testSupabaseConnection: () => Promise<{ ok: boolean; message: string }>;
+        }>("supabaseModule", () => require("./src/lib/supabase"));
+
+        setStartupMessage("Checking Supabase connection...");
+        supabaseModule.testSupabaseConnection().then((result) => {
+          if (mounted) {
+            setConnectionStatus(result);
+          }
+        }).catch((connectionError) => {
+          if (mounted) {
+            setConnectionStatus({
+              ok: false,
+              message: connectionError instanceof Error ? connectionError.message : "Unable to test Supabase connection.",
+            });
+          }
         });
-      }
-    });
 
-    setStartupMessage("Restoring your session...");
-    supabase.auth.getSession()
-      .then(({ data }) => {
+        setStartupMessage("Restoring your session...");
+        const { data } = await supabaseModule.supabase.auth.getSession();
         if (!mounted) {
           return;
         }
 
         setSession(data.session);
-        void loadMvpState(data.session);
-      })
-      .catch((sessionError) => {
+        setIsBooting(false);
+        await loadMvpState(data.session);
+
+        const { data: listener } = supabaseModule.supabase.auth.onAuthStateChange((_event, nextSession) => {
+          setSession(nextSession);
+          void loadMvpState(nextSession);
+        });
+        authListener = listener;
+      } catch (startupError) {
         if (!mounted) {
           return;
         }
 
-        setError(sessionError instanceof Error ? sessionError.message : "Unable to restore your session.");
+        setError(startupError instanceof Error ? startupError.message : "Unable to start Anima Magisterium.");
+        setIsBooting(false);
         setIsLoading(false);
-      });
+      }
+    }
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      void loadMvpState(nextSession);
-    });
+    void boot();
 
     return () => {
       mounted = false;
-      listener.subscription.unsubscribe();
+      authListener?.subscription.unsubscribe();
     };
   }, []);
 
@@ -114,8 +142,10 @@ function AppShell() {
     <SafeAreaView style={styles.safe}>
       <StatusBar barStyle="light-content" />
       <View style={styles.shell}>
-        {!session ? (
-          <AuthScreen connectionStatus={connectionStatus} />
+        {isBooting ? (
+          <LoadingState message={startupMessage} />
+        ) : !session ? (
+          <AuthScreenView connectionStatus={connectionStatus} />
         ) : isLoading ? (
           <LoadingState message={startupMessage || "Opening your character ledger..."} />
         ) : error ? (
@@ -243,6 +273,16 @@ function CharacterCreationScreenView(props: Record<string, unknown>) {
   return <Screen {...props} />;
 }
 
+function AuthScreenView(props: Record<string, unknown>) {
+  const Screen = loadScreen<ComponentType<Record<string, unknown>>>("AuthScreen", () => require<{ AuthScreen: ComponentType<Record<string, unknown>> }>("./src/screens/AuthScreen").AuthScreen);
+  return <Screen {...props} />;
+}
+
+function BottomNavView(props: Record<string, unknown>) {
+  const Nav = loadScreen<ComponentType<Record<string, unknown>>>("BottomNav", () => require<{ BottomNav: ComponentType<Record<string, unknown>> }>("./src/components/BottomNav").BottomNav);
+  return <Nav {...props} />;
+}
+
 function AuthenticatedLayout({
   activeScreen,
   onChangeScreen,
@@ -255,7 +295,7 @@ function AuthenticatedLayout({
   return (
     <View style={styles.authenticated}>
       <View style={styles.authenticatedContent}>{children}</View>
-      <BottomNav active={activeScreen} onChange={onChangeScreen} />
+      <BottomNavView active={activeScreen} onChange={onChangeScreen} />
     </View>
   );
 }
