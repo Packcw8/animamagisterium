@@ -327,7 +327,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [savedMiniMapPosition, setSavedMiniMapPosition] = useState<{ x: number; y: number } | null>(null);
   const [lastPosition, setLastPosition] = useState<Coordinate | null>(null);
   const [isTracking, setIsTracking] = useState(false);
-  const [gpsMessage, setGpsMessage] = useState("GPS is off. Start tracking to count real-world walking distance.");
+  const [gpsMessage, setGpsMessage] = useState(Platform.OS === "web" ? "GPS is off. Start tracking to count real-world walking distance." : "Pedometer is off. Start tracking to count steps toward your path.");
   const [playerMovementState, setPlayerMovementState] = useState<PlayerMovementState>("IDLE");
   const [movementStatus, setMovementStatus] = useState<MovementStatus>({
     label: "IDLE",
@@ -1570,7 +1570,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           blockedReason: null,
         });
         setIsTracking(true);
-        setGpsMessage("iOS pedometer is tracking steps only. Keep the app open while walking.");
+        setGpsMessage("Pedometer is tracking steps toward your active path.");
         pedometerSubscriptionRef.current = watchPedometerDistance((sample) => {
           const deltaMeters = Math.max(0, sample.distanceMeters - nativePedometerMetersRef.current);
           nativePedometerMetersRef.current = sample.distanceMeters;
@@ -1701,7 +1701,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     movementStateRef.current = "IDLE";
     movementCandidateRef.current = null;
     setPlayerMovementState("IDLE");
-    setGpsMessage("GPS paused. Route progress is saved in Supabase.");
+    setGpsMessage(Platform.OS === "web" ? "GPS paused. Route progress is saved in Supabase." : "Pedometer paused. Route progress is saved in Supabase.");
     setMovementStatus((current) => ({ ...current, label: "IDLE", speedMph: 0, countedMeters: 0 }));
   }
 
@@ -5312,7 +5312,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const arrivedAtStart = routeDirection === "reverse" && progressPercent <= 0;
     const arrived = arrivedAtEnd || arrivedAtStart;
     const travelTitle = arrived ? "Arrived" : routeDirection === "reverse" ? "Returning" : journeyMode;
-    const primaryLabel = arrived && destinationMarker ? `Open ${destinationMarker.type}` : isTracking ? "Pause GPS" : "Continue Walking";
+    const primaryLabel = arrived && destinationMarker ? `Open ${destinationMarker.type}` : isTracking ? (Platform.OS === "web" ? "Pause GPS" : "Pause Steps") : "Continue Walking";
     const turnLabel = routeDirection === "reverse" ? "Travel Forward" : "Turn Back";
     const handlePrimaryJourneyAction = () => {
       if (arrived && destinationMarker) {
@@ -5429,10 +5429,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           <Text style={styles.journeyDebug}>State {playerMovementState}</Text>
           <Text style={styles.journeyDebug}>Speed {movementStatus.speedMph.toFixed(1)} mph</Text>
           <Text style={styles.journeyDebug}>{route.terrain}</Text>
-        </View>
-        <View style={styles.walkingNotice}>
-          <Text style={styles.walkingNoticeTitle}>Keep App Open While Walking</Text>
-          <Text style={styles.walkingNoticeText}>Browser tracking only counts reliably while this screen stays active. Treadmill step tracking is planned for the future iOS app.</Text>
         </View>
         <Text style={styles.gpsMessage}>{gpsMessage}</Text>
       </Frame>
@@ -8805,3 +8801,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
 });
+
+
