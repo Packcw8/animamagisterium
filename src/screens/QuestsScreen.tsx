@@ -250,7 +250,9 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                     <TrainingIcon name={card.name} imageUrl={config?.image_url ?? null} active={selectedCard?.key === card.key} />
                     <View style={styles.attributeListBody}>
                       <View style={styles.attributeListHeader}>
-                        <Text style={styles.attributeName}>{card.name}</Text>
+                        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.82} style={styles.attributeName}>
+                          {card.name}
+                        </Text>
                         <Text style={styles.attributeProgressText}>{levelProgress.progress} / {levelProgress.required}</Text>
                       </View>
                       <Text style={styles.attributeMeta}>Level {card.currentLevel}</Text>
@@ -326,7 +328,9 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                   <ClassCardBackground classItem={classItem} />
                   <ClassArt classItem={classItem} />
                   <Text style={styles.className} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{classItem.name}</Text>
-                  <Text style={styles.classPair}>{formatAttributeName(classItem.firstAttribute).slice(0, 3).toUpperCase()} + {formatAttributeName(classItem.secondAttribute).slice(0, 3).toUpperCase()}</Text>
+                  <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={styles.classPair}>
+                    {formatAttributeName(classItem.firstAttribute).slice(0, 3).toUpperCase()} + {formatAttributeName(classItem.secondAttribute).slice(0, 3).toUpperCase()}
+                  </Text>
                   <View style={styles.classProgressRow}>
                     <Text style={classItem.firstLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.firstLevel}/{classUnlockLevel}</Text>
                     <Text style={classItem.secondLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.secondLevel}/{classUnlockLevel}</Text>
@@ -355,7 +359,9 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                   <ClassCardBackground classItem={classItem} />
                   <ClassArt classItem={classItem} />
                   <Text style={styles.className} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{classItem.name}</Text>
-                  <Text style={styles.classPair}>{formatAttributeName(classItem.firstAttribute)} + {formatAttributeName(classItem.secondAttribute)}</Text>
+                  <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={styles.classPair}>
+                    {formatAttributeName(classItem.firstAttribute)} + {formatAttributeName(classItem.secondAttribute)}
+                  </Text>
                   <View style={styles.classProgressRow}>
                     <Text style={classItem.firstLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.firstLevel}/{classUnlockLevel}</Text>
                     <Text style={classItem.secondLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.secondLevel}/{classUnlockLevel}</Text>
@@ -816,7 +822,6 @@ const styles = StyleSheet.create({
     flexGrow: 0,
     flexShrink: 0,
     minWidth: 0,
-    minHeight: 505,
     width: "100%",
     marginBottom: 8,
   },
@@ -1178,6 +1183,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+    justifyContent: "space-between",
   },
   classGoalPanel: {
     gap: 10,
@@ -1224,7 +1230,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.58)",
   },
   classCardCompact: {
-    width: "48.5%",
+    width: "48%",
     minHeight: 132,
   },
   classCardUnlocked: {

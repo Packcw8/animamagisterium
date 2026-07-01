@@ -10,7 +10,9 @@ export function Header({ title, back = true }: HeaderProps) {
   return (
     <View style={styles.header}>
       <Text style={styles.back}>{back ? "<" : ""}</Text>
-      <Text style={styles.title}>{title}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={styles.title}>
+        {title}
+      </Text>
       <Text style={styles.back}> </Text>
     </View>
   );
@@ -30,9 +32,11 @@ const styles = StyleSheet.create({
   title: {
     color: colors.gold,
     fontFamily: fonts.title,
-    fontSize: 21,
+    fontSize: 18,
     letterSpacing: 0,
     textTransform: "uppercase",
+    flex: 1,
+    textAlign: "center",
   },
   back: {
     width: 32,

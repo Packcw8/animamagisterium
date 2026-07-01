@@ -1358,8 +1358,12 @@ function SummaryTile({ icon, label, value }: { icon: string; label: string; valu
     <View style={styles.summaryTile}>
       <Text style={styles.summaryIcon}>{icon}</Text>
       <View>
-        <Text style={styles.summaryValue}>{value}</Text>
-        <Text style={styles.summaryLabel}>{label}</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={styles.summaryValue}>
+          {value}
+        </Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={styles.summaryLabel}>
+          {label}
+        </Text>
       </View>
     </View>
   );
@@ -1370,9 +1374,13 @@ function ResourceBar({ label, value, max, color, icon }: { label: string; value:
     <View style={styles.resourceBarCard}>
       <View style={styles.resourceBarHeader}>
         <Text style={[styles.resourceBarIcon, { color }]}>{icon}</Text>
-        <Text style={[styles.resourceBarLabel, { color }]}>{label}</Text>
+        <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={[styles.resourceBarLabel, { color }]}>
+          {label}
+        </Text>
       </View>
-      <Text style={styles.resourceBarValue}>{value} / {max}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={styles.resourceBarValue}>
+        {value} / {max}
+      </Text>
       <ProgressBar value={value} max={max || 1} color={color} height={8} />
     </View>
   );
@@ -1382,7 +1390,9 @@ function QuickTile({ icon, label, selected, onPress }: { icon: string; label: st
   return (
     <Pressable style={[styles.quickTile, selected && styles.quickTileSelected]} onPress={onPress}>
       <Text style={styles.quickIcon}>{icon}</Text>
-      <Text style={styles.quickLabel}>{label}</Text>
+      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.74} style={styles.quickLabel}>
+        {label}
+      </Text>
     </Pressable>
   );
 }

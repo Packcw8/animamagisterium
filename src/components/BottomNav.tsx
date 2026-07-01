@@ -31,7 +31,9 @@ export function BottomNav({ active, onChange }: BottomNavProps) {
         return (
           <Pressable key={item.key} style={[styles.item, item.key === "map" && styles.centerItem]} onPress={() => onChange(item.key)}>
             <Icon size={23} color={selected ? colors.gold : colors.goldSoft} strokeWidth={2.3} />
-            <Text style={[styles.label, selected && styles.active]}>{item.label}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.78} style={[styles.label, selected && styles.active]}>
+              {item.label}
+            </Text>
           </Pressable>
         );
       })}
@@ -41,12 +43,13 @@ export function BottomNav({ active, onChange }: BottomNavProps) {
 
 const styles = StyleSheet.create({
   nav: {
-    height: 76,
+    height: 84,
     flexDirection: "row",
     borderTopWidth: 1,
     borderColor: colors.borderSoft,
     backgroundColor: "#070909",
-    paddingBottom: 4,
+    paddingBottom: 10,
+    paddingHorizontal: 2,
   },
   item: {
     flex: 1,
@@ -70,6 +73,8 @@ const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 11,
     textAlign: "center",
+    width: "100%",
+    paddingHorizontal: 2,
   },
   active: {
     color: colors.gold,
