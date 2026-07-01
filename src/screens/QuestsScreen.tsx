@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { Frame } from "../components/Frame";
+import { GameToast, type GameToastData } from "../components/map/GameToast";
 import { Header } from "../components/Header";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
@@ -42,6 +43,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const [isLoading, setIsLoading] = useState(true);
   const [isCompleting, setIsCompleting] = useState<AttributeKey | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [abilityToast, setAbilityToast] = useState<GameToastData | null>(null);
   const [showTrainingInfo, setShowTrainingInfo] = useState(false);
   const [activeSection, setActiveSection] = useState<"training" | "classes">("training");
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +93,16 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
       const result = await completeTrainingSession(character, attributeKey);
       onCharacterUpdated(result.character);
       setMessage(`${result.message} The ledger glows as your discipline is recorded.`);
+      if (result.learnedAbilities.length > 0) {
+        const abilityNames = result.learnedAbilities.map((ability) => ability.name);
+        setAbilityToast({
+          title: abilityNames.length === 1 ? "Ability Learned" : "Abilities Learned",
+          message: abilityNames.length === 1
+            ? `${abilityNames[0]} has been added to your ability collection.`
+            : `${abilityNames.join(", ")} have been added to your ability collection.`,
+          actionLabel: "OK",
+        });
+      }
       const state = await getTrainingState(result.character);
       setCards(state.cards);
       setDailyCompleted(state.dailyCompleted);
@@ -454,6 +466,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
           </View>
         </View>
       </Modal>
+      <GameToast toast={abilityToast} onDismiss={() => setAbilityToast(null)} />
     </Screen>
   );
 }

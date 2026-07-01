@@ -4,6 +4,7 @@ import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { PlayerAbilitiesPanel } from "../components/home/PlayerAbilitiesPanel";
 import { PlayerInventoryPanel } from "../components/home/PlayerInventoryPanel";
+import { GameToast, type GameToastData } from "../components/map/GameToast";
 import { CharacterAbilitiesSheet } from "../components/player/CharacterAbilitiesSheet";
 import { CharacterInventorySheet } from "../components/player/CharacterInventorySheet";
 import { ProgressBar } from "../components/ProgressBar";
@@ -153,6 +154,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [selectedAdminAbilityId, setSelectedAdminAbilityId] = useState<string | null>(null);
   const [abilityTypeTab, setAbilityTypeTab] = useState<(typeof abilityTypeTabs)[number]>("Attack");
   const [abilityMessage, setAbilityMessage] = useState<string | null>(null);
+  const [abilityToast, setAbilityToast] = useState<GameToastData | null>(null);
   const [adminAbilities, setAdminAbilities] = useState<CombatAbility[]>([]);
   const [abilityForm, setAbilityForm] = useState<Partial<CombatAbility>>(blankCombatAbility());
   const [abilityCostResource, setAbilityCostResource] = useState<AbilityCostResource>("none");
@@ -213,6 +215,20 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const filteredAdminItems = useMemo(() => itemDefinitions.filter((item) => itemMatchesCategory(item, inventoryCategory)), [itemDefinitions, inventoryCategory]);
   const filteredAdminAbilities = useMemo(() => adminAbilities.filter((ability) => ability.type === abilityTypeTab.toLowerCase()), [adminAbilities, abilityTypeTab]);
   const selectedAdminAbility = useMemo(() => adminAbilities.find((ability) => ability.id === selectedAdminAbilityId) ?? filteredAdminAbilities[0] ?? null, [adminAbilities, filteredAdminAbilities, selectedAdminAbilityId]);
+
+  function showAbilityLearnedToast(abilityNames: string[]) {
+    if (abilityNames.length === 0) {
+      return;
+    }
+
+    setAbilityToast({
+      title: abilityNames.length === 1 ? "Ability Learned" : "Abilities Learned",
+      message: abilityNames.length === 1
+        ? `${abilityNames[0]} has been added to your ability collection.`
+        : `${abilityNames.join(", ")} have been added to your ability collection.`,
+      actionLabel: "OK",
+    });
+  }
   const battleStats = useMemo(
     () => getDerivedBattleStats(character, resources, inventoryBonuses, equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>, totalInventoryWeight, carryCapacity),
     [character, resources, inventoryBonuses, equippedItems, totalInventoryWeight, carryCapacity],
@@ -271,15 +287,19 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
       if (autoEquipCandidates.length > 0) {
         await Promise.all(autoEquipCandidates.map((ability, index) => equipAbility(character.id, emptySlots[index], ability.key)));
         loadout = await getCombatLoadout(character);
-        setAbilityMessage(`${autoEquipCandidates.map((ability) => ability.name).join(", ")} added to empty ability slot${autoEquipCandidates.length > 1 ? "s" : ""}.`);
+        const nonStarterAutoEquipped = autoEquipCandidates.filter((ability) => ability.adminAbility?.learn_method !== "starter");
+        if (nonStarterAutoEquipped.length > 0) {
+          setAbilityMessage(`${nonStarterAutoEquipped.map((ability) => ability.name).join(", ")} added to empty ability slot${nonStarterAutoEquipped.length > 1 ? "s" : ""}.`);
+        }
       }
 
       const currentKeys = new Set(loadout.unlocked.map((ability) => ability.key));
       const previousKeys = knownAbilityKeysRef.current;
       if (previousKeys) {
-        const learned = loadout.unlocked.filter((ability) => !previousKeys.has(ability.key));
+        const learned = loadout.unlocked.filter((ability) => !previousKeys.has(ability.key) && ability.adminAbility?.learn_method !== "starter");
         if (learned.length > 0) {
           setAbilityMessage(`New ability learned: ${learned.map((ability) => ability.name).join(", ")}.`);
+          showAbilityLearnedToast(learned.map((ability) => ability.name));
         }
       }
       knownAbilityKeysRef.current = currentKeys;
@@ -716,6 +736,9 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
       await loadInventory();
       await loadAbilities();
       setInventoryMessage(result.message);
+      if (!result.isStarter && result.abilityName) {
+        showAbilityLearnedToast([result.abilityName]);
+      }
     } catch (error) {
       console.error("[inventory] ability scroll use failed", error);
       setInventoryMessage(error instanceof Error ? error.message : "Unable to learn ability from scroll.");
@@ -724,49 +747,55 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
   if (activeSheet === "inventory") {
     return (
-      <CharacterInventorySheet
-        items={inventoryItems}
-        equippedItems={equippedItems}
-        selectedItem={selectedInventoryItem}
-        activeTab={inventoryCategory}
-        totalWeight={totalInventoryWeight}
-        carryCapacity={carryCapacity}
-        currentHealth={currentHealth}
-        maxHealth={resources.maxHp}
-        message={inventoryMessage}
-        onClose={() => setActiveSheet(null)}
-        onSelectTab={setInventoryCategory}
-        onSelectItem={setSelectedInventoryItemId}
-        onEquipItem={(entry) => void equipItem(entry)}
-        onUnequipSlot={(slot) => void unequipSlot(slot)}
-        onUseItem={(entry) => void useOutsideBattleItem(entry)}
-        onUseScroll={(entry) => void useAbilityScroll(entry)}
-        onDropItem={(entry) => void dropItem(entry)}
-      />
+      <>
+        <CharacterInventorySheet
+          items={inventoryItems}
+          equippedItems={equippedItems}
+          selectedItem={selectedInventoryItem}
+          activeTab={inventoryCategory}
+          totalWeight={totalInventoryWeight}
+          carryCapacity={carryCapacity}
+          currentHealth={currentHealth}
+          maxHealth={resources.maxHp}
+          message={inventoryMessage}
+          onClose={() => setActiveSheet(null)}
+          onSelectTab={setInventoryCategory}
+          onSelectItem={setSelectedInventoryItemId}
+          onEquipItem={(entry) => void equipItem(entry)}
+          onUnequipSlot={(slot) => void unequipSlot(slot)}
+          onUseItem={(entry) => void useOutsideBattleItem(entry)}
+          onUseScroll={(entry) => void useAbilityScroll(entry)}
+          onDropItem={(entry) => void dropItem(entry)}
+        />
+        <GameToast toast={abilityToast} onDismiss={() => setAbilityToast(null)} />
+      </>
     );
   }
 
   if (activeSheet === "abilities") {
     return (
-      <CharacterAbilitiesSheet
-        abilities={unlockedAbilities}
-        equippedAbilities={equippedAbilities}
-        selectedAbility={selectedPlayerAbility}
-        selectedAbilityKey={selectedAbilityKey}
-        activeTab={playerAbilityTab}
-        currentHealth={currentHealth}
-        maxHealth={resources.maxHp}
-        message={abilityMessage}
-        onClose={() => setActiveSheet(null)}
-        onSelectTab={setPlayerAbilityTab}
-        onSelectAbility={(ability) => {
-          setSelectedPlayerAbility(ability);
-          setSelectedAbilityKey(ability?.key ?? null);
-        }}
-        onEquipAbility={(slot) => void equipSelectedAbility(slot)}
-        onClearSlot={(slot) => void clearSlot(slot)}
-        onUseHeal={(ability) => void useOutsideBattleAbility(ability)}
-      />
+      <>
+        <CharacterAbilitiesSheet
+          abilities={unlockedAbilities}
+          equippedAbilities={equippedAbilities}
+          selectedAbility={selectedPlayerAbility}
+          selectedAbilityKey={selectedAbilityKey}
+          activeTab={playerAbilityTab}
+          currentHealth={currentHealth}
+          maxHealth={resources.maxHp}
+          message={abilityMessage}
+          onClose={() => setActiveSheet(null)}
+          onSelectTab={setPlayerAbilityTab}
+          onSelectAbility={(ability) => {
+            setSelectedPlayerAbility(ability);
+            setSelectedAbilityKey(ability?.key ?? null);
+          }}
+          onEquipAbility={(slot) => void equipSelectedAbility(slot)}
+          onClearSlot={(slot) => void clearSlot(slot)}
+          onUseHeal={(ability) => void useOutsideBattleAbility(ability)}
+        />
+        <GameToast toast={abilityToast} onDismiss={() => setAbilityToast(null)} />
+      </>
     );
   }
 
@@ -1349,6 +1378,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
           <View />
         )}
       </Frame>
+      <GameToast toast={abilityToast} onDismiss={() => setAbilityToast(null)} />
     </Screen>
   );
 }

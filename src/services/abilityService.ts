@@ -301,7 +301,7 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
   }
 
   if (!user) {
-    return;
+    return [];
   }
 
   const [adminAbilitiesResult] = await Promise.all([
@@ -333,31 +333,57 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
     return attribute && (character.attributes?.[attribute] ?? 0) >= ability.required_attribute_level;
   });
 
-  if (unlocked.length === 0 && adminUnlocked.length === 0) {
-    return;
-  }
-
-  const { error } = await supabase.from("player_abilities").upsert(
-    [
-      ...unlocked.map((ability) => ({
+  const candidates = [
+    ...unlocked.map((ability) => ({
+      definition: ability,
+      row: {
         user_id: user.id,
         character_id: character.id,
         ability_key: ability.key,
         unlocked_by_attribute: ability.attribute,
-      })),
-      ...adminUnlocked.map((ability) => ({
+      },
+      isStarter: false,
+    })),
+    ...adminUnlocked.map((ability) => ({
+      definition: adminAbilityToDefinition(ability),
+      row: {
         user_id: user.id,
         character_id: character.id,
         ability_key: getAdminAbilityKey(ability.id),
         unlocked_by_attribute: ability.learn_method === "starter" ? null : ability.required_attribute as AttributeKey,
-      })),
-    ],
+      },
+      isStarter: ability.learn_method === "starter",
+    })),
+  ];
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from("player_abilities")
+    .select("ability_key")
+    .eq("character_id", character.id);
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  const existingKeys = new Set((existingRows ?? []).map((row) => row.ability_key));
+  const newlyLearned = candidates
+    .filter((candidate) => !candidate.isStarter && !existingKeys.has(candidate.row.ability_key))
+    .map((candidate) => candidate.definition);
+
+  const { error } = await supabase.from("player_abilities").upsert(
+    candidates.map((candidate) => candidate.row),
     { onConflict: "character_id,ability_key", ignoreDuplicates: true },
   );
 
   if (error) {
     throw error;
   }
+
+  return newlyLearned;
 }
 
 function isClassUnlocked(character: CharacterWithDetails, classKey: string) {
@@ -405,7 +431,7 @@ export async function learnAbilityFromScroll(characterId: string, abilityId: str
 
   const { data: ability, error: abilityError } = await supabase
     .from("combat_abilities")
-    .select("name")
+    .select("name, learn_method")
     .eq("id", abilityId)
     .maybeSingle();
 
@@ -430,7 +456,12 @@ export async function learnAbilityFromScroll(characterId: string, abilityId: str
     throw error;
   }
 
-  return { learned: true, message: `Learned ${ability.name}.` };
+  return {
+    learned: true,
+    message: `Learned ${ability.name}.`,
+    abilityName: ability.name,
+    isStarter: ability.learn_method === "starter",
+  };
 }
 
 function getAdminAbilityKey(abilityId: string) {

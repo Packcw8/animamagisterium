@@ -264,11 +264,12 @@ export async function completeTrainingSession(character: CharacterWithDetails, a
     throw new Error("Training completed, but character could not be reloaded.");
   }
 
-  await syncUnlockedAbilities(updatedCharacter);
+  const learnedAbilities = await syncUnlockedAbilities(updatedCharacter);
 
   return {
     character: updatedCharacter,
     message: `${config.name} training complete. ${config.name} is now level ${nextAttributeLevel}. +${config.character_xp_reward} character XP.`,
+    learnedAbilities,
   };
 }
 

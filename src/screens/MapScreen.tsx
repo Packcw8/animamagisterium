@@ -2818,6 +2818,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         await loadInventory();
         await loadCombatLoadout();
         setMapItemMessage(result.message);
+        if (!result.isStarter && result.abilityName) {
+          showGameToast({
+            title: "Ability Learned",
+            message: `${result.abilityName} has been added to your ability collection.`,
+            actionLabel: "OK",
+          });
+        }
       } catch (error) {
         console.error("[map inventory] ability scroll use failed", error);
         setMapItemMessage(getErrorMessage(error, "Unable to learn ability from scroll."));
