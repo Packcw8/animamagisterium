@@ -1,4 +1,4 @@
-import { DimensionValue, StyleSheet, View } from "react-native";
+import { DimensionValue, Platform, StyleSheet, View } from "react-native";
 import { colors } from "./theme";
 
 type ProgressBarProps = {
@@ -18,15 +18,19 @@ export function ProgressBar({ value, max, color, height = 8 }: ProgressBarProps)
   );
 }
 
-const smoothWidthTransition = {
-  transitionProperty: "width",
-  transitionDuration: "220ms",
-  transitionTimingFunction: "ease-out",
-} as never;
+const smoothWidthTransition = Platform.OS === "web"
+  ? ({
+      transitionProperty: "width",
+      transitionDuration: "220ms",
+      transitionTimingFunction: "ease-out",
+    } as never)
+  : null;
 
 const styles = StyleSheet.create({
   track: {
-    flex: 1,
+    width: "100%",
+    flexGrow: 0,
+    flexShrink: 0,
     overflow: "hidden",
     borderRadius: 99,
     backgroundColor: "#070706",
