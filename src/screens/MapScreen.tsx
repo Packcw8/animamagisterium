@@ -64,6 +64,7 @@ import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, Equipmen
 import { isNativePedometerAvailable, requestPedometerPermission, watchPedometerDistance, type PedometerSubscription } from "../services/nativePedometerService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
+import { scheduleLocalNotification } from "../services/pushNotificationService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { clamp, getPathSegmentMetaAtProgress, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, normalizePathSegments, roundPercent, type PathSegmentMeta } from "../utils/mapGeometry";
@@ -1177,6 +1178,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     void grantPathCompletionMarkerReward(route.id);
   }, [allMarkerRouteLinks, completedEventIds, completedRouteId, currentRouteProgress?.source_marker_id, mapEvents, markers, progressPercent, route, routeDirection]);
 
+  function notifyRouteEvent(event: MapEvent) {
+    if (isAdmin || adminPreviewMode) {
+      return;
+    }
+
+    const title = event.event_type === "battle" ? "Battle Encounter" : "Story Event";
+    const body = event.event_type === "battle"
+      ? `${event.title} is blocking your path.`
+      : `${event.title} is ready on ${route.name}.`;
+
+    void scheduleLocalNotification(title, body).catch((error) => {
+      console.warn("[notifications] unable to send event notification", error);
+    });
+  }
+
   useEffect(() => {
     if (activeEvent || activeBattle || routeDirection === "reverse") {
       return;
@@ -1200,6 +1216,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (!nextEvent) {
       return;
     }
+
+    notifyRouteEvent(nextEvent);
 
     if (nextEvent.event_type === "battle") {
         void startBattle(nextEvent);

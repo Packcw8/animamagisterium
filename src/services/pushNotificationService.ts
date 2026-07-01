@@ -1,6 +1,16 @@
 import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  } as Notifications.NotificationBehavior),
+});
+
 export type PushPermissionState = {
   granted: boolean;
   status: string;
@@ -21,6 +31,11 @@ export async function requestPushNotificationPermission(): Promise<PushPermissio
 
 export async function scheduleLocalNotification(title: string, body: string) {
   if (Platform.OS === "web") {
+    return null;
+  }
+
+  const permission = await requestPushNotificationPermission();
+  if (!permission.granted) {
     return null;
   }
 
