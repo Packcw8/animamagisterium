@@ -10,14 +10,9 @@ export type PickedImage = {
 export type PhotoSource = "camera" | "library";
 
 type ImagePickerModule = typeof import("expo-image-picker");
-type ImageManipulatorModule = typeof import("expo-image-manipulator");
 
 async function loadImagePicker(): Promise<ImagePickerModule> {
   return await import("expo-image-picker");
-}
-
-async function loadImageManipulator(): Promise<ImageManipulatorModule> {
-  return await import("expo-image-manipulator");
 }
 
 export async function pickCharacterPhoto(source: PhotoSource = "library"): Promise<PickedImage | null> {
@@ -36,8 +31,8 @@ export async function pickCharacterPhoto(source: PhotoSource = "library"): Promi
   const pickerOptions = {
     allowsEditing: false,
     mediaTypes: ["images"],
-    quality: 0.86,
-    base64: false,
+    quality: 0.72,
+    base64: true,
   } satisfies Parameters<ImagePickerModule["launchCameraAsync"]>[0];
 
   const result = source === "camera"
@@ -49,44 +44,37 @@ export async function pickCharacterPhoto(source: PhotoSource = "library"): Promi
   }
 
   const asset = result.assets[0];
-  const normalized = await normalizeImage(asset.uri);
-  const response = await fetch(normalized.dataUri);
+  if (!asset.base64) {
+    throw new Error("The image could not be prepared. Try taking a new photo or choose Custom Avatar.");
+  }
+
+  const contentType = normalizeImageContentType(asset.mimeType, source);
+  const dataUri = `data:${contentType};base64,${asset.base64}`;
+  const response = await fetch(dataUri);
   const blob = await response.blob();
 
   return {
-    previewUrl: normalized.uri,
-    fileName: `character-photo-${Date.now()}.jpg`,
-    contentType: normalized.contentType,
+    previewUrl: asset.uri,
+    fileName: `character-photo-${Date.now()}.${contentType === "image/png" ? "png" : "jpg"}`,
+    contentType,
     uploadBody: blob,
   };
 }
 
-async function normalizeImage(uri: string): Promise<{ uri: string; dataUri: string; contentType: string }> {
-  try {
-    const ImageManipulator = await loadImageManipulator();
-    const normalized = await ImageManipulator.manipulateAsync(
-      uri,
-      [{ resize: { width: 1024 } }],
-      {
-        base64: true,
-        compress: 0.9,
-        format: ImageManipulator.SaveFormat.JPEG,
-      },
-    );
-
-    if (!normalized.base64) {
-      throw new Error("Image normalization did not return JPEG data.");
-    }
-
-    return {
-      uri: normalized.uri,
-      dataUri: `data:image/jpeg;base64,${normalized.base64}`,
-      contentType: "image/jpeg",
-    };
-  } catch (error) {
-    console.warn("[native-media] image normalization failed", error);
-    throw new Error("The image could not be prepared for avatar generation. Try a different photo or choose Custom Avatar.");
+function normalizeImageContentType(mimeType: string | undefined, source: PhotoSource) {
+  const normalized = mimeType?.toLowerCase();
+  if (normalized === "image/jpeg" || normalized === "image/jpg") {
+    return "image/jpeg";
   }
+  if (normalized === "image/png") {
+    return "image/png";
+  }
+
+  if (source === "camera") {
+    return "image/jpeg";
+  }
+
+  throw new Error("This photo format is not supported yet. Please choose a JPG/PNG image or take a new photo.");
 }
 
 function pickWebImage(): Promise<PickedImage | null> {

@@ -57,15 +57,17 @@ export async function requestPedometerPermission() {
 
   try {
     const existing = await Pedometer.getPermissionsAsync();
-    if (existing.granted) {
-      return true;
+    if (existing.status === "denied") {
+      return false;
     }
 
-    const permission = await Pedometer.requestPermissionsAsync();
-    return permission.granted;
+    // Avoid Pedometer.requestPermissionsAsync on iOS for now. The live watcher can
+    // use an existing grant, and this keeps the Motion permission prompt out of the
+    // native crash path while preserving step tracking for granted devices.
+    return true;
   } catch (error) {
-    console.warn("[pedometer] permission request failed", error);
-    return false;
+    console.warn("[pedometer] permission check failed", error);
+    return true;
   }
 }
 
@@ -81,8 +83,8 @@ export async function watchPedometerDistance(onSample: (sample: PedometerDistanc
 
   try {
     const permission = await Pedometer.getPermissionsAsync();
-    if (!permission.granted) {
-      console.warn("[pedometer] step watcher not started because permission is not granted", permission.status);
+    if (permission.status === "denied") {
+      console.warn("[pedometer] step watcher not started because permission is denied");
       return { remove: () => undefined };
     }
 
