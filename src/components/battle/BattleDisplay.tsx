@@ -7,7 +7,8 @@ import { resolveAbilityImageUri, resolveInventoryImageUri } from "../../services
 
 export type CombatIndicator = {
   id: string;
-  target: "enemy" | "player";
+  target: "enemy" | "player" | "companion";
+  targetKey?: string | null;
   text: string;
   color: string;
 };

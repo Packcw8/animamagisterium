@@ -10,7 +10,7 @@ import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
 import { BattleActionCard, CircularResourceArcs, CombatPortraitFrame, type CombatIndicator } from "./BattleDisplay";
-import { type BattleOpponentState, type BattleTurnPhase } from "./useBattleEncounter";
+import { type BattleCompanionState, type BattleOpponentState, type BattleTurnPhase } from "./useBattleEncounter";
 
 type BattleEventScreenProps = {
   character: CharacterWithDetails;
@@ -24,6 +24,7 @@ type BattleEventScreenProps = {
   enemyMana: number;
   activeEnemy: EnemyWithLoadout | NpcWithLoadout | null;
   opponents?: BattleOpponentState[];
+  companions?: BattleCompanionState[];
   layoutCombatants?: Array<BattleEventCombatant | MarkerBattleCombatant>;
   selectedOpponentKey?: string | null;
   equippedAbilities: Array<AbilityDefinition | null>;
@@ -60,6 +61,7 @@ export function BattleEventScreen({
   enemyMana,
   activeEnemy,
   opponents = [],
+  companions = [],
   layoutCombatants = [],
   selectedOpponentKey = null,
   equippedAbilities,
@@ -240,6 +242,45 @@ export function BattleEventScreen({
                     )}
                     <CombatIndicatorStackOverlay indicators={playerIndicators} />
                   </View>
+                  {companions.map((companion) => {
+                    const companionName = companion.ally.name || companion.combatant.label || "Companion";
+                    const imageUri = resolveEnemyImageUri(companion.ally.image_url);
+                    const maxHp = Number(companion.ally.health ?? 30) || 30;
+                    const maxStamina = Number(companion.ally.stamina ?? 0) || 0;
+                    const maxMana = Number(companion.ally.magika ?? 0) || 0;
+                    const sizePercent = Number(companion.combatant.size_percent ?? 13) || 13;
+                    const size = Math.max(38, Math.min(92, sizePercent * 4.8));
+                    const ringSize = Math.max(40, size - 2);
+                    const ringRadius = Math.max(16, ringSize / 2 - 7);
+                    const companionIndicators = combatIndicators.filter((indicator) => indicator.target === "companion" && indicator.targetKey === companion.key);
+
+                    return (
+                      <View
+                        key={`companion-${companion.key}`}
+                        style={[
+                          styles.stagedCombatant,
+                          styles.stagedCompanion,
+                          companion.hp <= 0 && styles.defeatedCombatant,
+                          {
+                            left: `${companion.combatant.x_percent}%`,
+                            top: `${companion.combatant.y_percent}%`,
+                            width: size,
+                            transform: [{ translateX: -size / 2 }, { translateY: -size / 2 }],
+                          } as object,
+                        ]}
+                      >
+                        <CircularResourceArcs
+                          size={ringSize}
+                          radius={ringRadius}
+                          hpPercent={getPercent(companion.hp, maxHp)}
+                          staminaPercent={getPercent(companion.stamina, maxStamina)}
+                          manaPercent={getPercent(companion.magika, maxMana)}
+                        />
+                        {imageUri ? <Image source={{ uri: imageUri }} style={styles.stagedCombatantImage} /> : <Text style={styles.stagedCombatantFallback}>{companionName.slice(0, 1).toUpperCase()}</Text>}
+                        <CombatIndicatorStackOverlay indicators={companionIndicators} />
+                      </View>
+                    );
+                  })}
                 </View>
               </View>
               <View style={styles.enemyIntentBadge}>
@@ -532,6 +573,14 @@ const styles = StyleSheet.create({
     shadowColor: colors.blue,
     shadowOpacity: 0.72,
     shadowRadius: 18,
+  },
+  stagedCompanion: {
+    borderColor: "rgba(66, 215, 125, 0.86)",
+    backgroundColor: "rgba(5, 38, 23, 0.72)",
+    shadowColor: "#42d77d",
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    zIndex: 3,
   },
   fallbackEnemyPosition: {
     position: "absolute",

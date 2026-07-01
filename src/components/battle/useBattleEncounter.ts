@@ -44,6 +44,15 @@ export type BattleOpponentState = {
   magika: number;
 };
 
+export type BattleCompanionState = {
+  key: string;
+  combatant: BattleEventCombatant | MarkerBattleCombatant;
+  ally: EnemyWithLoadout | NpcWithLoadout;
+  hp: number;
+  stamina: number;
+  magika: number;
+};
+
 export type BattleTurnPhase = "rolling" | "player" | "enemy" | "finished";
 
 export function useBattleEncounter(character: CharacterWithDetails, onCharacterUpdated: (character: CharacterWithDetails) => void) {
@@ -61,6 +70,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   const [revivePromptOpen, setRevivePromptOpen] = useState(false);
   const [activeEnemy, setActiveEnemy] = useState<EnemyWithLoadout | NpcWithLoadout | null>(null);
   const [battleOpponents, setBattleOpponents] = useState<BattleOpponentState[]>([]);
+  const [battleCompanions, setBattleCompanions] = useState<BattleCompanionState[]>([]);
   const [battleLayoutCombatants, setBattleLayoutCombatants] = useState<Array<BattleEventCombatant | MarkerBattleCombatant>>([]);
   const [selectedOpponentKey, setSelectedOpponentKey] = useState<string | null>(null);
   const [combatIndicators, setCombatIndicators] = useState<CombatIndicator[]>([]);
@@ -72,6 +82,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setActiveBattle(null);
     setActiveEnemy(null);
     setBattleOpponents([]);
+    setBattleCompanions([]);
     setBattleLayoutCombatants([]);
     setSelectedOpponentKey(null);
     setBattleFinished(null);
@@ -107,6 +118,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
       const stagedLayout = await loadStagedLayout(event);
       const stagedOpponents = await loadStagedOpponents(event, stagedLayout);
+      const stagedCompanions = await loadStagedCompanions(event, stagedLayout);
       const fallbackOpponent = stagedOpponents.length === 0
         ? [{
           key: "primary",
@@ -121,6 +133,14 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const selectedEnemy = firstOpponent?.enemy ?? opponent;
       const enemyImage = resolveEnemyImageUri(selectedEnemy?.image_url ?? event.enemy_image_url);
       const playerInitiative = rollInitiative(character.attributes?.agility ?? 0);
+      const companionInitiatives = stagedCompanions
+        .map((entry) => ({
+          name: entry.ally.name || entry.combatant.label || "Companion",
+          initiative: rollInitiative(Number(entry.ally.agility ?? 0)),
+        }))
+        .sort((a, b) => b.initiative.total - a.initiative.total);
+      const leadAllyInitiative = [playerInitiative, ...companionInitiatives.map((entry) => entry.initiative)]
+        .sort((a, b) => b.total - a.total)[0] ?? playerInitiative;
       const enemyInitiatives = fallbackOpponent
         .filter((entry) => entry.enemy)
         .map((entry) => ({
@@ -129,13 +149,14 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         }))
         .sort((a, b) => b.initiative.total - a.initiative.total);
       const leadEnemyInitiative = enemyInitiatives[0]?.initiative ?? rollInitiative(0);
-      const enemyStarts = leadEnemyInitiative.total > playerInitiative.total;
+      const enemyStarts = leadEnemyInitiative.total > leadAllyInitiative.total;
       setActiveEvent(null);
       setActiveBattle(event);
       setAdminPreviewMode(preview ? "battle" : null);
       setActiveEnemy(selectedEnemy);
       setBattleLayoutCombatants(stagedLayout);
       setBattleOpponents(fallbackOpponent);
+      setBattleCompanions(stagedCompanions);
       setSelectedOpponentKey(firstOpponent?.key ?? null);
       setCombatIndicators([]);
       setBattlePlayerHp(currentHealth);
@@ -151,7 +172,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       setBattleInventoryOpen(false);
       setBattleLog([
         `Initiative: you rolled ${playerInitiative.roll} + ${playerInitiative.bonus} = ${playerInitiative.total}. Fastest enemy: ${enemyInitiatives[0]?.name || "Enemy"} ${leadEnemyInitiative.roll} + ${leadEnemyInitiative.bonus} = ${leadEnemyInitiative.total}.`,
-        enemyStarts ? "The enemies act first." : "You act first.",
+        companionInitiatives.length > 0 ? `Companions joined: ${stagedCompanions.map((entry) => entry.ally.name || entry.combatant.label || "Ally").join(", ")}.` : "No companions joined this fight.",
+        enemyStarts ? "The enemies act first." : "Your side acts first.",
         event.battle_intro_text || `${selectedEnemy?.name || event.enemy_name || "An enemy"} blocks the trail.`,
         stagedOpponents.length > 0
           ? `Loaded ${stagedOpponents.length} staged combatant${stagedOpponents.length === 1 ? "" : "s"} from Battlefield Layout.`
@@ -205,6 +227,34 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
   }
 
+  async function loadStagedCompanions(event: MapEvent, staged: Array<BattleEventCombatant | MarkerBattleCombatant>): Promise<BattleCompanionState[]> {
+    try {
+      const activeStaged = staged.filter((combatant) => combatant.is_active && combatant.side === "companion" && (combatant.enemy_id || combatant.npc_id));
+      const loaded = await Promise.all(activeStaged.map(async (combatant) => {
+        const enemy = combatant.enemy_id ? await getEnemyLoadout(combatant.enemy_id) : null;
+        const npc = !enemy && combatant.npc_id ? await getNpcLoadout(combatant.npc_id) : null;
+        const ally = enemy ?? npc;
+
+        if (!ally) {
+          return null;
+        }
+
+        return {
+          key: combatant.id,
+          combatant,
+          ally,
+          hp: Number(ally.health ?? event.enemy_hp) || 30,
+          stamina: Number(ally.stamina ?? 0) || 0,
+          magika: Number(ally.magika ?? 0) || 0,
+        } satisfies BattleCompanionState;
+      }));
+
+      return loaded.filter(Boolean) as BattleCompanionState[];
+    } catch {
+      return [];
+    }
+  }
+
   function selectBattleTarget(key: string) {
     const opponent = battleOpponents.find((entry) => entry.key === key);
 
@@ -245,6 +295,10 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
   }
 
+  function updateCompanion(key: string, values: Partial<Pick<BattleCompanionState, "hp" | "stamina" | "magika">>) {
+    setBattleCompanions((current) => current.map((companion) => companion.key === key ? { ...companion, ...values } : companion));
+  }
+
   function chooseNextLivingOpponent(opponents: BattleOpponentState[], currentKey: string | null, currentHp: number) {
     return opponents
       .map((opponent) => opponent.key === currentKey ? { ...opponent, hp: currentHp } : opponent)
@@ -262,6 +316,114 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   function markSelectedOpponentHp(nextHp: number) {
     setBattleEnemyHp(nextHp);
     updateSelectedOpponent({ hp: nextHp });
+  }
+
+  function getOpponentDefense(opponent: BattleOpponentState | null) {
+    return Number(opponent?.enemy?.defense ?? activeEnemy?.defense ?? 10) + Number(opponent?.enemy?.armor_rating ?? activeEnemy?.armor_rating ?? 0);
+  }
+
+  function getOpponentArmorReduction(opponent: BattleOpponentState | null) {
+    return Math.floor(Number(opponent?.enemy?.armor_rating ?? activeEnemy?.armor_rating ?? 0) / 2);
+  }
+
+  function getSelectedOpponentSnapshot(selectedNextHp?: number) {
+    const selected = battleOpponents.find((opponent) => opponent.key === selectedOpponentKey) ?? null;
+
+    if (!selected) {
+      return activeEnemy
+        ? {
+          key: selectedOpponentKey ?? "primary",
+          combatant: null,
+          enemy: activeEnemy,
+          hp: selectedNextHp ?? battleEnemyHp,
+          stamina: battleEnemyStamina,
+          magika: battleEnemyMagika,
+        } satisfies BattleOpponentState
+        : null;
+    }
+
+    return {
+      ...selected,
+      hp: selectedNextHp ?? selected.hp,
+    };
+  }
+
+  function setSelectedOpponentSnapshotHp(opponent: BattleOpponentState, nextHp: number) {
+    if (opponent.key === selectedOpponentKey || opponent.key === "primary") {
+      markSelectedOpponentHp(nextHp);
+      return;
+    }
+
+    updateOpponent(opponent.key, { hp: nextHp });
+  }
+
+  async function resolveCompanionRound(selectedNextHp: number | undefined, context: BattleActionContext) {
+    const livingCompanions = battleCompanions.filter((companion) => companion.hp > 0);
+    const log: string[] = [];
+    let selectedHp = selectedNextHp ?? battleEnemyHp;
+
+    if (livingCompanions.length === 0 || battleFinished) {
+      return { selectedHp, log };
+    }
+
+    log.push(`Companion turn: ${livingCompanions.length} ally${livingCompanions.length === 1 ? "" : "ies"} act.`);
+
+    for (const companion of livingCompanions) {
+      const target = getSelectedOpponentSnapshot(selectedHp);
+
+      if (!target || target.hp <= 0) {
+        const nextTarget = chooseNextLivingOpponent(battleOpponents, selectedOpponentKey, selectedHp);
+        if (!nextTarget) {
+          break;
+        }
+        selectBattleTarget(nextTarget.key);
+        selectedHp = nextTarget.hp;
+      }
+
+      const activeTarget = getSelectedOpponentSnapshot(selectedHp);
+      if (!activeTarget || activeTarget.hp <= 0) {
+        break;
+      }
+
+      await delayEnemyTurn(320);
+      const companionName = companion.ally.name || companion.combatant.label || "Companion";
+      const ability = chooseWeightedEnemyAbility(companion.ally, companion.stamina, companion.magika, companion.hp);
+      const attackBonus = ability
+        ? getEnemyStatAttackBonus(companion.ally, ability.required_attribute) + Number(ability.attack_bonus ?? 0) + getEnemyAttackBonus(companion.ally)
+        : getEnemyStatAttackBonus(companion.ally, "strength") + getEnemyAttackBonus(companion.ally);
+      const roll = rollD20Attack(attackBonus, 0, getOpponentDefense(activeTarget), ability?.critical_chance ?? 0, ability?.critical_multiplier ?? 2);
+      const actionName = ability?.name || "Strike";
+
+      if (!roll.hit) {
+        pushCombatIndicator("enemy", "MISS", "#9ca3af");
+        log.push(`${companionName} uses ${actionName} and misses. d20 ${roll.roll} + bonuses = ${roll.total}.`);
+        continue;
+      }
+
+      if (ability?.stamina_cost) {
+        updateCompanion(companion.key, { stamina: Math.max(0, companion.stamina - ability.stamina_cost) });
+      }
+      if (ability?.magika_cost) {
+        updateCompanion(companion.key, { magika: Math.max(0, companion.magika - ability.magika_cost) });
+      }
+
+      const baseDamage = Math.max(1, Number(ability?.damage ?? companion.ally.attack_bonus ?? 3) || 3);
+      const reducedDamage = Math.max(1, baseDamage + getEnemyStatAttackBonus(companion.ally, ability?.required_attribute ?? "strength") - getOpponentArmorReduction(activeTarget));
+      const damage = roll.critical ? Math.ceil(reducedDamage * Number(ability?.critical_multiplier || 2)) : reducedDamage;
+      selectedHp = Math.max(0, selectedHp - damage);
+      setSelectedOpponentSnapshotHp(activeTarget, selectedHp);
+      pushCombatIndicator("enemy", roll.critical ? `CRITICAL -${damage}` : `-${damage}`, roll.critical ? "#f6d365" : "#ff5c5c");
+      log.push(`${companionName} uses ${actionName} for ${roll.critical ? "Critical " : ""}${damage}.`);
+
+      if (selectedHp <= 0) {
+        log.push(`${activeTarget.enemy?.name || "Target"} falls.`);
+        if (allOpponentsDefeated(selectedHp)) {
+          break;
+        }
+      }
+    }
+
+    return { selectedHp, log };
   }
 
   function getEnemyRoundOpponents(selectedNextHp?: number) {
@@ -284,9 +446,9 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       .map((entry) => entry.opponent);
   }
 
-  function pushCombatIndicator(target: CombatIndicator["target"], text: string, color: string) {
+  function pushCombatIndicator(target: CombatIndicator["target"], text: string, color: string, targetKey?: string | null) {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setCombatIndicators((current) => [...current, { id, target, text, color }].slice(-8));
+    setCombatIndicators((current) => [...current, { id, target, targetKey, text, color }].slice(-8));
     setTimeout(() => {
       setCombatIndicators((current) => current.filter((indicator) => indicator.id !== id));
     }, 1150);
@@ -355,6 +517,14 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       }
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
+      const allies = await resolveCompanionRound(battleEnemyHp, context);
+      nextLog.push(...allies.log);
+      if (allOpponentsDefeated(allies.selectedHp)) {
+        setBattleFinished("victory");
+        setBattleTurnPhase("finished");
+        setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+        return;
+      }
       const counter = await resolveEnemyRound(context);
       const nextPlayerHp = Math.max(0, Math.min(combatResources.maxHp, battlePlayerHp + healthRestore) - counter.damage);
       nextLog.push(...counter.log);
@@ -377,7 +547,15 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${ability.name} misses.`);
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
-      const counter = await resolveEnemyRound(context);
+      const allies = await resolveCompanionRound(battleEnemyHp, context);
+      nextLog.push(...allies.log);
+      if (allOpponentsDefeated(allies.selectedHp)) {
+        setBattleFinished("victory");
+        setBattleTurnPhase("finished");
+        setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+        return;
+      }
+      const counter = await resolveEnemyRound(context, allies.selectedHp);
       const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
       nextLog.push(...counter.log);
       await savePlayerHealth(nextPlayerHp, context.previewMode);
@@ -436,11 +614,19 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
     setBattleTurnPhase("enemy");
     await delayEnemyTurn();
-    const counter = await resolveEnemyRound(context, nextEnemyHp);
+    const allies = await resolveCompanionRound(nextEnemyHp, context);
+    nextLog.push(...allies.log);
+    if (allOpponentsDefeated(allies.selectedHp)) {
+      setBattleFinished("victory");
+      setBattleTurnPhase("finished");
+      setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+      return;
+    }
+    const counter = await resolveEnemyRound(context, allies.selectedHp);
     const nextPlayerHp = Math.max(0, postAbilityPlayerHp - counter.damage);
     nextLog.push(...counter.log);
 
-    markSelectedOpponentHp(nextEnemyHp);
+    markSelectedOpponentHp(allies.selectedHp);
     await savePlayerHealth(nextPlayerHp, context.previewMode);
 
     if (nextPlayerHp <= 0) {
@@ -492,7 +678,15 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${actionName} misses.`);
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
-      const counter = await resolveEnemyRound(context);
+      const allies = await resolveCompanionRound(battleEnemyHp, context);
+      nextLog.push(...allies.log);
+      if (allOpponentsDefeated(allies.selectedHp)) {
+        setBattleFinished("victory");
+        setBattleTurnPhase("finished");
+        setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+        return;
+      }
+      const counter = await resolveEnemyRound(context, allies.selectedHp);
       const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
       nextLog.push(...counter.log);
       await savePlayerHealth(nextPlayerHp, context.previewMode);
@@ -543,10 +737,18 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
     setBattleTurnPhase("enemy");
     await delayEnemyTurn();
-    const counter = await resolveEnemyRound(context, nextEnemyHp);
+    const allies = await resolveCompanionRound(nextEnemyHp, context);
+    nextLog.push(...allies.log);
+    if (allOpponentsDefeated(allies.selectedHp)) {
+      setBattleFinished("victory");
+      setBattleTurnPhase("finished");
+      setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+      return;
+    }
+    const counter = await resolveEnemyRound(context, allies.selectedHp);
     const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
     nextLog.push(...counter.log);
-    markSelectedOpponentHp(nextEnemyHp);
+    markSelectedOpponentHp(allies.selectedHp);
     await savePlayerHealth(nextPlayerHp, context.previewMode);
 
     if (nextPlayerHp <= 0) {
@@ -601,22 +803,24 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const enemy = opponent.enemy;
     const enemyName = enemy?.name || activeBattle?.enemy_name || "Enemy";
     const ability = chooseWeightedEnemyAbility(enemy, opponent.stamina, opponent.magika, opponent.hp);
-    const playerDefense = getPlayerDefense(context.equippedItems, extraPlayerDefense);
+    const target = chooseEnemyTarget(context.equippedItems, extraPlayerDefense);
+    const targetDefense = target.kind === "player" ? getPlayerDefense(context.equippedItems, extraPlayerDefense) : getCompanionDefense(target.companion);
+    const targetName = target.kind === "player" ? "you" : (target.companion.ally.name || target.companion.combatant.label || "companion");
 
     if (!enemy) {
       return { damage: 0, log: [] };
     }
 
     if (!ability) {
-      const roll = rollD20Attack(getEnemyStatAttackBonus(enemy, "strength"), getEnemyAttackBonus(enemy), playerDefense, 0, 2);
+      const roll = rollD20Attack(getEnemyStatAttackBonus(enemy, "strength"), getEnemyAttackBonus(enemy), targetDefense, 0, 2);
       if (!roll.hit) {
-        pushCombatIndicator("player", "MISS", "#9ca3af");
-        return { damage: 0, log: [`${enemyName} misses. d20 ${roll.roll} + bonuses = ${roll.total} vs Defense ${playerDefense}.`] };
+        pushCombatIndicator(target.kind === "player" ? "player" : "companion", "MISS", "#9ca3af", target.kind === "companion" ? target.companion.key : null);
+        return { damage: 0, log: [`${enemyName} attacks ${targetName} and misses. d20 ${roll.roll} + bonuses = ${roll.total} vs Defense ${targetDefense}.`] };
       }
       const damage = Math.max(1, (Number(activeBattle?.enemy_attack_damage) || 5) - extraPlayerDefense);
       const totalDamage = roll.critical ? Math.ceil(damage * 2) : damage;
-      pushCombatIndicator("player", roll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, roll.critical ? "#f6d365" : "#ff5c5c");
-      return { damage: totalDamage, log: [`${enemyName} hits for ${roll.critical ? "Critical " : ""}${totalDamage}.`] };
+      applyEnemyDamageToTarget(target, totalDamage, roll.critical);
+      return { damage: target.kind === "player" ? totalDamage : 0, log: [`${enemyName} hits ${targetName} for ${roll.critical ? "Critical " : ""}${totalDamage}.`] };
     }
 
     if (ability.stamina_cost > 0) {
@@ -657,19 +861,46 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     const statBonus = getEnemyStatAttackBonus(enemy, ability.required_attribute);
-    const roll = rollD20Attack(statBonus, Number(ability.attack_bonus ?? 0) + getEnemyAttackBonus(enemy), playerDefense, ability.critical_chance, ability.critical_multiplier);
+    const roll = rollD20Attack(statBonus, Number(ability.attack_bonus ?? 0) + getEnemyAttackBonus(enemy), targetDefense, ability.critical_chance, ability.critical_multiplier);
     if (!roll.hit) {
-      pushCombatIndicator("player", "MISS", "#9ca3af");
-      return { damage: 0, log: [`${enemyName} uses ${ability.name} and misses. d20 ${roll.roll} + bonuses = ${roll.total} vs Defense ${playerDefense}.`] };
+      pushCombatIndicator(target.kind === "player" ? "player" : "companion", "MISS", "#9ca3af", target.kind === "companion" ? target.companion.key : null);
+      return { damage: 0, log: [`${enemyName} uses ${ability.name} on ${targetName} and misses. d20 ${roll.roll} + bonuses = ${roll.total} vs Defense ${targetDefense}.`] };
     }
 
     const baseDamage = Math.max(1, Number(ability.damage) || 1);
     const reducedDamage = Math.max(1, baseDamage - extraPlayerDefense);
     const damage = roll.critical ? Math.ceil(reducedDamage * Number(ability.critical_multiplier || 2)) : reducedDamage;
     const statusText = ability.status_effect !== "none" ? ` ${ability.status_effect} may linger.` : "";
-    pushCombatIndicator("player", roll.critical ? `CRITICAL -${damage}` : `-${damage}`, roll.critical ? "#f6d365" : "#ff5c5c");
-    pushStatusIndicator("player", ability.status_effect, ability.effect_amount);
-    return { damage, log: [`${enemyName} uses ${ability.name} for ${roll.critical ? "Critical " : ""}${damage}.${statusText}`] };
+    applyEnemyDamageToTarget(target, damage, roll.critical);
+    pushStatusIndicator(target.kind === "player" ? "player" : "companion", ability.status_effect, ability.effect_amount, target.kind === "companion" ? target.companion.key : null);
+    return { damage: target.kind === "player" ? damage : 0, log: [`${enemyName} uses ${ability.name} on ${targetName} for ${roll.critical ? "Critical " : ""}${damage}.${statusText}`] };
+  }
+
+  function chooseEnemyTarget(equippedItems: Record<string, ItemDefinition | null>, extraDefense = 0): { kind: "player"; defense: number } | { kind: "companion"; companion: BattleCompanionState; defense: number } {
+    const livingCompanions = battleCompanions.filter((companion) => companion.hp > 0);
+    const pool = [
+      { kind: "player" as const, defense: getPlayerDefense(equippedItems, extraDefense) },
+      ...livingCompanions.map((companion) => ({ kind: "companion" as const, companion, defense: getCompanionDefense(companion) })),
+    ];
+
+    return pool[Math.floor(Math.random() * pool.length)] ?? { kind: "player", defense: getPlayerDefense(equippedItems, extraDefense) };
+  }
+
+  function getCompanionDefense(companion: BattleCompanionState) {
+    return Number(companion.ally.defense ?? 10) + Number(companion.ally.armor_rating ?? 0);
+  }
+
+  function applyEnemyDamageToTarget(target: ReturnType<typeof chooseEnemyTarget>, damage: number, critical: boolean) {
+    const text = critical ? `CRITICAL -${damage}` : `-${damage}`;
+    const color = critical ? "#f6d365" : "#ff5c5c";
+
+    if (target.kind === "companion") {
+      updateCompanion(target.companion.key, { hp: Math.max(0, target.companion.hp - damage) });
+      pushCombatIndicator("companion", text, color, target.companion.key);
+      return;
+    }
+
+    pushCombatIndicator("player", text, color);
   }
 
   function getPlayerDefense(equippedItems: Record<string, ItemDefinition | null>, extraDefense = 0) {
@@ -746,17 +977,17 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     log.push(`${status} applied${duration ? ` for ${duration} turns` : ""}.`);
   }
 
-  function pushStatusIndicator(target: CombatIndicator["target"], status: string | null | undefined, amount: number) {
+  function pushStatusIndicator(target: CombatIndicator["target"], status: string | null | undefined, amount: number, targetKey?: string | null) {
     if (!status || status === "none" || amount <= 0) {
       return;
     }
 
     if (status === "poison") {
-      pushCombatIndicator(target, `Poison -${amount}`, "#b55cff");
+      pushCombatIndicator(target, `Poison -${amount}`, "#b55cff", targetKey);
     } else if (status === "burn") {
-      pushCombatIndicator(target, `Burn -${amount}`, "#ff8a2a");
+      pushCombatIndicator(target, `Burn -${amount}`, "#ff8a2a", targetKey);
     } else if (status === "regen") {
-      pushCombatIndicator(target, `+${amount}`, "#42d77d");
+      pushCombatIndicator(target, `+${amount}`, "#42d77d", targetKey);
     }
   }
 
@@ -877,6 +1108,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     battleEnemyMagika,
     setBattleEnemyMagika,
     battleOpponents,
+    battleCompanions,
     battleLayoutCombatants,
     selectedOpponentKey,
     battleLog,

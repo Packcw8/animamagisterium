@@ -8,7 +8,7 @@ import { BattleEventCombatant, MarkerBattleCombatant } from "../../services/batt
 import { GameToast, type GameToastData } from "../map/GameToast";
 import { BattleEventScreen } from "./BattleEventScreen";
 import { type CombatIndicator } from "./BattleDisplay";
-import { type BattleOpponentState, type BattleTurnPhase } from "./useBattleEncounter";
+import { type BattleCompanionState, type BattleOpponentState, type BattleTurnPhase } from "./useBattleEncounter";
 
 type ActiveBattleViewProps = {
   character: CharacterWithDetails;
@@ -22,6 +22,7 @@ type ActiveBattleViewProps = {
   enemyMana: number;
   activeEnemy: EnemyWithLoadout | NpcWithLoadout | null;
   opponents: BattleOpponentState[];
+  companions: BattleCompanionState[];
   layoutCombatants: Array<BattleEventCombatant | MarkerBattleCombatant>;
   selectedOpponentKey: string | null;
   equippedAbilities: Array<AbilityDefinition | null>;
@@ -62,6 +63,7 @@ export function ActiveBattleView({
   enemyMana,
   activeEnemy,
   opponents,
+  companions,
   layoutCombatants,
   selectedOpponentKey,
   equippedAbilities,
@@ -109,6 +111,7 @@ export function ActiveBattleView({
         enemyMana={enemyMana}
         activeEnemy={activeEnemy}
         opponents={opponents}
+        companions={companions}
         layoutCombatants={layoutCombatants}
         selectedOpponentKey={selectedOpponentKey}
         equippedAbilities={equippedAbilities}
