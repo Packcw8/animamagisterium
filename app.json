@@ -31,12 +31,13 @@
           "motionPermission": "Anima Magisterium uses motion and fitness data to count steps toward fantasy journey progress."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "./plugins/withFmtXcode26Fix"
     ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.packcw8.animamagisterium",
-      "buildNumber": "9",
+      "buildNumber": "10",
       "icon": "./assets/icon.png",
       "infoPlist": {
         "NSCameraUsageDescription": "Anima Magisterium uses the camera so you can take a character photo for avatar generation.",
