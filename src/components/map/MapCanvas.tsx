@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { MutableRefObject } from "react";
-import { Image, ImageSourcePropType, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, ImageSourcePropType, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { MapMarker } from "../../services/mapService";
 import { getMarkerRenderStyle } from "../../utils/mapVisibility";
 import { colors, fonts } from "../theme";
@@ -71,34 +71,75 @@ export function OverworldMapCanvas({
   canCapturePointer: boolean;
 }) {
   const pinch = usePinchZoom(onPinchZoom);
+  const nativeViewport = useNativeMapViewport(viewportRef);
+
+  const surface = (
+    <View
+      style={[
+        styles.mapSurface,
+        {
+          width: scaledMapSize.width,
+          height: scaledMapSize.height,
+        },
+      ]}
+      {...(Platform.OS === "web"
+        ? ({
+            onClick: (event: unknown) => {
+              if (pinch.shouldSuppressClick()) {
+                return;
+              }
+              shared.onMapPointer?.(event);
+            },
+            onTouchStart: pinch.onTouchStart,
+            onTouchMove: pinch.onTouchMove,
+            onTouchEnd: pinch.onTouchEnd,
+            onTouchCancel: pinch.onTouchEnd,
+            onStartShouldSetResponder: () => canCapturePointer,
+          } as object)
+        : ({
+            onTouchStart: pinch.onTouchStart,
+            onTouchMove: pinch.onTouchMove,
+            onTouchEnd: (event: unknown) => {
+              pinch.onTouchEnd(event as TouchEventLike);
+              if (canCapturePointer && !pinch.shouldSuppressClick()) {
+                shared.onMapPointer?.(withNativeTargetSize(event, scaledMapSize.width, scaledMapSize.height));
+              }
+            },
+          } as object))}
+    >
+      <Image source={imageSource} style={styles.mapImage} {...({ pointerEvents: "none" } as object)} />
+      <MapCanvasLayers {...shared} markerSize={34} />
+    </View>
+  );
+
+  if (Platform.OS !== "web") {
+    return (
+      <ScrollView
+        ref={nativeViewport.verticalRef}
+        style={styles.nativeViewport}
+        contentContainerStyle={{ minHeight: scaledMapSize.height }}
+        nestedScrollEnabled
+        scrollEventThrottle={16}
+        onLayout={nativeViewport.onLayout}
+        onScroll={nativeViewport.onVerticalScroll}
+      >
+        <ScrollView
+          ref={nativeViewport.horizontalRef}
+          horizontal
+          nestedScrollEnabled
+          scrollEventThrottle={16}
+          showsHorizontalScrollIndicator
+          onScroll={nativeViewport.onHorizontalScroll}
+        >
+          {surface}
+        </ScrollView>
+      </ScrollView>
+    );
+  }
 
   return (
     <View ref={viewportRef as never} style={styles.viewport} {...({ onWheel } as object)}>
-      <View
-        style={[
-          styles.mapSurface,
-          {
-            width: scaledMapSize.width,
-            height: scaledMapSize.height,
-          },
-        ]}
-        {...({
-          onClick: (event: unknown) => {
-            if (pinch.shouldSuppressClick()) {
-              return;
-            }
-            shared.onMapPointer?.(event);
-          },
-          onTouchStart: pinch.onTouchStart,
-          onTouchMove: pinch.onTouchMove,
-          onTouchEnd: pinch.onTouchEnd,
-          onTouchCancel: pinch.onTouchEnd,
-          onStartShouldSetResponder: () => canCapturePointer,
-        } as object)}
-      >
-        <Image source={imageSource} style={styles.mapImage} {...({ pointerEvents: "none" } as object)} />
-        <MapCanvasLayers {...shared} markerSize={34} />
-      </View>
+      {surface}
     </View>
   );
 }
@@ -129,38 +170,105 @@ export function MiniMapCanvas({
     }
   }
 
-  return (
-    <View style={[styles.miniMapViewport, { height: surfaceHeight } as object]}>
-      <View
-        style={[
-          styles.miniMapSurface,
-          {
-            width: surfaceWidth,
-            height: surfaceHeight,
-          },
-        ]}
-        {...(canCapturePointer
+  const miniMapSurface = (
+    <View
+      style={[
+        styles.miniMapSurface,
+        {
+          width: surfaceWidth,
+          height: surfaceHeight,
+        },
+      ]}
+      {...(canCapturePointer
+        ? Platform.OS === "web"
           ? ({
               onClick: shared.onMapPointer,
               onStartShouldSetResponder: () => true,
             } as object)
-          : {})}
-      >
-        {imageUri ? (
-          <Image
-            source={{ uri: imageUri }}
-            style={styles.miniMapImage}
-            resizeMode="stretch"
-            onLoad={handleMiniMapImageLoad}
-            {...({ pointerEvents: "none" } as object)}
-          />
-        ) : (
-          <View style={styles.miniMapFallback}><Text style={styles.copy}>{fallbackText}</Text></View>
-        )}
-        <MapCanvasLayers {...shared} markerSize={25} mini />
-      </View>
+          : ({
+              onTouchEnd: (event: unknown) => shared.onMapPointer?.(withNativeTargetSize(event, surfaceWidth, surfaceHeight)),
+            } as object)
+        : {})}
+    >
+      {imageUri ? (
+        <Image
+          source={{ uri: imageUri }}
+          style={styles.miniMapImage}
+          resizeMode="stretch"
+          onLoad={handleMiniMapImageLoad}
+          {...({ pointerEvents: "none" } as object)}
+        />
+      ) : (
+        <View style={styles.miniMapFallback}><Text style={styles.copy}>{fallbackText}</Text></View>
+      )}
+      <MapCanvasLayers {...shared} markerSize={25} mini />
     </View>
   );
+
+  if (Platform.OS !== "web") {
+    return (
+      <ScrollView style={[styles.nativeMiniMapViewport, { height: surfaceHeight }]} nestedScrollEnabled>
+        <ScrollView horizontal nestedScrollEnabled>
+          {miniMapSurface}
+        </ScrollView>
+      </ScrollView>
+    );
+  }
+
+  return (
+    <View style={[styles.miniMapViewport, { height: surfaceHeight } as object]}>
+      {miniMapSurface}
+    </View>
+  );
+}
+
+function useNativeMapViewport(viewportRef: MutableRefObject<MapViewportRef | null>) {
+  const verticalRef = useRef<ScrollView | null>(null);
+  const horizontalRef = useRef<ScrollView | null>(null);
+  const metricsRef = useRef({ left: 0, top: 0, width: 360, height: 520 });
+
+  function syncViewport() {
+    viewportRef.current = {
+      scrollLeft: metricsRef.current.left,
+      scrollTop: metricsRef.current.top,
+      clientWidth: metricsRef.current.width,
+      clientHeight: metricsRef.current.height,
+      scrollTo: ({ left, top }) => {
+        metricsRef.current.left = Math.max(0, Number(left) || 0);
+        metricsRef.current.top = Math.max(0, Number(top) || 0);
+        horizontalRef.current?.scrollTo({ x: metricsRef.current.left, animated: true });
+        verticalRef.current?.scrollTo({ y: metricsRef.current.top, animated: true });
+      },
+    };
+  }
+
+  return {
+    verticalRef,
+    horizontalRef,
+    onLayout: (event: LayoutChangeEvent) => {
+      metricsRef.current.width = event.nativeEvent.layout.width;
+      metricsRef.current.height = event.nativeEvent.layout.height;
+      syncViewport();
+    },
+    onVerticalScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      metricsRef.current.top = event.nativeEvent.contentOffset.y;
+      syncViewport();
+    },
+    onHorizontalScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      metricsRef.current.left = event.nativeEvent.contentOffset.x;
+      syncViewport();
+    },
+  };
+}
+
+function withNativeTargetSize(event: unknown, width: number, height: number) {
+  return {
+    ...(typeof event === "object" && event ? event : {}),
+    currentTarget: {
+      clientWidth: width,
+      clientHeight: height,
+    },
+  };
 }
 
 function MapCanvasLayers({
@@ -375,6 +483,14 @@ const styles = StyleSheet.create({
     userSelect: "none",
     WebkitOverflowScrolling: "touch",
   } as object,
+  nativeViewport: {
+    height: 520,
+    marginHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "#061010",
+  },
   mapSurface: {
     position: "relative",
     transformOrigin: "0 0",
@@ -404,6 +520,13 @@ const styles = StyleSheet.create({
     touchAction: "pan-x pan-y",
     overscrollBehavior: "contain",
   } as object,
+  nativeMiniMapViewport: {
+    width: "100%",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
   miniMapImage: {
     position: "absolute",
     width: "100%",
