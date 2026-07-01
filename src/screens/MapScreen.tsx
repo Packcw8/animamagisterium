@@ -61,7 +61,7 @@ import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, g
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
 import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, unequipInventorySlot } from "../services/inventoryService";
-import { isNativePedometerAvailable, requestPedometerPermission, watchPedometerDistance, type PedometerSubscription } from "../services/nativePedometerService";
+import { isNativePedometerAvailable, requestPedometerPermission, startPedometerDistancePolling, type PedometerSubscription } from "../services/nativePedometerService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission, scheduleLocalNotification } from "../services/pushNotificationService";
@@ -1549,12 +1549,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
-    void requestPushNotificationPermission().then((permission) => {
-      if (!permission.granted) {
-        console.warn("[notifications] trail alerts are disabled", permission.status);
-      }
-    });
-
     if (Platform.OS !== "web") {
       if (pedometerSubscriptionRef.current) {
         return;
@@ -1583,7 +1577,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         });
         setIsTracking(true);
         setGpsMessage("Pedometer is tracking steps toward your active path.");
-        pedometerSubscriptionRef.current = watchPedometerDistance((sample) => {
+        pedometerSubscriptionRef.current = await startPedometerDistancePolling((sample) => {
           const deltaMeters = Math.max(0, sample.distanceMeters - nativePedometerMetersRef.current);
           nativePedometerMetersRef.current = sample.distanceMeters;
           if (deltaMeters <= 0) {
@@ -1596,6 +1590,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             blockedReason: null,
           });
           void advanceActiveRouteByMeters(deltaMeters);
+        });
+        void requestPushNotificationPermission().then((permission) => {
+          if (!permission.granted) {
+            console.warn("[notifications] trail alerts are disabled", permission.status);
+          }
         });
       })().catch((error) => {
         setIsTracking(false);
@@ -1612,6 +1611,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (watchId.current !== null) {
       return;
     }
+
+    void requestPushNotificationPermission().then((permission) => {
+      if (!permission.granted) {
+        console.warn("[notifications] trail alerts are disabled", permission.status);
+      }
+    });
 
     setIsTracking(true);
     setGpsMessage("GPS is tracking distance only. Real coordinates are never mapped to the fantasy world.");
