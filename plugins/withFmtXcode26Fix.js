@@ -3,8 +3,19 @@ const fs = require("fs");
 const path = require("path");
 
 const patchBlock = `
-    # Animamagisterium: Xcode 26 can compile fmt with C++20 consteval paths
-    # that fail under the React Native 0.79 pod setup. Keep fmt on C++17.
+    # Animamagisterium: Xcode 26 / Apple clang 21 rejects fmt's consteval
+    # format-string path. Patch fmt's generated pod headers after CocoaPods
+    # installs them, then keep the fmt pod itself on C++17.
+    fmt_base = File.join(installer.sandbox.pod_dir('fmt'), 'include', 'fmt', 'base.h')
+    if File.exist?(fmt_base)
+      content = File.read(fmt_base)
+      patched = content.gsub(/^#\\s*define FMT_USE_CONSTEVAL 1$/, '#  define FMT_USE_CONSTEVAL 0')
+      if patched != content
+        File.chmod(0644, fmt_base)
+        File.write(fmt_base, patched)
+      end
+    end
+
     installer.pods_project.targets.each do |target|
       next unless target.name == 'fmt'
 
@@ -16,7 +27,7 @@ const patchBlock = `
 `;
 
 function patchPodfile(contents) {
-  if (contents.includes("Animamagisterium: Xcode 26 can compile fmt")) {
+  if (contents.includes("Animamagisterium: Xcode 26 / Apple clang 21")) {
     return contents;
   }
 
