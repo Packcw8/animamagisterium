@@ -31,8 +31,13 @@
       "bundleIdentifier": "com.packcw8.animamagisterium",
       "buildNumber": "9",
       "icon": "./assets/icon.png",
+      "entitlements": {
+        "com.apple.developer.healthkit": true
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "Anima Magisterium uses the camera so you can take a character photo for avatar generation.",
+        "NSHealthShareUsageDescription": "Anima Magisterium uses step count and walking distance data to update fantasy journey progress.",
+        "NSHealthUpdateUsageDescription": "Anima Magisterium does not write health data.",
         "NSPhotoLibraryUsageDescription": "Anima Magisterium uses your photo library so you can choose a character photo for avatar generation.",
         "NSLocationWhenInUseUsageDescription": "Anima Magisterium uses location while the app is open to estimate walking distance for fantasy journeys.",
         "NSMotionUsageDescription": "Anima Magisterium may use motion and fitness data in future native builds to support treadmill and step-based journey progress.",

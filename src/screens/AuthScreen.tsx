@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { Screen } from "../components/Screen";
@@ -48,55 +48,70 @@ export function AuthScreen({ connectionStatus }: AuthScreenProps) {
   }
 
   return (
-    <Screen>
+    <Screen scroll={false}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.keyboardWrap}>
-        <View style={styles.header}>
-          <BrandLogo size={70} />
-          <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
-          <Text style={styles.subtitle}>Enter the first gate</Text>
-          <View style={[styles.connection, connectionStatus?.ok ? styles.connected : styles.disconnected]}>
-            <Text style={styles.connectionText}>{connectionStatus?.message ?? "Testing Supabase..."}</Text>
+        <ScrollView
+          keyboardDismissMode="none"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.header}>
+            <BrandLogo size={70} />
+            <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
+            <Text style={styles.subtitle}>Enter the first gate</Text>
+            <View style={[styles.connection, connectionStatus?.ok ? styles.connected : styles.disconnected]}>
+              <Text style={styles.connectionText}>{connectionStatus?.message ?? "Testing Supabase..."}</Text>
+            </View>
           </View>
-        </View>
 
-        <Frame style={styles.card}>
-          <View style={styles.cardHeadingRow}>
-            <Text style={styles.cardTitle}>{mode === "signin" ? "Sign In" : "Create Account"}</Text>
-            <Text style={styles.cardBadge}>{mode === "signin" ? "RETURN" : "NEW"}</Text>
-          </View>
-          <Text style={styles.copy}>Save your character, portrait, inventory, and journey progress.</Text>
+          <Frame style={styles.card}>
+            <View style={styles.cardHeadingRow}>
+              <Text style={styles.cardTitle}>{mode === "signin" ? "Sign In" : "Create Account"}</Text>
+              <Text style={styles.cardBadge}>{mode === "signin" ? "RETURN" : "NEW"}</Text>
+            </View>
+            <Text style={styles.copy}>Save your character, portrait, inventory, and journey progress.</Text>
 
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            placeholder="Email"
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-          />
-          <TextInput
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            textContentType={mode === "signin" ? "password" : "newPassword"}
-            placeholder="Password"
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-          />
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              editable={!isLoading}
+              keyboardType="email-address"
+              returnKeyType="next"
+              textContentType="emailAddress"
+              placeholder="Email"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+            />
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete={mode === "signin" ? "current-password" : "new-password"}
+              editable={!isLoading}
+              returnKeyType="done"
+              secureTextEntry
+              textContentType={mode === "signin" ? "password" : "newPassword"}
+              placeholder="Password"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+            />
 
-          <Pressable style={[styles.primaryButton, (isLoading || !email || !password) && styles.disabledButton]} onPress={() => void handleSubmit()} disabled={isLoading || !email || !password}>
-            {isLoading ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>{mode === "signin" ? "Sign In" : "Sign Up"}</Text>}
-          </Pressable>
+            <Pressable style={[styles.primaryButton, (isLoading || !email || !password) && styles.disabledButton]} onPress={() => void handleSubmit()} disabled={isLoading || !email || !password}>
+              {isLoading ? <ActivityIndicator color="#120e08" /> : <Text style={styles.primaryText}>{mode === "signin" ? "Sign In" : "Sign Up"}</Text>}
+            </Pressable>
 
-          <Pressable style={styles.switchButton} onPress={() => setMode(mode === "signin" ? "signup" : "signin")}>
-            <Text style={styles.switchText}>{mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}</Text>
-          </Pressable>
+            <Pressable style={styles.switchButton} onPress={() => setMode(mode === "signin" ? "signup" : "signin")}>
+              <Text style={styles.switchText}>{mode === "signin" ? "Need an account? Create one" : "Already have an account? Sign in"}</Text>
+            </Pressable>
 
-          {message ? <Text style={styles.message}>{message}</Text> : null}
-        </Frame>
+            {message ? <Text style={styles.message}>{message}</Text> : null}
+          </Frame>
+        </ScrollView>
       </KeyboardAvoidingView>
     </Screen>
   );
@@ -105,6 +120,9 @@ export function AuthScreen({ connectionStatus }: AuthScreenProps) {
 const styles = StyleSheet.create({
   keyboardWrap: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: "center",
     paddingVertical: 18,
   },

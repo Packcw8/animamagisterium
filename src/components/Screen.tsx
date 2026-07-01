@@ -12,7 +12,12 @@ export function Screen({ children, scroll = true }: ScreenProps) {
   return (
     <SafeAreaView style={styles.bg}>
       {scroll ? (
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardDismissMode="none"
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scroll}
+        >
           {content}
         </ScrollView>
       ) : (
