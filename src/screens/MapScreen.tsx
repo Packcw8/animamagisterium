@@ -61,6 +61,7 @@ import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, g
 import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
 import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, unequipInventorySlot } from "../services/inventoryService";
+import { isNativePedometerAvailable, requestPedometerPermission, watchPedometerDistance, type PedometerSubscription } from "../services/nativePedometerService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
@@ -556,6 +557,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [playerUnlockedMarkerIds, setPlayerUnlockedMarkerIds] = useState<Set<string>>(new Set());
   const viewportRef = useRef<MapViewportRef | null>(null);
   const watchId = useRef<number | null>(null);
+  const pedometerSubscriptionRef = useRef<PedometerSubscription | null>(null);
+  const nativePedometerMetersRef = useRef(0);
   const distanceWalkedRef = useRef(0);
   const routeRef = useRef(fallbackRoute);
   const routeDirectionRef = useRef<"forward" | "reverse">("forward");
@@ -763,6 +766,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       if (watchId.current !== null && typeof navigator !== "undefined" && navigator.geolocation) {
         navigator.geolocation.clearWatch(watchId.current);
       }
+      if (pedometerSubscriptionRef.current) {
+        pedometerSubscriptionRef.current.remove();
+        pedometerSubscriptionRef.current = null;
+      }
     };
   }, []);
 
@@ -931,6 +938,59 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     movementCandidateRef.current = null;
     setPlayerMovementState(desired);
     return { state: desired, changed: true };
+  }
+
+  async function advanceActiveRouteByMeters(cleanMeters: number, telemetry?: { last_lat?: number | null; last_lng?: number | null }) {
+    if (cleanMeters <= 0) {
+      return;
+    }
+
+    const activeRoute = routeRef.current;
+    const direction = routeDirectionRef.current;
+    const nextDistance = direction === "reverse"
+      ? Math.max(0, distanceWalkedRef.current - cleanMeters)
+      : Math.min(activeRoute.distance_required_meters, distanceWalkedRef.current + cleanMeters);
+    const nextProgress = Math.min(100, (nextDistance / activeRoute.distance_required_meters) * 100);
+    const nextMapPosition = getPointOnRoute(activeRoute.path_points, nextProgress);
+
+    distanceWalkedRef.current = nextDistance;
+    setSavedPlayerPosition(nextMapPosition);
+    setDistanceWalked(nextDistance);
+    setRouteProgressRows((current) => upsertRouteProgressRow(current, activeRoute.id, nextProgress));
+    await saveRouteProgress(activeRoute.id, {
+      distance_walked_meters: nextDistance,
+      progress_percent: nextProgress,
+      current_x_percent: nextMapPosition.x,
+      current_y_percent: nextMapPosition.y,
+      last_lat: telemetry?.last_lat ?? null,
+      last_lng: telemetry?.last_lng ?? null,
+      travel_direction: direction,
+      is_current: true,
+    });
+    const nextTotal = await incrementCharacterDistanceWalked(character.id, cleanMeters);
+    if (nextTotal !== null) {
+      onCharacterUpdated({
+        ...character,
+        total_distance_walked_meters: nextTotal,
+      });
+    }
+    void recordSocialContribution({
+      userId: character.user_id,
+      metricType: "distance_walked_meters",
+      amount: cleanMeters,
+      sourceType: "route",
+      sourceId: activeRoute.id,
+    });
+    if (activeRoute.mini_map_id) {
+      void savePlayerMapState({
+        active_mini_map_id: activeRoute.mini_map_id,
+        current_x_percent: nextMapPosition.x,
+        current_y_percent: nextMapPosition.y,
+      });
+    }
+    setGpsMessage(direction === "reverse" && nextDistance <= 0
+      ? "You returned to the starting sign post."
+      : `${Platform.OS === "web" ? "GPS" : "Pedometer"} counted ${Math.round(cleanMeters)}m. Route progress is saved.`);
   }
 
   async function createSeasonFromAdmin() {
@@ -1466,7 +1526,51 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
 
     if (Platform.OS !== "web") {
-      setGpsMessage("Native walk tracking is not enabled in this build yet. Use the browser map for GPS walks until the iOS pedometer/location pass is added.");
+      if (pedometerSubscriptionRef.current) {
+        return;
+      }
+      void (async () => {
+        const available = await isNativePedometerAvailable();
+        if (!available) {
+          setGpsMessage("Pedometer tracking is not available on this device.");
+          return;
+        }
+        const granted = await requestPedometerPermission();
+        if (!granted) {
+          setGpsMessage("Motion permission is required for iOS pedometer walking.");
+          return;
+        }
+
+        nativePedometerMetersRef.current = 0;
+        movementStateRef.current = "MOVING";
+        movementCandidateRef.current = null;
+        setPlayerMovementState("MOVING");
+        setMovementStatus({
+          label: "MOVING",
+          speedMph: 0,
+          countedMeters: 0,
+          blockedReason: null,
+        });
+        setIsTracking(true);
+        setGpsMessage("iOS pedometer is tracking steps only. Keep the app open while walking.");
+        pedometerSubscriptionRef.current = watchPedometerDistance((sample) => {
+          const deltaMeters = Math.max(0, sample.distanceMeters - nativePedometerMetersRef.current);
+          nativePedometerMetersRef.current = sample.distanceMeters;
+          if (deltaMeters <= 0) {
+            return;
+          }
+          setMovementStatus({
+            label: "MOVING",
+            speedMph: 0,
+            countedMeters: deltaMeters,
+            blockedReason: null,
+          });
+          void advanceActiveRouteByMeters(deltaMeters);
+        });
+      })().catch((error) => {
+        setIsTracking(false);
+        setGpsMessage(getErrorMessage(error, "Unable to start iOS pedometer tracking."));
+      });
       return;
     }
 
@@ -1546,52 +1650,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           }
 
           const cleanMeters = countedMeters;
-          const direction = routeDirectionRef.current;
-          const nextDistance = direction === "reverse"
-            ? Math.max(0, distanceWalkedRef.current - cleanMeters)
-            : Math.min(activeRoute.distance_required_meters, distanceWalkedRef.current + cleanMeters);
-          const nextProgress = Math.min(100, (nextDistance / activeRoute.distance_required_meters) * 100);
-          const nextMapPosition = getPointOnRoute(activeRoute.path_points, nextProgress);
-
-          distanceWalkedRef.current = nextDistance;
-          setSavedPlayerPosition(nextMapPosition);
-          setDistanceWalked(nextDistance);
-          setRouteProgressRows((current) => upsertRouteProgressRow(current, activeRoute.id, nextProgress));
-          void saveRouteProgress(activeRoute.id, {
-            distance_walked_meters: nextDistance,
-            progress_percent: nextProgress,
-            current_x_percent: nextMapPosition.x,
-            current_y_percent: nextMapPosition.y,
+          void advanceActiveRouteByMeters(cleanMeters, {
             last_lat: next.latitude,
             last_lng: next.longitude,
-            travel_direction: direction,
-            is_current: true,
+          }).then(() => {
+            setGpsMessage(`State: MOVING. ${routeDirectionRef.current === "reverse" ? "Backtracked" : "Counted"} ${Math.round(cleanMeters)}m at ${speedMph.toFixed(1)} mph.`);
           });
-          void incrementCharacterDistanceWalked(character.id, cleanMeters).then((nextTotal) => {
-            if (nextTotal !== null) {
-              onCharacterUpdated({
-                ...character,
-                total_distance_walked_meters: nextTotal,
-              });
-            }
-          });
-          void recordSocialContribution({
-            userId: character.user_id,
-            metricType: "distance_walked_meters",
-            amount: cleanMeters,
-            sourceType: "route",
-            sourceId: activeRoute.id,
-          });
-          if (activeRoute.mini_map_id) {
-            void savePlayerMapState({
-              active_mini_map_id: activeRoute.mini_map_id,
-              current_x_percent: nextMapPosition.x,
-              current_y_percent: nextMapPosition.y,
-            });
-          }
-          setGpsMessage(direction === "reverse" && nextDistance <= 0
-            ? "You returned to the starting sign post."
-            : `State: MOVING. ${direction === "reverse" ? "Backtracked" : "Counted"} ${Math.round(cleanMeters)}m at ${speedMph.toFixed(1)} mph.`);
 
           return next;
         });
@@ -1609,6 +1673,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       navigator.geolocation.clearWatch(watchId.current);
       watchId.current = null;
     }
+    if (pedometerSubscriptionRef.current) {
+      pedometerSubscriptionRef.current.remove();
+      pedometerSubscriptionRef.current = null;
+    }
+    nativePedometerMetersRef.current = 0;
     setIsTracking(false);
     setLastPosition(null);
     movementStateRef.current = "IDLE";

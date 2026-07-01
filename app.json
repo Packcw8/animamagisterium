@@ -16,10 +16,20 @@
     "assetBundlePatterns": [
       "assets/*"
     ],
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Anima Magisterium uses your photo library so you can choose a character photo for avatar generation.",
+          "cameraPermission": "Anima Magisterium uses the camera so you can take a character photo for avatar generation."
+        }
+      ],
+      "expo-notifications"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.packcw8.animamagisterium",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "icon": "./assets/icon.png",
       "infoPlist": {
         "NSCameraUsageDescription": "Anima Magisterium uses the camera so you can take a character photo for avatar generation.",
@@ -31,6 +41,11 @@
     },
     "android": {
       "package": "com.packcw8.animamagisterium",
+      "permissions": [
+        "CAMERA",
+        "POST_NOTIFICATIONS",
+        "ACTIVITY_RECOGNITION"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#050706"

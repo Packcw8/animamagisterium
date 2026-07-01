@@ -6,15 +6,11 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { supabase, Tables } from "../lib/supabase";
 import { CharacterCreationInput, CharacterWithDetails, createCharacter } from "../services/characterService";
+import { pickCharacterPhoto, PickedImage } from "../services/nativeMediaService";
 
 type CharacterCreationScreenProps = {
   assets: Tables["avatar_assets"][];
   onCreated: (character: CharacterWithDetails) => void;
-};
-
-type PickedPhoto = {
-  file: File;
-  previewUrl: string;
 };
 
 const genders = ["Male", "Female"];
@@ -24,7 +20,7 @@ const steps = ["Upload Image", "Generate Avatar", "Begin Adventure"];
 
 export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenProps) {
   const [step, setStep] = useState(0);
-  const [photo, setPhoto] = useState<PickedPhoto | null>(null);
+  const [photo, setPhoto] = useState<PickedImage | null>(null);
   const [originalPhotoUrl, setOriginalPhotoUrl] = useState("");
   const [portraitUrl, setPortraitUrl] = useState("");
   const [name, setName] = useState("");
@@ -36,33 +32,22 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function pickPhoto() {
+  async function pickPhoto() {
     setError(null);
 
-    if (typeof document === "undefined") {
-      setError("Photo upload is currently available in the web app.");
-      return;
-    }
+    try {
+      const pickedPhoto = await pickCharacterPhoto();
 
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*";
-    input.capture = "user";
-    input.onchange = () => {
-      const file = input.files?.[0];
-
-      if (!file) {
+      if (!pickedPhoto) {
         return;
       }
 
-      setPhoto({
-        file,
-        previewUrl: URL.createObjectURL(file),
-      });
+      setPhoto(pickedPhoto);
       setOriginalPhotoUrl("");
       setPortraitUrl("");
-    };
-    input.click();
+    } catch (photoError) {
+      setError(photoError instanceof Error ? photoError.message : "Unable to open camera or photo picker.");
+    }
   }
 
   async function uploadOriginalPhoto() {
@@ -90,10 +75,10 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
         throw new Error("You must be signed in before uploading a photo.");
       }
 
-      const extension = photo.file.name.split(".").pop() || "png";
+      const extension = photo.fileName.split(".").pop() || "png";
       const storagePath = `${user.id}/selfie-${Date.now()}.${extension}`;
-      const { error: uploadError } = await supabase.storage.from("user-selfies").upload(storagePath, photo.file, {
-        contentType: photo.file.type || "image/png",
+      const { error: uploadError } = await supabase.storage.from("user-selfies").upload(storagePath, photo.uploadBody, {
+        contentType: photo.contentType || "image/png",
         upsert: true,
       });
 
@@ -234,7 +219,7 @@ export function CharacterCreationScreen({ onCreated }: CharacterCreationScreenPr
             <Text style={styles.title}>Upload Image</Text>
             <Text style={styles.copy}>Begin with a clear front-facing selfie or profile image. This image becomes the foundation for your fantasy portrait.</Text>
             {photo ? <Image source={{ uri: photo.previewUrl }} style={styles.preview} /> : <View style={styles.emptyPreview}><Text style={styles.emptyText}>No image selected</Text></View>}
-            <Pressable style={styles.primaryButton} onPress={pickPhoto} disabled={isUploading}>
+            <Pressable style={styles.primaryButton} onPress={() => void pickPhoto()} disabled={isUploading}>
               <Text style={styles.primaryText}>{photo ? "Choose Different Image" : "Upload Image"}</Text>
             </Pressable>
           </View>
