@@ -17,7 +17,7 @@ import { DialogueTreeAdmin } from "../components/dialogue/DialogueTreeAdmin";
 import { Frame } from "../components/Frame";
 import { AdminCoordinatePanel } from "../components/map/AdminCoordinatePanel";
 import { AdminMapEditorHeader } from "../components/map/AdminMapEditorHeader";
-import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef, type PinchZoomPayload } from "../components/map/MapCanvas";
+import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef, type PinchZoomPayload, type RouteEventPin } from "../components/map/MapCanvas";
 import { MarkerIcon } from "../components/map/MarkerIcon";
 import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel";
 import { MarkerContinuationRouteEditor } from "../components/map/MarkerContinuationRouteEditor";
@@ -705,6 +705,27 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
   const adminMapEvents = useMemo(() => mapEvents.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [mapEvents, selectedChapter, selectedSeason]);
+  const adminRouteEventPins = useMemo<RouteEventPin[]>(() => {
+    if (!isAdmin || adminSection !== "Walking Paths") {
+      return [];
+    }
+
+    return adminMapEvents
+      .filter((event) => event.route_id === route.id)
+      .map((event) => {
+        const percent = clamp(Number(event.distance_marker_percent) || 0, 0, 100);
+        const point = getPointOnRoute(route.path_points, percent);
+        return {
+          id: event.id,
+          title: `${Math.round(percent)}% - ${event.title}`,
+          percent,
+          eventType: event.event_type,
+          linkedOnly: Boolean(event.linked_only),
+          x: point.x,
+          y: point.y,
+        };
+      });
+  }, [adminMapEvents, adminSection, isAdmin, route.id, route.path_points]);
   const publishedWorldMapUri = resolveMapImageUri(activeWorldMapSetting?.image_url);
   const overworldImageSource = publishedWorldMapUri ? { uri: publishedWorldMapUri } : forgottenMarches;
   const availableSeasons = useMemo(() => mergeSeasonRecords(mapSeasons, getAvailableNumbers([routes, effectiveMarkers, miniMaps, tutorialSteps, legendItems, mapEvents, worldMapSettings].flat(), "season_number")), [legendItems, mapEvents, mapSeasons, effectiveMarkers, miniMaps, routes, tutorialSteps, worldMapSettings]);
@@ -5754,6 +5775,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             routeSegments={miniMapRouteSegments}
             draftSegments={draftSegments}
             pathDraft={pathDraft}
+            eventPins={adminRouteEventPins}
             showDraft={isAdmin && editorMode === "Walking Path"}
             clickedPercent={clickedPercent}
             showTempMarker={isAdmin && editorMode === "Marker"}
@@ -6204,6 +6226,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         routeSegments={routeSegments}
         draftSegments={draftSegments}
         pathDraft={pathDraft}
+        eventPins={adminRouteEventPins}
         showDraft={isAdmin && adminSection === "Walking Paths" && editorMode === "Walking Path"}
         clickedPercent={clickedPercent}
         showTempMarker={isAdmin && editorMode === "Marker"}

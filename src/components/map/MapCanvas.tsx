@@ -38,10 +38,19 @@ type PercentPoint = {
   y: number;
 };
 
+export type RouteEventPin = PercentPoint & {
+  id: string;
+  title: string;
+  percent: number;
+  eventType: string;
+  linkedOnly?: boolean;
+};
+
 type SharedCanvasProps = {
   routeSegments: RouteSegmentView[];
   draftSegments: RouteSegmentView[];
   pathDraft: PercentPoint[];
+  eventPins?: RouteEventPin[];
   showDraft: boolean;
   clickedPercent: PercentPoint | null;
   showTempMarker: boolean;
@@ -275,6 +284,7 @@ function MapCanvasLayers({
   routeSegments,
   draftSegments,
   pathDraft,
+  eventPins = [],
   showDraft,
   clickedPercent,
   showTempMarker,
@@ -300,6 +310,17 @@ function MapCanvasLayers({
           <Text style={styles.pathPointText}>{index + 1}</Text>
         </View>
       )) : null}
+      {eventPins.map((pin) => (
+        <View key={pin.id} pointerEvents="none" style={[styles.eventPin, { left: `${pin.x}%`, top: `${pin.y}%` }]}>
+          <View style={[styles.eventPinDot, pin.eventType === "battle" && styles.eventPinBattle, pin.linkedOnly && styles.eventPinLinkedOnly]}>
+            <Text style={styles.eventPinPercent}>{Math.round(pin.percent)}</Text>
+          </View>
+          <View style={styles.eventPinLabel}>
+            <Text style={styles.eventPinTitle} numberOfLines={1}>{pin.title}</Text>
+            <Text style={styles.eventPinMeta}>{pin.eventType}{pin.linkedOnly ? " / linked" : ""}</Text>
+          </View>
+        </View>
+      ))}
       <View
         style={[
           styles.playerPin,
@@ -601,6 +622,59 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: "900",
     fontSize: 11,
+  },
+  eventPin: {
+    position: "absolute",
+    zIndex: 18,
+    minWidth: 132,
+    transform: [{ translateX: -15 }, { translateY: -15 }],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  eventPinDot: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 2,
+    borderColor: colors.gold,
+    backgroundColor: "rgba(6, 12, 12, 0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.gold,
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+  },
+  eventPinBattle: {
+    borderColor: "#ff8f73",
+    shadowColor: "#ff8f73",
+  },
+  eventPinLinkedOnly: {
+    borderStyle: "dashed",
+  },
+  eventPinPercent: {
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  eventPinLabel: {
+    maxWidth: 130,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.58)",
+    backgroundColor: "rgba(4, 7, 7, 0.82)",
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+  eventPinTitle: {
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  eventPinMeta: {
+    color: colors.muted,
+    fontSize: 9,
+    textTransform: "uppercase",
   },
   tempMarker: {
     position: "absolute",
