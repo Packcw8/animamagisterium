@@ -20,6 +20,7 @@ import { AdminMapEditorHeader } from "../components/map/AdminMapEditorHeader";
 import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef, type PinchZoomPayload } from "../components/map/MapCanvas";
 import { MarkerIcon } from "../components/map/MarkerIcon";
 import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel";
+import { MarkerContinuationRouteEditor } from "../components/map/MarkerContinuationRouteEditor";
 import { LegendEditor } from "../components/map/LegendEditor";
 import { MarkerAdminList } from "../components/map/MarkerAdminList";
 import { GameToast, type GameToastData, type GameToastReward } from "../components/map/GameToast";
@@ -578,6 +579,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const adminRoutes = useMemo(() => orderedRoutes.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [orderedRoutes, selectedChapter, selectedSeason]);
   const adminWorldRoutes = useMemo(() => adminRoutes.filter((item) => !item.mini_map_id), [adminRoutes]);
   const adminMiniMapRoutes = useMemo(() => adminRoutes.filter((item) => item.mini_map_id === activeMiniMap?.id), [activeMiniMap?.id, adminRoutes]);
+  const markerContinuationRoutes = useMemo(() => {
+    const targetMiniMapId =
+      draftType === "Area/Town Entrance"
+        ? selectedMiniMapId
+        : isExitMarkerType(draftType) && markerExitTargetType === "mini_map"
+          ? markerExitTargetMiniMapId
+          : null;
+
+    if (targetMiniMapId) {
+      return adminRoutes.filter((item) => item.mini_map_id === targetMiniMapId);
+    }
+
+    return activeMiniMap ? adminMiniMapRoutes : adminWorldRoutes;
+  }, [activeMiniMap, adminMiniMapRoutes, adminRoutes, adminWorldRoutes, draftType, markerExitTargetMiniMapId, markerExitTargetType, selectedMiniMapId]);
   const dialogueChoiceAvailability = useMemo(
     () => {
       const selectedChoiceGroupKeys = new Map<string, StoryDialogueChoice>();
@@ -3169,6 +3184,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const nextMiniMap = miniMaps.find((item) => item.id === marker.linked_mini_map_id);
       if (nextMiniMap) {
         openMiniMap(nextMiniMap);
+        await maybeStartMarkerContinuationRoute(marker);
         return;
       }
     }
@@ -3177,11 +3193,38 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const worldMarker = markers.find((item) => item.id === marker.exit_target_marker_id);
       if (worldMarker) {
         await leaveMiniMap({ x: Number(worldMarker.x_percent), y: Number(worldMarker.y_percent) });
+        await maybeStartMarkerContinuationRoute(marker);
         return;
       }
     }
 
     await leaveMiniMap(undefined, { forceExit: true });
+    await maybeStartMarkerContinuationRoute(marker);
+  }
+
+  async function enterAreaMarker(marker: MapMarker) {
+    const miniMap = miniMaps.find((item) => item.id === marker.linked_mini_map_id);
+    if (!miniMap) {
+      setMarkerPanelMessage("No mini map is linked to this entrance yet.");
+      return;
+    }
+
+    openMiniMap(miniMap);
+    await maybeStartMarkerContinuationRoute(marker);
+  }
+
+  async function maybeStartMarkerContinuationRoute(marker: MapMarker) {
+    if (!marker.starts_route_on_accept || !marker.linked_route_id) {
+      return;
+    }
+
+    const linkedRoute = routes.find((item) => item.id === marker.linked_route_id);
+    if (!linkedRoute) {
+      setMarkerPanelMessage("This marker is set to start a walking path, but the linked path could not be found.");
+      return;
+    }
+
+    await startPathFromSignPost(linkedRoute);
   }
 
   async function saveTutorialForm() {
@@ -5289,14 +5332,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           onAcceptQuest={() => void acceptSelectedMarkerQuest()}
           onStartPath={(nextRoute) => void startPathFromSignPost(nextRoute)}
           onUseExit={() => void openExitMarker(selectedMarker)}
-          onEnterArea={() => {
-            const miniMap = miniMaps.find((item) => item.id === selectedMarker.linked_mini_map_id);
-            if (miniMap) {
-              openMiniMap(miniMap);
-            } else {
-              setMarkerPanelMessage("No mini map is linked to this entrance yet.");
-            }
-          }}
+          onEnterArea={() => void enterAreaMarker(selectedMarker)}
           onOpenDialogueEvent={() => void openSelectedMarkerDialogue()}
           onStartBattleEvent={() => void startSelectedMarkerBattle()}
         />
@@ -5765,6 +5801,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               enemyDefinitions={enemyDefinitions}
               npcDefinitions={npcDefinitions}
               routes={activeRouteScopeRoutes}
+              continuationRoutes={markerContinuationRoutes}
               storyRoutes={adminRoutes}
               selectedMarkerRouteIds={selectedMarkerRouteIds}
               toggleSignPostRoute={toggleSignPostRoute}
@@ -6049,14 +6086,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           onClose={() => setSelectedMarker(null)}
           onStartTracking={startGpsTracking}
           onStartPath={(nextRoute) => void startPathFromSignPost(nextRoute)}
-          onEnterArea={() => {
-            const miniMap = miniMaps.find((item) => item.id === selectedMarker.linked_mini_map_id);
-            if (miniMap) {
-              openMiniMap(miniMap);
-            } else {
-              setMarkerPanelMessage("No mini map is linked to this entrance yet.");
-            }
-          }}
+          onEnterArea={() => void enterAreaMarker(selectedMarker)}
           onStartBattleEvent={() => void startSelectedMarkerBattle()}
           onBuy={(marketItem) => void buyFromMarker(marketItem)}
           onSell={(entry) => void sellToMarker(entry)}
@@ -6266,6 +6296,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   setTargetMiniMapId={setMarkerExitTargetMiniMapId}
                   worldMarkers={adminWorldMarkers}
                   miniMaps={adminMiniMaps}
+                />
+              ) : null}
+              {(draftType === "Area/Town Entrance" || isExitMarkerType(draftType)) ? (
+                <MarkerContinuationRouteEditor
+                  markerType={draftType}
+                  routes={markerContinuationRoutes}
+                  selectedRouteId={markerLinkedRouteId}
+                  startsRouteOnAccept={markerStartsRouteOnAccept}
+                  onSelectRoute={setMarkerLinkedRouteId}
+                  onToggleStartsRoute={() => setMarkerStartsRouteOnAccept((value) => !value)}
                 />
               ) : null}
               {draftType === "Sign Post" ? (
@@ -6980,6 +7020,7 @@ function MiniMapMarkerAdminForm({
   enemyDefinitions,
   npcDefinitions,
   routes,
+  continuationRoutes,
   storyRoutes,
   selectedMarkerRouteIds,
   toggleSignPostRoute,
@@ -7100,6 +7141,7 @@ function MiniMapMarkerAdminForm({
   enemyDefinitions: EnemyDefinition[];
   npcDefinitions: NpcDefinition[];
   routes: MapRoute[];
+  continuationRoutes: MapRoute[];
   storyRoutes: MapRoute[];
   selectedMarkerRouteIds: string[];
   toggleSignPostRoute: (routeId: string) => void;
@@ -7320,6 +7362,16 @@ function MiniMapMarkerAdminForm({
           setTargetMiniMapId={setMarkerExitTargetMiniMapId}
           worldMarkers={worldMarkers}
           miniMaps={miniMaps}
+        />
+      ) : null}
+      {(draftType === "Area/Town Entrance" || supportsExit) ? (
+        <MarkerContinuationRouteEditor
+          markerType={draftType}
+          routes={continuationRoutes}
+          selectedRouteId={markerLinkedRouteId}
+          startsRouteOnAccept={markerStartsRouteOnAccept}
+          onSelectRoute={setMarkerLinkedRouteId}
+          onToggleStartsRoute={() => setMarkerStartsRouteOnAccept((value) => !value)}
         />
       ) : null}
       {supportsQuest ? (

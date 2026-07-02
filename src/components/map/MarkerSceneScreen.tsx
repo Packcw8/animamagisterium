@@ -70,6 +70,9 @@ export function MarkerSceneScreen({
   const storyLinkedRoutes = orderedRouteLinks
     .map((link) => ({ link, route: routes.find((item) => item.id === link.route_id) ?? null }))
     .filter((item): item is { link: MarkerRouteLink; route: MapRoute } => Boolean(item.route));
+  const continuationRoute = marker.linked_route_id && marker.starts_route_on_accept
+    ? routes.find((item) => item.id === marker.linked_route_id) ?? null
+    : null;
   const firstIncompleteStoryRoute = storyLinkedRoutes.find(({ route }) => {
     const progress = routeProgressRows.find((row) => row.route_id === route.id)?.progress_percent ?? 0;
     return progress < 100;
@@ -98,16 +101,18 @@ export function MarkerSceneScreen({
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
             {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
+            {continuationRoute ? <Text style={styles.copy}>Continues onto {continuationRoute.name}.</Text> : null}
             <Pressable style={styles.primaryButton} onPress={onUseExit}>
-              <Text style={styles.primaryText}>Exit / Leave</Text>
+              <Text style={styles.primaryText}>{continuationRoute ? "Exit / Continue Trail" : "Exit / Leave"}</Text>
             </Pressable>
           </View>
         ) : marker.type === "Area/Town Entrance" ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
             {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
+            {continuationRoute ? <Text style={styles.copy}>Entering starts {continuationRoute.name}.</Text> : null}
             <Pressable style={styles.primaryButton} onPress={onEnterArea}>
-              <Text style={styles.primaryText}>Enter Area</Text>
+              <Text style={styles.primaryText}>{continuationRoute ? "Enter / Continue Trail" : "Enter Area"}</Text>
             </Pressable>
           </View>
         ) : marker.type === "Sign Post" ? (
