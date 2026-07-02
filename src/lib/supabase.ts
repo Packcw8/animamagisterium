@@ -718,6 +718,7 @@ export type Tables = {
     exit_target_marker_id: string | null;
     exit_target_spawn_marker_id: string | null;
     linked_route_id: string | null;
+    linked_route_start_direction: "forward" | "reverse";
     starts_route_on_accept: boolean;
     icon_label: string | null;
     icon_image_url: string | null;

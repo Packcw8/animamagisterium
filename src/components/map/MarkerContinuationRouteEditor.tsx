@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { MapRoute } from "../../services/mapService";
+import type { MapMarker, MapRoute } from "../../services/mapService";
 import { colors, fonts } from "../theme";
 import { RoutePicker } from "./MarkerEditorControls";
 
@@ -7,8 +7,10 @@ type MarkerContinuationRouteEditorProps = {
   markerType: string;
   routes: MapRoute[];
   selectedRouteId: string | null;
+  startDirection: MapMarker["linked_route_start_direction"];
   startsRouteOnAccept: boolean;
   onSelectRoute: (routeId: string | null) => void;
+  onSelectStartDirection: (direction: MapMarker["linked_route_start_direction"]) => void;
   onToggleStartsRoute: () => void;
 };
 
@@ -16,8 +18,10 @@ export function MarkerContinuationRouteEditor({
   markerType,
   routes,
   selectedRouteId,
+  startDirection,
   startsRouteOnAccept,
   onSelectRoute,
+  onSelectStartDirection,
   onToggleStartsRoute,
 }: MarkerContinuationRouteEditorProps) {
   const isExit = markerType === "Exit" || markerType === "Exit/Leave";
@@ -31,6 +35,20 @@ export function MarkerContinuationRouteEditor({
           : "Optional: after this entrance opens the area, automatically start one linked trail inside that area."}
       </Text>
       <RoutePicker routes={routes} selectedId={selectedRouteId} onSelect={onSelectRoute} />
+      {selectedRouteId ? (
+        <View style={styles.directionPanel}>
+          <Text style={styles.title}>Start Direction</Text>
+          <Text style={styles.copy}>Forward starts this path at 0%. Reverse starts this path at 100% and walks back to 0%.</Text>
+          <View style={styles.modeRow}>
+            <Pressable style={[styles.secondaryButtonFlex, startDirection !== "reverse" && styles.typeSelected]} onPress={() => onSelectStartDirection("forward")}>
+              <Text style={styles.secondaryText}>Forward 0% to 100%</Text>
+            </Pressable>
+            <Pressable style={[styles.secondaryButtonFlex, startDirection === "reverse" && styles.typeSelected]} onPress={() => onSelectStartDirection("reverse")}>
+              <Text style={styles.secondaryText}>Reverse 100% to 0%</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
       <Pressable style={[styles.secondaryButton, startsRouteOnAccept && styles.typeSelected]} onPress={onToggleStartsRoute}>
         <Text style={styles.secondaryText}>Start Linked Path After Opening: {startsRouteOnAccept ? "Yes" : "No"}</Text>
       </Pressable>
@@ -49,6 +67,13 @@ const styles = StyleSheet.create({
     fontFamily: fonts.title,
     fontSize: 12,
   },
+  directionPanel: {
+    gap: 8,
+  },
+  modeRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
   panel: {
     borderColor: colors.border,
     borderRadius: 10,
@@ -60,6 +85,14 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 8,
     borderWidth: 1,
+    minHeight: 44,
+    padding: 12,
+  },
+  secondaryButtonFlex: {
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
     minHeight: 44,
     padding: 12,
   },

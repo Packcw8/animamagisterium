@@ -12,6 +12,7 @@ export type MarkerPayloadState = {
   markerExitTargetMiniMapId: string | null;
   markerExitTargetSpawnMarkerId: string | null;
   markerLinkedRouteId: string | null;
+  markerLinkedRouteStartDirection: MapMarker["linked_route_start_direction"];
   markerStartsRouteOnAccept: boolean;
   markerIconLabel: string;
   markerIconImage: string;
@@ -51,7 +52,6 @@ export type MarkerPayloadState = {
 
 export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "create" | "update") {
   const isExit = isExitType(state.draftType);
-  const isQuest = isQuestType(state.draftType);
   const linkedMiniMapId = getLinkedMiniMapId(state);
 
   return {
@@ -96,8 +96,9 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     exit_target_type: isExit ? state.markerExitTargetType : null,
     exit_target_marker_id: isExit ? state.markerExitTargetMarkerId : null,
     exit_target_spawn_marker_id: (isExit && state.markerExitTargetType === "mini_map") || state.draftType === "Area/Town Entrance" ? state.markerExitTargetSpawnMarkerId : null,
-    linked_route_id: isQuest ? state.markerLinkedRouteId : null,
-    starts_route_on_accept: isQuest && state.markerStartsRouteOnAccept,
+    linked_route_id: supportsLinkedRoute(state.draftType) ? state.markerLinkedRouteId : null,
+    linked_route_start_direction: supportsLinkedRoute(state.draftType) ? state.markerLinkedRouteStartDirection ?? "forward" : "forward",
+    starts_route_on_accept: supportsLinkedRoute(state.draftType) && state.markerStartsRouteOnAccept,
     season_number: state.selectedSeason,
     chapter_number: state.selectedChapter,
   };
@@ -122,6 +123,7 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     exit_target_marker_id: settings.exit_target_marker_id,
     exit_target_spawn_marker_id: settings.exit_target_spawn_marker_id,
     linked_route_id: settings.linked_route_id,
+    linked_route_start_direction: settings.linked_route_start_direction,
     starts_route_on_accept: settings.starts_route_on_accept,
     icon_label: settings.icon_label,
     icon_image_url: settings.icon_image_url,
@@ -156,6 +158,10 @@ function getLinkedMiniMapId(state: MarkerPayloadState) {
 
 function isQuestType(type: string) {
   return ["Quest", "Side Quest", "Story", "Point of Interest", "NPC"].includes(type);
+}
+
+function supportsLinkedRoute(type: string) {
+  return isQuestType(type) || type === "Area/Town Entrance" || isExitType(type);
 }
 
 function supportsDialogueType(type: string) {

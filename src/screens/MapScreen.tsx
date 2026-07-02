@@ -434,6 +434,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerRepeatable, setMarkerRepeatable] = useState(false);
   const [markerRewardOnce, setMarkerRewardOnce] = useState(true);
   const [markerLinkedRouteId, setMarkerLinkedRouteId] = useState<string | null>(null);
+  const [markerLinkedRouteStartDirection, setMarkerLinkedRouteStartDirection] = useState<MapMarker["linked_route_start_direction"]>("forward");
   const [markerStartsRouteOnAccept, setMarkerStartsRouteOnAccept] = useState(false);
   const [markerExitTargetType, setMarkerExitTargetType] = useState<MapMarker["exit_target_type"]>("world_marker");
   const [markerExitTargetMarkerId, setMarkerExitTargetMarkerId] = useState<string | null>(null);
@@ -1977,6 +1978,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markerExitTargetMiniMapId,
       markerExitTargetSpawnMarkerId,
       markerLinkedRouteId,
+      markerLinkedRouteStartDirection,
       markerStartsRouteOnAccept,
       markerIconLabel,
       markerIconImage,
@@ -2063,6 +2065,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
+    setMarkerLinkedRouteStartDirection(marker.linked_route_start_direction ?? "forward");
     setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
     setMarkerExitTargetType(marker.exit_target_type ?? "world_marker");
     setMarkerExitTargetMarkerId(marker.exit_target_marker_id ?? null);
@@ -2139,6 +2142,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
+    setMarkerLinkedRouteStartDirection(marker.linked_route_start_direction ?? "forward");
     setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
 
     try {
@@ -2726,19 +2730,24 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMarkerRouteDirections((current) => ({ ...current, [routeId]: direction }));
   }
 
-  async function startPathFromSignPost(nextRoute: MapRoute, routeLink?: MarkerRouteLink) {
+  async function startPathFromSignPost(nextRoute: MapRoute, routeLink?: Pick<MarkerRouteLink, "start_direction">) {
     if (!isAdmin && isRouteLocked(nextRoute)) {
       setMarkerPanelMessage(getRouteLockMessage(nextRoute));
       return;
     }
 
     const progress = await getRouteProgress(nextRoute.id);
+    const hasExplicitStartDirection = Boolean(routeLink?.start_direction);
     const selectedDirection = routeLink?.start_direction ?? "forward";
-    const savedProgress = Number(progress?.progress_percent ?? (selectedDirection === "reverse" ? 100 : 0));
-    const isCompletedNonStoryRoute = savedProgress >= 100 && !progress?.source_marker_id;
+    const savedProgress = hasExplicitStartDirection
+      ? selectedDirection === "reverse" ? 100 : 0
+      : Number(progress?.progress_percent ?? 0);
+    const isCompletedNonStoryRoute = savedProgress >= 100 && !progress?.source_marker_id && !hasExplicitStartDirection;
     const existingDistance = isCompletedNonStoryRoute
       ? selectedDirection === "reverse" ? Number(nextRoute.distance_required_meters) || 0 : 0
-      : Number(progress?.distance_walked_meters ?? (selectedDirection === "reverse" ? nextRoute.distance_required_meters : 0));
+      : hasExplicitStartDirection
+        ? selectedDirection === "reverse" ? Number(nextRoute.distance_required_meters) || 0 : 0
+        : Number(progress?.distance_walked_meters ?? 0);
     const nextProgress = isCompletedNonStoryRoute
       ? selectedDirection === "reverse" ? 100 : 0
       : Math.min(100, Math.max(0, progress?.progress_percent ?? (existingDistance / nextRoute.distance_required_meters) * 100));
@@ -3291,7 +3300,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
-    await startPathFromSignPost(linkedRoute);
+    await startPathFromSignPost(linkedRoute, { start_direction: marker.linked_route_start_direction ?? "forward" });
   }
 
   async function saveTutorialForm() {
@@ -5849,6 +5858,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerRewardOnce={setMarkerRewardOnce}
               markerLinkedRouteId={markerLinkedRouteId}
               setMarkerLinkedRouteId={setMarkerLinkedRouteId}
+              markerLinkedRouteStartDirection={markerLinkedRouteStartDirection}
+              setMarkerLinkedRouteStartDirection={setMarkerLinkedRouteStartDirection}
               markerStartsRouteOnAccept={markerStartsRouteOnAccept}
               setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
               markerStoryOrder={markerStoryOrder}
@@ -6413,8 +6424,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   markerType={draftType}
                   routes={markerContinuationRoutes}
                   selectedRouteId={markerLinkedRouteId}
+                  startDirection={markerLinkedRouteStartDirection}
                   startsRouteOnAccept={markerStartsRouteOnAccept}
                   onSelectRoute={setMarkerLinkedRouteId}
+                  onSelectStartDirection={setMarkerLinkedRouteStartDirection}
                   onToggleStartsRoute={() => setMarkerStartsRouteOnAccept((value) => !value)}
                 />
               ) : null}
@@ -7155,6 +7168,8 @@ function MiniMapMarkerAdminForm({
   setMarkerRewardOnce,
   markerLinkedRouteId,
   setMarkerLinkedRouteId,
+  markerLinkedRouteStartDirection,
+  setMarkerLinkedRouteStartDirection,
   markerStartsRouteOnAccept,
   setMarkerStartsRouteOnAccept,
   markerStoryOrder,
@@ -7281,6 +7296,8 @@ function MiniMapMarkerAdminForm({
   setMarkerRewardOnce: (value: boolean | ((current: boolean) => boolean)) => void;
   markerLinkedRouteId: string | null;
   setMarkerLinkedRouteId: (value: string | null) => void;
+  markerLinkedRouteStartDirection: MapMarker["linked_route_start_direction"];
+  setMarkerLinkedRouteStartDirection: (value: MapMarker["linked_route_start_direction"]) => void;
   markerStartsRouteOnAccept: boolean;
   setMarkerStartsRouteOnAccept: (value: boolean | ((current: boolean) => boolean)) => void;
   markerStoryOrder: string;
@@ -7547,8 +7564,10 @@ function MiniMapMarkerAdminForm({
           markerType={draftType}
           routes={continuationRoutes}
           selectedRouteId={markerLinkedRouteId}
+          startDirection={markerLinkedRouteStartDirection}
           startsRouteOnAccept={markerStartsRouteOnAccept}
           onSelectRoute={setMarkerLinkedRouteId}
+          onSelectStartDirection={setMarkerLinkedRouteStartDirection}
           onToggleStartsRoute={() => setMarkerStartsRouteOnAccept((value) => !value)}
         />
       ) : null}
