@@ -3281,8 +3281,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         chapter_number: selectedChapter,
       });
       setRoute(updated);
-      setRoutes((current) => current.map((item) => (item.id === updated.id ? updated : item)).sort(compareRoutes));
-      setAdminMessage("Walking path saved.");
+      const nextRoutes = routes.map((item) => (item.id === updated.id ? updated : item)).sort(compareRoutes);
+      setRoutes(nextRoutes);
+      resetWalkingPathFormForNewRoute(nextRoutes.filter((item) => (activeMiniMap ? item.mini_map_id === activeMiniMap.id : !item.mini_map_id)));
+      setAdminMessage("Walking path saved. Ready to create another walking path.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to save walking path. Confirm the Supabase migration has run."));
     }
@@ -3312,9 +3314,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         season_number: selectedSeason,
         chapter_number: selectedChapter,
       });
-      setRoutes((current) => [...current, created].sort(compareRoutes));
-      await selectRoute(created, true);
-      setAdminMessage("New walking path created.");
+      const nextRoutes = [...routes, created].sort(compareRoutes);
+      setRoutes(nextRoutes);
+      setRoute(created);
+      resetWalkingPathFormForNewRoute(nextRoutes.filter((item) => (activeMiniMap ? item.mini_map_id === activeMiniMap.id : !item.mini_map_id)));
+      setAdminMessage("New walking path created. Ready to create another walking path.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to create walking path. Confirm the Supabase migration has run."));
     }
@@ -4860,6 +4864,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setPathDraft(route.path_points);
     setPathSegmentDraft(normalizePathSegments(route.path_segments ?? [], route.path_points.length));
     setAdminMessage(`Loaded ${route.name} into the walking path editor.`);
+  }
+
+  function resetWalkingPathFormForNewRoute(routeSource: MapRoute[] = activeRouteScopeRoutes.length > 0 ? activeRouteScopeRoutes : routes) {
+    setRouteName("");
+    setRouteOrder(String(getNextRouteOrder(routeSource)));
+    setRouteTerrain("");
+    setRouteDanger("");
+    setRouteDistance("");
+    setRouteImage("");
+    setRouteLockType("public");
+    setRouteLockMessage("");
+    setPathDraft([]);
+    setPathSegmentDraft([]);
+    setClickedPercent(null);
   }
 
   async function editWalkingPath(nextRoute: MapRoute) {
