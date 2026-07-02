@@ -2066,7 +2066,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerExitTargetType(marker.exit_target_type ?? "world_marker");
     setMarkerExitTargetMarkerId(marker.exit_target_marker_id ?? null);
     setMarkerExitTargetMiniMapId(marker.exit_target_type === "mini_map" ? marker.linked_mini_map_id : null);
-    setMarkerExitTargetSpawnMarkerId(marker.exit_target_type === "mini_map" ? marker.exit_target_spawn_marker_id ?? null : null);
+    setMarkerExitTargetSpawnMarkerId((marker.exit_target_type === "mini_map" || marker.type === "Area/Town Entrance") ? marker.exit_target_spawn_marker_id ?? null : null);
     setSelectedMiniMapId(marker.linked_mini_map_id ?? marker.mini_map_id ?? selectedMiniMapId);
     setMarkerPanelMessage(null);
 
@@ -3254,7 +3254,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
-    openMiniMap(miniMap);
+    openMiniMap(miniMap, { spawnPosition: getExitTargetMiniMapSpawnPosition(marker, miniMap.id) });
     await maybeStartMarkerContinuationRoute(marker);
   }
 
@@ -6346,7 +6346,29 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 startsRouteOnAccept={markerStartsRouteOnAccept}
                 requireAllLinkedRoutes={markerRequireAllLinkedRoutes}
               />
-              {draftType === "Area/Town Entrance" ? <MiniMapPicker miniMaps={adminMiniMaps} selectedId={selectedMiniMapId} onSelect={setSelectedMiniMapId} /> : null}
+              {draftType === "Area/Town Entrance" ? (
+                <View style={styles.storyEditor}>
+                  <MiniMapPicker
+                    miniMaps={adminMiniMaps}
+                    selectedId={selectedMiniMapId}
+                    onSelect={(miniMapId) => {
+                      setSelectedMiniMapId(miniMapId);
+                      setMarkerExitTargetSpawnMarkerId(null);
+                    }}
+                  />
+                  {selectedMiniMapId ? (
+                    <MarkerPicker
+                      label="Target spawn in mini map"
+                      markers={markers.filter((marker) => marker.mini_map_id === selectedMiniMapId && marker.type === "Player Spawn")}
+                      selectedId={markerExitTargetSpawnMarkerId}
+                      onSelect={setMarkerExitTargetSpawnMarkerId}
+                    />
+                  ) : null}
+                  {selectedMiniMapId && !markers.some((marker) => marker.mini_map_id === selectedMiniMapId && marker.type === "Player Spawn") ? (
+                    <Text style={styles.debugLine}>No Player Spawn marker exists in this mini map yet. The entrance will fall back to the center of the mini map.</Text>
+                  ) : null}
+                </View>
+              ) : null}
               {isExitMarkerType(draftType) ? (
                 <ExitTargetEditor
                   targetType={markerExitTargetType}

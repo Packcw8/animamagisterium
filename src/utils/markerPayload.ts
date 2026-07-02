@@ -95,7 +95,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     parent_marker_id: state.activeMiniMapId || mode === "create" ? null : state.selectedMarker?.parent_marker_id ?? null,
     exit_target_type: isExit ? state.markerExitTargetType : null,
     exit_target_marker_id: isExit ? state.markerExitTargetMarkerId : null,
-    exit_target_spawn_marker_id: isExit && state.markerExitTargetType === "mini_map" ? state.markerExitTargetSpawnMarkerId : null,
+    exit_target_spawn_marker_id: (isExit && state.markerExitTargetType === "mini_map") || state.draftType === "Area/Town Entrance" ? state.markerExitTargetSpawnMarkerId : null,
     linked_route_id: isQuest ? state.markerLinkedRouteId : null,
     starts_route_on_accept: isQuest && state.markerStartsRouteOnAccept,
     season_number: state.selectedSeason,
