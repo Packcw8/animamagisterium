@@ -2735,7 +2735,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       : hasExplicitStartDirection
         ? selectedDirection === "reverse" ? Number(nextRoute.distance_required_meters) || 0 : 0
         : Number(progress?.distance_walked_meters ?? 0);
-    const nextProgress = isCompletedNonStoryRoute
+    const nextProgress = hasExplicitStartDirection
+      ? selectedDirection === "reverse" ? 100 : 0
+      : isCompletedNonStoryRoute
       ? selectedDirection === "reverse" ? 100 : 0
       : Math.min(100, Math.max(0, progress?.progress_percent ?? (existingDistance / nextRoute.distance_required_meters) * 100));
     const nextPoint = getPointOnRoute(nextRoute.path_points, nextProgress);
@@ -2747,7 +2749,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     distanceWalkedRef.current = existingDistance;
     setDistanceWalked(existingDistance);
     setSavedPlayerPosition(nextPoint);
-    setRouteProgressRows((current) => upsertRouteProgressRow(current, nextRoute.id, nextProgress).map((row) => ({ ...row, is_current: row.route_id === nextRoute.id })));
+    setRouteProgressRows((current) =>
+      upsertRouteProgressRow(current, nextRoute.id, nextProgress).map((row) => (
+        row.route_id === nextRoute.id
+          ? {
+              ...row,
+              distance_walked_meters: existingDistance,
+              progress_percent: nextProgress,
+              current_x_percent: nextPoint.x,
+              current_y_percent: nextPoint.y,
+              travel_direction: selectedDirection,
+              is_current: true,
+            }
+          : { ...row, is_current: false }
+      )),
+    );
     await saveRouteProgress(nextRoute.id, {
       distance_walked_meters: existingDistance,
       progress_percent: nextProgress,
