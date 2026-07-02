@@ -10,15 +10,23 @@ type MiniMapEditorProps<MiniMapType extends string> = {
   type: MiniMapType;
   background: string;
   description: string;
+  areaName: string;
+  areaKey: string;
+  sortOrder: string;
   width: string;
   height: string;
   active: boolean;
+  selectedAreaKey: string;
   onChangeName: (value: string) => void;
   onChangeType: (value: MiniMapType) => void;
   onChangeBackground: (value: string) => void;
   onChangeDescription: (value: string) => void;
+  onChangeAreaName: (value: string) => void;
+  onChangeAreaKey: (value: string) => void;
+  onChangeSortOrder: (value: string) => void;
   onChangeWidth: (value: string) => void;
   onChangeHeight: (value: string) => void;
+  onSelectAreaKey: (value: string) => void;
   onToggleActive: () => void;
   onSave: () => void;
   onEdit: (miniMap: MiniMap) => void;
@@ -36,15 +44,23 @@ export function MiniMapEditor<MiniMapType extends string>({
   type,
   background,
   description,
+  areaName,
+  areaKey,
+  sortOrder,
   width,
   height,
   active,
+  selectedAreaKey,
   onChangeName,
   onChangeType,
   onChangeBackground,
   onChangeDescription,
+  onChangeAreaName,
+  onChangeAreaKey,
+  onChangeSortOrder,
   onChangeWidth,
   onChangeHeight,
+  onSelectAreaKey,
   onToggleActive,
   onSave,
   onEdit,
@@ -55,12 +71,31 @@ export function MiniMapEditor<MiniMapType extends string>({
   editingMiniMapId,
 }: MiniMapEditorProps<MiniMapType>) {
   const isEditing = Boolean(editingMiniMapId);
+  const areaOptions = getMiniMapAreaOptions(miniMaps);
+  const visibleMiniMaps = selectedAreaKey === "all" ? miniMaps : miniMaps.filter((miniMap) => getMiniMapAreaKey(miniMap) === selectedAreaKey);
+  const groupedMiniMaps = groupMiniMapsByArea(visibleMiniMaps);
 
   return (
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Mini Maps</Text>
       <Text style={styles.copy}>{isEditing ? "Editing an existing mini map. Save changes or cancel to return to creation." : "Create maps for towns, forests, dungeons, areas, or tutorials. Link one to an Area/Town Entrance marker to let players enter it."}</Text>
+      <Text style={styles.label}>Area Filter</Text>
+      <View style={styles.storyRoutePicker}>
+        <Pressable style={[styles.routeChip, selectedAreaKey === "all" && styles.routeChipActive]} onPress={() => onSelectAreaKey("all")}>
+          <Text style={styles.routeChipText}>All Areas</Text>
+        </Pressable>
+        {areaOptions.map((area) => (
+          <Pressable key={area.key} style={[styles.routeChip, selectedAreaKey === area.key && styles.routeChipActive]} onPress={() => onSelectAreaKey(area.key)}>
+            <Text style={styles.routeChipText}>{area.name}</Text>
+          </Pressable>
+        ))}
+      </View>
       <TextInput value={name} onChangeText={onChangeName} placeholder="Mini map name" placeholderTextColor={colors.muted} style={styles.input} />
+      <View style={styles.modeRow}>
+        <TextInput value={areaName} onChangeText={onChangeAreaName} placeholder="Area group, example Hearthland Woods" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
+        <TextInput value={sortOrder} onChangeText={onChangeSortOrder} placeholder="Order" placeholderTextColor={colors.muted} keyboardType="numeric" style={[styles.input, styles.smallInput]} />
+      </View>
+      <TextInput value={areaKey} onChangeText={onChangeAreaKey} placeholder="Area key optional, example hearthland-woods" placeholderTextColor={colors.muted} style={styles.input} />
       <View style={styles.storyRoutePicker}>
         {miniMapTypes.map((item) => (
           <Pressable key={item} style={[styles.routeChip, type === item && styles.routeChipActive]} onPress={() => onChangeType(item)}>
@@ -88,21 +123,27 @@ export function MiniMapEditor<MiniMapType extends string>({
       ) : null}
       <Text style={styles.selectedTitle}>Existing Mini Maps</Text>
       {miniMaps.length === 0 ? <Text style={styles.copy}>No mini maps created yet.</Text> : null}
-      {miniMaps.map((miniMap) => (
-        <View key={miniMap.id} style={styles.storyCard}>
-          <Text style={styles.markerName}>{miniMap.name}</Text>
-          <Text style={styles.copy}>{miniMap.type} / {miniMap.width ?? 900} x {miniMap.height ?? 650} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
-          <View style={styles.modeRow}>
-            <Pressable style={[styles.secondaryButtonFlex, editingMiniMapId === miniMap.id && styles.typeSelected]} onPress={() => onEdit(miniMap)}>
-              <Text style={styles.secondaryText}>Edit</Text>
-            </Pressable>
-            <Pressable style={styles.secondaryButtonFlex} onPress={() => onOpen(miniMap)}>
-              <Text style={styles.secondaryText}>Open</Text>
-            </Pressable>
-            <Pressable style={styles.secondaryButtonFlex} onPress={() => onDelete(miniMap.id)}>
-              <Text style={styles.dangerText}>Delete</Text>
-            </Pressable>
-          </View>
+      {miniMaps.length > 0 && visibleMiniMaps.length === 0 ? <Text style={styles.copy}>No mini maps in this area filter.</Text> : null}
+      {groupedMiniMaps.map((group) => (
+        <View key={group.key} style={styles.areaGroup}>
+          <Text style={styles.areaTitle}>{group.name}</Text>
+          {group.maps.map((miniMap) => (
+            <View key={miniMap.id} style={styles.storyCard}>
+              <Text style={styles.markerName}>{miniMap.name}</Text>
+              <Text style={styles.copy}>{miniMap.type} / Order {miniMap.sort_order ?? 0} / {miniMap.width ?? 900} x {miniMap.height ?? 650} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
+              <View style={styles.modeRow}>
+                <Pressable style={[styles.secondaryButtonFlex, editingMiniMapId === miniMap.id && styles.typeSelected]} onPress={() => onEdit(miniMap)}>
+                  <Text style={styles.secondaryText}>Edit</Text>
+                </Pressable>
+                <Pressable style={styles.secondaryButtonFlex} onPress={() => onOpen(miniMap)}>
+                  <Text style={styles.secondaryText}>Open</Text>
+                </Pressable>
+                <Pressable style={styles.secondaryButtonFlex} onPress={() => onDelete(miniMap.id)}>
+                  <Text style={styles.dangerText}>Delete</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
         </View>
       ))}
       <Text style={styles.debugLine}>Open a mini map to place spawn markers, sign posts, shops, encounters, and mini-map walking paths.</Text>
@@ -110,7 +151,69 @@ export function MiniMapEditor<MiniMapType extends string>({
   );
 }
 
+function getMiniMapAreaKey(miniMap: MiniMap) {
+  return miniMap.area_key?.trim() || slugifyAreaName(miniMap.area_name || miniMap.type || "area");
+}
+
+function getMiniMapAreaName(miniMap: MiniMap) {
+  return miniMap.area_name?.trim() || titleCase(miniMap.type || "Area");
+}
+
+function getMiniMapAreaOptions(miniMaps: MiniMap[]) {
+  const byKey = new Map<string, { key: string; name: string }>();
+  miniMaps.forEach((miniMap) => {
+    const key = getMiniMapAreaKey(miniMap);
+    if (!byKey.has(key)) {
+      byKey.set(key, { key, name: getMiniMapAreaName(miniMap) });
+    }
+  });
+  return Array.from(byKey.values()).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function groupMiniMapsByArea(miniMaps: MiniMap[]) {
+  const groups = new Map<string, { key: string; name: string; maps: MiniMap[] }>();
+  miniMaps.forEach((miniMap) => {
+    const key = getMiniMapAreaKey(miniMap);
+    if (!groups.has(key)) {
+      groups.set(key, { key, name: getMiniMapAreaName(miniMap), maps: [] });
+    }
+    groups.get(key)?.maps.push(miniMap);
+  });
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      maps: group.maps.sort((left, right) => (left.sort_order ?? 0) - (right.sort_order ?? 0) || left.name.localeCompare(right.name)),
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function slugifyAreaName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "area";
+}
+
+function titleCase(value: string) {
+  return value
+    .replace(/[-_]+/g, " ")
+    .replace(/\w\S*/g, (word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase());
+}
+
 const styles = StyleSheet.create({
+  areaGroup: {
+    borderColor: "rgba(218, 164, 65, 0.25)",
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+    padding: 8,
+  },
+  areaTitle: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    textTransform: "uppercase",
+  },
   copy: {
     color: colors.muted,
     lineHeight: 20,
@@ -131,6 +234,15 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: 48,
     paddingHorizontal: 12,
+  },
+  label: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 12,
+    textTransform: "uppercase",
+  },
+  smallInput: {
+    minWidth: 110,
   },
   flexInput: {
     flex: 1,

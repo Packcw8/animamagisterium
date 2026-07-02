@@ -243,7 +243,14 @@ export async function saveMapChapter(input: Partial<MapChapter>) {
 }
 
 export async function getMiniMaps() {
-  const { data, error } = await supabase.from("mini_maps").select("*").order("created_at", { ascending: true });
+  const { data, error } = await supabase
+    .from("mini_maps")
+    .select("*")
+    .order("season_number", { ascending: true })
+    .order("chapter_number", { ascending: true })
+    .order("area_name", { ascending: true, nullsFirst: false })
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
 
   if (error) {
     console.warn("[map] mini maps unavailable", error.message);
@@ -354,10 +361,13 @@ export async function saveMiniMap(input: Partial<MiniMap>) {
   const values = {
     name: input.name?.trim() || "Untitled Mini Map",
     type: input.type ?? "area",
+    area_key: input.area_key?.trim() || null,
+    area_name: input.area_name?.trim() || null,
     background_image_url: input.background_image_url?.trim() || null,
     description: input.description?.trim() || null,
     width: Math.max(320, Number(input.width) || 900),
     height: Math.max(280, Number(input.height) || 650),
+    sort_order: Number(input.sort_order) || 0,
     is_active: input.is_active ?? true,
     season_number: Number(input.season_number) || 1,
     chapter_number: Number(input.chapter_number) || 1,

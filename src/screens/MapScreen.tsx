@@ -239,6 +239,20 @@ type MovementStatus = {
 
 type PlayerMovementState = "IDLE" | "MOVING";
 
+function sortMiniMaps(items: MiniMap[]) {
+  return [...items].sort((left, right) => {
+    const leftArea = (left.area_name || left.type || "").toLowerCase();
+    const rightArea = (right.area_name || right.type || "").toLowerCase();
+    return (
+      Number(left.season_number ?? 1) - Number(right.season_number ?? 1) ||
+      Number(left.chapter_number ?? 1) - Number(right.chapter_number ?? 1) ||
+      leftArea.localeCompare(rightArea) ||
+      Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0) ||
+      left.name.localeCompare(right.name)
+    );
+  });
+}
+
 export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [mapReady, setMapReady] = useState(false);
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
@@ -373,9 +387,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [miniMapType, setMiniMapType] = useState<(typeof miniMapTypes)[number]>("area");
   const [miniMapBackground, setMiniMapBackground] = useState("");
   const [miniMapDescription, setMiniMapDescription] = useState("");
+  const [miniMapAreaName, setMiniMapAreaName] = useState("");
+  const [miniMapAreaKey, setMiniMapAreaKey] = useState("");
+  const [miniMapSortOrder, setMiniMapSortOrder] = useState("0");
   const [miniMapActive, setMiniMapActive] = useState(true);
   const [miniMapEditorWidth, setMiniMapEditorWidth] = useState("900");
   const [miniMapEditorHeight, setMiniMapEditorHeight] = useState("650");
+  const [selectedMiniMapAreaKey, setSelectedMiniMapAreaKey] = useState("all");
   const [tutorialSteps, setTutorialSteps] = useState<TutorialStep[]>([]);
   const [editingTutorialId, setEditingTutorialId] = useState<string | null>(null);
   const [tutorialTitle, setTutorialTitle] = useState("");
@@ -690,7 +708,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const adminWorldMarkers = useMemo(() => worldMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, worldMarkers]);
   const adminMiniMapMarkers = useMemo(() => miniMapMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMapMarkers, selectedChapter, selectedSeason]);
   const adminStoryMarkers = useMemo(() => effectiveMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter) && isStoryQuestMarker(item)), [effectiveMarkers, selectedChapter, selectedSeason]);
-  const adminMiniMaps = useMemo(() => miniMaps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMaps, selectedChapter, selectedSeason]);
+  const adminMiniMaps = useMemo(() => sortMiniMaps(miniMaps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter))), [miniMaps, selectedChapter, selectedSeason]);
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
   const adminMapEvents = useMemo(() => mapEvents.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [mapEvents, selectedChapter, selectedSeason]);
@@ -2998,15 +3016,18 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         id: editingMiniMapId ?? undefined,
         name: miniMapName,
         type: miniMapType,
+        area_name: miniMapAreaName,
+        area_key: miniMapAreaKey,
         background_image_url: miniMapBackground,
         description: miniMapDescription,
         width: Number(miniMapEditorWidth) || 900,
         height: Number(miniMapEditorHeight) || 650,
+        sort_order: Number(miniMapSortOrder) || 0,
         is_active: miniMapActive,
         season_number: selectedSeason,
         chapter_number: selectedChapter,
       });
-      setMiniMaps((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+      setMiniMaps((current) => sortMiniMaps([saved, ...current.filter((item) => item.id !== saved.id)]));
       setSelectedMiniMapId(saved.id);
       if (activeMiniMap?.id === saved.id) {
         setActiveMiniMap(saved);
@@ -3014,6 +3035,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       } else {
         setEditingMiniMapId(null);
         setMiniMapName("");
+        setMiniMapAreaName("");
+        setMiniMapAreaKey("");
+        setMiniMapSortOrder("0");
         setMiniMapBackground("");
         setMiniMapDescription("");
         setMiniMapEditorWidth("900");
@@ -3031,6 +3055,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMiniMapId(miniMap.id);
     setMiniMapName(miniMap.name);
     setMiniMapType(miniMap.type);
+    setMiniMapAreaName(miniMap.area_name ?? "");
+    setMiniMapAreaKey(miniMap.area_key ?? "");
+    setMiniMapSortOrder(String(miniMap.sort_order ?? 0));
     setMiniMapBackground(miniMap.background_image_url ?? "");
     setMiniMapDescription(miniMap.description ?? "");
     setMiniMapEditorWidth(String(miniMap.width ?? 900));
@@ -3043,6 +3070,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMiniMapId(null);
     setMiniMapName("");
     setMiniMapType("town");
+    setMiniMapAreaName("");
+    setMiniMapAreaKey("");
+    setMiniMapSortOrder("0");
     setMiniMapBackground("");
     setMiniMapDescription("");
     setMiniMapEditorWidth("900");
@@ -5641,6 +5671,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             <View style={styles.storyEditor}>
               <Text style={styles.selectedTitle}>Mini Map Details</Text>
               <TextInput value={miniMapName} onChangeText={setMiniMapName} placeholder="Mini map name" placeholderTextColor={colors.muted} style={styles.input} />
+              <View style={styles.modeRow}>
+                <TextInput value={miniMapAreaName} onChangeText={setMiniMapAreaName} placeholder="Area group, example Hearthland Woods" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
+                <TextInput value={miniMapSortOrder} onChangeText={setMiniMapSortOrder} placeholder="Order" placeholderTextColor={colors.muted} keyboardType="numeric" style={[styles.input, styles.flexInput]} />
+              </View>
+              <TextInput value={miniMapAreaKey} onChangeText={setMiniMapAreaKey} placeholder="Area key optional, example hearthland-woods" placeholderTextColor={colors.muted} style={styles.input} />
               <View style={styles.storyRoutePicker}>
                 {miniMapTypes.map((type) => (
                   <Pressable key={type} style={[styles.routeChip, miniMapType === type && styles.routeChipActive]} onPress={() => setMiniMapType(type)}>
@@ -6231,15 +6266,23 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               type={miniMapType}
               background={miniMapBackground}
               description={miniMapDescription}
+              areaName={miniMapAreaName}
+              areaKey={miniMapAreaKey}
+              sortOrder={miniMapSortOrder}
               width={miniMapEditorWidth}
               height={miniMapEditorHeight}
               active={miniMapActive}
+              selectedAreaKey={selectedMiniMapAreaKey}
               onChangeName={setMiniMapName}
               onChangeType={setMiniMapType}
               onChangeBackground={setMiniMapBackground}
               onChangeDescription={setMiniMapDescription}
+              onChangeAreaName={setMiniMapAreaName}
+              onChangeAreaKey={setMiniMapAreaKey}
+              onChangeSortOrder={setMiniMapSortOrder}
               onChangeWidth={setMiniMapEditorWidth}
               onChangeHeight={setMiniMapEditorHeight}
+              onSelectAreaKey={setSelectedMiniMapAreaKey}
               onToggleActive={() => setMiniMapActive((value) => !value)}
               onSave={() => void saveMiniMapForm()}
               onEdit={editMiniMap}

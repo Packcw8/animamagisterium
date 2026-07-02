@@ -848,10 +848,13 @@ export type Tables = {
     id: string;
     name: string;
     type: "town" | "forest" | "dungeon" | "area" | "tutorial";
+    area_key: string | null;
+    area_name: string | null;
     background_image_url: string | null;
     description: string | null;
     width: number;
     height: number;
+    sort_order: number;
     is_active: boolean;
     season_number: number;
     chapter_number: number;
