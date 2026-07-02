@@ -1,10 +1,14 @@
 -- Correct Harlen marker dialogue flow.
 -- This replaces only the dialogue nodes/choices attached to the existing Harlen marker.
 -- Final choice sets harlen_following_to_dead_traveler=true and starts Harlen's linked walking path.
--- "Return to the King's Road" is created/fixed as a per-player story-flag-gated marker.
+-- "Return To Kings Road" is created/fixed in Harlen's mini map as a per-player story-flag-gated marker.
+-- Harlen's marker_route_links are removed because they are interaction requirements and can lock the NPC.
 do $$
 declare
   v_harlen_marker_id uuid;
+  v_harlen_mini_map_id uuid;
+  v_harlen_x numeric;
+  v_harlen_y numeric;
   v_return_marker_id uuid;
   v_return_route_id uuid;
   n_step_1 uuid;
@@ -17,8 +21,8 @@ declare
   n_step_6c uuid;
   n_step_7 uuid;
 begin
-  select id
-    into v_harlen_marker_id
+  select id, mini_map_id, x_percent, y_percent, linked_route_id
+    into v_harlen_marker_id, v_harlen_mini_map_id, v_harlen_x, v_harlen_y, v_return_route_id
   from public.map_markers
   where lower(title) like '%harlen%'
   order by updated_at desc nulls last, created_at desc
@@ -31,7 +35,8 @@ begin
   select id, linked_route_id
     into v_return_marker_id, v_return_route_id
   from public.map_markers
-  where lower(title) like '%return%'
+  where mini_map_id is not distinct from v_harlen_mini_map_id
+    and lower(title) like '%return%'
     and lower(title) like '%king%'
     and lower(title) like '%road%'
   order by updated_at desc nulls last, created_at desc
@@ -41,17 +46,21 @@ begin
     select id
       into v_return_route_id
     from public.map_routes
-    where lower(name) like '%king%'
+    where lower(name) like '%back%'
+      and lower(name) like '%king%'
       and lower(name) like '%road%'
     order by sort_order asc nulls last, created_at asc
     limit 1;
   end if;
 
   if v_return_route_id is null then
-    select linked_route_id
+    select id
       into v_return_route_id
-    from public.map_markers
-    where id = v_harlen_marker_id;
+    from public.map_routes
+    where lower(name) like '%king%'
+      and lower(name) like '%road%'
+    order by sort_order asc nulls last, created_at asc
+    limit 1;
   end if;
 
   if v_return_route_id is null then
@@ -84,14 +93,14 @@ begin
     )
     select
       'Story',
-      'Return to the King''s Road',
+      'Return To Kings Road',
       'Harlen wants to see the dead traveler on the King''s Road.',
-      least(98, greatest(2, x_percent + 4)),
-      least(98, greatest(2, y_percent + 4)),
+      least(98, greatest(2, v_harlen_x - 7)),
+      least(98, greatest(2, v_harlen_y + 23)),
       true,
       true,
       true,
-      mini_map_id,
+      v_harlen_mini_map_id,
       v_return_route_id,
       true,
       'forward',
@@ -109,23 +118,36 @@ begin
     returning id into v_return_marker_id;
   end if;
 
+  delete from public.marker_route_links
+  where marker_id = v_harlen_marker_id;
+
   update public.map_markers
     set
       linked_route_id = v_return_route_id,
       starts_route_on_accept = true,
       linked_route_start_direction = 'forward',
       is_active = true,
+      is_unlocked = true,
       is_interactable = true,
+      lock_type = 'public',
+      visible_story_flag_key = null,
+      visible_story_flag_value = true,
+      interaction_radius_percent = 100,
+      require_all_linked_routes = false,
       updated_at = now()
     where id = v_harlen_marker_id;
 
   update public.map_markers
     set
+      title = 'Return To Kings Road',
+      type = 'Story',
+      mini_map_id = v_harlen_mini_map_id,
       visible_story_flag_key = 'harlen_following_to_dead_traveler',
       visible_story_flag_value = true,
       is_unlocked = true,
       is_active = true,
       is_interactable = true,
+      lock_type = 'public',
       linked_route_id = v_return_route_id,
       starts_route_on_accept = true,
       linked_route_start_direction = 'forward',
