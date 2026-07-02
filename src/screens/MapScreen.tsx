@@ -737,6 +737,37 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     return [...routeProgressRows.filter((row) => row.route_id !== route.id), activeProgress];
   }, [distanceWalked, hasActiveRoute, playerPosition.x, playerPosition.y, progressPercent, route.id, routeDirection, routeProgressRows]);
+  const knownStoryFlagKeys = useMemo(() => {
+    const keys = new Set<string>();
+
+    dialogueChoices.forEach((choice) => {
+      const setFlagKey = choice.set_story_flag_key?.trim();
+      if (setFlagKey) {
+        keys.add(setFlagKey);
+      }
+
+      const requiredFlagKey = choice.requirement_type === "story_flag" ? choice.requirement_value?.trim() : "";
+      if (requiredFlagKey) {
+        keys.add(requiredFlagKey);
+      }
+    });
+
+    markers.forEach((marker) => {
+      const visibleFlagKey = marker.visible_story_flag_key?.trim();
+      if (visibleFlagKey) {
+        keys.add(visibleFlagKey);
+      }
+    });
+
+    storyFlags.forEach((_value, key) => {
+      const savedFlagKey = key.trim();
+      if (savedFlagKey) {
+        keys.add(savedFlagKey);
+      }
+    });
+
+    return Array.from(keys).sort((a, b) => a.localeCompare(b));
+  }, [dialogueChoices, markers, storyFlags]);
   const markerStoryFlagIsVisible = useCallback((marker: MapMarker) => {
     const flagKey = marker.visible_story_flag_key?.trim();
     if (!flagKey) {
@@ -5082,6 +5113,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         markers={markers}
         events={allMapEvents}
         tutorialSteps={tutorialSteps}
+        storyFlagKeys={knownStoryFlagKeys}
         onChangeType={setChoiceRequirementType}
         onChangeValue={setChoiceRequirementValue}
         onChangeQuantity={setChoiceRequirementQuantity}
@@ -5229,6 +5261,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 restoreMana={choiceRestoreMana}
                 storyFlagKey={choiceStoryFlagKey}
                 storyFlagValue={choiceStoryFlagValue}
+                storyFlagKeys={knownStoryFlagKeys}
                 linkedBattleBuilder={choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
                 onChangeRewardXp={setChoiceRewardXp}
                 onChangeRewardGold={setChoiceRewardGold}

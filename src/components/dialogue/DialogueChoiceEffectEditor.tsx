@@ -5,6 +5,7 @@ import { colors } from "../theme";
 import type { ItemDefinition } from "../../services/inventoryService";
 import type { MapMarker } from "../../services/mapService";
 import { dialogueAdminStyles as styles } from "./dialogueAdminStyles";
+import { StoryFlagPicker } from "./StoryFlagPicker";
 
 type Props = {
   action: string;
@@ -23,6 +24,7 @@ type Props = {
   restoreMana: boolean;
   storyFlagKey: string;
   storyFlagValue: boolean;
+  storyFlagKeys: string[];
   linkedBattleBuilder: ReactNode;
   onChangeRewardXp: (value: string) => void;
   onChangeRewardGold: (value: string) => void;
@@ -56,6 +58,7 @@ export function DialogueChoiceEffectEditor({
   restoreMana,
   storyFlagKey,
   storyFlagValue,
+  storyFlagKeys,
   linkedBattleBuilder,
   onChangeRewardXp,
   onChangeRewardGold,
@@ -71,7 +74,7 @@ export function DialogueChoiceEffectEditor({
   onChangeStoryFlagKey,
   onToggleStoryFlagValue,
 }: Props) {
-  const storyFlagEditor = <StoryFlagEffectEditor storyFlagKey={storyFlagKey} storyFlagValue={storyFlagValue} onChangeStoryFlagKey={onChangeStoryFlagKey} onToggleStoryFlagValue={onToggleStoryFlagValue} />;
+  const storyFlagEditor = <StoryFlagEffectEditor storyFlagKey={storyFlagKey} storyFlagValue={storyFlagValue} storyFlagKeys={storyFlagKeys} onChangeStoryFlagKey={onChangeStoryFlagKey} onToggleStoryFlagValue={onToggleStoryFlagValue} />;
 
   if (action === "start_battle") {
     return (
@@ -139,11 +142,13 @@ export function DialogueChoiceEffectEditor({
 function StoryFlagEffectEditor({
   storyFlagKey,
   storyFlagValue,
+  storyFlagKeys,
   onChangeStoryFlagKey,
   onToggleStoryFlagValue,
 }: {
   storyFlagKey: string;
   storyFlagValue: boolean;
+  storyFlagKeys: string[];
   onChangeStoryFlagKey: (value: string) => void;
   onToggleStoryFlagValue: () => void;
 }) {
@@ -151,6 +156,7 @@ function StoryFlagEffectEditor({
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Story Flag</Text>
       <Text style={styles.copy}>Set a per-player story flag after this choice. Later choices can require this flag.</Text>
+      <StoryFlagPicker flags={storyFlagKeys} selectedKey={storyFlagKey} onSelect={onChangeStoryFlagKey} />
       <TextInput value={storyFlagKey} onChangeText={onChangeStoryFlagKey} placeholder="Flag key, example sided_with_elara" placeholderTextColor={colors.muted} style={styles.input} />
       {storyFlagKey.trim() ? (
         <Pressable style={[styles.secondaryButton, storyFlagValue && styles.typeSelected]} onPress={onToggleStoryFlagValue}>

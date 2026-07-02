@@ -6,6 +6,7 @@ import type { MapEvent, MapMarker, StoryDialogueChoice, TutorialStep } from "../
 import { requirementTypeLabel } from "../../utils/dialogueFlow";
 import { isStoryQuestMarker } from "../../utils/mapVisibility";
 import { dialogueAdminStyles as styles } from "./dialogueAdminStyles";
+import { StoryFlagPicker } from "./StoryFlagPicker";
 
 type Props = {
   requirementTypes: readonly StoryDialogueChoice["requirement_type"][];
@@ -22,6 +23,7 @@ type Props = {
   markers: MapMarker[];
   events: MapEvent[];
   tutorialSteps: TutorialStep[];
+  storyFlagKeys: string[];
   onChangeType: (value: StoryDialogueChoice["requirement_type"]) => void;
   onChangeValue: (value: string) => void;
   onChangeQuantity: (value: string) => void;
@@ -46,6 +48,7 @@ export function DialogueChoiceRequirementEditor({
   markers,
   events,
   tutorialSteps,
+  storyFlagKeys,
   onChangeType,
   onChangeValue,
   onChangeQuantity,
@@ -95,6 +98,7 @@ export function DialogueChoiceRequirementEditor({
           ))}
         </View>
       ) : null}
+      {requirementType === "story_flag" ? <StoryFlagPicker flags={storyFlagKeys} selectedKey={requirementValue} onSelect={onChangeValue} /> : null}
       {requirementType !== "none" && !["item", "completed_marker", "completed_event", "tutorial_step", "attribute_level"].includes(requirementType) ? (
         <TextInput value={requirementValue} onChangeText={onChangeValue} placeholder="Requirement value, key, ability id/name, or amount" placeholderTextColor={colors.muted} style={styles.input} />
       ) : null}
