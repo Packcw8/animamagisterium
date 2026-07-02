@@ -89,9 +89,6 @@ export function MarkerSceneScreen({
             <Text style={styles.sectionTitle}>{marker.quest_title || marker.title}</Text>
             <Text style={styles.copy}>{marker.type}</Text>
           </View>
-          <Pressable style={styles.secondaryButtonFlex} onPress={onExit}>
-            <Text style={styles.secondaryText}>Leave</Text>
-          </Pressable>
         </View>
         {npcUri ? <Image source={{ uri: npcUri }} style={marker.type === "Market" ? styles.eventImage : styles.npcPortrait} /> : null}
         {marker.description ? <Text style={styles.copy}>{marker.description}</Text> : null}
