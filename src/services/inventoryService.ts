@@ -115,6 +115,8 @@ export function blankItemDefinition(): Partial<ItemDefinition> {
     passive_mode: null,
     linked_ability_id: null,
     teaches_ability_id: null,
+    season_number: 1,
+    chapter_number: 1,
     is_active: true,
   };
 }
@@ -174,6 +176,9 @@ export async function getItemDefinitions() {
   const { data, error } = await supabase
     .from("item_definitions")
     .select("*")
+    .order("season_number", { ascending: true })
+    .order("chapter_number", { ascending: true })
+    .order("type", { ascending: true })
     .order("name", { ascending: true });
 
   if (error) {
@@ -510,6 +515,8 @@ function normalizeItemInput(input: Partial<ItemDefinition>, userId: string | nul
     passive_mode: input.passive_mode ?? null,
     linked_ability_id: input.linked_ability_id ?? null,
     teaches_ability_id: input.teaches_ability_id ?? null,
+    season_number: Number(input.season_number) || 1,
+    chapter_number: Number(input.chapter_number) || 1,
     is_active: input.is_active ?? true,
     created_by: input.id ? input.created_by ?? userId : userId,
     updated_at: new Date().toISOString(),

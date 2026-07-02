@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
+import { AdminContentScopeBar, isInAdminContentScope } from "../components/home/AdminContentScopeBar";
 import { PlayerAbilitiesPanel } from "../components/home/PlayerAbilitiesPanel";
 import { PlayerInventoryPanel } from "../components/home/PlayerInventoryPanel";
 import { GameToast, type GameToastData } from "../components/map/GameToast";
@@ -163,11 +164,13 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [enemyForm, setEnemyForm] = useState<Partial<EnemyDefinition>>(blankEnemy());
   const [enemyBalanceProfile, setEnemyBalanceProfile] = useState<EnemyBalanceProfile>("standard");
   const [editingEnemyId, setEditingEnemyId] = useState<string | null>(null);
+  const [enemyTypeFilter, setEnemyTypeFilter] = useState("all");
   const [enemyAbilities, setEnemyAbilities] = useState<EnemyAbility[]>([]);
   const [enemyDrops, setEnemyDrops] = useState<EnemyItemDrop[]>([]);
   const [npcs, setNpcs] = useState<NpcDefinition[]>([]);
   const [npcForm, setNpcForm] = useState<Partial<NpcDefinition>>(blankNpc());
   const [editingNpcId, setEditingNpcId] = useState<string | null>(null);
+  const [npcTypeFilter, setNpcTypeFilter] = useState("all");
   const [npcAbilities, setNpcAbilities] = useState<NpcAbility[]>([]);
   const [npcDrops, setNpcDrops] = useState<NpcItemDrop[]>([]);
   const [selectedEnemyAbilityId, setSelectedEnemyAbilityId] = useState<string | null>(null);
@@ -185,6 +188,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [inventoryCategory, setInventoryCategory] = useState<(typeof inventoryCategoryTabs)[number]>("Weapons");
   const [selectedInventoryItemId, setSelectedInventoryItemId] = useState<string | null>(null);
   const [adminToolTab, setAdminToolTab] = useState<(typeof adminToolTabs)[number]>("Items");
+  const [adminContentSeason, setAdminContentSeason] = useState(1);
+  const [adminContentChapter, setAdminContentChapter] = useState(1);
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
   const [totalInventoryWeight, setTotalInventoryWeight] = useState(0);
   const [carryCapacity, setCarryCapacity] = useState(50);
@@ -212,9 +217,17 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const filteredPlayerAbilities = useMemo(() => unlockedAbilities.filter((ability) => getPlayerAbilityType(ability) === playerAbilityTab), [unlockedAbilities, playerAbilityTab]);
   const selectedInventoryItem = useMemo(() => inventoryItems.find((entry) => entry.id === selectedInventoryItemId) ?? null, [inventoryItems, selectedInventoryItemId]);
   const filteredInventoryItems = useMemo(() => inventoryItems.filter((entry) => itemMatchesCategory(entry.item, inventoryCategory)), [inventoryItems, inventoryCategory]);
-  const filteredAdminItems = useMemo(() => itemDefinitions.filter((item) => itemMatchesCategory(item, inventoryCategory)), [itemDefinitions, inventoryCategory]);
-  const filteredAdminAbilities = useMemo(() => adminAbilities.filter((ability) => ability.type === abilityTypeTab.toLowerCase()), [adminAbilities, abilityTypeTab]);
-  const selectedAdminAbility = useMemo(() => adminAbilities.find((ability) => ability.id === selectedAdminAbilityId) ?? filteredAdminAbilities[0] ?? null, [adminAbilities, filteredAdminAbilities, selectedAdminAbilityId]);
+  const scopedAdminItems = useMemo(() => itemDefinitions.filter((item) => isInAdminContentScope(item, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, itemDefinitions]);
+  const scopedAdminAbilities = useMemo(() => adminAbilities.filter((ability) => isInAdminContentScope(ability, adminContentSeason, adminContentChapter)), [adminAbilities, adminContentChapter, adminContentSeason]);
+  const scopedEnemies = useMemo(() => enemies.filter((enemy) => isInAdminContentScope(enemy, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, enemies]);
+  const scopedNpcs = useMemo(() => npcs.filter((npc) => isInAdminContentScope(npc, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, npcs]);
+  const filteredAdminItems = useMemo(() => scopedAdminItems.filter((item) => itemMatchesCategory(item, inventoryCategory)), [scopedAdminItems, inventoryCategory]);
+  const filteredAdminAbilities = useMemo(() => scopedAdminAbilities.filter((ability) => ability.type === abilityTypeTab.toLowerCase()), [scopedAdminAbilities, abilityTypeTab]);
+  const enemyTypeOptions = useMemo(() => getRecordTypeOptions(scopedEnemies.map((enemy) => enemy.type)), [scopedEnemies]);
+  const npcTypeOptions = useMemo(() => getRecordTypeOptions(scopedNpcs.map((npc) => npc.type)), [scopedNpcs]);
+  const filteredEnemies = useMemo(() => scopedEnemies.filter((enemy) => enemyTypeFilter === "all" || (enemy.type || "untagged") === enemyTypeFilter), [enemyTypeFilter, scopedEnemies]);
+  const filteredNpcs = useMemo(() => scopedNpcs.filter((npc) => npcTypeFilter === "all" || (npc.type || "untagged") === npcTypeFilter), [npcTypeFilter, scopedNpcs]);
+  const selectedAdminAbility = useMemo(() => scopedAdminAbilities.find((ability) => ability.id === selectedAdminAbilityId) ?? filteredAdminAbilities[0] ?? null, [filteredAdminAbilities, scopedAdminAbilities, selectedAdminAbilityId]);
 
   function showAbilityLearnedToast(abilityNames: string[]) {
     if (abilityNames.length === 0) {
@@ -336,11 +349,12 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
   async function saveAdminAbility() {
     try {
-      const saved = await saveCombatAbility({ ...abilityForm, id: editingAdminAbilityId ?? undefined });
+      const saved = await saveCombatAbility({ ...abilityForm, id: editingAdminAbilityId ?? undefined, season_number: adminContentSeason, chapter_number: adminContentChapter });
       setAbilityMessage(`${saved.name} saved.`);
-      setAbilityForm(blankCombatAbility());
+      setAbilityForm({ ...blankCombatAbility(), season_number: adminContentSeason, chapter_number: adminContentChapter, type: (abilityTypeTab.toLowerCase() as CombatAbility["type"]) });
       setAbilityCostResource("none");
       setEditingAdminAbilityId(null);
+      setSelectedAdminAbilityId(null);
       await loadAdminCombat();
     } catch (error) {
       setAbilityMessage(error instanceof Error ? error.message : "Unable to save ability.");
@@ -349,6 +363,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
   async function editAdminAbility(ability: CombatAbility) {
     setSelectedAdminAbilityId(ability.id);
+    setAdminContentSeason(Number(ability.season_number ?? 1));
+    setAdminContentChapter(Number(ability.chapter_number ?? 1));
     setAbilityTypeTab(toAbilityTypeTab(ability.type));
     setEditingAdminAbilityId(ability.id);
     setAbilityForm(ability);
@@ -367,12 +383,15 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
   async function saveEnemyDefinition() {
     try {
-      const saved = await saveEnemy({ ...enemyForm, id: editingEnemyId ?? undefined });
+      const saved = await saveEnemy({ ...enemyForm, id: editingEnemyId ?? undefined, season_number: adminContentSeason, chapter_number: adminContentChapter });
       setAbilityMessage(`${saved.name} saved.`);
-      setEnemyForm(saved);
-      setEditingEnemyId(saved.id);
+      setEnemyForm({ ...blankEnemy(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+      setEditingEnemyId(null);
+      setEnemyAbilities([]);
+      setEnemyDrops([]);
+      setSelectedEnemyAbilityId(null);
+      setSelectedDropItemId(null);
       await loadAdminCombat();
-      await loadEnemyDetails(saved.id);
     } catch (error) {
       setAbilityMessage(error instanceof Error ? error.message : "Unable to save enemy.");
     }
@@ -428,6 +447,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
   async function editEnemy(enemy: EnemyDefinition) {
     setEditingEnemyId(enemy.id);
+    setAdminContentSeason(Number(enemy.season_number ?? 1));
+    setAdminContentChapter(Number(enemy.chapter_number ?? 1));
     setEnemyForm(enemy);
     await loadEnemyDetails(enemy.id);
   }
@@ -476,12 +497,15 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
   async function saveNpcDefinition() {
     try {
-      const saved = await saveNpc({ ...npcForm, id: editingNpcId ?? undefined });
+      const saved = await saveNpc({ ...npcForm, id: editingNpcId ?? undefined, season_number: adminContentSeason, chapter_number: adminContentChapter });
       setAbilityMessage(`${saved.name} saved.`);
-      setNpcForm(saved);
-      setEditingNpcId(saved.id);
+      setNpcForm({ ...blankNpc(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+      setEditingNpcId(null);
+      setNpcAbilities([]);
+      setNpcDrops([]);
+      setSelectedNpcAbilityId(null);
+      setSelectedNpcDropItemId(null);
       await loadAdminCombat();
-      await loadNpcDetails(saved.id);
     } catch (error) {
       setAbilityMessage(error instanceof Error ? error.message : "Unable to save NPC.");
     }
@@ -489,6 +513,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
   async function editNpc(npc: NpcDefinition) {
     setEditingNpcId(npc.id);
+    setAdminContentSeason(Number(npc.season_number ?? 1));
+    setAdminContentChapter(Number(npc.chapter_number ?? 1));
     setNpcForm(npc);
     await loadNpcDetails(npc.id);
   }
@@ -587,9 +613,9 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
   async function saveItem() {
     try {
-      const saved = await saveItemDefinition({ ...itemForm, id: editingItemId ?? undefined });
+      const saved = await saveItemDefinition({ ...itemForm, id: editingItemId ?? undefined, season_number: adminContentSeason, chapter_number: adminContentChapter });
       setInventoryMessage(`${saved.name} saved.`);
-      setItemForm(blankItemDefinition());
+      setItemForm({ ...blankItemDefinition(), season_number: adminContentSeason, chapter_number: adminContentChapter, type: itemForm.type ?? "misc" });
       setEditingItemId(null);
       await loadInventory();
     } catch (error) {
@@ -612,6 +638,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
   async function editItem(item: ItemDefinition) {
     setInventoryCategory(toInventoryCategory(item.type));
+    setAdminContentSeason(Number(item.season_number ?? 1));
+    setAdminContentChapter(Number(item.chapter_number ?? 1));
     setEditingItemId(item.id);
     setItemForm(item);
   }
@@ -961,6 +989,12 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
             />
             {isAdmin ? (
               <View style={styles.adminBuilder}>
+                <AdminContentScopeBar
+                  season={adminContentSeason}
+                  chapter={adminContentChapter}
+                  onChangeSeason={setAdminContentSeason}
+                  onChangeChapter={setAdminContentChapter}
+                />
                 <View style={styles.tabs}>
                   {adminToolTabs.map((tab) => (
                     <Pressable key={tab} style={[styles.tab, adminToolTab === tab && styles.activeTab]} onPress={() => setAdminToolTab(tab)}>
@@ -1066,6 +1100,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                       {resolveAbilityImageUri(ability.image_path) ? <Image source={{ uri: resolveAbilityImageUri(ability.image_path) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                       <View style={styles.itemBody}>
                     <Text style={styles.abilityName}>{ability.name}</Text>
+                    <Text style={styles.muted}>Season {ability.season_number ?? 1} / Chapter {ability.chapter_number ?? 1}</Text>
                     <Text style={styles.muted}>{ability.type} / {ability.damage} damage / {ability.healing} healing / {ability.status_effect}</Text>
                     <Text style={styles.muted}>Restores {ability.stamina_restore} Stamina / {ability.magika_restore} Mana</Text>
                     <Text style={styles.muted}>Unlock: {formatAbilityUnlockText(ability)}</Text>
@@ -1082,6 +1117,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 {adminToolTab === "Enemies" ? (
                   <>
                 <Text style={styles.sectionTitle}>Enemy Admin</Text>
+                <ChoiceRow label="Enemy Type Filter" options={["all", ...enemyTypeOptions]} value={enemyTypeFilter} labels={{ all: "All Enemy Types", untagged: "Untagged" }} onSelect={setEnemyTypeFilter} />
                 <ItemText label="Name" value={enemyForm.name ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, name: value }))} />
                 <ItemText label="Type" value={enemyForm.type ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, type: value }))} />
                 <ItemText label="Image URL/path" value={enemyForm.image_url ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, image_url: value }))} />
@@ -1123,6 +1159,18 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                   <Text style={styles.primaryAdminText}>{editingEnemyId ? "Update Enemy" : "Add Enemy"}</Text>
                 </Pressable>
                 {editingEnemyId ? (
+                  <Pressable style={styles.smallButton} onPress={() => {
+                    setEditingEnemyId(null);
+                    setEnemyForm({ ...blankEnemy(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+                    setEnemyAbilities([]);
+                    setEnemyDrops([]);
+                    setSelectedEnemyAbilityId(null);
+                    setSelectedDropItemId(null);
+                  }}>
+                    <Text style={styles.smallButtonText}>New Enemy</Text>
+                  </Pressable>
+                ) : null}
+                {editingEnemyId ? (
                   <View style={styles.adminBuilder}>
                     <Text style={styles.subTitle}>Enemy Abilities</Text>
                     <NamedChoiceRow label="Ability" options={adminAbilities.map((ability) => ({ id: ability.id, label: ability.name }))} value={selectedEnemyAbilityId ?? ""} onSelect={setSelectedEnemyAbilityId} />
@@ -1151,12 +1199,13 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     ))}
                   </View>
                 ) : null}
-                {enemies.map((enemy) => (
+                {filteredEnemies.map((enemy) => (
                   <View key={enemy.id} style={styles.abilityCard}>
                     <View style={styles.itemCardHeader}>
                       {resolveEnemyImageUri(enemy.image_url) ? <Image source={{ uri: resolveEnemyImageUri(enemy.image_url) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                       <View style={styles.itemBody}>
-                    <Text style={styles.abilityName}>{enemy.name}</Text>
+                      <Text style={styles.abilityName}>{enemy.name}</Text>
+                    <Text style={styles.muted}>Season {enemy.season_number ?? 1} / Chapter {enemy.chapter_number ?? 1}</Text>
                     <Text style={styles.muted}>{enemy.type || "Enemy"} / HP {enemy.health} / Attack +{enemy.attack_bonus ?? 0} / Defense {enemy.defense} / Armor {enemy.armor_rating}</Text>
                       </View>
                     </View>
@@ -1172,6 +1221,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                   <>
                 <Text style={styles.sectionTitle}>NPC Admin</Text>
                 <Text style={styles.muted}>Create reusable characters for dialogue. Turn on Battle Capable when this NPC can also be selected for battles.</Text>
+                <ChoiceRow label="NPC Type Filter" options={["all", ...npcTypeOptions]} value={npcTypeFilter} labels={{ all: "All NPC Types", untagged: "Untagged" }} onSelect={setNpcTypeFilter} />
                 <ItemText label="Name" value={npcForm.name ?? ""} onChange={(value) => setNpcForm((current) => ({ ...current, name: value }))} />
                 <ItemText label="Type / Role" value={npcForm.type ?? ""} onChange={(value) => setNpcForm((current) => ({ ...current, type: value }))} />
                 <ItemText label="Description" value={npcForm.description ?? ""} onChange={(value) => setNpcForm((current) => ({ ...current, description: value }))} />
@@ -1201,6 +1251,18 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                   <Text style={styles.primaryAdminText}>{editingNpcId ? "Update NPC" : "Add NPC"}</Text>
                 </Pressable>
                 {editingNpcId ? (
+                  <Pressable style={styles.smallButton} onPress={() => {
+                    setEditingNpcId(null);
+                    setNpcForm({ ...blankNpc(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+                    setNpcAbilities([]);
+                    setNpcDrops([]);
+                    setSelectedNpcAbilityId(null);
+                    setSelectedNpcDropItemId(null);
+                  }}>
+                    <Text style={styles.smallButtonText}>New NPC</Text>
+                  </Pressable>
+                ) : null}
+                {editingNpcId ? (
                   <View style={styles.adminBuilder}>
                     <Text style={styles.subTitle}>NPC Abilities</Text>
                     <NamedChoiceRow label="Ability" options={adminAbilities.map((ability) => ({ id: ability.id, label: ability.name }))} value={selectedNpcAbilityId ?? ""} onSelect={setSelectedNpcAbilityId} />
@@ -1229,12 +1291,13 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     ))}
                   </View>
                 ) : null}
-                {npcs.map((npc) => (
+                {filteredNpcs.map((npc) => (
                   <View key={npc.id} style={styles.abilityCard}>
                     <View style={styles.itemCardHeader}>
                       {resolveEnemyImageUri(npc.image_url) ? <Image source={{ uri: resolveEnemyImageUri(npc.image_url) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                       <View style={styles.itemBody}>
                     <Text style={styles.abilityName}>{npc.name}</Text>
+                    <Text style={styles.muted}>Season {npc.season_number ?? 1} / Chapter {npc.chapter_number ?? 1}</Text>
                     <Text style={styles.muted}>{npc.type || "NPC"} / {npc.can_battle ? `Battle Capable / HP ${npc.health} / Attack +${npc.attack_bonus ?? 0} / Defense ${npc.defense}` : "Dialogue NPC"}</Text>
                     {npc.description ? <Text style={styles.muted}>{npc.description}</Text> : null}
                       </View>
@@ -1273,6 +1336,12 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
             />
             {isAdmin ? (
               <View style={styles.adminBuilder}>
+                <AdminContentScopeBar
+                  season={adminContentSeason}
+                  chapter={adminContentChapter}
+                  onChangeSeason={setAdminContentSeason}
+                  onChangeChapter={setAdminContentChapter}
+                />
                 <View style={styles.tabs}>
                   {adminToolTabs.map((tab) => (
                     <Pressable key={tab} style={[styles.tab, adminToolTab === tab && styles.activeTab]} onPress={() => setAdminToolTab(tab)}>
@@ -1358,6 +1427,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     {resolveInventoryImageUri(item.image_path) ? <Image source={{ uri: resolveInventoryImageUri(item.image_path) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
                     <View style={styles.itemBody}>
                       <Text style={styles.abilityName}>{item.name}</Text>
+                      <Text style={styles.muted}>Season {item.season_number ?? 1} / Chapter {item.chapter_number ?? 1}</Text>
                       <Text style={styles.muted}>{item.type} / {item.rarity} / {Number(item.weight ?? 0).toFixed(1)} wt</Text>
                       <View style={styles.slotActions}>
                         <Pressable style={styles.smallButton} onPress={() => void editItem(item)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
@@ -1499,6 +1569,10 @@ function Resource({ label, value, color }: { label: string; value: number | stri
       <Text style={styles.resourceValue}>{value}</Text>
     </View>
   );
+}
+
+function getRecordTypeOptions(types: Array<string | null | undefined>) {
+  return Array.from(new Set(types.map((type) => type?.trim() || "untagged"))).sort((left, right) => left.localeCompare(right));
 }
 
 function CombatStat({ label, value, note }: { label: string; value: string | number; note: string }) {

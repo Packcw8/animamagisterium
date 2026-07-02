@@ -143,6 +143,8 @@ export type Tables = {
     passive_mode: "owned" | "equipped" | null;
     linked_ability_id: string | null;
     teaches_ability_id: string | null;
+    season_number: number;
+    chapter_number: number;
     is_active: boolean;
     created_by: string | null;
     created_at: string;
@@ -911,6 +913,8 @@ export type Tables = {
     image_path: string | null;
     usage_context: "battle_only" | "outside_battle_only" | "both";
     attack_bonus: number;
+    season_number: number;
+    chapter_number: number;
     is_active: boolean;
     created_by: string | null;
     created_at: string;
@@ -936,6 +940,8 @@ export type Tables = {
     armor_rating: number;
     xp_reward: number;
     gold_reward: number;
+    season_number: number;
+    chapter_number: number;
     is_active: boolean;
     created_by: string | null;
     created_at: string;
@@ -980,6 +986,8 @@ export type Tables = {
     armor_rating: number;
     xp_reward: number;
     gold_reward: number;
+    season_number: number;
+    chapter_number: number;
     is_active: boolean;
     created_by: string | null;
     created_at: string;

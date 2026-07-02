@@ -85,6 +85,8 @@ export function blankCombatAbility(): Partial<CombatAbility> {
     image_path: "/assets/abilities/",
     usage_context: "battle_only",
     attack_bonus: 0,
+    season_number: 1,
+    chapter_number: 1,
     is_active: true,
   };
 }
@@ -109,6 +111,8 @@ export function blankEnemy(): Partial<EnemyDefinition> {
     armor_rating: 0,
     xp_reward: 0,
     gold_reward: 0,
+    season_number: 1,
+    chapter_number: 1,
     is_active: true,
   };
 }
@@ -135,12 +139,20 @@ export function blankNpc(): Partial<NpcDefinition> {
     armor_rating: 0,
     xp_reward: 0,
     gold_reward: 0,
+    season_number: 1,
+    chapter_number: 1,
     is_active: true,
   };
 }
 
 export async function getCombatAbilities() {
-  const { data, error } = await supabase.from("combat_abilities").select("*").order("created_at", { ascending: false });
+  const { data, error } = await supabase
+    .from("combat_abilities")
+    .select("*")
+    .order("season_number", { ascending: true })
+    .order("chapter_number", { ascending: true })
+    .order("type", { ascending: true })
+    .order("name", { ascending: true });
   if (error) {
     throw error;
   }
@@ -170,7 +182,13 @@ export async function deleteCombatAbility(id: string) {
 }
 
 export async function getEnemies() {
-  const { data, error } = await supabase.from("enemy_definitions").select("*").order("created_at", { ascending: false });
+  const { data, error } = await supabase
+    .from("enemy_definitions")
+    .select("*")
+    .order("season_number", { ascending: true })
+    .order("chapter_number", { ascending: true })
+    .order("type", { ascending: true, nullsFirst: false })
+    .order("name", { ascending: true });
   if (error) {
     throw error;
   }
@@ -178,7 +196,13 @@ export async function getEnemies() {
 }
 
 export async function getNpcs() {
-  const { data, error } = await supabase.from("npc_definitions").select("*").order("created_at", { ascending: false });
+  const { data, error } = await supabase
+    .from("npc_definitions")
+    .select("*")
+    .order("season_number", { ascending: true })
+    .order("chapter_number", { ascending: true })
+    .order("type", { ascending: true, nullsFirst: false })
+    .order("name", { ascending: true });
   if (error) {
     throw error;
   }
@@ -376,6 +400,8 @@ function normalizeCombatAbility(input: Partial<CombatAbility>, userId: string | 
     image_path: input.image_path?.trim() || null,
     usage_context: input.usage_context ?? "battle_only",
     attack_bonus: Number(input.attack_bonus) || 0,
+    season_number: Number(input.season_number) || 1,
+    chapter_number: Number(input.chapter_number) || 1,
     is_active: input.is_active ?? true,
     created_by: input.id ? input.created_by ?? userId : userId,
     updated_at: new Date().toISOString(),
@@ -402,6 +428,8 @@ function normalizeEnemy(input: Partial<EnemyDefinition>, userId: string | null) 
     armor_rating: Number(input.armor_rating) || 0,
     xp_reward: Number(input.xp_reward) || 0,
     gold_reward: Number(input.gold_reward) || 0,
+    season_number: Number(input.season_number) || 1,
+    chapter_number: Number(input.chapter_number) || 1,
     is_active: input.is_active ?? true,
     created_by: input.id ? input.created_by ?? userId : userId,
     updated_at: new Date().toISOString(),
@@ -430,6 +458,8 @@ function normalizeNpc(input: Partial<NpcDefinition>, userId: string | null) {
     armor_rating: Number(input.armor_rating) || 0,
     xp_reward: Number(input.xp_reward) || 0,
     gold_reward: Number(input.gold_reward) || 0,
+    season_number: Number(input.season_number) || 1,
+    chapter_number: Number(input.chapter_number) || 1,
     is_active: input.is_active ?? true,
     created_by: input.id ? input.created_by ?? userId : userId,
     updated_at: new Date().toISOString(),
