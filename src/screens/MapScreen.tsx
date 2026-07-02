@@ -454,6 +454,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [marketPurchaseCounts, setMarketPurchaseCounts] = useState<Record<string, number>>({});
   const [markerRouteLinks, setMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [selectedMarkerRouteIds, setSelectedMarkerRouteIds] = useState<string[]>([]);
+  const [selectedMarkerRouteDirections, setSelectedMarkerRouteDirections] = useState<Record<string, MarkerRouteLink["start_direction"]>>({});
   const [marketItemId, setMarketItemId] = useState<string | null>(null);
   const [marketBuyPrice, setMarketBuyPrice] = useState("0");
   const [marketSellPrice, setMarketSellPrice] = useState("0");
@@ -1949,7 +1950,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       if (activeMiniMapId && configured.mini_map_id !== activeMiniMapId) {
         throw new Error("Mini-map marker was saved without the open mini map id. Try again after reopening the mini map.");
       }
-      const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition);
+      const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections);
       setMarkerRouteLinks(links);
       setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== configured.id), ...links]);
       setMarkers((current) => [...current, configured]);
@@ -2083,6 +2084,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
       setMarkerRouteLinks(links);
       setSelectedMarkerRouteIds(links.map((link) => link.route_id));
+      setSelectedMarkerRouteDirections(Object.fromEntries(links.map((link) => [link.route_id, link.start_direction ?? "forward"])));
       setMarkerRouteCompletionCondition(links[0]?.completion_condition ?? "either");
       setMarkerDialogueIds((current) => {
         const next = new Set(current);
@@ -2143,6 +2145,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       const links = await getMarkerRouteLinks(marker.id);
       setMarkerRouteLinks(links);
       setSelectedMarkerRouteIds(links.map((link) => link.route_id));
+      setSelectedMarkerRouteDirections(Object.fromEntries(links.map((link) => [link.route_id, link.start_direction ?? "forward"])));
       setMarkerRouteCompletionCondition(links[0]?.completion_condition ?? "either");
       setAdminMessage(clickedPercent ? `Loaded ${marker.title}. Save it to place a copy in ${activeMiniMap.name}.` : `Loaded ${marker.title}. Tap the mini map to choose its new position, then save.`);
     } catch (error) {
@@ -2199,7 +2202,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           })
         : selectedMarker;
       const updated = await updateMarkerSettings(moved.id, getMarkerSettingsPayload());
-      const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition);
+      const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections);
       setMarkerRouteLinks(links);
       setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== updated.id), ...links]);
       setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
@@ -2704,28 +2707,47 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   function toggleSignPostRoute(routeId: string) {
-    setSelectedMarkerRouteIds((current) => current.includes(routeId) ? current.filter((id) => id !== routeId) : [...current, routeId]);
+    setSelectedMarkerRouteIds((current) => {
+      if (current.includes(routeId)) {
+        setSelectedMarkerRouteDirections((directions) => {
+          const next = { ...directions };
+          delete next[routeId];
+          return next;
+        });
+        return current.filter((id) => id !== routeId);
+      }
+
+      setSelectedMarkerRouteDirections((directions) => ({ ...directions, [routeId]: directions[routeId] ?? "forward" }));
+      return [...current, routeId];
+    });
   }
 
-  async function startPathFromSignPost(nextRoute: MapRoute) {
+  function setSignPostRouteDirection(routeId: string, direction: MarkerRouteLink["start_direction"]) {
+    setSelectedMarkerRouteDirections((current) => ({ ...current, [routeId]: direction }));
+  }
+
+  async function startPathFromSignPost(nextRoute: MapRoute, routeLink?: MarkerRouteLink) {
     if (!isAdmin && isRouteLocked(nextRoute)) {
       setMarkerPanelMessage(getRouteLockMessage(nextRoute));
       return;
     }
 
     const progress = await getRouteProgress(nextRoute.id);
-    const savedProgress = Number(progress?.progress_percent ?? 0);
+    const selectedDirection = routeLink?.start_direction ?? "forward";
+    const savedProgress = Number(progress?.progress_percent ?? (selectedDirection === "reverse" ? 100 : 0));
     const isCompletedNonStoryRoute = savedProgress >= 100 && !progress?.source_marker_id;
-    const existingDistance = isCompletedNonStoryRoute ? 0 : Number(progress?.distance_walked_meters ?? 0);
+    const existingDistance = isCompletedNonStoryRoute
+      ? selectedDirection === "reverse" ? Number(nextRoute.distance_required_meters) || 0 : 0
+      : Number(progress?.distance_walked_meters ?? (selectedDirection === "reverse" ? nextRoute.distance_required_meters : 0));
     const nextProgress = isCompletedNonStoryRoute
-      ? 0
+      ? selectedDirection === "reverse" ? 100 : 0
       : Math.min(100, Math.max(0, progress?.progress_percent ?? (existingDistance / nextRoute.distance_required_meters) * 100));
     const nextPoint = getPointOnRoute(nextRoute.path_points, nextProgress);
 
     await setCurrentRoute(nextRoute.id);
     setHasActiveRoute(true);
-    setRouteDirection("forward");
-    routeDirectionRef.current = "forward";
+    setRouteDirection(selectedDirection);
+    routeDirectionRef.current = selectedDirection;
     distanceWalkedRef.current = existingDistance;
     setDistanceWalked(existingDistance);
     setSavedPlayerPosition(nextPoint);
@@ -2737,7 +2759,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       current_y_percent: nextPoint.y,
       last_lat: null,
       last_lng: null,
-      travel_direction: "forward",
+      travel_direction: selectedDirection,
       is_current: true,
       source_marker_id: isCompletedNonStoryRoute ? null : progress?.source_marker_id ?? null,
     });
@@ -5375,7 +5397,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           onSell={(entry) => void sellToMarker(entry)}
           onClaimReward={() => void claimSelectedMarkerReward()}
           onAcceptQuest={() => void acceptSelectedMarkerQuest()}
-          onStartPath={(nextRoute) => void startPathFromSignPost(nextRoute)}
+          onStartPath={(nextRoute, routeLink) => void startPathFromSignPost(nextRoute, routeLink)}
           onUseExit={() => void openExitMarker(selectedMarker)}
           onEnterArea={() => void enterAreaMarker(selectedMarker)}
           onOpenDialogueEvent={() => void openSelectedMarkerDialogue()}
@@ -5855,7 +5877,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               storyRoutes={adminRoutes}
               allMarkers={markers}
               selectedMarkerRouteIds={selectedMarkerRouteIds}
+              selectedMarkerRouteDirections={selectedMarkerRouteDirections}
               toggleSignPostRoute={toggleSignPostRoute}
+              setSignPostRouteDirection={setSignPostRouteDirection}
               worldMarkers={adminWorldMarkers}
               storyScopeMarkers={adminStoryMarkers}
               miniMaps={adminMiniMaps}
@@ -6138,7 +6162,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           itemDefinitions={itemDefinitions}
           onClose={() => setSelectedMarker(null)}
           onStartTracking={startGpsTracking}
-          onStartPath={(nextRoute) => void startPathFromSignPost(nextRoute)}
+          onStartPath={(nextRoute, routeLink) => void startPathFromSignPost(nextRoute, routeLink)}
           onEnterArea={() => void enterAreaMarker(selectedMarker)}
           onStartBattleEvent={() => void startSelectedMarkerBattle()}
           onBuy={(marketItem) => void buyFromMarker(marketItem)}
@@ -6405,6 +6429,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                       </Pressable>
                     ))}
                   </View>
+                  <SignPostRouteDirectionEditor
+                    routes={adminWorldRoutes}
+                    selectedRouteIds={selectedMarkerRouteIds}
+                    routeDirections={selectedMarkerRouteDirections}
+                    onSelectDirection={setSignPostRouteDirection}
+                  />
                   {selectedMarker ? (
                     <Text style={styles.debugLine}>Save Selected Marker Settings after changing linked paths.</Text>
                   ) : (
@@ -7026,6 +7056,49 @@ function LinkedMarkerPathNotice({
   );
 }
 
+function SignPostRouteDirectionEditor({
+  routes,
+  selectedRouteIds,
+  routeDirections,
+  onSelectDirection,
+}: {
+  routes: MapRoute[];
+  selectedRouteIds: string[];
+  routeDirections: Record<string, MarkerRouteLink["start_direction"]>;
+  onSelectDirection: (routeId: string, direction: MarkerRouteLink["start_direction"]) => void;
+}) {
+  const selectedRoutes = selectedRouteIds
+    .map((routeId) => routes.find((route) => route.id === routeId))
+    .filter((route): route is MapRoute => Boolean(route));
+
+  if (selectedRoutes.length === 0) {
+    return null;
+  }
+
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Path Start Direction</Text>
+      <Text style={styles.copy}>Forward starts at 0% and walks to 100%. Reverse starts at 100% and walks back to 0%.</Text>
+      {selectedRoutes.map((selectedRoute) => {
+        const selectedDirection = routeDirections[selectedRoute.id] ?? "forward";
+        return (
+          <View key={selectedRoute.id} style={styles.storyCard}>
+            <Text style={styles.markerName}>{selectedRoute.sort_order}. {selectedRoute.name}</Text>
+            <View style={styles.modeRow}>
+              <Pressable style={[styles.secondaryButtonFlex, selectedDirection === "forward" && styles.typeSelected]} onPress={() => onSelectDirection(selectedRoute.id, "forward")}>
+                <Text style={styles.secondaryText}>Forward 0% to 100%</Text>
+              </Pressable>
+              <Pressable style={[styles.secondaryButtonFlex, selectedDirection === "reverse" && styles.typeSelected]} onPress={() => onSelectDirection(selectedRoute.id, "reverse")}>
+                <Text style={styles.secondaryText}>Reverse 100% to 0%</Text>
+              </Pressable>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function MiniMapMarkerAdminForm({
   activeSectionMarkerTypes,
   legendItems,
@@ -7110,7 +7183,9 @@ function MiniMapMarkerAdminForm({
   storyRoutes,
   allMarkers,
   selectedMarkerRouteIds,
+  selectedMarkerRouteDirections,
   toggleSignPostRoute,
+  setSignPostRouteDirection,
   worldMarkers,
   storyScopeMarkers,
   miniMaps,
@@ -7234,7 +7309,9 @@ function MiniMapMarkerAdminForm({
   storyRoutes: MapRoute[];
   allMarkers: MapMarker[];
   selectedMarkerRouteIds: string[];
+  selectedMarkerRouteDirections: Record<string, MarkerRouteLink["start_direction"]>;
   toggleSignPostRoute: (routeId: string) => void;
+  setSignPostRouteDirection: (routeId: string, direction: MarkerRouteLink["start_direction"]) => void;
   worldMarkers: MapMarker[];
   storyScopeMarkers: MapMarker[];
   miniMaps: MiniMap[];
@@ -7421,6 +7498,12 @@ function MiniMapMarkerAdminForm({
               </Pressable>
             ))}
           </View>
+          <SignPostRouteDirectionEditor
+            routes={routes}
+            selectedRouteIds={selectedMarkerRouteIds}
+            routeDirections={selectedMarkerRouteDirections}
+            onSelectDirection={setSignPostRouteDirection}
+          />
           {routes.length === 0 ? <Text style={styles.copy}>No walking paths exist in this season/chapter yet.</Text> : null}
           {selectedMarker ? (
             <Text style={styles.debugLine}>Save Marker Details after changing linked paths.</Text>

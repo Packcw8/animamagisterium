@@ -24,7 +24,7 @@ type MarkerInteractionPanelProps = {
   itemDefinitions: ItemDefinition[];
   onClose: () => void;
   onStartTracking: () => void;
-  onStartPath: (route: MapRoute) => void;
+  onStartPath: (route: MapRoute, routeLink?: MarkerRouteLink) => void;
   onEnterArea: () => void;
   onStartBattleEvent: () => void;
   onBuy: (marketItem: MarkerMarketItem) => void;
@@ -97,14 +97,17 @@ export function MarkerInteractionPanel({
               return null;
             }
             const routeLocked = isRouteLocked(linkedRoute);
+            const startDirection = link.start_direction ?? "forward";
+            const directionLabel = startDirection === "reverse" ? "Reverse: 100% to 0%" : "Forward: 0% to 100%";
 
             return (
               <View key={link.id} style={[styles.storyCard, routeLocked && styles.lockedCard]}>
                 <Text style={styles.markerName}>{linkedRoute.name}</Text>
                 <Text style={styles.copy}>Destination: {link.destination_label || linkedRoute.terrain}</Text>
+                <Text style={styles.copy}>{directionLabel}</Text>
                 <Text style={styles.copy}>{metersToMiles(linkedRoute.distance_required_meters)} mi / Progress {Math.round(progress)}%</Text>
                 <Text style={routeLocked ? styles.lockText : styles.unlockText}>{routeLocked ? getRouteLockMessage(linkedRoute) : "Available"}</Text>
-                <Pressable style={[styles.primaryButton, routeLocked && styles.disabledAction]} onPress={() => onStartPath(linkedRoute)} disabled={routeLocked}>
+                <Pressable style={[styles.primaryButton, routeLocked && styles.disabledAction]} onPress={() => onStartPath(linkedRoute, link)} disabled={routeLocked}>
                   <Text style={styles.primaryText}>{routeLocked ? getRouteLockLabel(linkedRoute) : "Start Path"}</Text>
                 </Pressable>
               </View>

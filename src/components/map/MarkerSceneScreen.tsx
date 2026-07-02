@@ -58,7 +58,7 @@ export function MarkerSceneScreen({
   onSell: (item: InventoryItem) => void;
   onClaimReward: () => void;
   onAcceptQuest: () => void;
-  onStartPath: (route: MapRoute) => void;
+  onStartPath: (route: MapRoute, routeLink?: MarkerRouteLink) => void;
   onUseExit: () => void;
   onEnterArea: () => void;
   onOpenDialogueEvent: () => void;
@@ -230,7 +230,7 @@ function SignPostScene({
   routeLinks: MarkerRouteLink[];
   routes: MapRoute[];
   routeProgressRows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>;
-  onStartPath: (route: MapRoute) => void;
+  onStartPath: (route: MapRoute, routeLink?: MarkerRouteLink) => void;
 }) {
   return (
     <View style={styles.storyEditor}>
@@ -244,14 +244,17 @@ function SignPostScene({
           return null;
         }
         const locked = isRouteLocked(linkedRoute);
+        const startDirection = link.start_direction ?? "forward";
+        const directionLabel = startDirection === "reverse" ? "Reverse: 100% to 0%" : "Forward: 0% to 100%";
 
         return (
           <View key={link.id} style={[styles.storyCard, locked && styles.lockedCard]}>
             <Text style={styles.markerName}>{linkedRoute.name}</Text>
             <Text style={styles.copy}>Destination: {link.destination_label || linkedRoute.terrain}</Text>
+            <Text style={styles.copy}>{directionLabel}</Text>
             <Text style={styles.copy}>{metersToMiles(linkedRoute.distance_required_meters)} mi / Progress {Math.round(progress)}%</Text>
             <Text style={locked ? styles.lockText : styles.unlockText}>{locked ? getRouteLockMessage(linkedRoute) : "Available"}</Text>
-            <Pressable style={[styles.primaryButton, locked && styles.disabledAction]} onPress={() => onStartPath(linkedRoute)} disabled={locked}>
+            <Pressable style={[styles.primaryButton, locked && styles.disabledAction]} onPress={() => onStartPath(linkedRoute, link)} disabled={locked}>
               <Text style={styles.primaryText}>{locked ? getRouteLockLabel(linkedRoute) : "Start Path"}</Text>
             </Pressable>
           </View>
