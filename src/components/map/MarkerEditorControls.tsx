@@ -189,7 +189,7 @@ export function RoutePicker({ routes, selectedId, onSelect }: { routes: MapRoute
         </Pressable>
         {routes.map((route) => (
           <Pressable key={route.id} style={[styles.routeChip, selectedId === route.id && styles.routeChipActive]} onPress={() => onSelect(route.id)}>
-            <Text style={styles.routeChipText}>{route.sort_order}. {route.name}</Text>
+            <Text style={styles.routeChipText}>{route.sort_order}. {route.name}{route.mini_map_id ? " (Mini)" : " (World)"}</Text>
           </Pressable>
         ))}
       </View>

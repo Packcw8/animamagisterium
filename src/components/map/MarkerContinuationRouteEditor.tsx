@@ -31,8 +31,8 @@ export function MarkerContinuationRouteEditor({
       <Text style={styles.title}>Auto-Continue Trail</Text>
       <Text style={styles.copy}>
         {isExit
-          ? "Optional: after this exit moves the player to its target map or marker, automatically start one linked trail."
-          : "Optional: after this entrance opens the area, automatically start one linked trail inside that area."}
+          ? "Optional: after this exit moves the player to its target map or marker, automatically start one linked trail from any world or mini map."
+          : "Optional: after this entrance opens the area, automatically start one linked trail from any world or mini map."}
       </Text>
       <RoutePicker routes={routes} selectedId={selectedRouteId} onSelect={onSelectRoute} />
       {selectedRouteId ? (

@@ -600,20 +600,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const adminRoutes = useMemo(() => orderedRoutes.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [orderedRoutes, selectedChapter, selectedSeason]);
   const adminWorldRoutes = useMemo(() => adminRoutes.filter((item) => !item.mini_map_id), [adminRoutes]);
   const adminMiniMapRoutes = useMemo(() => adminRoutes.filter((item) => item.mini_map_id === activeMiniMap?.id), [activeMiniMap?.id, adminRoutes]);
-  const markerContinuationRoutes = useMemo(() => {
-    const targetMiniMapId =
-      draftType === "Area/Town Entrance"
-        ? selectedMiniMapId
-        : isExitMarkerType(draftType) && markerExitTargetType === "mini_map"
-          ? markerExitTargetMiniMapId
-          : null;
-
-    if (targetMiniMapId) {
-      return adminRoutes.filter((item) => item.mini_map_id === targetMiniMapId);
-    }
-
-    return activeMiniMap ? adminMiniMapRoutes : adminWorldRoutes;
-  }, [activeMiniMap, adminMiniMapRoutes, adminRoutes, adminWorldRoutes, draftType, markerExitTargetMiniMapId, markerExitTargetType, selectedMiniMapId]);
+  const markerContinuationRoutes = useMemo(() => adminRoutes, [adminRoutes]);
   const dialogueChoiceAvailability = useMemo(
     () => {
       const selectedChoiceGroupKeys = new Map<string, StoryDialogueChoice>();
