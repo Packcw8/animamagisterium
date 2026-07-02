@@ -198,6 +198,9 @@ export function getRequirementSummary(choice: StoryDialogueChoice, itemDefinitio
   if (type === "item") {
     return `Requires ${label} x${getRequirementAmount(choice)}`;
   }
+  if (type === "story_flag") {
+    return `Requires Story Flag: ${label} = ${getRequiredStoryFlagValue(choice) ? "true" : "false"}`;
+  }
   if (type === "attribute_level") {
     return `Requires ${label} ${choice.requirement_operator ?? ">="} ${getRequirementAmount(choice)}`;
   }
@@ -287,9 +290,10 @@ function getRequirementResult(choice: StoryDialogueChoice, context: DialogueRequ
   }
 
   if (choice.requirement_type === "story_flag") {
+    const expectedValue = getRequiredStoryFlagValue(choice);
     return {
-      met: context.storyFlags.get(value) === true,
-      defaultMessage: `Requires story flag: ${value}`,
+      met: context.storyFlags.get(value) === expectedValue,
+      defaultMessage: `Requires story flag: ${value} = ${expectedValue ? "true" : "false"}`,
     };
   }
 
@@ -336,6 +340,10 @@ function getRequirementAmount(choice: StoryDialogueChoice) {
   const quantity = Number(choice.requirement_quantity ?? 0);
   const valueNumber = Number(choice.requirement_value ?? 0);
   return Math.max(1, quantity || valueNumber || 1);
+}
+
+function getRequiredStoryFlagValue(choice: StoryDialogueChoice) {
+  return Number(choice.requirement_quantity ?? 1) !== 0;
 }
 
 function compareNumber(actual: number, expected: number, operator: StoryDialogueChoice["requirement_operator"] = ">=") {

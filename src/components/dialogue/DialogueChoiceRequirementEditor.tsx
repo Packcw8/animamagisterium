@@ -102,6 +102,11 @@ export function DialogueChoiceRequirementEditor({
       {requirementType !== "none" && !["item", "completed_marker", "completed_event", "tutorial_step", "attribute_level"].includes(requirementType) ? (
         <TextInput value={requirementValue} onChangeText={onChangeValue} placeholder="Requirement value, key, ability id/name, or amount" placeholderTextColor={colors.muted} style={styles.input} />
       ) : null}
+      {requirementType === "story_flag" ? (
+        <Pressable style={[styles.secondaryButton, Number(requirementQuantity || 1) !== 0 && styles.typeSelected]} onPress={() => onChangeQuantity(Number(requirementQuantity || 1) === 0 ? "1" : "0")}>
+          <Text style={styles.secondaryText}>Required Flag Value: {Number(requirementQuantity || 1) === 0 ? "False" : "True"}</Text>
+        </Pressable>
+      ) : null}
       {showQuantity ? (
         <TextInput value={requirementQuantity} onChangeText={onChangeQuantity} placeholder={requirementType === "gold" ? "Required gold amount" : requirementType === "attribute_level" ? "Required attribute level" : "Required quantity"} placeholderTextColor={colors.muted} style={styles.input} />
       ) : null}

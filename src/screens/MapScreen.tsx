@@ -28,6 +28,7 @@ import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerPathRequirementEditor } from "../components/map/MarkerPathRequirementEditor";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { MarkerStyleEditor } from "../components/map/MarkerStyleEditor";
+import { MarkerStoryFlagVisibilityEditor } from "../components/map/MarkerStoryFlagVisibilityEditor";
 import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
 import { WorldMapSettingsPanel } from "../components/map/WorldMapSettingsPanel";
 import {
@@ -442,6 +443,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerExitTargetSpawnMarkerId, setMarkerExitTargetSpawnMarkerId] = useState<string | null>(null);
   const [markerLockType, setMarkerLockType] = useState<MapMarker["lock_type"]>("public");
   const [markerLockMessage, setMarkerLockMessage] = useState("");
+  const [markerVisibleStoryFlagKey, setMarkerVisibleStoryFlagKey] = useState("");
+  const [markerVisibleStoryFlagValue, setMarkerVisibleStoryFlagValue] = useState(true);
   const [markerStoryOrder, setMarkerStoryOrder] = useState("0");
   const [markerUnlockAfterId, setMarkerUnlockAfterId] = useState<string | null>(null);
   const [markerHideWhenCompleted, setMarkerHideWhenCompleted] = useState(true);
@@ -2010,6 +2013,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markerSize,
       markerLockType,
       markerLockMessage,
+      markerVisibleStoryFlagKey,
+      markerVisibleStoryFlagValue,
       markerStoryOrder,
       markerUnlockAfterId,
       markerHideWhenCompleted,
@@ -2069,6 +2074,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerSize(String(marker.marker_size ?? 100));
     setMarkerLockType(marker.lock_type ?? "public");
     setMarkerLockMessage(marker.lock_message ?? "");
+    setMarkerVisibleStoryFlagKey(marker.visible_story_flag_key ?? "");
+    setMarkerVisibleStoryFlagValue(marker.visible_story_flag_value ?? true);
     setMarkerStoryOrder(String(marker.story_order ?? 0));
     setMarkerUnlockAfterId(marker.unlock_after_marker_id ?? null);
     setMarkerHideWhenCompleted(marker.hide_when_completed ?? true);
@@ -2151,6 +2158,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerSize(String(marker.marker_size ?? 100));
     setMarkerLockType(marker.lock_type ?? "public");
     setMarkerLockMessage(marker.lock_message ?? "");
+    setMarkerVisibleStoryFlagKey(marker.visible_story_flag_key ?? "");
+    setMarkerVisibleStoryFlagValue(marker.visible_story_flag_value ?? true);
     setMarkerStoryOrder(String(marker.story_order ?? 0));
     setMarkerUnlockAfterId(null);
     setMarkerHideWhenCompleted(marker.hide_when_completed ?? true);
@@ -5910,6 +5919,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerLinkedRouteStartDirection={setMarkerLinkedRouteStartDirection}
               markerStartsRouteOnAccept={markerStartsRouteOnAccept}
               setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
+              markerVisibleStoryFlagKey={markerVisibleStoryFlagKey}
+              setMarkerVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
+              markerVisibleStoryFlagValue={markerVisibleStoryFlagValue}
+              setMarkerVisibleStoryFlagValue={setMarkerVisibleStoryFlagValue}
+              knownStoryFlagKeys={knownStoryFlagKeys}
               markerStoryOrder={markerStoryOrder}
               setMarkerStoryOrder={setMarkerStoryOrder}
               markerUnlockAfterId={markerUnlockAfterId}
@@ -6422,6 +6436,17 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
               <LockPicker label="Marker lock" value={markerLockType} onSelect={setMarkerLockType} />
               {markerLockType !== "public" ? <TextInput value={markerLockMessage} onChangeText={setMarkerLockMessage} placeholder="Lock message shown to players" placeholderTextColor={colors.muted} style={styles.input} /> : null}
+              <MarkerStoryFlagVisibilityEditor
+                storyFlagKeys={knownStoryFlagKeys}
+                visibleStoryFlagKey={markerVisibleStoryFlagKey}
+                visibleStoryFlagValue={markerVisibleStoryFlagValue}
+                onChangeVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
+                onToggleVisibleStoryFlagValue={() => setMarkerVisibleStoryFlagValue((value) => !value)}
+                onClear={() => {
+                  setMarkerVisibleStoryFlagKey("");
+                  setMarkerVisibleStoryFlagValue(true);
+                }}
+              />
               <LinkedMarkerPathNotice
                 markerType={draftType}
                 selectedRouteIds={selectedMarkerRouteIds}
@@ -7220,6 +7245,11 @@ function MiniMapMarkerAdminForm({
   setMarkerLinkedRouteStartDirection,
   markerStartsRouteOnAccept,
   setMarkerStartsRouteOnAccept,
+  markerVisibleStoryFlagKey,
+  setMarkerVisibleStoryFlagKey,
+  markerVisibleStoryFlagValue,
+  setMarkerVisibleStoryFlagValue,
+  knownStoryFlagKeys,
   markerStoryOrder,
   setMarkerStoryOrder,
   markerUnlockAfterId,
@@ -7348,6 +7378,11 @@ function MiniMapMarkerAdminForm({
   setMarkerLinkedRouteStartDirection: (value: MapMarker["linked_route_start_direction"]) => void;
   markerStartsRouteOnAccept: boolean;
   setMarkerStartsRouteOnAccept: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerVisibleStoryFlagKey: string;
+  setMarkerVisibleStoryFlagKey: (value: string) => void;
+  markerVisibleStoryFlagValue: boolean;
+  setMarkerVisibleStoryFlagValue: (value: boolean | ((current: boolean) => boolean)) => void;
+  knownStoryFlagKeys: string[];
   markerStoryOrder: string;
   setMarkerStoryOrder: (value: string) => void;
   markerUnlockAfterId: string | null;
@@ -7453,6 +7488,17 @@ function MiniMapMarkerAdminForm({
       <Pressable style={[styles.secondaryButton, markerInitiallyUnlocked && styles.typeSelected]} onPress={() => setMarkerInitiallyUnlocked((value) => !value)}>
         <Text style={styles.secondaryText}>Initially Unlocked: {markerInitiallyUnlocked ? "true" : "false"}</Text>
       </Pressable>
+      <MarkerStoryFlagVisibilityEditor
+        storyFlagKeys={knownStoryFlagKeys}
+        visibleStoryFlagKey={markerVisibleStoryFlagKey}
+        visibleStoryFlagValue={markerVisibleStoryFlagValue}
+        onChangeVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
+        onToggleVisibleStoryFlagValue={() => setMarkerVisibleStoryFlagValue((value) => !value)}
+        onClear={() => {
+          setMarkerVisibleStoryFlagKey("");
+          setMarkerVisibleStoryFlagValue(true);
+        }}
+      />
       <LinkedMarkerPathNotice
         markerType={draftType}
         selectedRouteIds={selectedMarkerRouteIds}

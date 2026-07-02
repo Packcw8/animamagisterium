@@ -20,6 +20,8 @@ export type MarkerPayloadState = {
   markerSize: string;
   markerLockType: MapMarker["lock_type"];
   markerLockMessage: string;
+  markerVisibleStoryFlagKey: string;
+  markerVisibleStoryFlagValue: boolean;
   markerStoryOrder: string;
   markerUnlockAfterId: string | null;
   markerHideWhenCompleted: boolean;
@@ -72,6 +74,8 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     marker_size: Math.max(50, Math.min(220, Number(state.markerSize) || 100)),
     lock_type: state.markerLockType,
     lock_message: state.markerLockMessage.trim() || null,
+    visible_story_flag_key: state.markerVisibleStoryFlagKey.trim() || null,
+    visible_story_flag_value: state.markerVisibleStoryFlagValue,
     story_order: Number(state.markerStoryOrder) || 0,
     unlock_after_marker_id: state.markerUnlockAfterId,
     hide_when_completed: state.markerHideWhenCompleted,
@@ -131,6 +135,8 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     marker_size: settings.marker_size,
     lock_type: settings.lock_type,
     lock_message: settings.lock_message,
+    visible_story_flag_key: settings.visible_story_flag_key,
+    visible_story_flag_value: settings.visible_story_flag_value,
     story_order: settings.story_order,
     unlock_after_marker_id: settings.unlock_after_marker_id,
     hide_when_completed: settings.hide_when_completed,
