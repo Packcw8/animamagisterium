@@ -1139,7 +1139,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }, [activeWorldMapSetting?.id, selectedChapter, selectedSeason]);
 
   useEffect(() => {
-    if (miniMapExitInProgress || exitingMiniMapRef.current || !hasActiveRoute || !route.mini_map_id || activeMiniMap?.id === route.mini_map_id) {
+    if (miniMapExitInProgress || exitingMiniMapRef.current || savedMiniMapPosition || !hasActiveRoute || !route.mini_map_id || activeMiniMap?.id === route.mini_map_id) {
       return;
     }
 
@@ -1158,7 +1158,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         current_y_percent: playerPosition.y,
       });
     }
-  }, [activeMiniMap?.id, hasActiveRoute, isAdmin, miniMapExitInProgress, miniMaps, playerPosition.x, playerPosition.y, route.mini_map_id]);
+  }, [activeMiniMap?.id, hasActiveRoute, isAdmin, miniMapExitInProgress, miniMaps, playerPosition.x, playerPosition.y, route.mini_map_id, savedMiniMapPosition]);
 
   useEffect(() => {
     if (!miniMapExitInProgress || (hasActiveRoute && route.mini_map_id)) {
