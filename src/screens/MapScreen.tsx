@@ -1225,11 +1225,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
     setCompletedRouteId(route.id);
     setGpsMessage(`${route.name} completed. Return to a Sign Post to choose your next path.`);
-    showJourneyToast({
-      title: "Trail Complete",
-      message: "You reached the end of this path. Open the destination marker or return to a Sign Post to choose another trail.",
-      nextMarker: getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
-    });
+    if (!route.mini_map_id) {
+      showJourneyToast({
+        title: "Trail Complete",
+        message: "You reached the end of this path. Open the destination marker or return to a Sign Post to choose another trail.",
+        nextMarker: getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
+      });
+    }
     void grantPathCompletionMarkerReward(route.id);
   }, [allMarkerRouteLinks, completedEventIds, completedRouteId, currentRouteProgress?.source_marker_id, mapEvents, markers, progressPercent, route, routeDirection]);
 
@@ -2669,6 +2671,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         return;
       }
 
+      const completedRoute = routes.find((item) => item.id === routeId) ?? route;
+      const suppressCompletionToast = Boolean(completedRoute.mini_map_id);
       const sourceMarker = markers.find((marker) => marker.id === progress.source_marker_id);
       if (!sourceMarker || (sourceMarker.reward_timing !== "on_path_complete" && !isStoryQuestMarker(sourceMarker))) {
         return;
@@ -2683,11 +2687,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
 
       if (nextRoute && sourceMarker.require_all_linked_routes !== false) {
         setGpsMessage(`${route.name} completed. Return to ${sourceMarker.quest_title || sourceMarker.title} to choose the next story path.`);
-        showJourneyToast({
-          title: "Path Complete",
-          message: `The next story path is available, but it will not start automatically. Return to ${sourceMarker.quest_title || sourceMarker.title} when you are ready.`,
-          nextMarker: sourceMarker,
-        });
+        if (!suppressCompletionToast) {
+          showJourneyToast({
+            title: "Path Complete",
+            message: `The next story path is available, but it will not start automatically. Return to ${sourceMarker.quest_title || sourceMarker.title} when you are ready.`,
+            nextMarker: sourceMarker,
+          });
+        }
         return;
       }
 
@@ -2709,20 +2715,22 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
 
       setGpsMessage(result.claimed ? `${route.name} completed. ${result.message}` : `${route.name} completed. ${sourceMarker.quest_title || sourceMarker.title} is now complete.`);
-      showJourneyToast({
-        title: `${route.name} Complete`,
-        message: isStoryQuestMarker(sourceMarker)
-          ? "This story path is complete. Look for the next story marker."
-          : "Path complete. Your rewards were added.",
-        rewards: result.claimed ? buildRewardToastItems({
-          xp: sourceMarker.reward_xp,
-          gold: sourceMarker.reward_gold,
-          itemId: sourceMarker.reward_item_id,
-          itemQuantity: sourceMarker.reward_item_quantity,
-          fullHeal: sourceMarker.reward_full_heal,
-        }) : [],
-        nextMarker: getNextStoryMarkerAfter(sourceMarker),
-      });
+      if (!suppressCompletionToast) {
+        showJourneyToast({
+          title: `${route.name} Complete`,
+          message: isStoryQuestMarker(sourceMarker)
+            ? "This story path is complete. Look for the next story marker."
+            : "Path complete. Your rewards were added.",
+          rewards: result.claimed ? buildRewardToastItems({
+            xp: sourceMarker.reward_xp,
+            gold: sourceMarker.reward_gold,
+            itemId: sourceMarker.reward_item_id,
+            itemQuantity: sourceMarker.reward_item_quantity,
+            fullHeal: sourceMarker.reward_full_heal,
+          }) : [],
+          nextMarker: getNextStoryMarkerAfter(sourceMarker),
+        });
+      }
       await loadInventory();
       if (result.currentHealth != null) {
         onCharacterUpdated({ ...character, current_health: result.currentHealth });
