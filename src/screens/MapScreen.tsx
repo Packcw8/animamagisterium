@@ -1238,6 +1238,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
+    if (Number(event.distance_marker_percent) >= 100) {
+      return;
+    }
+
     const title = event.event_type === "battle" ? "Battle Encounter" : "Story Event";
     const body = event.event_type === "battle"
       ? `${event.title} is blocking your path.`
