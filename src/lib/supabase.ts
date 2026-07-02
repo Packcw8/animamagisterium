@@ -716,6 +716,7 @@ export type Tables = {
     parent_marker_id: string | null;
     exit_target_type: "world_marker" | "mini_map" | null;
     exit_target_marker_id: string | null;
+    exit_target_spawn_marker_id: string | null;
     linked_route_id: string | null;
     starts_route_on_accept: boolean;
     icon_label: string | null;

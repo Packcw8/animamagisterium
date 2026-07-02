@@ -95,8 +95,11 @@ export function ExitTargetEditor({
   setTargetMarkerId,
   targetMiniMapId,
   setTargetMiniMapId,
+  targetSpawnMarkerId,
+  setTargetSpawnMarkerId,
   worldMarkers,
   miniMaps,
+  spawnMarkers,
 }: {
   targetType: MapMarker["exit_target_type"];
   setTargetType: (value: MapMarker["exit_target_type"]) => void;
@@ -104,11 +107,15 @@ export function ExitTargetEditor({
   setTargetMarkerId: (value: string | null) => void;
   targetMiniMapId: string | null;
   setTargetMiniMapId: (value: string | null) => void;
+  targetSpawnMarkerId: string | null;
+  setTargetSpawnMarkerId: (value: string | null) => void;
   worldMarkers: MapMarker[];
   miniMaps: MiniMap[];
+  spawnMarkers: MapMarker[];
 }) {
   const safeType = targetType ?? "world_marker";
   const worldTargets = worldMarkers.filter((marker) => !marker.mini_map_id);
+  const targetSpawns = spawnMarkers.filter((marker) => marker.mini_map_id === targetMiniMapId && marker.type === "Player Spawn");
 
   return (
     <View style={styles.storyEditor}>
@@ -122,6 +129,7 @@ export function ExitTargetEditor({
               setTargetType(type);
               if (type === "world_marker") {
                 setTargetMiniMapId(null);
+                setTargetSpawnMarkerId(null);
               } else {
                 setTargetMarkerId(null);
               }
@@ -134,7 +142,22 @@ export function ExitTargetEditor({
       {safeType === "world_marker" ? (
         <MarkerPicker label="World return marker" markers={worldTargets} selectedId={targetMarkerId} onSelect={setTargetMarkerId} />
       ) : (
-        <MiniMapPicker miniMaps={miniMaps} selectedId={targetMiniMapId} onSelect={setTargetMiniMapId} />
+        <>
+          <MiniMapPicker
+            miniMaps={miniMaps}
+            selectedId={targetMiniMapId}
+            onSelect={(miniMapId) => {
+              setTargetMiniMapId(miniMapId);
+              setTargetSpawnMarkerId(null);
+            }}
+          />
+          {targetMiniMapId ? (
+            <MarkerPicker label="Target spawn in mini map" markers={targetSpawns} selectedId={targetSpawnMarkerId} onSelect={setTargetSpawnMarkerId} />
+          ) : null}
+          {safeType === "mini_map" && targetMiniMapId && targetSpawns.length === 0 ? (
+            <Text style={styles.debugLine}>No Player Spawn marker exists in this mini map yet. The exit will fall back to the center of the mini map.</Text>
+          ) : null}
+        </>
       )}
     </View>
   );

@@ -10,6 +10,7 @@ export type MarkerPayloadState = {
   markerExitTargetType: MapMarker["exit_target_type"];
   markerExitTargetMarkerId: string | null;
   markerExitTargetMiniMapId: string | null;
+  markerExitTargetSpawnMarkerId: string | null;
   markerLinkedRouteId: string | null;
   markerStartsRouteOnAccept: boolean;
   markerIconLabel: string;
@@ -94,6 +95,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     parent_marker_id: state.activeMiniMapId || mode === "create" ? null : state.selectedMarker?.parent_marker_id ?? null,
     exit_target_type: isExit ? state.markerExitTargetType : null,
     exit_target_marker_id: isExit ? state.markerExitTargetMarkerId : null,
+    exit_target_spawn_marker_id: isExit && state.markerExitTargetType === "mini_map" ? state.markerExitTargetSpawnMarkerId : null,
     linked_route_id: isQuest ? state.markerLinkedRouteId : null,
     starts_route_on_accept: isQuest && state.markerStartsRouteOnAccept,
     season_number: state.selectedSeason,
@@ -118,6 +120,7 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     parent_marker_id: null,
     exit_target_type: settings.exit_target_type,
     exit_target_marker_id: settings.exit_target_marker_id,
+    exit_target_spawn_marker_id: settings.exit_target_spawn_marker_id,
     linked_route_id: settings.linked_route_id,
     starts_route_on_accept: settings.starts_route_on_accept,
     icon_label: settings.icon_label,

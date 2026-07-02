@@ -438,6 +438,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerExitTargetType, setMarkerExitTargetType] = useState<MapMarker["exit_target_type"]>("world_marker");
   const [markerExitTargetMarkerId, setMarkerExitTargetMarkerId] = useState<string | null>(null);
   const [markerExitTargetMiniMapId, setMarkerExitTargetMiniMapId] = useState<string | null>(null);
+  const [markerExitTargetSpawnMarkerId, setMarkerExitTargetSpawnMarkerId] = useState<string | null>(null);
   const [markerLockType, setMarkerLockType] = useState<MapMarker["lock_type"]>("public");
   const [markerLockMessage, setMarkerLockMessage] = useState("");
   const [markerStoryOrder, setMarkerStoryOrder] = useState("0");
@@ -1407,6 +1408,18 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     return spawnMarker ? { x: Number(spawnMarker.x_percent), y: Number(spawnMarker.y_percent) } : { x: 50, y: 50 };
   }
 
+  function getExitTargetMiniMapSpawnPosition(marker: MapMarker, miniMapId: string) {
+    const selectedSpawn = marker.exit_target_spawn_marker_id
+      ? markers.find((item) => item.id === marker.exit_target_spawn_marker_id && item.mini_map_id === miniMapId && item.type === "Player Spawn")
+      : null;
+
+    if (selectedSpawn && Number.isFinite(Number(selectedSpawn.x_percent)) && Number.isFinite(Number(selectedSpawn.y_percent))) {
+      return { x: Number(selectedSpawn.x_percent), y: Number(selectedSpawn.y_percent) };
+    }
+
+    return getMiniMapSpawnPosition(miniMapId);
+  }
+
   function getWorldSpawnPosition(markerSource = markers) {
     const spawnMarker = markerSource.find((marker) => !marker.mini_map_id && marker.type === "World Spawn");
     return spawnMarker ? { x: Number(spawnMarker.x_percent), y: Number(spawnMarker.y_percent) } : { x: 50, y: 50 };
@@ -1961,6 +1974,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markerExitTargetType,
       markerExitTargetMarkerId,
       markerExitTargetMiniMapId,
+      markerExitTargetSpawnMarkerId,
       markerLinkedRouteId,
       markerStartsRouteOnAccept,
       markerIconLabel,
@@ -2052,6 +2066,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerExitTargetType(marker.exit_target_type ?? "world_marker");
     setMarkerExitTargetMarkerId(marker.exit_target_marker_id ?? null);
     setMarkerExitTargetMiniMapId(marker.exit_target_type === "mini_map" ? marker.linked_mini_map_id : null);
+    setMarkerExitTargetSpawnMarkerId(marker.exit_target_type === "mini_map" ? marker.exit_target_spawn_marker_id ?? null : null);
     setSelectedMiniMapId(marker.linked_mini_map_id ?? marker.mini_map_id ?? selectedMiniMapId);
     setMarkerPanelMessage(null);
 
@@ -3093,9 +3108,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     }
   }
 
-  function openMiniMap(miniMap: MiniMap, options?: { persistPlayerState?: boolean }) {
+  function openMiniMap(miniMap: MiniMap, options?: { persistPlayerState?: boolean; spawnPosition?: { x: number; y: number } }) {
     const persistPlayerState = options?.persistPlayerState ?? !isAdmin;
-    const nextFreeRoamPosition = getMiniMapSpawnPosition(miniMap.id);
+    const nextFreeRoamPosition = options?.spawnPosition ?? getMiniMapSpawnPosition(miniMap.id);
     setActiveMiniMap(miniMap);
     setSelectedMiniMapId(miniMap.id);
     if (isAdmin) {
@@ -3213,7 +3228,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (marker.exit_target_type === "mini_map" && marker.linked_mini_map_id) {
       const nextMiniMap = miniMaps.find((item) => item.id === marker.linked_mini_map_id);
       if (nextMiniMap) {
-        openMiniMap(nextMiniMap);
+        openMiniMap(nextMiniMap, { spawnPosition: getExitTargetMiniMapSpawnPosition(marker, nextMiniMap.id) });
         await maybeStartMarkerContinuationRoute(marker);
         return;
       }
@@ -5838,6 +5853,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               routes={activeRouteScopeRoutes}
               continuationRoutes={markerContinuationRoutes}
               storyRoutes={adminRoutes}
+              allMarkers={markers}
               selectedMarkerRouteIds={selectedMarkerRouteIds}
               toggleSignPostRoute={toggleSignPostRoute}
               worldMarkers={adminWorldMarkers}
@@ -5849,6 +5865,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerExitTargetMarkerId={setMarkerExitTargetMarkerId}
               markerExitTargetMiniMapId={markerExitTargetMiniMapId}
               setMarkerExitTargetMiniMapId={setMarkerExitTargetMiniMapId}
+              markerExitTargetSpawnMarkerId={markerExitTargetSpawnMarkerId}
+              setMarkerExitTargetSpawnMarkerId={setMarkerExitTargetSpawnMarkerId}
               itemDefinitions={itemDefinitions}
               markerMarketItems={markerMarketItems}
               marketItemId={marketItemId}
@@ -6337,8 +6355,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   setTargetMarkerId={setMarkerExitTargetMarkerId}
                   targetMiniMapId={markerExitTargetMiniMapId}
                   setTargetMiniMapId={setMarkerExitTargetMiniMapId}
+                  targetSpawnMarkerId={markerExitTargetSpawnMarkerId}
+                  setTargetSpawnMarkerId={setMarkerExitTargetSpawnMarkerId}
                   worldMarkers={adminWorldMarkers}
                   miniMaps={adminMiniMaps}
+                  spawnMarkers={markers}
                 />
               ) : null}
               {(draftType === "Area/Town Entrance" || isExitMarkerType(draftType)) ? (
@@ -7065,6 +7086,7 @@ function MiniMapMarkerAdminForm({
   routes,
   continuationRoutes,
   storyRoutes,
+  allMarkers,
   selectedMarkerRouteIds,
   toggleSignPostRoute,
   worldMarkers,
@@ -7076,6 +7098,8 @@ function MiniMapMarkerAdminForm({
   setMarkerExitTargetMarkerId,
   markerExitTargetMiniMapId,
   setMarkerExitTargetMiniMapId,
+  markerExitTargetSpawnMarkerId,
+  setMarkerExitTargetSpawnMarkerId,
   itemDefinitions,
   markerMarketItems,
   marketItemId,
@@ -7186,6 +7210,7 @@ function MiniMapMarkerAdminForm({
   routes: MapRoute[];
   continuationRoutes: MapRoute[];
   storyRoutes: MapRoute[];
+  allMarkers: MapMarker[];
   selectedMarkerRouteIds: string[];
   toggleSignPostRoute: (routeId: string) => void;
   worldMarkers: MapMarker[];
@@ -7197,6 +7222,8 @@ function MiniMapMarkerAdminForm({
   setMarkerExitTargetMarkerId: (value: string | null) => void;
   markerExitTargetMiniMapId: string | null;
   setMarkerExitTargetMiniMapId: (value: string | null) => void;
+  markerExitTargetSpawnMarkerId: string | null;
+  setMarkerExitTargetSpawnMarkerId: (value: string | null) => void;
   itemDefinitions: ItemDefinition[];
   markerMarketItems: MarkerMarketItem[];
   marketItemId: string | null;
@@ -7403,8 +7430,11 @@ function MiniMapMarkerAdminForm({
           setTargetMarkerId={setMarkerExitTargetMarkerId}
           targetMiniMapId={markerExitTargetMiniMapId}
           setTargetMiniMapId={setMarkerExitTargetMiniMapId}
+          targetSpawnMarkerId={markerExitTargetSpawnMarkerId}
+          setTargetSpawnMarkerId={setMarkerExitTargetSpawnMarkerId}
           worldMarkers={worldMarkers}
           miniMaps={miniMaps}
+          spawnMarkers={allMarkers}
         />
       ) : null}
       {(draftType === "Area/Town Entrance" || supportsExit) ? (
