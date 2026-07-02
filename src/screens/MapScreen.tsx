@@ -24,6 +24,7 @@ import { LegendEditor } from "../components/map/LegendEditor";
 import { MarkerAdminList } from "../components/map/MarkerAdminList";
 import { GameToast, type GameToastData, type GameToastReward } from "../components/map/GameToast";
 import { MarkerLegend } from "../components/map/MarkerLegend";
+import { MarkerPathRequirementEditor } from "../components/map/MarkerPathRequirementEditor";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { MarkerStyleEditor } from "../components/map/MarkerStyleEditor";
 import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
@@ -44,7 +45,6 @@ import {
   MiniMapPicker,
   NpcPicker,
   RewardTimingPicker,
-  RouteCompletionConditionPicker,
   RoutePicker,
 } from "../components/map/MarkerEditorControls";
 import { MiniMapEditor } from "../components/map/MiniMapEditor";
@@ -6309,30 +6309,33 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 </View>
               ) : null}
               {draftType !== "Sign Post" && !isBattleMarkerType(draftType) ? (
-                <View style={styles.storyEditor}>
-                  <Text style={styles.selectedTitle}>{isStoryQuestMarker({ type: draftType }) ? "Story Path Sequence" : "Required Completed Paths"}</Text>
-                  <Text style={styles.copy}>
-                    {isStoryQuestMarker({ type: draftType })
-                      ? "These paths belong to this story marker and can run in order."
-                      : draftType === "Area/Town Entrance"
-                        ? "Players can enter after completing any one linked path that leads to this entrance. Reverse walking counts when the path reaches 0%."
-                        : "Players must complete linked paths before this marker becomes interactable. Reverse walking counts when the path reaches 0%."}
-                  </Text>
-                  <View style={styles.storyRoutePicker}>
-                    {activeRouteScopeRoutes.map((item) => (
-                      <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
-                        <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
-                      </Pressable>
-                    ))}
+                isStoryQuestMarker({ type: draftType }) ? (
+                  <View style={styles.storyEditor}>
+                    <Text style={styles.selectedTitle}>Story Path Sequence</Text>
+                    <Text style={styles.copy}>These paths belong to this story marker and can run in order.</Text>
+                    <View style={styles.storyRoutePicker}>
+                      {activeRouteScopeRoutes.map((item) => (
+                        <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
+                          <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    {activeRouteScopeRoutes.length === 0 ? <Text style={styles.debugLine}>Create a walking path in this map area before linking story paths.</Text> : null}
                   </View>
-                  {activeRouteScopeRoutes.length === 0 ? <Text style={styles.debugLine}>Create a walking path in this map area before linking requirements.</Text> : null}
-                  {!isStoryQuestMarker({ type: draftType }) ? (
-                    <RouteCompletionConditionPicker
-                      value={markerRouteCompletionCondition}
-                      onSelect={setMarkerRouteCompletionCondition}
-                    />
-                  ) : null}
-                </View>
+                ) : (
+                  <MarkerPathRequirementEditor
+                    title="Required Completed Paths"
+                    description={draftType === "Area/Town Entrance"
+                      ? "Players can enter after completing any one linked path that leads to this entrance. Use the unlock point below to choose whether the entrance opens at the path end, path start after reverse travel, or either side."
+                      : "Players must complete linked paths before this marker becomes interactable. Use the unlock point below for endpoint-style exits, gates, clues, and area transitions."}
+                    routes={activeRouteScopeRoutes}
+                    selectedRouteIds={selectedMarkerRouteIds}
+                    completionCondition={markerRouteCompletionCondition}
+                    onToggleRoute={toggleSignPostRoute}
+                    onSelectCompletionCondition={setMarkerRouteCompletionCondition}
+                    emptyText="Create a walking path in this map area before linking requirements."
+                  />
+                )
               ) : null}
               <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
                 <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
@@ -7293,22 +7296,19 @@ function MiniMapMarkerAdminForm({
         </View>
       ) : null}
       {!supportsSignPost && !supportsQuest && !supportsBattle ? (
-        <View style={styles.storyEditor}>
-          <Text style={styles.selectedTitle}>Required Completed Paths</Text>
-          <Text style={styles.copy}>{draftType === "Area/Town Entrance" ? "Players can enter after completing any one linked path that leads to this entrance. Reverse walking counts when the path reaches 0%." : "Players must complete linked paths before this marker becomes interactable. Reverse walking counts when the path reaches 0%."}</Text>
-          <View style={styles.storyRoutePicker}>
-            {routes.map((item) => (
-              <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
-                <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
-              </Pressable>
-            ))}
-          </View>
-          {routes.length === 0 ? <Text style={styles.copy}>No walking paths exist in this mini map yet.</Text> : null}
-          <RouteCompletionConditionPicker
-            value={markerRouteCompletionCondition}
-            onSelect={setMarkerRouteCompletionCondition}
-          />
-        </View>
+        <MarkerPathRequirementEditor
+          title="Required Completed Paths"
+          description={draftType === "Area/Town Entrance"
+            ? "Players can enter after completing any one linked path that leads to this entrance. Use the unlock point below to choose whether the entrance opens at the path end, path start after reverse travel, or either side."
+            : "Players must complete linked paths before this marker becomes interactable. Use the unlock point below for endpoint-style exits, gates, clues, and area transitions."}
+          routes={routes}
+          selectedRouteIds={selectedMarkerRouteIds}
+          completionCondition={markerRouteCompletionCondition}
+          onToggleRoute={toggleSignPostRoute}
+          onSelectCompletionCondition={setMarkerRouteCompletionCondition}
+          emptyText="No walking paths exist in this mini map yet."
+          saveHint={selectedMarker ? "Save Marker Details after changing linked paths or the unlock point." : "Selected paths will be linked when this marker is created."}
+        />
       ) : null}
       {supportsExit ? (
         <ExitTargetEditor
