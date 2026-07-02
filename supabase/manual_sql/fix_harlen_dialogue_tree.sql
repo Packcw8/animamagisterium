@@ -1,7 +1,7 @@
 -- Correct Harlen marker dialogue flow.
 -- This replaces only the dialogue nodes/choices attached to the existing Harlen marker.
--- Final choice sets harlen_following_to_dead_traveler=true, unlocks "Return to the King's Road",
--- and starts Harlen's linked walking path if the route is configured/found.
+-- Final choice sets harlen_following_to_dead_traveler=true and starts Harlen's linked walking path.
+-- "Return to the King's Road" is created/fixed as a per-player story-flag-gated marker.
 do $$
 declare
   v_harlen_marker_id uuid;
@@ -37,10 +37,6 @@ begin
   order by updated_at desc nulls last, created_at desc
   limit 1;
 
-  if v_return_marker_id is null then
-    raise exception 'Return to the King''s Road marker was not found. Create or rename that marker first.';
-  end if;
-
   if v_return_route_id is null then
     select id
       into v_return_route_id
@@ -52,7 +48,65 @@ begin
   end if;
 
   if v_return_route_id is null then
-    raise exception 'No King''s Road walking path was found or linked to Return to the King''s Road.';
+    select linked_route_id
+      into v_return_route_id
+    from public.map_markers
+    where id = v_harlen_marker_id;
+  end if;
+
+  if v_return_route_id is null then
+    raise exception 'No King''s Road walking path was found. Link Harlen or Return to the King''s Road to the intended path in Admin, then rerun this.';
+  end if;
+
+  if v_return_marker_id is null then
+    insert into public.map_markers (
+      type,
+      title,
+      description,
+      x_percent,
+      y_percent,
+      is_active,
+      is_unlocked,
+      is_interactable,
+      mini_map_id,
+      linked_route_id,
+      starts_route_on_accept,
+      linked_route_start_direction,
+      interaction_radius_percent,
+      visible_story_flag_key,
+      visible_story_flag_value,
+      lock_type,
+      story_order,
+      hide_when_completed,
+      require_all_linked_routes,
+      season_number,
+      chapter_number
+    )
+    select
+      'Story',
+      'Return to the King''s Road',
+      'Harlen wants to see the dead traveler on the King''s Road.',
+      least(98, greatest(2, x_percent + 4)),
+      least(98, greatest(2, y_percent + 4)),
+      true,
+      true,
+      true,
+      mini_map_id,
+      v_return_route_id,
+      true,
+      'forward',
+      100,
+      'harlen_following_to_dead_traveler',
+      true,
+      'public',
+      0,
+      true,
+      false,
+      season_number,
+      chapter_number
+    from public.map_markers
+    where id = v_harlen_marker_id
+    returning id into v_return_marker_id;
   end if;
 
   update public.map_markers
@@ -69,9 +123,14 @@ begin
     set
       visible_story_flag_key = 'harlen_following_to_dead_traveler',
       visible_story_flag_value = true,
-      is_unlocked = false,
+      is_unlocked = true,
       is_active = true,
       is_interactable = true,
+      linked_route_id = v_return_route_id,
+      starts_route_on_accept = true,
+      linked_route_start_direction = 'forward',
+      interaction_radius_percent = 100,
+      require_all_linked_routes = false,
       updated_at = now()
     where id = v_return_marker_id;
 
