@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import { Image, ImageSourcePropType, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { MapMarker } from "../../services/mapService";
+import { getCenteredMapOffset } from "../../utils/mapCamera";
 import { getMarkerRenderStyle } from "../../utils/mapVisibility";
 import { colors, fonts } from "../theme";
 import { MarkerIcon } from "./MarkerIcon";
@@ -70,6 +71,7 @@ export function OverworldMapCanvas({
   onWheel,
   onPinchZoom,
   canCapturePointer,
+  lockedToPlayer = false,
   ...shared
 }: SharedCanvasProps & {
   viewportRef: MutableRefObject<MapViewportRef | null>;
@@ -78,9 +80,12 @@ export function OverworldMapCanvas({
   onWheel: (event: { nativeEvent?: { deltaY?: number } }) => void;
   onPinchZoom?: (payload: PinchZoomPayload) => void;
   canCapturePointer: boolean;
+  lockedToPlayer?: boolean;
 }) {
   const pinch = usePinchZoom(onPinchZoom);
   const nativeViewport = useNativeMapViewport(viewportRef);
+  const [lockedViewportSize, setLockedViewportSize] = useState({ width: 360, height: 560 });
+  const lockedOffset = getCenteredMapOffset(shared.playerPosition, scaledMapSize, lockedViewportSize);
 
   const surface = (
     <View
@@ -121,6 +126,37 @@ export function OverworldMapCanvas({
     </View>
   );
 
+  if (lockedToPlayer) {
+    return (
+      <View
+        style={styles.lockedViewport}
+        onLayout={(event) => {
+          setLockedViewportSize({
+            width: Math.max(1, event.nativeEvent.layout.width),
+            height: Math.max(1, event.nativeEvent.layout.height),
+          });
+        }}
+      >
+        <View
+          style={[
+            styles.lockedSurface,
+            {
+              width: scaledMapSize.width,
+              height: scaledMapSize.height,
+              transform: [{ translateX: lockedOffset.left }, { translateY: lockedOffset.top }],
+            },
+          ]}
+        >
+          {surface}
+        </View>
+        <View pointerEvents="none" style={styles.lockedVignette} />
+        <View pointerEvents="none" style={styles.lockedCenterReticle}>
+          <Text style={styles.lockedCenterText}>YOU</Text>
+        </View>
+      </View>
+    );
+  }
+
   if (Platform.OS !== "web") {
     return (
       <ScrollView
@@ -159,6 +195,7 @@ export function MiniMapCanvas({
   height,
   width,
   canCapturePointer,
+  lockedToPlayer = false,
   ...shared
 }: SharedCanvasProps & {
   imageUri: string | null;
@@ -166,10 +203,13 @@ export function MiniMapCanvas({
   height?: number;
   width?: number;
   canCapturePointer: boolean;
+  lockedToPlayer?: boolean;
 }) {
   const [imageAspectRatio, setImageAspectRatio] = useState(1.35);
+  const [lockedViewportSize, setLockedViewportSize] = useState({ width: 360, height: 420 });
   const surfaceHeight = Math.max(280, Number(height) || 520);
   const surfaceWidth = Math.max(320, Number(width) || Math.round(surfaceHeight * imageAspectRatio));
+  const lockedOffset = getCenteredMapOffset(shared.playerPosition, { width: surfaceWidth, height: surfaceHeight }, lockedViewportSize);
 
   function handleMiniMapImageLoad(event: { nativeEvent?: { source?: { width?: number; height?: number } } }) {
     const width = Number(event.nativeEvent?.source?.width) || 0;
@@ -215,12 +255,74 @@ export function MiniMapCanvas({
   );
 
   if (Platform.OS !== "web") {
+    if (lockedToPlayer) {
+      return (
+        <View
+          style={[styles.lockedMiniMapViewport, { height: Math.min(520, surfaceHeight) }]}
+          onLayout={(event) => {
+            setLockedViewportSize({
+              width: Math.max(1, event.nativeEvent.layout.width),
+              height: Math.max(1, event.nativeEvent.layout.height),
+            });
+          }}
+        >
+          <View
+            style={[
+              styles.lockedSurface,
+              {
+                width: surfaceWidth,
+                height: surfaceHeight,
+                transform: [{ translateX: lockedOffset.left }, { translateY: lockedOffset.top }],
+              },
+            ]}
+          >
+            {miniMapSurface}
+          </View>
+          <View pointerEvents="none" style={styles.lockedVignette} />
+          <View pointerEvents="none" style={styles.lockedCenterReticle}>
+            <Text style={styles.lockedCenterText}>YOU</Text>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <ScrollView style={[styles.nativeMiniMapViewport, { height: surfaceHeight }]} nestedScrollEnabled>
         <ScrollView horizontal nestedScrollEnabled>
           {miniMapSurface}
         </ScrollView>
       </ScrollView>
+    );
+  }
+
+  if (lockedToPlayer) {
+    return (
+      <View
+        style={[styles.lockedMiniMapViewport, { height: Math.min(520, surfaceHeight) } as object]}
+        onLayout={(event) => {
+          setLockedViewportSize({
+            width: Math.max(1, event.nativeEvent.layout.width),
+            height: Math.max(1, event.nativeEvent.layout.height),
+          });
+        }}
+      >
+        <View
+          style={[
+            styles.lockedSurface,
+            {
+              width: surfaceWidth,
+              height: surfaceHeight,
+              transform: [{ translateX: lockedOffset.left }, { translateY: lockedOffset.top }],
+            },
+          ]}
+        >
+          {miniMapSurface}
+        </View>
+        <View pointerEvents="none" style={styles.lockedVignette} />
+        <View pointerEvents="none" style={styles.lockedCenterReticle}>
+          <Text style={styles.lockedCenterText}>YOU</Text>
+        </View>
+      </View>
     );
   }
 
@@ -512,6 +614,23 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSoft,
     backgroundColor: "#061010",
   },
+  lockedViewport: {
+    height: 560,
+    marginHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    overflow: "hidden",
+    backgroundColor: "#020707",
+    shadowColor: colors.gold,
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+  },
+  lockedSurface: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+  },
   mapSurface: {
     position: "relative",
     transformOrigin: "0 0",
@@ -547,6 +666,47 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderSoft,
     backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  lockedMiniMapViewport: {
+    width: "100%",
+    overflow: "hidden",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  lockedVignette: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.2)",
+    backgroundColor: "transparent",
+  } as object,
+  lockedCenterReticle: {
+    position: "absolute",
+    left: "50%",
+    top: "50%",
+    minWidth: 42,
+    height: 22,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(54, 184, 242, 0.75)",
+    backgroundColor: "rgba(1, 7, 9, 0.78)",
+    alignItems: "center",
+    justifyContent: "center",
+    transform: [{ translateX: -21 }, { translateY: 26 }],
+  },
+  lockedCenterText: {
+    color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase",
   },
   miniMapImage: {
     position: "absolute",

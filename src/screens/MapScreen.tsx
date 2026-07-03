@@ -30,6 +30,7 @@ import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { MarkerStyleEditor } from "../components/map/MarkerStyleEditor";
 import { MarkerStoryFlagVisibilityEditor } from "../components/map/MarkerStoryFlagVisibilityEditor";
 import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
+import { PlayerMapTravelHeader } from "../components/map/PlayerMapTravelHeader";
 import { WorldMapSettingsPanel } from "../components/map/WorldMapSettingsPanel";
 import {
   EnemyPicker,
@@ -66,9 +67,10 @@ import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, Equipmen
 import { isNativePedometerAvailable, requestPedometerPermission, startPedometerDistancePolling, type PedometerSubscription } from "../services/nativePedometerService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
-import { requestPushNotificationPermission, scheduleLocalNotification } from "../services/pushNotificationService";
+import { requestPushNotificationPermission } from "../services/pushNotificationService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
+import { ADMIN_MAP_SCALE, PLAYER_MAP_SCALE, getCenteredMapScroll } from "../utils/mapCamera";
 import { clamp, getPathSegmentMetaAtProgress, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, normalizePathSegments, roundPercent, type PathSegmentMeta } from "../utils/mapGeometry";
 import { evaluateDialogueChoiceRequirement, eventTriggerModeName, eventTypeName, formatResourceName, rollDialogueAttributeCheck } from "../utils/dialogueFlow";
 import { buildCreateMarkerInput, buildMarkerSettingsPayload, type MarkerPayloadState } from "../utils/markerPayload";
@@ -577,7 +579,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [selectedChapter, setSelectedChapter] = useState(1);
-  const [scale, setScale] = useState(0.86);
+  const [scale, setScale] = useState(PLAYER_MAP_SCALE);
   const [followPlayer, setFollowPlayer] = useState(true);
   const [completedRouteId, setCompletedRouteId] = useState<string | null>(null);
   const [miniMapExitInProgress, setMiniMapExitInProgress] = useState(false);
@@ -1176,6 +1178,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   useEffect(() => {
+    if (!isAdmin) {
+      setScale(PLAYER_MAP_SCALE);
+      setFollowPlayer(true);
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
     if (followPlayer) {
       centerOn(playerPosition.x, playerPosition.y);
     }
@@ -1259,31 +1268,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     void grantPathCompletionMarkerReward(route.id);
   }, [allMarkerRouteLinks, completedEventIds, completedRouteId, currentRouteProgress?.source_marker_id, mapEvents, markers, progressPercent, route, routeDirection]);
 
-  function notifyRouteEvent(event: MapEvent) {
-    if (isAdmin || adminPreviewMode) {
-      return;
-    }
-
-    if (Number(event.distance_marker_percent) >= 100) {
-      return;
-    }
-
-    const title = event.event_type === "battle" ? "Battle Encounter" : "Story Event";
-    const body = event.event_type === "battle"
-      ? `${event.title} is blocking your path.`
-      : `${event.title} is ready on ${route.name}.`;
-
-    void scheduleLocalNotification(title, body)
-      .then((notificationId) => {
-        if (!notificationId) {
-          console.warn("[notifications] route event notification was not scheduled. Check notification permission on this device.");
-        }
-      })
-      .catch((error) => {
-        console.warn("[notifications] unable to send event notification", error);
-      });
-  }
-
   useEffect(() => {
     if (activeEvent || activeBattle || routeDirection === "reverse") {
       return;
@@ -1307,8 +1291,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (!nextEvent) {
       return;
     }
-
-    notifyRouteEvent(nextEvent);
 
     if (nextEvent.event_type === "battle") {
         void startBattle(nextEvent);
@@ -1815,6 +1797,12 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   function zoomBy(delta: number, focal?: { clientX: number; clientY: number }) {
+    if (!isAdmin) {
+      setScale(PLAYER_MAP_SCALE);
+      setFollowPlayer(true);
+      return;
+    }
+
     const viewport = viewportRef.current;
     const rect = viewport?.getBoundingClientRect?.();
     const currentScrollLeft = viewport?.scrollLeft ?? 0;
@@ -1842,9 +1830,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   function resetZoom() {
-    setScale(0.86);
+    setScale(isAdmin ? ADMIN_MAP_SCALE : PLAYER_MAP_SCALE);
     scrollMapTo(0, 0, "auto");
-    setFollowPlayer(false);
+    setFollowPlayer(!isAdmin);
   }
 
   function centerOnPlayer() {
@@ -1856,8 +1844,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     const viewport = viewportRef.current;
     const viewportWidth = viewport?.clientWidth ?? 360;
     const viewportHeight = viewport?.clientHeight ?? 520;
-    const left = (xPercent / 100) * scaledMapSize.width - viewportWidth / 2;
-    const top = (yPercent / 100) * scaledMapSize.height - viewportHeight / 2;
+    const { left, top } = getCenteredMapScroll(
+      { x: xPercent, y: yPercent },
+      scaledMapSize,
+      { width: viewportWidth, height: viewportHeight },
+    );
     scrollMapTo(left, top);
   }
 
@@ -2790,9 +2781,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMarkerRouteDirections((current) => ({ ...current, [routeId]: direction }));
   }
 
-  async function startPathFromSignPost(nextRoute: MapRoute, routeLink?: Pick<MarkerRouteLink, "start_direction">) {
+  async function startPathFromSignPost(
+    nextRoute: MapRoute,
+    routeLink?: Pick<MarkerRouteLink, "start_direction">,
+    options?: { allowMapTransition?: boolean },
+  ) {
     if (!isAdmin && isRouteLocked(nextRoute)) {
       setMarkerPanelMessage(getRouteLockMessage(nextRoute));
+      return;
+    }
+
+    const nextMiniMap = nextRoute.mini_map_id ? miniMaps.find((item) => item.id === nextRoute.mini_map_id) ?? null : null;
+    const canStartMiniMapRoute = !nextRoute.mini_map_id || activeMiniMap?.id === nextRoute.mini_map_id || options?.allowMapTransition;
+    if (!canStartMiniMapRoute) {
+      setMarkerPanelMessage(`${nextRoute.name} belongs to ${nextMiniMap?.name ?? "another area"}. Enter that area before starting this path.`);
       return;
     }
 
@@ -2854,7 +2856,6 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setMarkerPanelMessage(null);
-    const nextMiniMap = nextRoute.mini_map_id ? miniMaps.find((item) => item.id === nextRoute.mini_map_id) ?? null : null;
     setActiveMiniMap(nextMiniMap);
     setSelectedMiniMapId(nextMiniMap?.id ?? null);
     setSavedMiniMapPosition(null);
@@ -3376,7 +3377,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       return;
     }
 
-    await startPathFromSignPost(linkedRoute, { start_direction: marker.linked_route_start_direction ?? "forward" });
+    await startPathFromSignPost(linkedRoute, { start_direction: marker.linked_route_start_direction ?? "forward" }, { allowMapTransition: true });
   }
 
   async function saveTutorialForm() {
@@ -3539,41 +3540,67 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   }
 
   async function loadDialogueForEvent(event: MapEvent) {
-    const nodes = await getDialogueNodes(event.id);
-    const choices = await getDialogueChoices(nodes.map((node) => node.id));
-    const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
-    const [claimedRewardChoices, selectedChoices] = await Promise.all([
-      getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id)),
-      getPlayerDialogueChoiceHistory(choices.map((choice) => choice.id)),
-    ]);
-    const startNode = getDialogueStartNode(nodes, choices, selectedChoices);
-    setDialogueNodes(nodes);
-    setDialogueChoices(choices);
-    setDialogueChoiceRewards(rewards);
-    setClaimedChoiceRewardIds(claimedRewardChoices);
-    setSelectedDialogueChoiceIds(selectedChoices);
-    setPendingRewardChoice(null);
-    setActiveNodeId(startNode?.id ?? null);
-    setDialogueLog([]);
+    try {
+      const nodes = await getDialogueNodes(event.id);
+      const choices = await getDialogueChoices(nodes.map((node) => node.id));
+      const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
+      const [claimedRewardChoices, selectedChoices] = await Promise.all([
+        getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id)),
+        getPlayerDialogueChoiceHistory(choices.map((choice) => choice.id)),
+      ]);
+      const startNode = getDialogueStartNode(nodes, choices, selectedChoices);
+      setDialogueNodes(nodes);
+      setDialogueChoices(choices);
+      setDialogueChoiceRewards(rewards);
+      setClaimedChoiceRewardIds(claimedRewardChoices);
+      setSelectedDialogueChoiceIds(selectedChoices);
+      setPendingRewardChoice(null);
+      setActiveNodeId(startNode?.id ?? null);
+      setDialogueLog([]);
+    } catch (error) {
+      console.warn("[map] unable to load event dialogue", error);
+      setDialogueNodes([]);
+      setDialogueChoices([]);
+      setDialogueChoiceRewards([]);
+      setClaimedChoiceRewardIds(new Set());
+      setSelectedDialogueChoiceIds(new Set());
+      setPendingRewardChoice(null);
+      setActiveNodeId(null);
+      setDialogueLog([]);
+      setGpsMessage(getErrorMessage(error, "This event could not load. Continue or reopen the map."));
+    }
   }
 
   async function loadDialogueForMarker(markerId: string, existingNodes?: StoryDialogueNode[]) {
-    const nodes = existingNodes ?? await getDialogueNodesForMarker(markerId);
-    const choices = await getDialogueChoices(nodes.map((node) => node.id));
-    const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
-    const [claimedRewardChoices, selectedChoices] = await Promise.all([
-      getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id)),
-      getPlayerDialogueChoiceHistory(choices.map((choice) => choice.id)),
-    ]);
-    const startNode = getDialogueStartNode(nodes, choices, selectedChoices);
-    setDialogueNodes(nodes);
-    setDialogueChoices(choices);
-    setDialogueChoiceRewards(rewards);
-    setClaimedChoiceRewardIds(claimedRewardChoices);
-    setSelectedDialogueChoiceIds(selectedChoices);
-    setPendingRewardChoice(null);
-    setActiveNodeId(startNode?.id ?? null);
-    setDialogueLog([]);
+    try {
+      const nodes = existingNodes ?? await getDialogueNodesForMarker(markerId);
+      const choices = await getDialogueChoices(nodes.map((node) => node.id));
+      const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
+      const [claimedRewardChoices, selectedChoices] = await Promise.all([
+        getClaimedDialogueRewardChoiceIds(choices.filter((choice) => choice.action === "give_reward").map((choice) => choice.id)),
+        getPlayerDialogueChoiceHistory(choices.map((choice) => choice.id)),
+      ]);
+      const startNode = getDialogueStartNode(nodes, choices, selectedChoices);
+      setDialogueNodes(nodes);
+      setDialogueChoices(choices);
+      setDialogueChoiceRewards(rewards);
+      setClaimedChoiceRewardIds(claimedRewardChoices);
+      setSelectedDialogueChoiceIds(selectedChoices);
+      setPendingRewardChoice(null);
+      setActiveNodeId(startNode?.id ?? null);
+      setDialogueLog([]);
+    } catch (error) {
+      console.warn("[map] unable to load marker dialogue", error);
+      setDialogueNodes([]);
+      setDialogueChoices([]);
+      setDialogueChoiceRewards([]);
+      setClaimedChoiceRewardIds(new Set());
+      setSelectedDialogueChoiceIds(new Set());
+      setPendingRewardChoice(null);
+      setActiveNodeId(null);
+      setDialogueLog([]);
+      setMarkerPanelMessage(getErrorMessage(error, "This marker dialogue could not load."));
+    }
   }
 
   function getDialogueStartNode(nodes: StoryDialogueNode[], choices: StoryDialogueChoice[], selectedChoices: Set<string>) {
@@ -5513,7 +5540,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     );
   }
 
-  function renderJourneyPanel() {
+  function getJourneyViewModel() {
     if (!hasActiveRoute) {
       return null;
     }
@@ -5556,42 +5583,97 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       }
     };
 
+    return {
+      remainingMeters,
+      routeImageUri,
+      destinationMarker,
+      journeyMode,
+      journeyTitle,
+      journeyObjective,
+      stepLabel,
+      arrived,
+      travelTitle,
+      primaryLabel,
+      turnLabel,
+      handlePrimaryJourneyAction,
+    };
+  }
+
+  function renderPlayerMapTravelHeader() {
+    const journey = getJourneyViewModel();
+
+    if (!journey) {
+      return null;
+    }
+
+    return (
+      <PlayerMapTravelHeader
+        statusText={
+          isTracking
+            ? Platform.OS === "web"
+              ? "GPS tracking is active for this path."
+              : "Step tracking is active for this path."
+            : Platform.OS === "web"
+              ? "Start tracking when you are ready to walk."
+              : "Start walking when you are ready to move along the path."
+        }
+        gold={character.gold}
+        primaryLabel={journey.primaryLabel}
+        primaryActive={isTracking || journey.arrived}
+        onPrimary={journey.handlePrimaryJourneyAction}
+        turnLabel={journey.turnLabel}
+        canTurnBack={progressPercent > 0}
+        turnActive={routeDirection === "reverse"}
+        onTurnBack={() => void turnBackOnCurrentPath()}
+      />
+    );
+  }
+
+  function renderJourneyPanel(showActions = true) {
+    const journey = getJourneyViewModel();
+
+    if (!journey) {
+      return null;
+    }
+
     return (
       <Frame style={[styles.panel, styles.journeyHud]}>
-        <View style={styles.journeyActionBar}>
-          <Pressable style={[styles.journeyPrimary, (isTracking || arrived) && styles.gpsActive]} onPress={handlePrimaryJourneyAction}>
-            <Text style={styles.journeyPrimaryText}>{primaryLabel}</Text>
-          </Pressable>
-          <Pressable style={[styles.journeySecondary, routeDirection === "reverse" && styles.gpsActive, progressPercent <= 0 && styles.disabledAction]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0}>
-            <Text style={styles.journeySecondaryText}>{turnLabel}</Text>
-          </Pressable>
-        </View>
+        {showActions ? (
+          <View style={styles.journeyActionBar}>
+            <Pressable style={[styles.journeyPrimary, (isTracking || journey.arrived) && styles.gpsActive]} onPress={journey.handlePrimaryJourneyAction}>
+              <Text style={styles.journeyPrimaryText}>{journey.primaryLabel}</Text>
+            </Pressable>
+            <Pressable style={[styles.journeySecondary, routeDirection === "reverse" && styles.gpsActive, progressPercent <= 0 && styles.disabledAction]} onPress={() => void turnBackOnCurrentPath()} disabled={progressPercent <= 0}>
+              <Text style={styles.journeySecondaryText}>{journey.turnLabel}</Text>
+            </Pressable>
+          </View>
+        ) : null}
 
         <View style={styles.journeyTop}>
           <View style={styles.journeyTitleBlock}>
-            <Text style={styles.journeyOverline}>{travelTitle}</Text>
-            <Text style={styles.journeyTitle}>{journeyTitle}</Text>
-            <Text style={styles.journeySub}>{journeyObjective}</Text>
+            <Text style={styles.journeyOverline}>{journey.travelTitle}</Text>
+            <Text style={styles.journeyTitle}>{journey.journeyTitle}</Text>
+            <Text style={styles.journeySub}>{journey.journeyObjective}</Text>
           </View>
           <View style={styles.journeyRouteImage}>
-            {routeImageUri ? <Image source={{ uri: routeImageUri }} style={styles.journeyRoutePhoto} /> : <Text style={styles.journeyRouteInitial}>{route.name.slice(0, 1).toUpperCase()}</Text>}
+            {journey.routeImageUri ? <Image source={{ uri: journey.routeImageUri }} style={styles.journeyRoutePhoto} /> : <Text style={styles.journeyRouteInitial}>{route.name.slice(0, 1).toUpperCase()}</Text>}
           </View>
         </View>
 
         <View style={styles.journeyQuestCard}>
           <View style={styles.journeyQuestHeader}>
-            <Text style={styles.journeyQuestLabel}>{stepLabel}</Text>
-            <Text style={styles.journeyQuestMeta}>{metersToMiles(remainingMeters)} mi left</Text>
+            <Text style={styles.journeyQuestLabel}>{journey.stepLabel}</Text>
+            <Text style={styles.journeyQuestMeta}>{metersToMiles(journey.remainingMeters)} mi left</Text>
           </View>
           <Text style={styles.journeyQuestTitle}>{route.name}</Text>
           <Text style={styles.journeyQuestText}>{routeDirection === "reverse" ? "Progress is moving back toward the start of this path." : "Walking progress moves you toward the next story point."}</Text>
-          {destinationMarker ? (
+          {journey.destinationMarker ? (
             <View style={styles.journeyDestination}>
-              <MarkerIcon marker={destinationMarker} compact />
+              <MarkerIcon marker={journey.destinationMarker} compact />
               <View style={styles.journeyDestinationCopy}>
                 <Text style={styles.journeyDestinationLabel}>Destination Marker</Text>
-                <Text style={styles.journeyDestinationTitle}>{destinationMarker.title}</Text>
-                <Text style={styles.journeyDestinationType}>{destinationMarker.type}</Text>
+                <Text style={styles.journeyDestinationTitle}>{journey.destinationMarker.title}</Text>
+                <Text style={styles.journeyDestinationType}>{journey.destinationMarker.type}</Text>
               </View>
             </View>
           ) : null}
@@ -5771,6 +5853,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             width={Math.max(320, Number(activeMiniMap.width) || 900)}
             height={Math.max(280, Number(activeMiniMap.height) || 650)}
             canCapturePointer={isAdmin}
+            lockedToPlayer={false}
             onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini")}
             routeSegments={miniMapRouteSegments}
             draftSegments={draftSegments}
@@ -6203,17 +6286,20 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         </View>
       </View>
 
-      <View style={styles.toolbar}>
-        <Pressable style={styles.toolButton} onPress={() => zoomBy(0.15)}><Text style={styles.toolText}>Zoom In</Text></Pressable>
-        <Pressable style={styles.toolButton} onPress={() => zoomBy(-0.15)}><Text style={styles.toolText}>Zoom Out</Text></Pressable>
-        <Pressable style={styles.toolButton} onPress={resetZoom}><Text style={styles.toolText}>Reset</Text></Pressable>
-        <Pressable style={styles.toolButton} onPress={centerOnPlayer}><Text style={styles.toolText}>Center Player</Text></Pressable>
-        <Pressable style={[styles.toolButton, followPlayer && styles.toolActive]} onPress={() => setFollowPlayer((value) => !value)}><Text style={styles.toolText}>Follow {followPlayer ? "On" : "Off"}</Text></Pressable>
-      </View>
+      {isAdmin ? (
+        <View style={styles.toolbar}>
+          <Pressable style={styles.toolButton} onPress={() => zoomBy(0.15)}><Text style={styles.toolText}>Zoom In</Text></Pressable>
+          <Pressable style={styles.toolButton} onPress={() => zoomBy(-0.15)}><Text style={styles.toolText}>Zoom Out</Text></Pressable>
+          <Pressable style={styles.toolButton} onPress={resetZoom}><Text style={styles.toolText}>Reset</Text></Pressable>
+          <Pressable style={styles.toolButton} onPress={centerOnPlayer}><Text style={styles.toolText}>Center Player</Text></Pressable>
+          <Pressable style={[styles.toolButton, followPlayer && styles.toolActive]} onPress={() => setFollowPlayer((value) => !value)}><Text style={styles.toolText}>Follow {followPlayer ? "On" : "Off"}</Text></Pressable>
+        </View>
+      ) : null}
 
       {renderAdminViewTool()}
 
-      {renderJourneyPanel()}
+      {!isAdmin ? renderPlayerMapTravelHeader() : null}
+      {isAdmin ? renderJourneyPanel() : null}
 
       <OverworldMapCanvas
         viewportRef={viewportRef}
@@ -6222,6 +6308,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         onWheel={handleWheel}
         onPinchZoom={handlePinchZoom}
         canCapturePointer={isAdmin}
+        lockedToPlayer={!isAdmin}
         onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0])}
         routeSegments={routeSegments}
         draftSegments={draftSegments}
@@ -6237,6 +6324,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         playerPathVisibility={!route.mini_map_id ? playerPathVisibility : "visible"}
         onSelectMarker={(marker) => void selectMarker(marker)}
       />
+
+      {!isAdmin ? renderJourneyPanel(false) : null}
 
       <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
 
