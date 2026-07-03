@@ -2856,11 +2856,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setMarkerPanelMessage(null);
-    setActiveMiniMap(nextMiniMap);
-    setSelectedMiniMapId(nextMiniMap?.id ?? null);
     setSavedMiniMapPosition(null);
-    if (nextMiniMap) {
-      void savePlayerMapState({ active_mini_map_id: nextMiniMap.id, current_x_percent: nextPoint.x, current_y_percent: nextPoint.y });
+    if (activeMiniMap) {
+      void savePlayerMapState({ active_mini_map_id: activeMiniMap.id, current_x_percent: nextPoint.x, current_y_percent: nextPoint.y });
     } else {
       void clearPlayerMapState();
     }
@@ -5835,7 +5833,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
           </View>
         </View>
         {renderAdminViewTool()}
-        {route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
+        {!isAdmin && route.mini_map_id === activeMiniMap.id ? renderPlayerMapTravelHeader() : null}
+        {isAdmin && route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
         <Frame style={styles.panel}>
           <View style={styles.panelHeader}>
             <View>
@@ -5870,6 +5869,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             onSelectMarker={(marker) => void selectMarker(marker)}
           />
         </Frame>
+        {!isAdmin && route.mini_map_id === activeMiniMap.id ? renderJourneyPanel(false) : null}
         <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
         {isAdmin ? (
           <Frame style={styles.panel}>
