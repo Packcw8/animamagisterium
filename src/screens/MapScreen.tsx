@@ -22,13 +22,12 @@ import { MarkerIcon } from "../components/map/MarkerIcon";
 import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel";
 import { MarkerContinuationRouteEditor } from "../components/map/MarkerContinuationRouteEditor";
 import { LegendEditor } from "../components/map/LegendEditor";
+import { MarkerAccessRulesPanel } from "../components/map/MarkerAccessRulesPanel";
 import { MarkerAdminList } from "../components/map/MarkerAdminList";
 import { GameToast, type GameToastData, type GameToastReward } from "../components/map/GameToast";
 import { MarkerLegend } from "../components/map/MarkerLegend";
-import { MarkerPathRequirementEditor } from "../components/map/MarkerPathRequirementEditor";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { MarkerStyleEditor } from "../components/map/MarkerStyleEditor";
-import { MarkerStoryFlagVisibilityEditor } from "../components/map/MarkerStoryFlagVisibilityEditor";
 import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
 import { PlayerMapTravelHeader } from "../components/map/PlayerMapTravelHeader";
 import { WorldMapSettingsPanel } from "../components/map/WorldMapSettingsPanel";
@@ -6074,6 +6073,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerInteractable={setMarkerInteractable}
               markerInitiallyUnlocked={markerInitiallyUnlocked}
               setMarkerInitiallyUnlocked={setMarkerInitiallyUnlocked}
+              markerLockType={markerLockType}
+              setMarkerLockType={setMarkerLockType}
+              markerLockMessage={markerLockMessage}
+              setMarkerLockMessage={setMarkerLockMessage}
               markerQuestTitle={markerQuestTitle}
               setMarkerQuestTitle={setMarkerQuestTitle}
               markerQuestDialogue={markerQuestDialogue}
@@ -6643,18 +6646,35 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 onUploadMessage={setAdminMessage}
               />
               <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
-              <LockPicker label="Marker lock" value={markerLockType} onSelect={setMarkerLockType} />
-              {markerLockType !== "public" ? <TextInput value={markerLockMessage} onChangeText={setMarkerLockMessage} placeholder="Lock message shown to players" placeholderTextColor={colors.muted} style={styles.input} /> : null}
-              <MarkerStoryFlagVisibilityEditor
+              <MarkerAccessRulesPanel
+                markerType={draftType}
                 storyFlagKeys={knownStoryFlagKeys}
                 visibleStoryFlagKey={markerVisibleStoryFlagKey}
                 visibleStoryFlagValue={markerVisibleStoryFlagValue}
+                markerLockType={markerLockType}
+                markerLockMessage={markerLockMessage}
+                markerInteractable={markerInteractable}
+                markerInitiallyUnlocked={markerInitiallyUnlocked}
+                showPathRequirements={draftType !== "Sign Post" && !isBattleMarkerType(draftType) && !isStoryQuestMarker({ type: draftType })}
+                pathRequirementDescription={draftType === "Area/Town Entrance"
+                  ? "Players can enter after completing any one linked path that leads to this entrance. Use the unlock point below to choose whether the entrance opens at the path end, path start after reverse travel, or either side."
+                  : "Players must complete linked paths before this marker becomes interactable. Use the unlock point below for endpoint-style exits, gates, clues, and area transitions."}
+                routes={activeRouteScopeRoutes}
+                selectedRouteIds={selectedMarkerRouteIds}
+                completionCondition={markerRouteCompletionCondition}
+                emptyPathText="Create a walking path in this map area before linking requirements."
                 onChangeVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
                 onToggleVisibleStoryFlagValue={() => setMarkerVisibleStoryFlagValue((value) => !value)}
-                onClear={() => {
+                onClearVisibleStoryFlag={() => {
                   setMarkerVisibleStoryFlagKey("");
                   setMarkerVisibleStoryFlagValue(true);
                 }}
+                onChangeMarkerLockType={setMarkerLockType}
+                onChangeMarkerLockMessage={setMarkerLockMessage}
+                onToggleInteractable={() => setMarkerInteractable((value) => !value)}
+                onToggleInitiallyUnlocked={() => setMarkerInitiallyUnlocked((value) => !value)}
+                onToggleRoute={toggleSignPostRoute}
+                onSelectCompletionCondition={setMarkerRouteCompletionCondition}
               />
               <LinkedMarkerPathNotice
                 markerType={draftType}
@@ -6759,7 +6779,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                   <Text style={styles.copy}>Use the Marker Dialogue Tree below for conversation choices. If the NPC is battle-capable, the battle setup can also use this same NPC.</Text>
                 </View>
               ) : null}
-              {draftType !== "Sign Post" && !isBattleMarkerType(draftType) ? (
+              {draftType !== "Sign Post" && !isBattleMarkerType(draftType) && isStoryQuestMarker({ type: draftType }) ? (
                 isStoryQuestMarker({ type: draftType }) ? (
                   <View style={styles.storyEditor}>
                     <Text style={styles.selectedTitle}>Story Path Sequence</Text>
@@ -6773,27 +6793,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                     </View>
                     {activeRouteScopeRoutes.length === 0 ? <Text style={styles.debugLine}>Create a walking path in this map area before linking story paths.</Text> : null}
                   </View>
-                ) : (
-                  <MarkerPathRequirementEditor
-                    title="Required Completed Paths"
-                    description={draftType === "Area/Town Entrance"
-                      ? "Players can enter after completing any one linked path that leads to this entrance. Use the unlock point below to choose whether the entrance opens at the path end, path start after reverse travel, or either side."
-                      : "Players must complete linked paths before this marker becomes interactable. Use the unlock point below for endpoint-style exits, gates, clues, and area transitions."}
-                    routes={activeRouteScopeRoutes}
-                    selectedRouteIds={selectedMarkerRouteIds}
-                    completionCondition={markerRouteCompletionCondition}
-                    onToggleRoute={toggleSignPostRoute}
-                    onSelectCompletionCondition={setMarkerRouteCompletionCondition}
-                    emptyText="Create a walking path in this map area before linking requirements."
-                  />
-                )
+                ) : null
               ) : null}
-              <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
-                <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
-              </Pressable>
-              <Pressable style={[styles.secondaryButton, markerInitiallyUnlocked && styles.typeSelected]} onPress={() => setMarkerInitiallyUnlocked((value) => !value)}>
-                <Text style={styles.secondaryText}>Initially Unlocked: {markerInitiallyUnlocked ? "true" : "false"}</Text>
-              </Pressable>
               {supportsMarkerDialogue(draftType) ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>Marker Dialogue Tree</Text>
@@ -7426,6 +7427,10 @@ function MiniMapMarkerAdminForm({
   setMarkerInteractable,
   markerInitiallyUnlocked,
   setMarkerInitiallyUnlocked,
+  markerLockType,
+  setMarkerLockType,
+  markerLockMessage,
+  setMarkerLockMessage,
   markerQuestTitle,
   setMarkerQuestTitle,
   markerQuestDialogue,
@@ -7559,6 +7564,10 @@ function MiniMapMarkerAdminForm({
   setMarkerInteractable: (value: boolean | ((current: boolean) => boolean)) => void;
   markerInitiallyUnlocked: boolean;
   setMarkerInitiallyUnlocked: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerLockType: MapMarker["lock_type"];
+  setMarkerLockType: (value: MapMarker["lock_type"]) => void;
+  markerLockMessage: string;
+  setMarkerLockMessage: (value: string) => void;
   markerQuestTitle: string;
   setMarkerQuestTitle: (value: string) => void;
   markerQuestDialogue: string;
@@ -7691,22 +7700,36 @@ function MiniMapMarkerAdminForm({
         onUploadMessage={onMessage}
       />
       <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
-      <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={() => setMarkerInteractable((value) => !value)}>
-        <Text style={styles.secondaryText}>Interactable: {markerInteractable ? "true" : "false"}</Text>
-      </Pressable>
-      <Pressable style={[styles.secondaryButton, markerInitiallyUnlocked && styles.typeSelected]} onPress={() => setMarkerInitiallyUnlocked((value) => !value)}>
-        <Text style={styles.secondaryText}>Initially Unlocked: {markerInitiallyUnlocked ? "true" : "false"}</Text>
-      </Pressable>
-      <MarkerStoryFlagVisibilityEditor
+      <MarkerAccessRulesPanel
+        markerType={draftType}
         storyFlagKeys={knownStoryFlagKeys}
         visibleStoryFlagKey={markerVisibleStoryFlagKey}
         visibleStoryFlagValue={markerVisibleStoryFlagValue}
+        markerLockType={markerLockType}
+        markerLockMessage={markerLockMessage}
+        markerInteractable={markerInteractable}
+        markerInitiallyUnlocked={markerInitiallyUnlocked}
+        showPathRequirements={!supportsSignPost && !supportsQuest && !supportsBattle}
+        pathRequirementDescription={draftType === "Area/Town Entrance"
+          ? "Players can enter after completing any one linked path that leads to this entrance. Use the unlock point below to choose whether the entrance opens at the path end, path start after reverse travel, or either side."
+          : "Players must complete linked paths before this marker becomes interactable. Use the unlock point below for endpoint-style exits, gates, clues, and area transitions."}
+        routes={routes}
+        selectedRouteIds={selectedMarkerRouteIds}
+        completionCondition={markerRouteCompletionCondition}
+        emptyPathText="No walking paths exist in this mini map yet."
+        saveHint={selectedMarker ? "Save Marker Details after changing linked paths or the unlock point." : "Selected paths will be linked when this marker is created."}
         onChangeVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
         onToggleVisibleStoryFlagValue={() => setMarkerVisibleStoryFlagValue((value) => !value)}
-        onClear={() => {
+        onClearVisibleStoryFlag={() => {
           setMarkerVisibleStoryFlagKey("");
           setMarkerVisibleStoryFlagValue(true);
         }}
+        onChangeMarkerLockType={setMarkerLockType}
+        onChangeMarkerLockMessage={setMarkerLockMessage}
+        onToggleInteractable={() => setMarkerInteractable((value) => !value)}
+        onToggleInitiallyUnlocked={() => setMarkerInitiallyUnlocked((value) => !value)}
+        onToggleRoute={toggleSignPostRoute}
+        onSelectCompletionCondition={setMarkerRouteCompletionCondition}
       />
       <LinkedMarkerPathNotice
         markerType={draftType}
@@ -7831,21 +7854,6 @@ function MiniMapMarkerAdminForm({
             <Text style={styles.debugLine}>Selected paths will be linked when the Sign Post marker is created.</Text>
           )}
         </View>
-      ) : null}
-      {!supportsSignPost && !supportsQuest && !supportsBattle ? (
-        <MarkerPathRequirementEditor
-          title="Required Completed Paths"
-          description={draftType === "Area/Town Entrance"
-            ? "Players can enter after completing any one linked path that leads to this entrance. Use the unlock point below to choose whether the entrance opens at the path end, path start after reverse travel, or either side."
-            : "Players must complete linked paths before this marker becomes interactable. Use the unlock point below for endpoint-style exits, gates, clues, and area transitions."}
-          routes={routes}
-          selectedRouteIds={selectedMarkerRouteIds}
-          completionCondition={markerRouteCompletionCondition}
-          onToggleRoute={toggleSignPostRoute}
-          onSelectCompletionCondition={setMarkerRouteCompletionCondition}
-          emptyText="No walking paths exist in this mini map yet."
-          saveHint={selectedMarker ? "Save Marker Details after changing linked paths or the unlock point." : "Selected paths will be linked when this marker is created."}
-        />
       ) : null}
       {supportsExit ? (
         <ExitTargetEditor
