@@ -62,6 +62,8 @@ type SharedCanvasProps = {
   onMapPointer?: (event: unknown) => void;
   onSelectMarker: (marker: MapMarker) => void;
   playerPathVisibility?: "visible" | "hidden" | "cave" | "fog";
+  playerScale?: number;
+  markerScale?: number;
 };
 
 export function OverworldMapCanvas({
@@ -196,6 +198,8 @@ export function MiniMapCanvas({
   width,
   canCapturePointer,
   lockedToPlayer = false,
+  fixedView = false,
+  zoomEnabled = false,
   ...shared
 }: SharedCanvasProps & {
   imageUri: string | null;
@@ -204,12 +208,18 @@ export function MiniMapCanvas({
   width?: number;
   canCapturePointer: boolean;
   lockedToPlayer?: boolean;
+  fixedView?: boolean;
+  zoomEnabled?: boolean;
 }) {
   const [imageAspectRatio, setImageAspectRatio] = useState(1.35);
   const [lockedViewportSize, setLockedViewportSize] = useState({ width: 360, height: 420 });
+  const [zoomScale, setZoomScale] = useState(1);
   const surfaceHeight = Math.max(280, Number(height) || 520);
   const surfaceWidth = Math.max(320, Number(width) || Math.round(surfaceHeight * imageAspectRatio));
-  const lockedOffset = getCenteredMapOffset(shared.playerPosition, { width: surfaceWidth, height: surfaceHeight }, lockedViewportSize);
+  const effectiveZoomScale = zoomEnabled ? zoomScale : 1;
+  const renderedSurfaceHeight = surfaceHeight * effectiveZoomScale;
+  const renderedSurfaceWidth = surfaceWidth * effectiveZoomScale;
+  const lockedOffset = getCenteredMapOffset(shared.playerPosition, { width: renderedSurfaceWidth, height: renderedSurfaceHeight }, lockedViewportSize);
 
   function handleMiniMapImageLoad(event: { nativeEvent?: { source?: { width?: number; height?: number } } }) {
     const width = Number(event.nativeEvent?.source?.width) || 0;
@@ -224,8 +234,8 @@ export function MiniMapCanvas({
       style={[
         styles.miniMapSurface,
         {
-          width: surfaceWidth,
-          height: surfaceHeight,
+          width: renderedSurfaceWidth,
+          height: renderedSurfaceHeight,
         },
       ]}
       {...(canCapturePointer
@@ -235,7 +245,7 @@ export function MiniMapCanvas({
               onStartShouldSetResponder: () => true,
             } as object)
           : ({
-              onTouchEnd: (event: unknown) => shared.onMapPointer?.(withNativeTargetSize(event, surfaceWidth, surfaceHeight)),
+              onTouchEnd: (event: unknown) => shared.onMapPointer?.(withNativeTargetSize(event, renderedSurfaceWidth, renderedSurfaceHeight)),
             } as object)
         : {})}
     >
@@ -251,6 +261,16 @@ export function MiniMapCanvas({
         <View style={styles.miniMapFallback}><Text style={styles.copy}>{fallbackText}</Text></View>
       )}
       <MapCanvasLayers {...shared} markerSize={25} mini />
+      {zoomEnabled && !canCapturePointer ? (
+        <View style={styles.miniMapZoomControls}>
+          <Pressable style={styles.miniMapZoomButton} onPress={() => setZoomScale((value) => Math.min(2, value + 0.15))}>
+            <Text style={styles.miniMapZoomText}>+</Text>
+          </Pressable>
+          <Pressable style={styles.miniMapZoomButton} onPress={() => setZoomScale((value) => Math.max(0.75, value - 0.15))}>
+            <Text style={styles.miniMapZoomText}>-</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 
@@ -270,8 +290,8 @@ export function MiniMapCanvas({
             style={[
               styles.lockedSurface,
               {
-                width: surfaceWidth,
-                height: surfaceHeight,
+                width: renderedSurfaceWidth,
+                height: renderedSurfaceHeight,
                 transform: [{ translateX: lockedOffset.left }, { translateY: lockedOffset.top }],
               },
             ]}
@@ -282,6 +302,14 @@ export function MiniMapCanvas({
           <View pointerEvents="none" style={styles.lockedCenterReticle}>
             <Text style={styles.lockedCenterText}>YOU</Text>
           </View>
+        </View>
+      );
+    }
+
+    if (fixedView) {
+      return (
+        <View style={[styles.fixedMiniMapViewport, { height: Math.min(520, surfaceHeight) }]}>
+          {miniMapSurface}
         </View>
       );
     }
@@ -308,10 +336,10 @@ export function MiniMapCanvas({
       >
         <View
           style={[
-            styles.lockedSurface,
-            {
-              width: surfaceWidth,
-              height: surfaceHeight,
+              styles.lockedSurface,
+              {
+              width: renderedSurfaceWidth,
+              height: renderedSurfaceHeight,
               transform: [{ translateX: lockedOffset.left }, { translateY: lockedOffset.top }],
             },
           ]}
@@ -322,6 +350,14 @@ export function MiniMapCanvas({
         <View pointerEvents="none" style={styles.lockedCenterReticle}>
           <Text style={styles.lockedCenterText}>YOU</Text>
         </View>
+      </View>
+    );
+  }
+
+  if (fixedView) {
+    return (
+      <View style={[styles.fixedMiniMapViewport, { height: Math.min(520, surfaceHeight) } as object]}>
+        {miniMapSurface}
       </View>
     );
   }
@@ -398,7 +434,14 @@ function MapCanvasLayers({
   onSelectMarker,
   markerSize,
   mini = false,
+  playerScale = 1,
+  markerScale = 1,
 }: SharedCanvasProps & { markerSize: number; mini?: boolean }) {
+  const safePlayerScale = Math.max(0.35, Math.min(2, Number(playerScale) || 1));
+  const safeMarkerScale = Math.max(0.35, Math.min(2, Number(markerScale) || 1));
+  const playerPinOffset = mini ? 18 : 14;
+  const scaledMarkerSize = Math.max(12, Math.round(markerSize * safeMarkerScale));
+
   return (
     <>
       {routeSegments.map((segment, index) => (
@@ -432,6 +475,7 @@ function MapCanvasLayers({
           {
             left: `${playerPosition.x}%`,
             top: `${playerPosition.y}%`,
+            transform: [{ translateX: -playerPinOffset }, { translateY: -playerPinOffset }, { scale: safePlayerScale }],
           },
           !mini && ({ transitionDuration: "450ms" } as object),
         ]}
@@ -451,14 +495,14 @@ function MapCanvasLayers({
       {markers.map((marker) => (
         <Pressable
           key={marker.id}
-          style={[styles.marker, mini && styles.miniMapMarker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, playerPosition, markerSize)]}
+          style={[styles.marker, mini && styles.miniMapMarker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, playerPosition, scaledMarkerSize)]}
           onPress={(event) => {
             event.stopPropagation();
             onSelectMarker(marker);
           }}
           {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
         >
-          <MarkerIcon marker={marker} mini={mini} />
+          <MarkerIcon marker={safeMarkerScale === 1 ? marker : { ...marker, marker_size: Math.round(Number(marker.marker_size ?? 100) * safeMarkerScale) }} mini={mini} />
         </Pressable>
       ))}
     </>
@@ -674,6 +718,36 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderSoft,
     backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  fixedMiniMapViewport: {
+    width: "100%",
+    overflow: "hidden",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.55)",
+  },
+  miniMapZoomControls: {
+    position: "absolute",
+    right: 10,
+    bottom: 10,
+    zIndex: 35,
+    gap: 8,
+  },
+  miniMapZoomButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "rgba(4, 7, 7, 0.82)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  miniMapZoomText: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 18,
   },
   lockedVignette: {
     position: "absolute",

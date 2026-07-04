@@ -876,6 +876,14 @@ export type Tables = {
     description: string | null;
     width: number;
     height: number;
+    behavior_mode: "scrollable" | "follow_player" | "fixed";
+    zoom_enabled: boolean;
+    player_avatar_scale: number;
+    marker_scale: number;
+    entry_toast_title: string | null;
+    entry_toast_message: string | null;
+    entry_sound_url: string | null;
+    entry_video_url: string | null;
     sort_order: number;
     is_active: boolean;
     season_number: number;

@@ -15,6 +15,14 @@ type MiniMapEditorProps<MiniMapType extends string> = {
   sortOrder: string;
   width: string;
   height: string;
+  behaviorMode: MiniMap["behavior_mode"];
+  zoomEnabled: boolean;
+  playerAvatarScale: string;
+  markerScale: string;
+  entryToastTitle: string;
+  entryToastMessage: string;
+  entrySoundUrl: string;
+  entryVideoUrl: string;
   active: boolean;
   selectedAreaKey: string;
   onChangeName: (value: string) => void;
@@ -26,6 +34,14 @@ type MiniMapEditorProps<MiniMapType extends string> = {
   onChangeSortOrder: (value: string) => void;
   onChangeWidth: (value: string) => void;
   onChangeHeight: (value: string) => void;
+  onChangeBehaviorMode: (value: MiniMap["behavior_mode"]) => void;
+  onToggleZoomEnabled: () => void;
+  onChangePlayerAvatarScale: (value: string) => void;
+  onChangeMarkerScale: (value: string) => void;
+  onChangeEntryToastTitle: (value: string) => void;
+  onChangeEntryToastMessage: (value: string) => void;
+  onChangeEntrySoundUrl: (value: string) => void;
+  onChangeEntryVideoUrl: (value: string) => void;
   onSelectAreaKey: (value: string) => void;
   onToggleActive: () => void;
   onSave: () => void;
@@ -49,6 +65,14 @@ export function MiniMapEditor<MiniMapType extends string>({
   sortOrder,
   width,
   height,
+  behaviorMode,
+  zoomEnabled,
+  playerAvatarScale,
+  markerScale,
+  entryToastTitle,
+  entryToastMessage,
+  entrySoundUrl,
+  entryVideoUrl,
   active,
   selectedAreaKey,
   onChangeName,
@@ -60,6 +84,14 @@ export function MiniMapEditor<MiniMapType extends string>({
   onChangeSortOrder,
   onChangeWidth,
   onChangeHeight,
+  onChangeBehaviorMode,
+  onToggleZoomEnabled,
+  onChangePlayerAvatarScale,
+  onChangeMarkerScale,
+  onChangeEntryToastTitle,
+  onChangeEntryToastMessage,
+  onChangeEntrySoundUrl,
+  onChangeEntryVideoUrl,
   onSelectAreaKey,
   onToggleActive,
   onSave,
@@ -109,6 +141,30 @@ export function MiniMapEditor<MiniMapType extends string>({
         <TextInput value={width} onChangeText={onChangeWidth} placeholder="Frame width, example 900" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
         <TextInput value={height} onChangeText={onChangeHeight} placeholder="Frame height, example 650" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
       </View>
+      <Text style={styles.selectedTitle}>Player Behavior</Text>
+      <Text style={styles.copy}>Choose how this mini map behaves for players. Admin editing remains scrollable.</Text>
+      <View style={styles.storyRoutePicker}>
+        {[
+          { key: "scrollable", label: "Scrollable" },
+          { key: "follow_player", label: "Follow Player" },
+          { key: "fixed", label: "Fixed View" },
+        ].map((option) => (
+          <Pressable key={option.key} style={[styles.routeChip, behaviorMode === option.key && styles.routeChipActive]} onPress={() => onChangeBehaviorMode(option.key as MiniMap["behavior_mode"])}>
+            <Text style={styles.routeChipText}>{option.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Pressable style={[styles.secondaryButton, zoomEnabled && styles.typeSelected]} onPress={onToggleZoomEnabled}>
+        <Text style={styles.secondaryText}>Zoom Enabled: {zoomEnabled ? "Yes" : "No"}</Text>
+      </Pressable>
+      <View style={styles.modeRow}>
+        <TextInput value={playerAvatarScale} onChangeText={onChangePlayerAvatarScale} placeholder="Player avatar scale, 1 normal" placeholderTextColor={colors.muted} keyboardType="numeric" style={[styles.input, styles.flexInput]} />
+        <TextInput value={markerScale} onChangeText={onChangeMarkerScale} placeholder="Marker scale, 1 normal" placeholderTextColor={colors.muted} keyboardType="numeric" style={[styles.input, styles.flexInput]} />
+      </View>
+      <TextInput value={entryToastTitle} onChangeText={onChangeEntryToastTitle} placeholder="Entry toast title optional" placeholderTextColor={colors.muted} style={styles.input} />
+      <TextInput value={entryToastMessage} onChangeText={onChangeEntryToastMessage} placeholder="Entry toast/message optional" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+      <TextInput value={entrySoundUrl} onChangeText={onChangeEntrySoundUrl} placeholder="Entry sound URL optional future" placeholderTextColor={colors.muted} style={styles.input} />
+      <TextInput value={entryVideoUrl} onChangeText={onChangeEntryVideoUrl} placeholder="Entry video/cinematic URL optional future" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={description} onChangeText={onChangeDescription} placeholder="Description" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
       <Pressable style={[styles.secondaryButton, active && styles.typeSelected]} onPress={onToggleActive}>
         <Text style={styles.secondaryText}>Active: {active ? "true" : "false"}</Text>
@@ -130,7 +186,7 @@ export function MiniMapEditor<MiniMapType extends string>({
           {group.maps.map((miniMap) => (
             <View key={miniMap.id} style={styles.storyCard}>
               <Text style={styles.markerName}>{miniMap.name}</Text>
-              <Text style={styles.copy}>{miniMap.type} / Order {miniMap.sort_order ?? 0} / {miniMap.width ?? 900} x {miniMap.height ?? 650} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
+              <Text style={styles.copy}>{miniMap.type} / {(miniMap.behavior_mode ?? "scrollable").replace("_", " ")} / Order {miniMap.sort_order ?? 0} / {miniMap.width ?? 900} x {miniMap.height ?? 650} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
               <View style={styles.modeRow}>
                 <Pressable style={[styles.secondaryButtonFlex, editingMiniMapId === miniMap.id && styles.typeSelected]} onPress={() => onEdit(miniMap)}>
                   <Text style={styles.secondaryText}>Edit</Text>

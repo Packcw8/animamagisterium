@@ -397,6 +397,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [miniMapActive, setMiniMapActive] = useState(true);
   const [miniMapEditorWidth, setMiniMapEditorWidth] = useState("900");
   const [miniMapEditorHeight, setMiniMapEditorHeight] = useState("650");
+  const [miniMapBehaviorMode, setMiniMapBehaviorMode] = useState<MiniMap["behavior_mode"]>("scrollable");
+  const [miniMapZoomEnabled, setMiniMapZoomEnabled] = useState(false);
+  const [miniMapPlayerAvatarScale, setMiniMapPlayerAvatarScale] = useState("1");
+  const [miniMapMarkerScale, setMiniMapMarkerScale] = useState("1");
+  const [miniMapEntryToastTitle, setMiniMapEntryToastTitle] = useState("");
+  const [miniMapEntryToastMessage, setMiniMapEntryToastMessage] = useState("");
+  const [miniMapEntrySoundUrl, setMiniMapEntrySoundUrl] = useState("");
+  const [miniMapEntryVideoUrl, setMiniMapEntryVideoUrl] = useState("");
   const [selectedMiniMapAreaKey, setSelectedMiniMapAreaKey] = useState("all");
   const [tutorialSteps, setTutorialSteps] = useState<TutorialStep[]>([]);
   const [editingTutorialId, setEditingTutorialId] = useState<string | null>(null);
@@ -3235,6 +3243,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         description: miniMapDescription,
         width: Number(miniMapEditorWidth) || 900,
         height: Number(miniMapEditorHeight) || 650,
+        behavior_mode: miniMapBehaviorMode,
+        zoom_enabled: miniMapZoomEnabled,
+        player_avatar_scale: Number(miniMapPlayerAvatarScale) || 1,
+        marker_scale: Number(miniMapMarkerScale) || 1,
+        entry_toast_title: miniMapEntryToastTitle,
+        entry_toast_message: miniMapEntryToastMessage,
+        entry_sound_url: miniMapEntrySoundUrl,
+        entry_video_url: miniMapEntryVideoUrl,
         sort_order: Number(miniMapSortOrder) || 0,
         is_active: miniMapActive,
         season_number: selectedSeason,
@@ -3255,6 +3271,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         setMiniMapDescription("");
         setMiniMapEditorWidth("900");
         setMiniMapEditorHeight("650");
+        setMiniMapBehaviorMode("scrollable");
+        setMiniMapZoomEnabled(false);
+        setMiniMapPlayerAvatarScale("1");
+        setMiniMapMarkerScale("1");
+        setMiniMapEntryToastTitle("");
+        setMiniMapEntryToastMessage("");
+        setMiniMapEntrySoundUrl("");
+        setMiniMapEntryVideoUrl("");
         setMiniMapActive(true);
       }
       setAdminMessage("Mini map saved.");
@@ -3275,6 +3299,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMiniMapDescription(miniMap.description ?? "");
     setMiniMapEditorWidth(String(miniMap.width ?? 900));
     setMiniMapEditorHeight(String(miniMap.height ?? 650));
+    setMiniMapBehaviorMode(miniMap.behavior_mode ?? "scrollable");
+    setMiniMapZoomEnabled(Boolean(miniMap.zoom_enabled));
+    setMiniMapPlayerAvatarScale(String(miniMap.player_avatar_scale ?? 1));
+    setMiniMapMarkerScale(String(miniMap.marker_scale ?? 1));
+    setMiniMapEntryToastTitle(miniMap.entry_toast_title ?? "");
+    setMiniMapEntryToastMessage(miniMap.entry_toast_message ?? "");
+    setMiniMapEntrySoundUrl(miniMap.entry_sound_url ?? "");
+    setMiniMapEntryVideoUrl(miniMap.entry_video_url ?? "");
     setMiniMapActive(miniMap.is_active);
   }
 
@@ -3290,6 +3322,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMiniMapDescription("");
     setMiniMapEditorWidth("900");
     setMiniMapEditorHeight("650");
+    setMiniMapBehaviorMode("scrollable");
+    setMiniMapZoomEnabled(false);
+    setMiniMapPlayerAvatarScale("1");
+    setMiniMapMarkerScale("1");
+    setMiniMapEntryToastTitle("");
+    setMiniMapEntryToastMessage("");
+    setMiniMapEntrySoundUrl("");
+    setMiniMapEntryVideoUrl("");
     setMiniMapActive(true);
   }
 
@@ -3319,6 +3359,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setClickedPercent(null);
+    if (!isAdmin && (miniMap.entry_toast_title?.trim() || miniMap.entry_toast_message?.trim())) {
+      setGameToast({
+        title: miniMap.entry_toast_title?.trim() || miniMap.name,
+        message: miniMap.entry_toast_message?.trim() || miniMap.description || "Area entered.",
+        actionLabel: "OK",
+      });
+    }
     if (route.mini_map_id !== miniMap.id) {
       setSavedMiniMapPosition(nextFreeRoamPosition);
       if (persistPlayerState) {
@@ -3376,6 +3423,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setMiniMapDescription("");
       setMiniMapEditorWidth("900");
       setMiniMapEditorHeight("650");
+      setMiniMapBehaviorMode("scrollable");
+      setMiniMapZoomEnabled(false);
+      setMiniMapPlayerAvatarScale("1");
+      setMiniMapMarkerScale("1");
+      setMiniMapEntryToastTitle("");
+      setMiniMapEntryToastMessage("");
+      setMiniMapEntrySoundUrl("");
+      setMiniMapEntryVideoUrl("");
       setMiniMapActive(true);
       setSelectedMarker(null);
       setPreviewMarkerScene(false);
@@ -5978,7 +6033,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             width={Math.max(320, Number(activeMiniMap.width) || 900)}
             height={Math.max(280, Number(activeMiniMap.height) || 650)}
             canCapturePointer={isAdmin}
-            lockedToPlayer={false}
+            lockedToPlayer={!isAdmin && activeMiniMap.behavior_mode === "follow_player"}
+            fixedView={!isAdmin && activeMiniMap.behavior_mode === "fixed"}
+            zoomEnabled={!isAdmin && Boolean(activeMiniMap.zoom_enabled)}
             onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini")}
             routeSegments={miniMapRouteSegments}
             draftSegments={draftSegments}
@@ -5991,6 +6048,8 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             playerPosition={miniMapPlayerPosition}
             playerName={character.name}
             playerPortraitUrl={character.portrait_url}
+            playerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.player_avatar_scale) || 1))}
+            markerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.marker_scale) || 1))}
             playerPathVisibility={route.mini_map_id === activeMiniMap.id ? playerPathVisibility : "visible"}
             onSelectMarker={(marker) => void selectMarker(marker)}
           />
@@ -6023,6 +6082,29 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <TextInput value={miniMapEditorWidth} onChangeText={setMiniMapEditorWidth} placeholder="Frame width, example 900" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
                 <TextInput value={miniMapEditorHeight} onChangeText={setMiniMapEditorHeight} placeholder="Frame height, example 650" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
               </View>
+              <Text style={styles.selectedTitle}>Player Behavior</Text>
+              <View style={styles.storyRoutePicker}>
+                {[
+                  { key: "scrollable", label: "Scrollable" },
+                  { key: "follow_player", label: "Follow Player" },
+                  { key: "fixed", label: "Fixed View" },
+                ].map((option) => (
+                  <Pressable key={option.key} style={[styles.routeChip, miniMapBehaviorMode === option.key && styles.routeChipActive]} onPress={() => setMiniMapBehaviorMode(option.key as MiniMap["behavior_mode"])}>
+                    <Text style={styles.routeChipText}>{option.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Pressable style={[styles.secondaryButton, miniMapZoomEnabled && styles.typeSelected]} onPress={() => setMiniMapZoomEnabled((value) => !value)}>
+                <Text style={styles.secondaryText}>Zoom Enabled: {miniMapZoomEnabled ? "Yes" : "No"}</Text>
+              </Pressable>
+              <View style={styles.modeRow}>
+                <TextInput value={miniMapPlayerAvatarScale} onChangeText={setMiniMapPlayerAvatarScale} placeholder="Player scale, 1 normal" placeholderTextColor={colors.muted} keyboardType="numeric" style={[styles.input, styles.flexInput]} />
+                <TextInput value={miniMapMarkerScale} onChangeText={setMiniMapMarkerScale} placeholder="Marker scale, 1 normal" placeholderTextColor={colors.muted} keyboardType="numeric" style={[styles.input, styles.flexInput]} />
+              </View>
+              <TextInput value={miniMapEntryToastTitle} onChangeText={setMiniMapEntryToastTitle} placeholder="Entry toast title optional" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={miniMapEntryToastMessage} onChangeText={setMiniMapEntryToastMessage} placeholder="Entry toast/message optional" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+              <TextInput value={miniMapEntrySoundUrl} onChangeText={setMiniMapEntrySoundUrl} placeholder="Entry sound URL optional future" placeholderTextColor={colors.muted} style={styles.input} />
+              <TextInput value={miniMapEntryVideoUrl} onChangeText={setMiniMapEntryVideoUrl} placeholder="Entry video/cinematic URL optional future" placeholderTextColor={colors.muted} style={styles.input} />
               <View style={styles.storyRoutePicker}>
                 {[
                   { label: "Compact", width: "720", height: "520" },
@@ -6665,6 +6747,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               sortOrder={miniMapSortOrder}
               width={miniMapEditorWidth}
               height={miniMapEditorHeight}
+              behaviorMode={miniMapBehaviorMode}
+              zoomEnabled={miniMapZoomEnabled}
+              playerAvatarScale={miniMapPlayerAvatarScale}
+              markerScale={miniMapMarkerScale}
+              entryToastTitle={miniMapEntryToastTitle}
+              entryToastMessage={miniMapEntryToastMessage}
+              entrySoundUrl={miniMapEntrySoundUrl}
+              entryVideoUrl={miniMapEntryVideoUrl}
               active={miniMapActive}
               selectedAreaKey={selectedMiniMapAreaKey}
               onChangeName={setMiniMapName}
@@ -6676,6 +6766,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               onChangeSortOrder={setMiniMapSortOrder}
               onChangeWidth={setMiniMapEditorWidth}
               onChangeHeight={setMiniMapEditorHeight}
+              onChangeBehaviorMode={setMiniMapBehaviorMode}
+              onToggleZoomEnabled={() => setMiniMapZoomEnabled((value) => !value)}
+              onChangePlayerAvatarScale={setMiniMapPlayerAvatarScale}
+              onChangeMarkerScale={setMiniMapMarkerScale}
+              onChangeEntryToastTitle={setMiniMapEntryToastTitle}
+              onChangeEntryToastMessage={setMiniMapEntryToastMessage}
+              onChangeEntrySoundUrl={setMiniMapEntrySoundUrl}
+              onChangeEntryVideoUrl={setMiniMapEntryVideoUrl}
               onSelectAreaKey={setSelectedMiniMapAreaKey}
               onToggleActive={() => setMiniMapActive((value) => !value)}
               onSave={() => void saveMiniMapForm()}
