@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { MapChapter, MapSeason } from "../../services/mapService";
-import { getChapterLabel, getSeasonLabel } from "../../utils/mapProgress";
+import { getChapterAccessStatus, getChapterLabel, getSeasonLabel, type ChapterAccessType } from "../../utils/mapProgress";
 import { AdminCollapsibleSection } from "../admin/AdminCollapsibleSection";
 import { colors, fonts } from "../theme";
 
@@ -15,6 +15,15 @@ type AdminMapEditorHeaderProps<Section extends string> = {
   newSeasonDescription: string;
   newChapterName: string;
   newChapterDescription: string;
+  chapterAccessType: ChapterAccessType;
+  chapterUnlockFlagKey: string;
+  chapterUnlockFlagValue: boolean;
+  chapterCompletionFlagKey: string;
+  chapterCompletionFlagValue: boolean;
+  chapterTransitionTitle: string;
+  chapterTransitionBody: string;
+  chapterUnlockMessage: string;
+  chapterSubscriptionPrompt: string;
   sections: readonly Section[];
   activeSection: Section;
   message: string | null;
@@ -25,8 +34,18 @@ type AdminMapEditorHeaderProps<Section extends string> = {
   onChangeSeasonDescription: (value: string) => void;
   onChangeChapterName: (value: string) => void;
   onChangeChapterDescription: (value: string) => void;
+  onChangeChapterAccessType: (value: ChapterAccessType) => void;
+  onChangeChapterUnlockFlagKey: (value: string) => void;
+  onToggleChapterUnlockFlagValue: () => void;
+  onChangeChapterCompletionFlagKey: (value: string) => void;
+  onToggleChapterCompletionFlagValue: () => void;
+  onChangeChapterTransitionTitle: (value: string) => void;
+  onChangeChapterTransitionBody: (value: string) => void;
+  onChangeChapterUnlockMessage: (value: string) => void;
+  onChangeChapterSubscriptionPrompt: (value: string) => void;
   onCreateSeason: () => void;
   onCreateChapter: () => void;
+  onSaveChapterRules: () => void;
   onSelectSection: (section: Section) => void;
   onToggleSeasonPanel: () => void;
 };
@@ -42,6 +61,15 @@ export function AdminMapEditorHeader<Section extends string>({
   newSeasonDescription,
   newChapterName,
   newChapterDescription,
+  chapterAccessType,
+  chapterUnlockFlagKey,
+  chapterUnlockFlagValue,
+  chapterCompletionFlagKey,
+  chapterCompletionFlagValue,
+  chapterTransitionTitle,
+  chapterTransitionBody,
+  chapterUnlockMessage,
+  chapterSubscriptionPrompt,
   sections,
   activeSection,
   message,
@@ -52,13 +80,31 @@ export function AdminMapEditorHeader<Section extends string>({
   onChangeSeasonDescription,
   onChangeChapterName,
   onChangeChapterDescription,
+  onChangeChapterAccessType,
+  onChangeChapterUnlockFlagKey,
+  onToggleChapterUnlockFlagValue,
+  onChangeChapterCompletionFlagKey,
+  onToggleChapterCompletionFlagValue,
+  onChangeChapterTransitionTitle,
+  onChangeChapterTransitionBody,
+  onChangeChapterUnlockMessage,
+  onChangeChapterSubscriptionPrompt,
   onCreateSeason,
   onCreateChapter,
+  onSaveChapterRules,
   onSelectSection,
   onToggleSeasonPanel,
 }: AdminMapEditorHeaderProps<Section>) {
   const seasonLabel = getSeasonLabel(mapSeasons, selectedSeason);
   const chapterLabel = getChapterLabel(mapChapters, selectedSeason, selectedChapter);
+  const selectedChapterRecord = mapChapters.find((chapter) => Number(chapter.season_number) === selectedSeason && Number(chapter.chapter_number) === selectedChapter) ?? null;
+  const accessStatus = getChapterAccessStatus(selectedChapterRecord, new Map(), true);
+  const accessTypes: Array<{ key: ChapterAccessType; label: string }> = [
+    { key: "free", label: "Free" },
+    { key: "story_locked", label: "Story Locked" },
+    { key: "subscription_locked", label: "Subscription Locked" },
+    { key: "admin_test", label: "Admin/Test Only" },
+  ];
 
   return (
     <>
@@ -102,6 +148,33 @@ export function AdminMapEditorHeader<Section extends string>({
           </Pressable>
         </View>
         <Text style={styles.debugLine}>Working in {seasonLabel} / {chapterLabel}. New map content is automatically assigned here.</Text>
+        <View style={styles.storyEditor}>
+          <Text style={styles.selectedTitle}>Chapter Unlock + Transition Rules</Text>
+          <Text style={styles.copy}>Use one clear story flag for chapter completion and the next chapter unlock. This avoids locking every marker individually.</Text>
+          <View style={styles.modeRow}>
+            {accessTypes.map((type) => (
+              <Pressable key={type.key} style={[styles.routeChip, chapterAccessType === type.key && styles.routeChipActive]} onPress={() => onChangeChapterAccessType(type.key)}>
+                <Text style={styles.routeChipText}>{type.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <TextInput value={chapterUnlockFlagKey} onChangeText={onChangeChapterUnlockFlagKey} placeholder="Story flag required to unlock this chapter, example chapter_1_main_story_complete" placeholderTextColor={colors.muted} style={styles.input} />
+          <Pressable style={styles.secondaryButtonFlex} onPress={onToggleChapterUnlockFlagValue}>
+            <Text style={styles.secondaryText}>Unlock Flag Must Be: {chapterUnlockFlagValue ? "true" : "false"}</Text>
+          </Pressable>
+          <TextInput value={chapterUnlockMessage} onChangeText={onChangeChapterUnlockMessage} placeholder="Locked message shown later, example Complete Chapter 1 first." placeholderTextColor={colors.muted} style={styles.input} />
+          <TextInput value={chapterCompletionFlagKey} onChangeText={onChangeChapterCompletionFlagKey} placeholder="Story flag that marks this chapter complete" placeholderTextColor={colors.muted} style={styles.input} />
+          <Pressable style={styles.secondaryButtonFlex} onPress={onToggleChapterCompletionFlagValue}>
+            <Text style={styles.secondaryText}>Completion Flag Must Be: {chapterCompletionFlagValue ? "true" : "false"}</Text>
+          </Pressable>
+          <TextInput value={chapterTransitionTitle} onChangeText={onChangeChapterTransitionTitle} placeholder="Transition toast title, example Chapter 1 Complete" placeholderTextColor={colors.muted} style={styles.input} />
+          <TextInput value={chapterTransitionBody} onChangeText={onChangeChapterTransitionBody} placeholder="Transition toast body / what unlocks next" placeholderTextColor={colors.muted} style={[styles.input, styles.textArea]} multiline />
+          <TextInput value={chapterSubscriptionPrompt} onChangeText={onChangeChapterSubscriptionPrompt} placeholder="Subscription prompt text for future paid chapters" placeholderTextColor={colors.muted} style={[styles.input, styles.textArea]} multiline />
+          <Text style={styles.debugLine}>Current access check: {accessStatus.unlocked ? "Admin can work in this chapter." : accessStatus.message}</Text>
+          <Pressable style={styles.primaryButton} onPress={onSaveChapterRules}>
+            <Text style={styles.primaryText}>Save Chapter Rules</Text>
+          </Pressable>
+        </View>
       </AdminCollapsibleSection>
       <View style={styles.adminSectionTabs}>
         {sections.map((section) => (
@@ -157,6 +230,16 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 8,
   },
+  primaryButton: {
+    alignItems: "center",
+    backgroundColor: colors.gold,
+    borderRadius: 8,
+    padding: 14,
+  },
+  primaryText: {
+    color: "#050505",
+    fontFamily: fonts.title,
+  },
   routeChip: {
     borderColor: colors.border,
     borderRadius: 8,
@@ -202,6 +285,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 10,
     padding: 10,
+  },
+  textArea: {
+    minHeight: 96,
+    paddingVertical: 12,
+    textAlignVertical: "top",
   },
   typeSelected: {
     backgroundColor: "rgba(21, 157, 220, 0.25)",

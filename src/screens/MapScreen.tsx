@@ -84,6 +84,7 @@ import {
 } from "../utils/mapVisibility";
 import {
   compareRoutes,
+  type ChapterAccessType,
   getAvailableNumbers,
   getChapterLabel,
   getNextChoiceOrder,
@@ -579,6 +580,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [adminMessage, setAdminMessage] = useState<string | null>(null);
   const [selectedSeason, setSelectedSeason] = useState(1);
   const [selectedChapter, setSelectedChapter] = useState(1);
+  const [chapterAccessType, setChapterAccessType] = useState<ChapterAccessType>("free");
+  const [chapterUnlockFlagKey, setChapterUnlockFlagKey] = useState("");
+  const [chapterUnlockFlagValue, setChapterUnlockFlagValue] = useState(true);
+  const [chapterCompletionFlagKey, setChapterCompletionFlagKey] = useState("");
+  const [chapterCompletionFlagValue, setChapterCompletionFlagValue] = useState(true);
+  const [chapterTransitionTitle, setChapterTransitionTitle] = useState("");
+  const [chapterTransitionBody, setChapterTransitionBody] = useState("");
+  const [chapterUnlockMessage, setChapterUnlockMessage] = useState("");
+  const [chapterSubscriptionPrompt, setChapterSubscriptionPrompt] = useState("");
   const [scale, setScale] = useState(PLAYER_MAP_SCALE);
   const [followPlayer, setFollowPlayer] = useState(true);
   const [completedRouteId, setCompletedRouteId] = useState<string | null>(null);
@@ -594,6 +604,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const activeBattleRouteRef = useRef<MapRoute | null>(null);
   const exitingMiniMapRef = useRef(false);
   const openingToastShownRef = useRef(false);
+  const chapterTransitionShownRef = useRef<Set<string>>(new Set());
   const movementStateRef = useRef<PlayerMovementState>("IDLE");
   const movementCandidateRef = useRef<{ state: PlayerMovementState; since: number } | null>(null);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
@@ -739,6 +750,21 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     ),
     [legendItems, mapChapters, mapEvents, effectiveMarkers, miniMaps, routes, selectedSeason, tutorialSteps, worldMapSettings],
   );
+  const selectedChapterRecord = useMemo(
+    () => availableChapters.find((chapter) => Number(chapter.season_number) === selectedSeason && Number(chapter.chapter_number) === selectedChapter) ?? null,
+    [availableChapters, selectedChapter, selectedSeason],
+  );
+  useEffect(() => {
+    setChapterAccessType(selectedChapterRecord?.access_type ?? "free");
+    setChapterUnlockFlagKey(selectedChapterRecord?.unlock_story_flag_key ?? "");
+    setChapterUnlockFlagValue(selectedChapterRecord?.unlock_story_flag_value ?? true);
+    setChapterCompletionFlagKey(selectedChapterRecord?.completion_story_flag_key ?? "");
+    setChapterCompletionFlagValue(selectedChapterRecord?.completion_story_flag_value ?? true);
+    setChapterTransitionTitle(selectedChapterRecord?.transition_title ?? "");
+    setChapterTransitionBody(selectedChapterRecord?.transition_body ?? "");
+    setChapterUnlockMessage(selectedChapterRecord?.unlock_message ?? "");
+    setChapterSubscriptionPrompt(selectedChapterRecord?.subscription_prompt ?? "");
+  }, [selectedChapterRecord]);
   const effectiveRouteProgressRows = useMemo(() => {
     if (!hasActiveRoute) {
       return routeProgressRows;
@@ -989,6 +1015,33 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       });
   }, [actualIsAdmin, allMarkerRouteLinks, character.id, mapReady, markers, routes, storyFlags]);
 
+  useEffect(() => {
+    if (!mapReady || actualIsAdmin) {
+      return;
+    }
+
+    const completedChapter = mapChapters.find((chapter) => {
+      const flagKey = chapter.completion_story_flag_key?.trim();
+      if (!flagKey) {
+        return false;
+      }
+      const toastKey = `${chapter.season_number}:${chapter.chapter_number}:${flagKey}`;
+      return !chapterTransitionShownRef.current.has(toastKey) && storyFlags.get(flagKey) === (chapter.completion_story_flag_value ?? true);
+    });
+
+    if (!completedChapter) {
+      return;
+    }
+
+    const flagKey = completedChapter.completion_story_flag_key?.trim() ?? "";
+    chapterTransitionShownRef.current.add(`${completedChapter.season_number}:${completedChapter.chapter_number}:${flagKey}`);
+    showGameToast({
+      title: completedChapter.transition_title || `${completedChapter.name} Complete`,
+      message: completedChapter.transition_body || "This chapter is complete. Look for the next story marker when the next chapter is available.",
+      actionLabel: "OK",
+    });
+  }, [actualIsAdmin, mapChapters, mapReady, storyFlags]);
+
   async function loadEnemies() {
     try {
       const [enemies, npcs] = await Promise.all([getEnemies(), getNpcs()]);
@@ -1114,6 +1167,35 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setAdminMessage(`${saved.name} created under ${getSeasonLabel(mapSeasons, selectedSeason)}.`);
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to create chapter. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function saveSelectedChapterRules() {
+    try {
+      const saved = await saveMapChapter({
+        id: selectedChapterRecord?.id?.startsWith("inferred-") ? undefined : selectedChapterRecord?.id,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
+        name: selectedChapterRecord?.name ?? getChapterLabel(availableChapters, selectedSeason, selectedChapter),
+        description: selectedChapterRecord?.description ?? null,
+        is_active: selectedChapterRecord?.is_active ?? true,
+        access_type: chapterAccessType,
+        unlock_story_flag_key: chapterUnlockFlagKey,
+        unlock_story_flag_value: chapterUnlockFlagValue,
+        completion_story_flag_key: chapterCompletionFlagKey,
+        completion_story_flag_value: chapterCompletionFlagValue,
+        transition_title: chapterTransitionTitle,
+        transition_body: chapterTransitionBody,
+        unlock_message: chapterUnlockMessage,
+        subscription_prompt: chapterSubscriptionPrompt,
+      });
+      setMapChapters((current) =>
+        [...current.filter((chapter) => !(Number(chapter.season_number) === saved.season_number && Number(chapter.chapter_number) === saved.chapter_number)), saved]
+          .sort((a, b) => a.season_number - b.season_number || a.chapter_number - b.chapter_number),
+      );
+      setAdminMessage(`${saved.name} chapter rules saved.`);
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save chapter rules. Run the chapter unlock migration first."));
     }
   }
 
@@ -6365,6 +6447,15 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             newSeasonDescription={newSeasonDescription}
             newChapterName={newChapterName}
             newChapterDescription={newChapterDescription}
+            chapterAccessType={chapterAccessType}
+            chapterUnlockFlagKey={chapterUnlockFlagKey}
+            chapterUnlockFlagValue={chapterUnlockFlagValue}
+            chapterCompletionFlagKey={chapterCompletionFlagKey}
+            chapterCompletionFlagValue={chapterCompletionFlagValue}
+            chapterTransitionTitle={chapterTransitionTitle}
+            chapterTransitionBody={chapterTransitionBody}
+            chapterUnlockMessage={chapterUnlockMessage}
+            chapterSubscriptionPrompt={chapterSubscriptionPrompt}
             sections={adminSections}
             activeSection={adminSection}
             message={adminMessage}
@@ -6378,8 +6469,18 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             onChangeSeasonDescription={setNewSeasonDescription}
             onChangeChapterName={setNewChapterName}
             onChangeChapterDescription={setNewChapterDescription}
+            onChangeChapterAccessType={setChapterAccessType}
+            onChangeChapterUnlockFlagKey={setChapterUnlockFlagKey}
+            onToggleChapterUnlockFlagValue={() => setChapterUnlockFlagValue((value) => !value)}
+            onChangeChapterCompletionFlagKey={setChapterCompletionFlagKey}
+            onToggleChapterCompletionFlagValue={() => setChapterCompletionFlagValue((value) => !value)}
+            onChangeChapterTransitionTitle={setChapterTransitionTitle}
+            onChangeChapterTransitionBody={setChapterTransitionBody}
+            onChangeChapterUnlockMessage={setChapterUnlockMessage}
+            onChangeChapterSubscriptionPrompt={setChapterSubscriptionPrompt}
             onCreateSeason={() => void createSeasonFromAdmin()}
             onCreateChapter={() => void createChapterFromAdmin()}
+            onSaveChapterRules={() => void saveSelectedChapterRules()}
             onSelectSection={(section) => {
               setAdminSection(section);
               if (section === "Area/Town Markers") setDraftType("Area/Town Entrance");

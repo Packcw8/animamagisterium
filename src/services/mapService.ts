@@ -3,6 +3,7 @@ import { updateCharacterHealth, type CharacterWithDetails } from "./characterSer
 import { consumeInventoryItem, grantItemToCharacter, type InventoryItem } from "./inventoryService";
 import { recordSocialContribution } from "./partyGuildService";
 import { applyCharacterXpGold } from "./progressionService";
+import { getDefaultChapterRuleFields, normalizeChapterRules } from "../utils/mapProgress";
 
 export type MapRoute = Tables["map_routes"];
 export type MapSeason = Tables["map_seasons"];
@@ -208,11 +209,39 @@ export async function getMapChapters() {
 
   if (error) {
     console.warn("[map] chapters unavailable", error.message);
-    return [{ id: "local-chapter-1-1", season_number: 1, chapter_number: 1, name: "Chapter 1", description: null, is_active: true, created_by: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }] as MapChapter[];
+    return [
+      normalizeChapterRules({
+        id: "local-chapter-1-1",
+        season_number: 1,
+        chapter_number: 1,
+        name: "Chapter 1",
+        description: null,
+        ...getDefaultChapterRuleFields(),
+        is_active: true,
+        created_by: null,
+        created_at: new Date(0).toISOString(),
+        updated_at: new Date(0).toISOString(),
+      } as MapChapter),
+    ];
   }
 
-  const chapters = (data ?? []) as MapChapter[];
-  return chapters.length > 0 ? chapters : [{ id: "local-chapter-1-1", season_number: 1, chapter_number: 1, name: "Chapter 1", description: null, is_active: true, created_by: null, created_at: new Date(0).toISOString(), updated_at: new Date(0).toISOString() }];
+  const chapters = ((data ?? []) as MapChapter[]).map(normalizeChapterRules);
+  return chapters.length > 0
+    ? chapters
+    : [
+        normalizeChapterRules({
+          id: "local-chapter-1-1",
+          season_number: 1,
+          chapter_number: 1,
+          name: "Chapter 1",
+          description: null,
+          ...getDefaultChapterRuleFields(),
+          is_active: true,
+          created_by: null,
+          created_at: new Date(0).toISOString(),
+          updated_at: new Date(0).toISOString(),
+        } as MapChapter),
+      ];
 }
 
 export async function saveMapSeason(input: Partial<MapSeason>) {
@@ -248,6 +277,15 @@ export async function saveMapChapter(input: Partial<MapChapter>) {
     chapter_number: Number(input.chapter_number) || 1,
     name: input.name?.trim() || `Chapter ${Number(input.chapter_number) || 1}`,
     description: input.description?.trim() || null,
+    access_type: input.access_type ?? "free",
+    unlock_story_flag_key: input.unlock_story_flag_key?.trim() || null,
+    unlock_story_flag_value: input.unlock_story_flag_value ?? true,
+    completion_story_flag_key: input.completion_story_flag_key?.trim() || null,
+    completion_story_flag_value: input.completion_story_flag_value ?? true,
+    transition_title: input.transition_title?.trim() || null,
+    transition_body: input.transition_body?.trim() || null,
+    unlock_message: input.unlock_message?.trim() || null,
+    subscription_prompt: input.subscription_prompt?.trim() || null,
     is_active: input.is_active ?? true,
     created_by: input.id ? input.created_by ?? user?.id ?? null : user?.id ?? null,
     updated_at: new Date().toISOString(),
@@ -261,7 +299,7 @@ export async function saveMapChapter(input: Partial<MapChapter>) {
     throw error;
   }
 
-  return data as MapChapter;
+  return normalizeChapterRules(data as MapChapter);
 }
 
 export async function getMiniMaps() {

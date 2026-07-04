@@ -1,5 +1,85 @@
 import type { MapChapter, MapRoute, MapSeason, StoryDialogueChoice, StoryDialogueNode } from "../services/mapService";
 
+export type ChapterAccessType = NonNullable<MapChapter["access_type"]>;
+
+export function getDefaultChapterRuleFields(): Pick<
+  MapChapter,
+  | "access_type"
+  | "unlock_story_flag_key"
+  | "unlock_story_flag_value"
+  | "completion_story_flag_key"
+  | "completion_story_flag_value"
+  | "transition_title"
+  | "transition_body"
+  | "unlock_message"
+  | "subscription_prompt"
+> {
+  return {
+    access_type: "free",
+    unlock_story_flag_key: null,
+    unlock_story_flag_value: true,
+    completion_story_flag_key: null,
+    completion_story_flag_value: true,
+    transition_title: null,
+    transition_body: null,
+    unlock_message: null,
+    subscription_prompt: null,
+  };
+}
+
+export function normalizeChapterRules(chapter: MapChapter): MapChapter {
+  return {
+    ...getDefaultChapterRuleFields(),
+    ...chapter,
+    access_type: chapter.access_type ?? "free",
+    unlock_story_flag_key: chapter.unlock_story_flag_key?.trim() || null,
+    unlock_story_flag_value: chapter.unlock_story_flag_value ?? true,
+    completion_story_flag_key: chapter.completion_story_flag_key?.trim() || null,
+    completion_story_flag_value: chapter.completion_story_flag_value ?? true,
+    transition_title: chapter.transition_title?.trim() || null,
+    transition_body: chapter.transition_body?.trim() || null,
+    unlock_message: chapter.unlock_message?.trim() || null,
+    subscription_prompt: chapter.subscription_prompt?.trim() || null,
+  };
+}
+
+export function getChapterAccessStatus(chapter: MapChapter | null | undefined, storyFlags: Map<string, boolean>, isAdmin = false) {
+  if (!chapter) {
+    return { unlocked: true, message: "" };
+  }
+
+  const accessType = chapter.access_type ?? "free";
+  if (accessType === "free") {
+    return { unlocked: true, message: "" };
+  }
+
+  if (accessType === "admin_test") {
+    return {
+      unlocked: isAdmin,
+      message: isAdmin ? "" : chapter.unlock_message || "This chapter is available to admins for testing.",
+    };
+  }
+
+  const flagKey = chapter.unlock_story_flag_key?.trim();
+  const flagMatches = flagKey ? storyFlags.get(flagKey) === (chapter.unlock_story_flag_value ?? true) : false;
+
+  if (accessType === "story_locked") {
+    return {
+      unlocked: flagMatches,
+      message: flagMatches ? "" : chapter.unlock_message || (flagKey ? `Requires story flag: ${flagKey}` : "This chapter needs a story unlock flag."),
+    };
+  }
+
+  if (accessType === "subscription_locked") {
+    return {
+      unlocked: false,
+      message: chapter.subscription_prompt || chapter.unlock_message || "This chapter will require an active chapter unlock.",
+    };
+  }
+
+  return { unlocked: true, message: "" };
+}
+
 export function compareRoutes(a: MapRoute, b: MapRoute) {
   if (a.sort_order !== b.sort_order) {
     return a.sort_order - b.sort_order;
@@ -79,6 +159,7 @@ export function mergeChapterRecords(chapters: MapChapter[], inferredNumbers: num
         chapter_number: number,
         name: `Chapter ${number}`,
         description: null,
+        ...getDefaultChapterRuleFields(),
         is_active: true,
         created_by: null,
         created_at: new Date(0).toISOString(),
@@ -86,7 +167,7 @@ export function mergeChapterRecords(chapters: MapChapter[], inferredNumbers: num
       });
     }
   }
-  return Array.from(byNumber.values()).sort((a, b) => a.chapter_number - b.chapter_number);
+  return Array.from(byNumber.values()).map(normalizeChapterRules).sort((a, b) => a.chapter_number - b.chapter_number);
 }
 
 export function getSeasonLabel(seasons: MapSeason[], seasonNumber: number) {

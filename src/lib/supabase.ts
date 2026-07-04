@@ -283,6 +283,15 @@ export type Tables = {
     chapter_number: number;
     name: string;
     description: string | null;
+    access_type: "free" | "story_locked" | "subscription_locked" | "admin_test";
+    unlock_story_flag_key: string | null;
+    unlock_story_flag_value: boolean;
+    completion_story_flag_key: string | null;
+    completion_story_flag_value: boolean;
+    transition_title: string | null;
+    transition_body: string | null;
+    unlock_message: string | null;
+    subscription_prompt: string | null;
     is_active: boolean;
     created_by: string | null;
     created_at: string;
