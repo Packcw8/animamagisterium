@@ -21,6 +21,7 @@ import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef, type PinchZoomP
 import { MarkerIcon } from "../components/map/MarkerIcon";
 import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel";
 import { MarkerContinuationRouteEditor } from "../components/map/MarkerContinuationRouteEditor";
+import { JourneyJournalAdminFields } from "../components/map/JourneyJournalAdminFields";
 import { LegendEditor } from "../components/map/LegendEditor";
 import { MarkerAccessRulesPanel } from "../components/map/MarkerAccessRulesPanel";
 import { MarkerAdminList } from "../components/map/MarkerAdminList";
@@ -421,6 +422,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [markerShopBackground, setMarkerShopBackground] = useState("");
   const [markerSceneBackground, setMarkerSceneBackground] = useState("");
   const [markerNpcImage, setMarkerNpcImage] = useState("");
+  const [markerJournalTitle, setMarkerJournalTitle] = useState("");
+  const [markerJournalBody, setMarkerJournalBody] = useState("");
+  const [markerJournalImageUrl, setMarkerJournalImageUrl] = useState("");
+  const [markerJournalSortOrder, setMarkerJournalSortOrder] = useState("0");
   const [markerIconLabel, setMarkerIconLabel] = useState("");
   const [markerIconImage, setMarkerIconImage] = useState("");
   const [markerIconColor, setMarkerIconColor] = useState("");
@@ -487,6 +492,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
   const [routeDanger, setRouteDanger] = useState("");
   const [routeDistance, setRouteDistance] = useState("");
   const [routeImage, setRouteImage] = useState("");
+  const [routeJournalTitle, setRouteJournalTitle] = useState("");
+  const [routeJournalBody, setRouteJournalBody] = useState("");
+  const [routeJournalImageUrl, setRouteJournalImageUrl] = useState("");
+  const [routeJournalSortOrder, setRouteJournalSortOrder] = useState("0");
   const [routeLockType, setRouteLockType] = useState<MapRoute["lock_type"]>("public");
   const [routeLockMessage, setRouteLockMessage] = useState("");
   const [editingEvent, setEditingEvent] = useState<MapEvent | null>(null);
@@ -1468,9 +1477,13 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setRouteOrder(String(firstRoute.sort_order));
       setRouteTerrain(firstRoute.terrain);
       setRouteDanger(firstRoute.danger_level);
-      setRouteDistance(String(Math.round(firstRoute.distance_required_meters)));
-      setRouteImage(firstRoute.image_url ?? "");
-      setRouteLockType(firstRoute.lock_type ?? "public");
+    setRouteDistance(String(Math.round(firstRoute.distance_required_meters)));
+    setRouteImage(firstRoute.image_url ?? "");
+    setRouteJournalTitle(firstRoute.journal_title ?? "");
+    setRouteJournalBody(firstRoute.journal_body ?? "");
+    setRouteJournalImageUrl(firstRoute.journal_image_url ?? "");
+    setRouteJournalSortOrder(String(firstRoute.journal_sort_order ?? firstRoute.sort_order ?? 0));
+    setRouteLockType(firstRoute.lock_type ?? "public");
       setRouteLockMessage(firstRoute.lock_message ?? "");
       setPathDraft([]);
       setPathSegmentDraft([]);
@@ -1654,6 +1667,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setRouteDanger(nextRoute.danger_level);
     setRouteDistance(String(Math.round(nextRoute.distance_required_meters)));
     setRouteImage(nextRoute.image_url ?? "");
+    setRouteJournalTitle(nextRoute.journal_title ?? "");
+    setRouteJournalBody(nextRoute.journal_body ?? "");
+    setRouteJournalImageUrl(nextRoute.journal_image_url ?? "");
+    setRouteJournalSortOrder(String(nextRoute.journal_sort_order ?? nextRoute.sort_order ?? 0));
     setRouteLockType(nextRoute.lock_type ?? "public");
     setRouteLockMessage(nextRoute.lock_message ?? "");
     setPathDraft([]);
@@ -2056,6 +2073,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       setSelectedMarker(configured);
       setDraftTitle("");
       setDraftDescription("");
+      setMarkerJournalTitle("");
+      setMarkerJournalBody("");
+      setMarkerJournalImageUrl("");
+      setMarkerJournalSortOrder("0");
       setClickedPercent(null);
       setAdminMessage("Marker created.");
     } catch (error) {
@@ -2102,6 +2123,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
       markerShopBackground,
       markerSceneBackground,
       markerNpcImage,
+      markerJournalTitle,
+      markerJournalBody,
+      markerJournalImageUrl,
+      markerJournalSortOrder,
       markerInteractionRadius,
       markerInitiallyUnlocked,
       markerRewardXp,
@@ -2139,6 +2164,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerShopBackground(marker.shop_background_image_url ?? "");
     setMarkerSceneBackground(marker.scene_background_image_url ?? "");
     setMarkerNpcImage(marker.scene_npc_image_url ?? "");
+    setMarkerJournalTitle(marker.journal_title ?? "");
+    setMarkerJournalBody(marker.journal_body ?? "");
+    setMarkerJournalImageUrl(marker.journal_image_url ?? "");
+    setMarkerJournalSortOrder(String(marker.journal_sort_order ?? marker.story_order ?? 0));
     setMarkerIconLabel(marker.icon_label ?? "");
     setMarkerIconImage(marker.icon_image_url ?? "");
     setMarkerIconColor(marker.icon_color ?? "");
@@ -2223,6 +2252,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setMarkerQuestImage(marker.quest_image_url ?? "");
     setMarkerSceneBackground(marker.scene_background_image_url ?? "");
     setMarkerNpcImage(marker.scene_npc_image_url ?? "");
+    setMarkerJournalTitle(marker.journal_title ?? "");
+    setMarkerJournalBody(marker.journal_body ?? "");
+    setMarkerJournalImageUrl(marker.journal_image_url ?? "");
+    setMarkerJournalSortOrder(String(marker.journal_sort_order ?? marker.story_order ?? 0));
     setMarkerIconLabel(marker.icon_label ?? "");
     setMarkerIconImage(marker.icon_image_url ?? "");
     setMarkerIconColor(marker.icon_color ?? "");
@@ -3363,6 +3396,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         setRouteDanger(displayWorldRoute.danger_level);
         setRouteDistance(String(Math.round(displayWorldRoute.distance_required_meters)));
         setRouteImage(displayWorldRoute.image_url ?? "");
+        setRouteJournalTitle(displayWorldRoute.journal_title ?? "");
+        setRouteJournalBody(displayWorldRoute.journal_body ?? "");
+        setRouteJournalImageUrl(displayWorldRoute.journal_image_url ?? "");
+        setRouteJournalSortOrder(String(displayWorldRoute.journal_sort_order ?? displayWorldRoute.sort_order ?? 0));
         setRouteLockType(displayWorldRoute.lock_type ?? "public");
         setRouteLockMessage(displayWorldRoute.lock_message ?? "");
         distanceWalkedRef.current = 0;
@@ -3527,6 +3564,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         path_points: pathDraft,
         path_segments: normalizePathSegments(pathSegmentDraft, pathDraft.length),
         image_url: routeImage.trim() || null,
+        journal_title: routeJournalTitle.trim() || null,
+        journal_body: routeJournalBody.trim() || null,
+        journal_image_url: routeJournalImageUrl.trim() || null,
+        journal_sort_order: Number(routeJournalSortOrder) || Number(routeOrder) || 0,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
         mini_map_id: activeMiniMap?.id ?? route.mini_map_id ?? null,
@@ -3560,6 +3601,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         path_points: pathDraft,
         path_segments: normalizePathSegments(pathSegmentDraft, pathDraft.length),
         image_url: routeImage.trim() || null,
+        journal_title: routeJournalTitle.trim() || null,
+        journal_body: routeJournalBody.trim() || null,
+        journal_image_url: routeJournalImageUrl.trim() || null,
+        journal_sort_order: Number(routeJournalSortOrder) || Number(routeOrder) || getNextRouteOrder(activeRouteScopeRoutes.length > 0 ? activeRouteScopeRoutes : routes),
         is_active: true,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
@@ -5170,6 +5215,10 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setRouteDanger("");
     setRouteDistance("");
     setRouteImage("");
+    setRouteJournalTitle("");
+    setRouteJournalBody("");
+    setRouteJournalImageUrl("");
+    setRouteJournalSortOrder(String(getNextRouteOrder(routeSource)));
     setRouteLockType("public");
     setRouteLockMessage("");
     setPathDraft([]);
@@ -6055,6 +6104,14 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               setMarkerSceneBackground={setMarkerSceneBackground}
               markerNpcImage={markerNpcImage}
               setMarkerNpcImage={setMarkerNpcImage}
+              markerJournalTitle={markerJournalTitle}
+              setMarkerJournalTitle={setMarkerJournalTitle}
+              markerJournalBody={markerJournalBody}
+              setMarkerJournalBody={setMarkerJournalBody}
+              markerJournalImageUrl={markerJournalImageUrl}
+              setMarkerJournalImageUrl={setMarkerJournalImageUrl}
+              markerJournalSortOrder={markerJournalSortOrder}
+              setMarkerJournalSortOrder={setMarkerJournalSortOrder}
               markerIconLabel={markerIconLabel}
               setMarkerIconLabel={setMarkerIconLabel}
               markerIconImage={markerIconImage}
@@ -6189,6 +6246,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={routeImage} onChangeText={setRouteImage} placeholder="Route image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
                 <AdminImageUploadButton folder="route-images" onUploaded={setRouteImage} onMessage={setAdminMessage} />
+                <JourneyJournalAdminFields
+                  title={routeJournalTitle}
+                  body={routeJournalBody}
+                  imageUrl={routeJournalImageUrl}
+                  sortOrder={routeJournalSortOrder}
+                  onChangeTitle={setRouteJournalTitle}
+                  onChangeBody={setRouteJournalBody}
+                  onChangeImageUrl={setRouteJournalImageUrl}
+                  onChangeSortOrder={setRouteJournalSortOrder}
+                />
                 <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
                 {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
                 <Info label="Path Points" value={String(pathDraft.length)} />
@@ -6646,6 +6713,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
                 onUploadMessage={setAdminMessage}
               />
               <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
+              <JourneyJournalAdminFields
+                title={markerJournalTitle}
+                body={markerJournalBody}
+                imageUrl={markerJournalImageUrl}
+                sortOrder={markerJournalSortOrder}
+                onChangeTitle={setMarkerJournalTitle}
+                onChangeBody={setMarkerJournalBody}
+                onChangeImageUrl={setMarkerJournalImageUrl}
+                onChangeSortOrder={setMarkerJournalSortOrder}
+              />
               <MarkerAccessRulesPanel
                 markerType={draftType}
                 storyFlagKeys={knownStoryFlagKeys}
@@ -6981,6 +7058,16 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
               <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeImage} onChangeText={setRouteImage} placeholder="Route image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
               <AdminImageUploadButton folder="route-images" onUploaded={setRouteImage} onMessage={setAdminMessage} />
+              <JourneyJournalAdminFields
+                title={routeJournalTitle}
+                body={routeJournalBody}
+                imageUrl={routeJournalImageUrl}
+                sortOrder={routeJournalSortOrder}
+                onChangeTitle={setRouteJournalTitle}
+                onChangeBody={setRouteJournalBody}
+                onChangeImageUrl={setRouteJournalImageUrl}
+                onChangeSortOrder={setRouteJournalSortOrder}
+              />
               <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
               {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
               <Info label="Path Points" value={String(pathDraft.length)} />
@@ -7409,6 +7496,14 @@ function MiniMapMarkerAdminForm({
   setMarkerSceneBackground,
   markerNpcImage,
   setMarkerNpcImage,
+  markerJournalTitle,
+  setMarkerJournalTitle,
+  markerJournalBody,
+  setMarkerJournalBody,
+  markerJournalImageUrl,
+  setMarkerJournalImageUrl,
+  markerJournalSortOrder,
+  setMarkerJournalSortOrder,
   markerIconLabel,
   setMarkerIconLabel,
   markerIconImage,
@@ -7546,6 +7641,14 @@ function MiniMapMarkerAdminForm({
   setMarkerSceneBackground: (value: string) => void;
   markerNpcImage: string;
   setMarkerNpcImage: (value: string) => void;
+  markerJournalTitle: string;
+  setMarkerJournalTitle: (value: string) => void;
+  markerJournalBody: string;
+  setMarkerJournalBody: (value: string) => void;
+  markerJournalImageUrl: string;
+  setMarkerJournalImageUrl: (value: string) => void;
+  markerJournalSortOrder: string;
+  setMarkerJournalSortOrder: (value: string) => void;
   markerIconLabel: string;
   setMarkerIconLabel: (value: string) => void;
   markerIconImage: string;
@@ -7700,6 +7803,16 @@ function MiniMapMarkerAdminForm({
         onUploadMessage={onMessage}
       />
       <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
+      <JourneyJournalAdminFields
+        title={markerJournalTitle}
+        body={markerJournalBody}
+        imageUrl={markerJournalImageUrl}
+        sortOrder={markerJournalSortOrder}
+        onChangeTitle={setMarkerJournalTitle}
+        onChangeBody={setMarkerJournalBody}
+        onChangeImageUrl={setMarkerJournalImageUrl}
+        onChangeSortOrder={setMarkerJournalSortOrder}
+      />
       <MarkerAccessRulesPanel
         markerType={draftType}
         storyFlagKeys={knownStoryFlagKeys}

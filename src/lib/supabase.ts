@@ -257,6 +257,10 @@ export type Tables = {
       label?: string | null;
     }>;
     image_url: string | null;
+    journal_title: string | null;
+    journal_body: string | null;
+    journal_image_url: string | null;
+    journal_sort_order: number;
     mini_map_id: string | null;
     parent_marker_id: string | null;
     lock_type: "public" | "story_locked" | "quest_locked";
@@ -745,6 +749,10 @@ export type Tables = {
     battle_event_id: string | null;
     enemy_id: string | null;
     npc_id: string | null;
+    journal_title: string | null;
+    journal_body: string | null;
+    journal_image_url: string | null;
+    journal_sort_order: number;
     season_number: number;
     chapter_number: number;
     created_by: string | null;

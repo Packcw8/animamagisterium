@@ -3,6 +3,7 @@ import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-nativ
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { AdminContentScopeBar, isInAdminContentScope } from "../components/home/AdminContentScopeBar";
+import { JourneyJournalPage } from "../components/home/JourneyJournalPage";
 import { PlayerAbilitiesPanel } from "../components/home/PlayerAbilitiesPanel";
 import { PlayerInventoryPanel } from "../components/home/PlayerInventoryPanel";
 import { GameToast, type GameToastData } from "../components/map/GameToast";
@@ -86,6 +87,7 @@ import {
 import { getCurrentRole, Role } from "../services/mapService";
 import { getLeaderboardProfileForCharacter } from "../services/leaderboardService";
 import { getInboxUnreadCount } from "../services/inboxService";
+import { getJourneyJournalEntries, type JourneyJournalEntry } from "../services/journeyJournalService";
 import { defaultProgressionSettings, GameProgressionSettings, getCharacterXpProgress, getProgressionSettings } from "../services/progressionService";
 
 type HomeScreenProps = {
@@ -95,7 +97,7 @@ type HomeScreenProps = {
   onOpenSettings: () => void;
 };
 
-const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Abilities", "Inventory"] as const;
+const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Journal", "Abilities", "Inventory"] as const;
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 const inventoryCategoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
@@ -203,6 +205,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [role, setRole] = useState<Role>("player");
   const [distanceWalkedMeters, setDistanceWalkedMeters] = useState(0);
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
+  const [journalEntries, setJournalEntries] = useState<JourneyJournalEntry[]>([]);
+  const [journalMessage, setJournalMessage] = useState<string | null>(null);
   const [progressionSettings, setProgressionSettings] = useState<GameProgressionSettings>(defaultProgressionSettings);
   const knownAbilityKeysRef = useRef<Set<string> | null>(null);
   const knownInventoryRef = useRef<Map<string, number> | null>(null);
@@ -256,6 +260,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     void loadAdminCombat();
     void loadTravelProgress();
     void loadInboxCount();
+    void loadJourneyJournal();
     void loadProgressionSettings();
     void getCurrentRole().then(setRole);
   }, [character.id, character.attributes]);
@@ -286,6 +291,16 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
       setDistanceWalkedMeters(Number(profile?.total_distance_walked_meters ?? character.total_distance_walked_meters ?? 0));
     } catch {
       setDistanceWalkedMeters(Number(character.total_distance_walked_meters ?? 0));
+    }
+  }
+
+  async function loadJourneyJournal() {
+    try {
+      setJournalEntries(await getJourneyJournalEntries());
+      setJournalMessage(null);
+    } catch (error) {
+      setJournalEntries([]);
+      setJournalMessage(error instanceof Error ? error.message : "Unable to load journey journal.");
     }
   }
 
@@ -969,6 +984,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
               <Info label="Gear Defense Bonus" value={`+${battleStats.gearDefenseBonus}`} />
             </View>
           </View>
+        ) : activeTab === "Journal" ? (
+          <JourneyJournalPage entries={journalEntries} message={journalMessage} onRefresh={() => void loadJourneyJournal()} />
         ) : activeTab === "Abilities" ? (
           <View style={styles.section}>
             <PlayerAbilitiesPanel

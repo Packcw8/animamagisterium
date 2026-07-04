@@ -38,6 +38,10 @@ export type MarkerPayloadState = {
   markerShopBackground: string;
   markerSceneBackground: string;
   markerNpcImage: string;
+  markerJournalTitle: string;
+  markerJournalBody: string;
+  markerJournalImageUrl: string;
+  markerJournalSortOrder: string;
   markerInteractionRadius: string;
   markerInitiallyUnlocked: boolean;
   markerRewardXp: string;
@@ -68,6 +72,10 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     shop_background_image_url: state.markerShopBackground.trim() || null,
     scene_background_image_url: state.markerSceneBackground.trim() || null,
     scene_npc_image_url: state.markerNpcImage.trim() || null,
+    journal_title: state.markerJournalTitle.trim() || null,
+    journal_body: state.markerJournalBody.trim() || null,
+    journal_image_url: state.markerJournalImageUrl.trim() || null,
+    journal_sort_order: Number(state.markerJournalSortOrder) || Number(state.markerStoryOrder) || 0,
     icon_label: state.markerIconLabel.trim() || null,
     icon_image_url: state.markerIconImage.trim() || null,
     icon_color: state.markerIconColor.trim() || null,
@@ -145,6 +153,10 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     battle_event_id: settings.battle_event_id,
     enemy_id: settings.enemy_id,
     npc_id: settings.npc_id,
+    journal_title: settings.journal_title,
+    journal_body: settings.journal_body,
+    journal_image_url: settings.journal_image_url,
+    journal_sort_order: settings.journal_sort_order,
     season_number: state.selectedSeason,
     chapter_number: state.selectedChapter,
   };
