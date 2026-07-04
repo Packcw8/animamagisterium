@@ -3650,6 +3650,17 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setDialogueChoiceRewards([]);
   }
 
+  function closeBattleSession(message?: string) {
+    resetBattleState();
+    setActiveEvent(null);
+    setActiveMarkerEventId(null);
+    setSelectedMarker(null);
+    activeBattleRouteRef.current = null;
+    if (message) {
+      setGpsMessage(message);
+    }
+  }
+
   function startNewDialogueStep() {
     clearDialogueNodeForm();
     setNodeSortOrder(String(getNextDialogueNodeOrder(dialogueNodes)));
@@ -3857,7 +3868,11 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         onCharacterUpdated({ ...character, current_health: rewardResult.currentHealth });
       }
     } catch (error) {
-      setAdminMessage(getErrorMessage(error, "Unable to complete event."));
+      const message = getErrorMessage(error, "Unable to complete event.");
+      setAdminMessage(message);
+      if (event.event_type === "battle" || activeBattle?.id === event.id) {
+        closeBattleSession(message);
+      }
     }
   }
 
@@ -4097,7 +4112,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
         allMapEvents.find((event) => event.id === choice.battle_event_id) ??
         mapEvents.find((event) => event.event_type === "battle" && event.route_id === routeRef.current.id);
       if (battle) {
-        if (!adminPreviewMode) {
+        if (!adminPreviewMode && !activeMarkerEventId) {
           try {
             await completeMapEvent(activeEvent.id);
             setCompletedEventIds((current) => new Set([...current, activeEvent.id]));
@@ -4281,6 +4296,9 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     setSelectedMiniMapId(nextMiniMap?.id ?? null);
     await selectRoute(defeatedRoute, true);
     resetBattleState();
+    setActiveEvent(null);
+    setActiveMarkerEventId(null);
+    setSelectedMarker(null);
     setGpsMessage("Defeated. You lost 5% progress on this path.");
   }
 

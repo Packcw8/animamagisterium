@@ -1,4 +1,4 @@
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import type { NotificationBehavior } from "expo-notifications";
 
 export type PushPermissionState = {
@@ -67,6 +67,10 @@ export async function requestPushNotificationPermission(): Promise<PushPermissio
 }
 
 export async function scheduleLocalNotification(title: string, body: string) {
+  if (Platform.OS !== "web" && AppState.currentState === "active") {
+    return null;
+  }
+
   const Notifications = await loadNotifications();
   if (!Notifications) {
     return null;

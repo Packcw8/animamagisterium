@@ -102,6 +102,8 @@ const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive
 const adminToolTabs = ["Items", "Abilities", "Enemies", "NPCs"] as const;
 const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
 const enemyBalanceProfiles = ["minion", "standard", "elite", "boss"] as const;
+const currentStorySeason = 1;
+const currentStoryChapter = 1;
 type AbilityCostResource = (typeof abilityCostResources)[number];
 type EnemyBalanceProfile = (typeof enemyBalanceProfiles)[number];
 const abilityCostResourceLabels: Record<AbilityCostResource, string> = {
@@ -875,7 +877,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
         <SummaryTile icon="◎" label="Gold" value={character.gold.toLocaleString()} />
         <SummaryTile icon="✦" label="Seed" value="50" />
         <SummaryTile icon="⌖" label="Distance Walked" value={formatWalkedDistance(distanceWalkedMeters)} />
-        <SummaryTile icon="▧" label="Chapter" value="1" />
+        <SummaryTile icon="▧" label="Story" value={`S${currentStorySeason} / C${currentStoryChapter}`} />
       </Frame>
 
       <Frame style={styles.resourcesPanel}>

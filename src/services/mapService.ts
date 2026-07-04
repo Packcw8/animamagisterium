@@ -67,6 +67,28 @@ let playerMapStateAvailable: boolean | null = null;
 let playerMarkerUnlocksAvailable: boolean | null = null;
 let playerDialogueChoiceHistoryAvailable: boolean | null = null;
 
+function normalizeSeasonChapter<T extends { season_number?: number | null; chapter_number?: number | null }>(values: T, fillMissing = true) {
+  const next = { ...values };
+  if (fillMissing || values.season_number !== undefined) {
+    next.season_number = Math.max(1, Math.round(Number(values.season_number) || 1));
+  }
+  if (fillMissing || values.chapter_number !== undefined) {
+    next.chapter_number = Math.max(1, Math.round(Number(values.chapter_number) || 1));
+  }
+
+  return next;
+}
+
+function normalizeUpdateScope<T extends { season_number?: number | null; chapter_number?: number | null }>(values: T) {
+  return normalizeSeasonChapter(values, false);
+}
+
+function normalizeCreateScope<T extends { season_number?: number | null; chapter_number?: number | null }>(values: T) {
+  return {
+    ...normalizeSeasonChapter(values, true),
+  };
+}
+
 function isMissingRelationError(error: { code?: string; message?: string } | null | undefined) {
   const message = error?.message?.toLowerCase() ?? "";
   return error?.code === "PGRST205" || error?.code === "42P01" || message.includes("could not find the table") || message.includes("schema cache");
@@ -960,9 +982,7 @@ export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | 
   const { data, error } = await supabase
     .from("map_markers")
     .insert({
-      ...input,
-      season_number: Number(input.season_number) || 1,
-      chapter_number: Number(input.chapter_number) || 1,
+      ...normalizeCreateScope(input),
       created_by: user?.id ?? null,
     })
     .select()
@@ -1055,7 +1075,7 @@ export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order"
   const { data, error } = await supabase
     .from("map_routes")
     .insert({
-      ...input,
+      ...normalizeCreateScope(input),
       updated_at: new Date().toISOString(),
     })
     .select()
@@ -1072,7 +1092,7 @@ export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRo
   const { data, error } = await supabase
     .from("map_routes")
     .update({
-      ...values,
+      ...normalizeUpdateScope(values),
       updated_at: new Date().toISOString(),
     })
     .eq("id", routeId)
@@ -1098,7 +1118,7 @@ export async function updateMapMarker(markerId: string, values: Partial<Pick<Map
   const { data, error } = await supabase
     .from("map_markers")
     .update({
-      ...values,
+      ...normalizeUpdateScope(values),
       updated_at: new Date().toISOString(),
     })
     .eq("id", markerId)
@@ -1116,7 +1136,7 @@ export async function updateMarkerSettings(markerId: string, values: Partial<Pic
   const { data, error } = await supabase
     .from("map_markers")
     .update({
-      ...values,
+      ...normalizeUpdateScope(values),
       updated_at: new Date().toISOString(),
     })
     .eq("id", markerId)
@@ -1224,7 +1244,7 @@ export async function createMapEvent(input: Omit<MapEvent, "id" | "created_by" |
   const { data, error } = await supabase
     .from("map_events")
     .insert({
-      ...input,
+      ...normalizeCreateScope(input),
       created_by: user?.id ?? null,
     })
     .select()
@@ -1241,7 +1261,7 @@ export async function updateMapEvent(eventId: string, values: Partial<Omit<MapEv
   const { data, error } = await supabase
     .from("map_events")
     .update({
-      ...values,
+      ...normalizeUpdateScope(values),
       updated_at: new Date().toISOString(),
     })
     .eq("id", eventId)

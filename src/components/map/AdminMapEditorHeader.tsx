@@ -64,6 +64,13 @@ export function AdminMapEditorHeader<Section extends string>({
     <>
       <Text style={styles.sectionTitle}>Admin Map Editor</Text>
       <Text style={styles.copy}>Choose an admin section, then edit only the content for that section. Map content uses percentage coordinates, never pixels or GPS coordinates.</Text>
+      <View style={styles.workingBanner}>
+        <View>
+          <Text style={styles.workingEyebrow}>Working Content Scope</Text>
+          <Text style={styles.workingTitle}>{seasonLabel} / {chapterLabel}</Text>
+        </View>
+        <Text style={styles.workingCopy}>New markers, mini maps, walking paths, events, tutorials, rewards, and legend entries save here.</Text>
+      </View>
       <AdminCollapsibleSection
         title="Season / Chapter"
         summary={`${seasonLabel} / ${chapterLabel}. New content is assigned here.`}
@@ -204,5 +211,34 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: fonts.title,
     fontSize: 12,
+  },
+  workingBanner: {
+    alignItems: "center",
+    backgroundColor: "rgba(21, 157, 220, 0.14)",
+    borderColor: colors.blue,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    justifyContent: "space-between",
+    padding: 12,
+  },
+  workingCopy: {
+    color: colors.text,
+    flex: 1,
+    lineHeight: 18,
+    minWidth: 220,
+  },
+  workingEyebrow: {
+    color: colors.blue,
+    fontFamily: fonts.title,
+    fontSize: 11,
+    textTransform: "uppercase",
+  },
+  workingTitle: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 16,
   },
 });

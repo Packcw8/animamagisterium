@@ -771,10 +771,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
     setBattleLog((current) => ["You escaped. No rewards were granted.", ...current].slice(0, 8));
-    setActiveBattle(null);
-    setBattleFinished(null);
-    setBattleTurnPhase("finished");
-    setRevivePromptOpen(false);
+    resetBattleState();
     context.setGpsMessage("You escaped. No rewards were granted.");
   }
 
