@@ -37,7 +37,7 @@ function AppShell() {
   const [character, setCharacter] = useState<CharacterWithDetails | null>(null);
   const [avatarAssets, setAvatarAssets] = useState<Tables["avatar_assets"][]>([]);
   const [activeScreen, setActiveScreen] = useState<ScreenKey>("home");
-  const [activeUtilityScreen, setActiveUtilityScreen] = useState<"settings" | "inbox" | null>(null);
+  const [activeUtilityScreen, setActiveUtilityScreen] = useState<"settings" | "inbox" | "admin" | null>(null);
   const [isBooting, setIsBooting] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [startupMessage, setStartupMessage] = useState("Starting Anima Magisterium...");
@@ -161,9 +161,29 @@ function AppShell() {
             }}
           >
             {activeUtilityScreen === "settings" ? (
-              <SettingsScreenView character={character} onBack={() => setActiveUtilityScreen(null)} />
+              <SettingsScreenView character={character} onBack={() => setActiveUtilityScreen(null)} onOpenAdmin={() => setActiveUtilityScreen("admin")} />
             ) : activeUtilityScreen === "inbox" ? (
               <InboxScreenView character={character} onBack={() => setActiveUtilityScreen(null)} onCharacterUpdated={setCharacter} />
+            ) : activeUtilityScreen === "admin" ? (
+              <AdminScreenView
+                onBack={() => setActiveUtilityScreen("settings")}
+                onOpenHomeAdmin={() => {
+                  setActiveUtilityScreen(null);
+                  setActiveScreen("home");
+                }}
+                onOpenMapAdmin={() => {
+                  setActiveUtilityScreen(null);
+                  setActiveScreen("map");
+                }}
+                onOpenTrainingAdmin={() => {
+                  setActiveUtilityScreen(null);
+                  setActiveScreen("quests");
+                }}
+                onOpenAchievementsAdmin={() => {
+                  setActiveUtilityScreen(null);
+                  setActiveScreen("badges");
+                }}
+              />
             ) : activeScreen === "home" ? (
               <HomeScreenView
                 character={character}
@@ -262,6 +282,11 @@ function SettingsScreenView(props: Record<string, unknown>) {
 
 function InboxScreenView(props: Record<string, unknown>) {
   const Screen = loadScreen<ComponentType<Record<string, unknown>>>("InboxScreen", () => require<{ InboxScreen: ComponentType<Record<string, unknown>> }>("./src/screens/InboxScreen").InboxScreen);
+  return <Screen {...props} />;
+}
+
+function AdminScreenView(props: Record<string, unknown>) {
+  const Screen = loadScreen<ComponentType<Record<string, unknown>>>("AdminScreen", () => require<{ AdminScreen: ComponentType<Record<string, unknown>> }>("./src/screens/AdminScreen").AdminScreen);
   return <Screen {...props} />;
 }
 

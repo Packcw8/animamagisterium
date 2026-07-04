@@ -11,9 +11,10 @@ import { getCurrentRole, Role } from "../services/mapService";
 type SettingsScreenProps = {
   character: CharacterWithDetails;
   onBack: () => void;
+  onOpenAdmin?: () => void;
 };
 
-export function SettingsScreen({ character, onBack }: SettingsScreenProps) {
+export function SettingsScreen({ character, onBack, onOpenAdmin }: SettingsScreenProps) {
   const [email, setEmail] = useState<string>("Unknown account");
   const [role, setRole] = useState<Role>("player");
 
@@ -52,6 +53,16 @@ export function SettingsScreen({ character, onBack }: SettingsScreenProps) {
         <Text style={styles.sectionTitle}>App Preferences</Text>
         <Text style={styles.description}>Notification, privacy, support, and gameplay preferences can expand here as the app grows.</Text>
       </Frame>
+
+      {role === "admin" && onOpenAdmin ? (
+        <Frame style={styles.card}>
+          <Text style={styles.sectionTitle}>Admin</Text>
+          <Text style={styles.description}>Open the dedicated admin hub for content, systems, maps, and publishing tools.</Text>
+          <Pressable style={styles.adminButton} onPress={onOpenAdmin}>
+            <Text style={styles.adminButtonText}>Open Admin Hub</Text>
+          </Pressable>
+        </Frame>
+      ) : null}
 
       <Frame style={styles.card}>
         <Text style={styles.sectionTitle}>Session</Text>
@@ -149,6 +160,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 8,
     backgroundColor: colors.gold,
+  },
+  adminButton: {
+    minHeight: 54,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "rgba(30, 168, 236, 0.16)",
+  },
+  adminButtonText: {
+    color: colors.blue,
+    fontWeight: "900",
   },
   signOutText: {
     color: "#120e08",
