@@ -70,6 +70,7 @@ import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission } from "../services/pushNotificationService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
+import { adminSections, editorModes, getDefaultDraftTypeForAdminSection, getEditorModeForAdminSection, isMapAdminSection, type MapAdminSection } from "../utils/mapAdminSections";
 import { ADMIN_MAP_SCALE, PLAYER_MAP_SCALE, getCenteredMapScroll } from "../utils/mapCamera";
 import { clamp, getPathSegmentMetaAtProgress, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, normalizePathSegments, roundPercent, type PathSegmentMeta } from "../utils/mapGeometry";
 import { evaluateDialogueChoiceRequirement, eventTriggerModeName, eventTypeName, formatResourceName, rollDialogueAttributeCheck } from "../utils/dialogueFlow";
@@ -198,8 +199,6 @@ const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
 const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Market", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
-const editorModes = ["Marker", "Walking Path"] as const;
-const adminSections = ["World Map", "World Markers", "Area/Town Markers", "Mini Maps", "Walking Paths", "Tutorials", "Rewards/Interactions", "Legend"] as const;
 const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
 const eventTriggerModes = ["fixed", "random"] as const;
@@ -225,6 +224,7 @@ const movementStateDebounceMs = 5000;
 type MapScreenProps = {
   character: CharacterWithDetails;
   onCharacterUpdated: (character: CharacterWithDetails) => void;
+  initialAdminSection?: string | null;
 };
 
 type Coordinate = {
@@ -257,7 +257,7 @@ function sortMiniMaps(items: MiniMap[]) {
   });
 }
 
-export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
+export function MapScreen({ character, onCharacterUpdated, initialAdminSection }: MapScreenProps) {
   const [mapReady, setMapReady] = useState(false);
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
   const [hasActiveRoute, setHasActiveRoute] = useState(false);
@@ -1661,6 +1661,26 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
     if (section === "Rewards/Interactions") return getEventWarningCount(adminMapEvents);
     return 0;
   }
+
+  function selectAdminSection(section: MapAdminSection) {
+    const defaultDraftType = getDefaultDraftTypeForAdminSection(section);
+    setAdminSection(section);
+    if (defaultDraftType) setDraftType(defaultDraftType);
+    setEditorMode(getEditorModeForAdminSection(section));
+  }
+
+  useEffect(() => {
+    if (!actualIsAdmin || !initialAdminSection) {
+      return;
+    }
+
+    if (!isMapAdminSection(initialAdminSection)) {
+      return;
+    }
+
+    setAdminMapViewMode("admin");
+    selectAdminSection(initialAdminSection);
+  }, [actualIsAdmin, initialAdminSection]);
 
   async function selectRoute(nextRoute: MapRoute, force = false) {
     if (!force && !isAdmin && isRouteLocked(nextRoute)) {
@@ -6633,13 +6653,7 @@ export function MapScreen({ character, onCharacterUpdated }: MapScreenProps) {
             onCreateSeason={() => void createSeasonFromAdmin()}
             onCreateChapter={() => void createChapterFromAdmin()}
             onSaveChapterRules={() => void saveSelectedChapterRules()}
-            onSelectSection={(section) => {
-              setAdminSection(section);
-              if (section === "Area/Town Markers") setDraftType("Area/Town Entrance");
-              if (section === "World Markers") setDraftType("Story");
-              if (section === "Walking Paths") setEditorMode("Walking Path");
-              if (section !== "Walking Paths") setEditorMode("Marker");
-            }}
+            onSelectSection={selectAdminSection}
             onToggleSeasonPanel={() => setSeasonPanelOpen((value) => !value)}
           />
           <AdminCollapsibleSection

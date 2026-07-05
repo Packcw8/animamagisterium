@@ -38,6 +38,7 @@ function AppShell() {
   const [avatarAssets, setAvatarAssets] = useState<Tables["avatar_assets"][]>([]);
   const [activeScreen, setActiveScreen] = useState<ScreenKey>("home");
   const [activeUtilityScreen, setActiveUtilityScreen] = useState<"settings" | "inbox" | "admin" | null>(null);
+  const [requestedMapAdminSection, setRequestedMapAdminSection] = useState<string | null>(null);
   const [isBooting, setIsBooting] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [startupMessage, setStartupMessage] = useState("Starting Anima Magisterium...");
@@ -157,6 +158,7 @@ function AppShell() {
             activeScreen={activeScreen}
             onChangeScreen={(screen) => {
               setActiveUtilityScreen(null);
+              setRequestedMapAdminSection(null);
               setActiveScreen(screen);
             }}
           >
@@ -168,18 +170,22 @@ function AppShell() {
               <AdminScreenView
                 onBack={() => setActiveUtilityScreen("settings")}
                 onOpenHomeAdmin={() => {
+                  setRequestedMapAdminSection(null);
                   setActiveUtilityScreen(null);
                   setActiveScreen("home");
                 }}
-                onOpenMapAdmin={() => {
+                onOpenMapAdmin={(section?: string) => {
+                  setRequestedMapAdminSection(section ?? "World Markers");
                   setActiveUtilityScreen(null);
                   setActiveScreen("map");
                 }}
                 onOpenTrainingAdmin={() => {
+                  setRequestedMapAdminSection(null);
                   setActiveUtilityScreen(null);
                   setActiveScreen("quests");
                 }}
                 onOpenAchievementsAdmin={() => {
+                  setRequestedMapAdminSection(null);
                   setActiveUtilityScreen(null);
                   setActiveScreen("badges");
                 }}
@@ -192,7 +198,7 @@ function AppShell() {
                 onOpenSettings={() => setActiveUtilityScreen("settings")}
               />
             ) : activeScreen === "map" ? (
-              <MapScreenView character={character} onCharacterUpdated={setCharacter} />
+              <MapScreenView character={character} onCharacterUpdated={setCharacter} initialAdminSection={requestedMapAdminSection} />
             ) : activeScreen === "quests" ? (
               <QuestsScreenView character={character} onCharacterUpdated={setCharacter} />
             ) : activeScreen === "social" ? (

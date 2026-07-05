@@ -11,7 +11,7 @@ import { getCurrentRole, type Role } from "../services/mapService";
 type AdminScreenProps = {
   onBack: () => void;
   onOpenHomeAdmin: () => void;
-  onOpenMapAdmin: () => void;
+  onOpenMapAdmin: (section?: string) => void;
   onOpenTrainingAdmin: () => void;
   onOpenAchievementsAdmin: () => void;
 };
@@ -88,12 +88,52 @@ export function AdminScreen({
         onToggle={() => toggleSection("content")}
       >
         <AdminHubCard
-          eyebrow="Map Builder"
-          title="Maps & Markers"
-          description="Open the current map builder for world markers, mini maps, exits, road signs, walking paths, events, and dialogue."
-          status="Existing map tools stay intact."
-          actionLabel="Open Map Admin"
-          onPress={onOpenMapAdmin}
+          eyebrow="Overworld"
+          title="World Map"
+          description="Edit the active overworld image, draft image, frame size, and chapter-level map notes."
+          status="Opens Map Admin directly to World Map."
+          actionLabel="Open World Map"
+          onPress={() => onOpenMapAdmin("World Map")}
+        />
+        <AdminHubCard
+          eyebrow="Markers"
+          title="World Markers"
+          description="Create and tune story, route, market, NPC, battle, point of interest, and area entrance markers on the overworld."
+          status="Opens Map Admin directly to World Markers."
+          actionLabel="Open World Markers"
+          onPress={() => onOpenMapAdmin("World Markers")}
+        />
+        <AdminHubCard
+          eyebrow="Areas"
+          title="Mini Maps"
+          description="Create towns, forests, dungeons, linked areas, entry behavior, and mini-map marker spaces."
+          status="Opens Map Admin directly to Mini Maps."
+          actionLabel="Open Mini Maps"
+          onPress={() => onOpenMapAdmin("Mini Maps")}
+        />
+        <AdminHubCard
+          eyebrow="Travel"
+          title="Walking Paths"
+          description="Build and edit trails, hidden segments, journal notes, route locks, and continuation paths."
+          status="Opens Map Admin directly to Walking Paths."
+          actionLabel="Open Walking Paths"
+          onPress={() => onOpenMapAdmin("Walking Paths")}
+        />
+        <AdminHubCard
+          eyebrow="Events"
+          title="Events / Rewards"
+          description="Manage trail events, battles, rewards, interactions, dialogue hooks, and reusable path moments."
+          status="Opens Map Admin directly to Rewards/Interactions."
+          actionLabel="Open Events"
+          onPress={() => onOpenMapAdmin("Rewards/Interactions")}
+        />
+        <AdminHubCard
+          eyebrow="Map UI"
+          title="Legend"
+          description="Manage reusable marker styles, icons, labels, colors, and player-facing legend entries."
+          status="Opens Map Admin directly to Legend."
+          actionLabel="Open Legend"
+          onPress={() => onOpenMapAdmin("Legend")}
         />
         <AdminHubCard
           eyebrow="Achievements"
@@ -141,7 +181,7 @@ export function AdminScreen({
           description="Future checks can show broken dialogue links, missing images, locked markers with no unlock path, empty shops, and chapter subscription gates."
           status="Planning shell only in this pass."
           actionLabel="Review Existing Tools"
-          onPress={onOpenMapAdmin}
+          onPress={() => onOpenMapAdmin("Rewards/Interactions")}
         />
       </AdminHubSection>
     </Screen>
