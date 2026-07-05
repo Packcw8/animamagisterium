@@ -71,6 +71,7 @@ import { requestPushNotificationPermission } from "../services/pushNotificationS
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { adminSections, editorModes, getDefaultDraftTypeForAdminSection, getEditorModeForAdminSection, isMapAdminSection, type MapAdminSection } from "../utils/mapAdminSections";
+import { getAdminSectionMarkers, getAdminSectionSummary, getAdminSectionWarningCount } from "../utils/mapAdminStatus";
 import { ADMIN_MAP_SCALE, PLAYER_MAP_SCALE, getCenteredMapScroll } from "../utils/mapCamera";
 import { clamp, getPathSegmentMetaAtProgress, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, normalizePathSegments, roundPercent, type PathSegmentMeta } from "../utils/mapGeometry";
 import { evaluateDialogueChoiceRequirement, eventTriggerModeName, eventTypeName, formatResourceName, rollDialogueAttributeCheck } from "../utils/dialogueFlow";
@@ -1587,79 +1588,6 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
 
   function isAdminPanelOpen(key: string) {
     return openAdminPanels[key] !== false;
-  }
-
-  function getMarkerWarningCount(markerList: MapMarker[]) {
-    return markerList.filter((marker) => {
-      if (!marker.title?.trim()) return true;
-      if (!Number.isFinite(Number(marker.x_percent)) || !Number.isFinite(Number(marker.y_percent))) return true;
-      if (marker.type === "Area/Town Entrance" && !marker.linked_mini_map_id) return true;
-      if (isExitMarkerType(marker.type) && !marker.exit_target_marker_id && !marker.linked_mini_map_id) return true;
-      return false;
-    }).length;
-  }
-
-  function getRouteWarningCount(routeList: MapRoute[]) {
-    return routeList.filter((item) => !item.name?.trim() || !Array.isArray(item.path_points) || item.path_points.length < 2).length;
-  }
-
-  function getMiniMapWarningCount(miniMapList: MiniMap[]) {
-    return miniMapList.filter((miniMap) => {
-      const hasSpawn = adminMiniMapMarkers.some((marker) => marker.mini_map_id === miniMap.id && marker.type === "Player Spawn");
-      return !miniMap.background_image_url?.trim() || !hasSpawn;
-    }).length;
-  }
-
-  function getEventWarningCount(eventList: MapEvent[]) {
-    return eventList.filter((event) => {
-      if (!event.title?.trim()) return true;
-      if (event.event_type === "battle" && !event.enemy_id && !event.npc_id && !event.enemy_name?.trim()) return true;
-      return false;
-    }).length;
-  }
-
-  function getAdminSectionSummary(section: (typeof adminSections)[number]) {
-    if (section === "World Map") {
-      return activeWorldMapSetting ? `${activeWorldMapSetting.name || "Custom map"} configured for this chapter.` : "Using the bundled overworld map.";
-    }
-
-    if (section === "World Markers" || section === "Area/Town Markers") {
-      const sectionMarkers = getAdminSectionMarkers(section, adminWorldMarkers, adminMiniMapMarkers);
-      const hiddenCount = sectionMarkers.filter((marker) => marker.is_active === false).length;
-      return `${sectionMarkers.length} marker${sectionMarkers.length === 1 ? "" : "s"}${hiddenCount ? `, ${hiddenCount} hidden` : ""}.`;
-    }
-
-    if (section === "Mini Maps") {
-      return `${adminMiniMaps.length} mini map${adminMiniMaps.length === 1 ? "" : "s"}, ${adminMiniMapMarkers.length} mini marker${adminMiniMapMarkers.length === 1 ? "" : "s"}.`;
-    }
-
-    if (section === "Walking Paths") {
-      return `${adminWorldRoutes.length} overworld path${adminWorldRoutes.length === 1 ? "" : "s"} in this chapter.`;
-    }
-
-    if (section === "Tutorials") {
-      return `${adminTutorialSteps.length} tutorial step${adminTutorialSteps.length === 1 ? "" : "s"}.`;
-    }
-
-    if (section === "Rewards/Interactions") {
-      return `${adminMapEvents.length} event${adminMapEvents.length === 1 ? "" : "s"} on ${route.name}.`;
-    }
-
-    if (section === "Legend") {
-      return `${adminLegendItems.length} legend item${adminLegendItems.length === 1 ? "" : "s"}.`;
-    }
-
-    return "";
-  }
-
-  function getAdminSectionWarningCount(section: (typeof adminSections)[number]) {
-    if (section === "World Markers" || section === "Area/Town Markers") {
-      return getMarkerWarningCount(getAdminSectionMarkers(section, adminWorldMarkers, adminMiniMapMarkers));
-    }
-    if (section === "Mini Maps") return getMiniMapWarningCount(adminMiniMaps);
-    if (section === "Walking Paths") return getRouteWarningCount(adminWorldRoutes);
-    if (section === "Rewards/Interactions") return getEventWarningCount(adminMapEvents);
-    return 0;
   }
 
   function selectAdminSection(section: MapAdminSection) {
@@ -6658,8 +6586,26 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           />
           <AdminCollapsibleSection
             title={adminSection}
-            summary={getAdminSectionSummary(adminSection)}
-            warningCount={getAdminSectionWarningCount(adminSection)}
+            summary={getAdminSectionSummary({
+              section: adminSection,
+              activeWorldMapSetting,
+              worldMarkers: adminWorldMarkers,
+              miniMapMarkers: adminMiniMapMarkers,
+              miniMaps: adminMiniMaps,
+              worldRoutes: adminWorldRoutes,
+              tutorialSteps: adminTutorialSteps,
+              mapEvents: adminMapEvents,
+              legendItems: adminLegendItems,
+              routeName: route.name,
+            })}
+            warningCount={getAdminSectionWarningCount({
+              section: adminSection,
+              worldMarkers: adminWorldMarkers,
+              miniMapMarkers: adminMiniMapMarkers,
+              miniMaps: adminMiniMaps,
+              worldRoutes: adminWorldRoutes,
+              mapEvents: adminMapEvents,
+            })}
             isOpen={isAdminPanelOpen("active-section")}
             onToggle={() => toggleAdminPanel("active-section")}
           >
@@ -8222,18 +8168,6 @@ function Info({ label, value }: { label: string; value: string }) {
       <Text style={styles.infoValue}>{value}</Text>
     </View>
   );
-}
-
-function getAdminSectionMarkers(section: (typeof adminSections)[number], worldMarkers: MapMarker[], miniMapMarkers: MapMarker[]) {
-  if (section === "Area/Town Markers") {
-    return worldMarkers.filter((marker) => marker.type === "Area/Town Entrance");
-  }
-
-  if (section === "Mini Maps") {
-    return miniMapMarkers;
-  }
-
-  return worldMarkers.filter((marker) => marker.type !== "Area/Town Entrance");
 }
 
 function resolveMapImageUri(imagePath?: string | null) {
