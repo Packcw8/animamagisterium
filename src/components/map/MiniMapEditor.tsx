@@ -142,18 +142,18 @@ export function MiniMapEditor<MiniMapType extends string>({
         <TextInput value={height} onChangeText={onChangeHeight} placeholder="Frame height, example 650" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
       </View>
       <Text style={styles.selectedTitle}>Player Behavior</Text>
-      <Text style={styles.copy}>Choose how this mini map behaves for players. Admin editing remains scrollable.</Text>
+      <Text style={styles.copy}>Choose whether players can manually scroll this mini map. Admin editing always remains scrollable.</Text>
       <View style={styles.storyRoutePicker}>
         {[
-          { key: "scrollable", label: "Scrollable" },
-          { key: "follow_player", label: "Follow Player" },
-          { key: "fixed", label: "Fixed View" },
+          { key: "scrollable", label: "Scroll Enabled" },
+          { key: "follow_player", label: "Scroll Off / Center Player" },
         ].map((option) => (
-          <Pressable key={option.key} style={[styles.routeChip, behaviorMode === option.key && styles.routeChipActive]} onPress={() => onChangeBehaviorMode(option.key as MiniMap["behavior_mode"])}>
+          <Pressable key={option.key} style={[styles.routeChip, isMiniMapBehaviorOptionActive(behaviorMode, option.key) && styles.routeChipActive]} onPress={() => onChangeBehaviorMode(option.key as MiniMap["behavior_mode"])}>
             <Text style={styles.routeChipText}>{option.label}</Text>
           </Pressable>
         ))}
       </View>
+      {behaviorMode === "fixed" ? <Text style={styles.debugLine}>Legacy Fixed View will behave as Scroll Off / Center Player for players.</Text> : null}
       <Pressable style={[styles.secondaryButton, zoomEnabled && styles.typeSelected]} onPress={onToggleZoomEnabled}>
         <Text style={styles.secondaryText}>Zoom Enabled: {zoomEnabled ? "Yes" : "No"}</Text>
       </Pressable>
@@ -209,6 +209,14 @@ export function MiniMapEditor<MiniMapType extends string>({
 
 function getMiniMapAreaKey(miniMap: MiniMap) {
   return miniMap.area_key?.trim() || slugifyAreaName(miniMap.area_name || miniMap.type || "area");
+}
+
+function isMiniMapBehaviorOptionActive(current: MiniMap["behavior_mode"], option: string) {
+  if (option === "scrollable") {
+    return current === "scrollable";
+  }
+
+  return current !== "scrollable";
 }
 
 function getMiniMapAreaName(miniMap: MiniMap) {

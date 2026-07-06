@@ -6105,8 +6105,8 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             width={Math.max(320, Number(activeMiniMap.width) || 900)}
             height={Math.max(280, Number(activeMiniMap.height) || 650)}
             canCapturePointer={isAdmin}
-            lockedToPlayer={!isAdmin && activeMiniMap.behavior_mode === "follow_player"}
-            fixedView={!isAdmin && activeMiniMap.behavior_mode === "fixed"}
+            lockedToPlayer={!isAdmin && activeMiniMap.behavior_mode !== "scrollable"}
+            fixedView={false}
             zoomEnabled={!isAdmin && Boolean(activeMiniMap.zoom_enabled)}
             onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini")}
             routeSegments={miniMapRouteSegments}
@@ -6155,17 +6155,18 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                 <TextInput value={miniMapEditorHeight} onChangeText={setMiniMapEditorHeight} placeholder="Frame height, example 650" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
               </View>
               <Text style={styles.selectedTitle}>Player Behavior</Text>
+              <Text style={styles.copy}>Choose whether players can manually scroll this mini map. Admin editing always remains scrollable.</Text>
               <View style={styles.storyRoutePicker}>
                 {[
-                  { key: "scrollable", label: "Scrollable" },
-                  { key: "follow_player", label: "Follow Player" },
-                  { key: "fixed", label: "Fixed View" },
+                  { key: "scrollable", label: "Scroll Enabled" },
+                  { key: "follow_player", label: "Scroll Off / Center Player" },
                 ].map((option) => (
-                  <Pressable key={option.key} style={[styles.routeChip, miniMapBehaviorMode === option.key && styles.routeChipActive]} onPress={() => setMiniMapBehaviorMode(option.key as MiniMap["behavior_mode"])}>
+                  <Pressable key={option.key} style={[styles.routeChip, isMiniMapBehaviorOptionActive(miniMapBehaviorMode, option.key) && styles.routeChipActive]} onPress={() => setMiniMapBehaviorMode(option.key as MiniMap["behavior_mode"])}>
                     <Text style={styles.routeChipText}>{option.label}</Text>
                   </Pressable>
                 ))}
               </View>
+              {miniMapBehaviorMode === "fixed" ? <Text style={styles.debugLine}>Legacy Fixed View will behave as Scroll Off / Center Player for players.</Text> : null}
               <Pressable style={[styles.secondaryButton, miniMapZoomEnabled && styles.typeSelected]} onPress={() => setMiniMapZoomEnabled((value) => !value)}>
                 <Text style={styles.secondaryText}>Zoom Enabled: {miniMapZoomEnabled ? "Yes" : "No"}</Text>
               </Pressable>
@@ -8314,6 +8315,14 @@ function formatToastTriggerLabel(triggerType: string) {
     .split("_")
     .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function isMiniMapBehaviorOptionActive(current: MiniMap["behavior_mode"], option: string) {
+  if (option === "scrollable") {
+    return current === "scrollable";
+  }
+
+  return current !== "scrollable";
 }
 
 function getJourneyObjective(marker: MapMarker | null | undefined, route: MapRoute, link?: MarkerRouteLink) {
