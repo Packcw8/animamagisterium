@@ -11,6 +11,10 @@ export type GameToastReward = {
 export type GameToastData = {
   title: string;
   message: string;
+  overline?: string;
+  iconImageUrl?: string | null;
+  soundUrl?: string | null;
+  seenFlagKey?: string | null;
   rewards?: GameToastReward[];
   nextMarker?: MapMarker | null;
   nextImageUri?: string | null;
@@ -30,8 +34,13 @@ export function GameToast({ toast, onDismiss }: GameToastProps) {
   return (
     <View style={styles.overlay} pointerEvents="box-none">
       <View style={styles.card}>
-        <Text style={styles.overline}>{toast.nextMarker ? "Next Step" : "Notice"}</Text>
-        <Text style={styles.title}>{toast.title}</Text>
+        <View style={styles.header}>
+          {toast.iconImageUrl ? <Image source={{ uri: toast.iconImageUrl }} style={styles.toastIconImage} /> : null}
+          <View style={styles.headerCopy}>
+            <Text style={styles.overline}>{toast.overline ?? (toast.nextMarker ? "Next Step" : "Notice")}</Text>
+            <Text style={styles.title}>{toast.title}</Text>
+          </View>
+        </View>
         <Text style={styles.message}>{toast.message}</Text>
         {toast.rewards && toast.rewards.length > 0 ? (
           <View style={styles.rewardList}>
@@ -125,6 +134,15 @@ const styles = StyleSheet.create({
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 10 },
   },
+  header: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 6,
+  },
+  headerCopy: {
+    flex: 1,
+  },
   overline: {
     color: colors.blue,
     fontFamily: fonts.title,
@@ -136,7 +154,13 @@ const styles = StyleSheet.create({
     color: colors.gold,
     fontFamily: fonts.title,
     fontSize: 18,
-    marginBottom: 6,
+  },
+  toastIconImage: {
+    width: 46,
+    height: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
   },
   message: {
     color: colors.text,

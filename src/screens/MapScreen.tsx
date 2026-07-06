@@ -68,6 +68,7 @@ import { isNativePedometerAvailable, requestPedometerPermission, startPedometerD
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission } from "../services/pushNotificationService";
+import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAssetUri, type GameToastDefinition, type GameToastTriggerType } from "../services/gameToastService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { adminSections, editorModes, getDefaultDraftTypeForAdminSection, getEditorModeForAdminSection, isMapAdminSection, type MapAdminSection } from "../utils/mapAdminSections";
@@ -268,6 +269,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [legendOpen, setLegendOpen] = useState(false);
   const [mapEvents, setMapEvents] = useState<MapEvent[]>([]);
   const [allMapEvents, setAllMapEvents] = useState<MapEvent[]>([]);
+  const [authoredToasts, setAuthoredToasts] = useState<GameToastDefinition[]>([]);
   const [markerDialogueIds, setMarkerDialogueIds] = useState<Set<string>>(new Set());
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [completedStoryMarkerIds, setCompletedStoryMarkerIds] = useState<Set<string>>(new Set());
@@ -963,6 +965,71 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setGameToast(toast);
   }
 
+  function dismissGameToast() {
+    const seenFlagKey = gameToast?.seenFlagKey?.trim();
+    setGameToast(null);
+
+    if (!seenFlagKey || actualIsAdmin) {
+      return;
+    }
+
+    void setPlayerStoryFlag(character.id, seenFlagKey, true)
+      .then(() => {
+        setStoryFlags((current) => {
+          const next = new Map(current);
+          next.set(seenFlagKey, true);
+          return next;
+        });
+      })
+      .catch((error) => console.warn("[map] unable to save toast seen flag", error));
+  }
+
+  function buildAuthoredToast(
+    triggerType: GameToastTriggerType,
+    fallback: GameToastData,
+    options?: { triggerKey?: string | null; seasonNumber?: number | null; chapterNumber?: number | null; requireAuthored?: boolean },
+  ): GameToastData | null {
+    const authored = findAuthoredToast(authoredToasts, triggerType, {
+      triggerKey: options?.triggerKey,
+      seasonNumber: options?.seasonNumber ?? selectedSeason,
+      chapterNumber: options?.chapterNumber ?? selectedChapter,
+    });
+
+    if (!authored) {
+      if (options?.requireAuthored) {
+        return null;
+      }
+      return fallback;
+    }
+
+    const seenFlagKey = authored.display_once ? getToastSeenFlagKey(authored) : null;
+    if (seenFlagKey && storyFlags.get(seenFlagKey)) {
+      return null;
+    }
+
+    return {
+      ...fallback,
+      title: authored.title,
+      message: authored.body,
+      overline: formatToastTriggerLabel(authored.trigger_type),
+      iconImageUrl: resolveToastAssetUri(authored.icon_image_url),
+      soundUrl: resolveToastAssetUri(authored.sound_url),
+      actionLabel: authored.button_text || fallback.actionLabel || "OK",
+      seenFlagKey,
+    };
+  }
+
+  function showAuthoredToast(
+    triggerType: GameToastTriggerType,
+    fallback: GameToastData,
+    options?: { triggerKey?: string | null; seasonNumber?: number | null; chapterNumber?: number | null; requireAuthored?: boolean },
+  ) {
+    const toast = buildAuthoredToast(triggerType, fallback, options);
+    if (toast) {
+      showGameToast(toast);
+    }
+  }
+
   function getNextStoryMarkerAfter(marker: MapMarker | null) {
     if (!marker || !isStoryQuestMarker(marker)) {
       return null;
@@ -998,7 +1065,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   }
 
   useEffect(() => {
-    if (!mapReady || openingToastShownRef.current || actualIsAdmin || storyFlags.get("opening_toast_seen")) {
+    if (!mapReady || openingToastShownRef.current || actualIsAdmin) {
       return;
     }
 
@@ -1010,27 +1077,14 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     const freshStartRouteImage = getMarkerLinkedRouteImage(freshStartMarker, routes, allMarkerRouteLinks);
 
     openingToastShownRef.current = true;
-    showGameToast({
+    showAuthoredToast("opening_game", {
       title: "A Fresh Start",
       message: "The Forgotten Marches stretch before you. Ten coins left. No name here yet. Maybe that is a mercy. Maybe this road is where you become someone new.",
       nextMarker: freshStartMarker,
       nextImageUri: freshStartRouteImage ? resolveMapImageUri(freshStartRouteImage) : null,
       actionLabel: "Begin",
-    });
-
-    void setPlayerStoryFlag(character.id, "opening_toast_seen", true)
-      .then(() => {
-        setStoryFlags((current) => {
-          const next = new Map(current);
-          next.set("opening_toast_seen", true);
-          return next;
-        });
-      })
-      .catch((error) => {
-        console.warn("[map] unable to save opening toast flag", error);
-        openingToastShownRef.current = false;
-      });
-  }, [actualIsAdmin, allMarkerRouteLinks, character.id, mapReady, markers, routes, storyFlags]);
+    }, { triggerKey: "fresh_start", seasonNumber: 1, chapterNumber: 1 });
+  }, [actualIsAdmin, allMarkerRouteLinks, authoredToasts, mapReady, markers, routes, selectedChapter, selectedSeason, storyFlags]);
 
   useEffect(() => {
     if (!mapReady || actualIsAdmin) {
@@ -1052,12 +1106,16 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
 
     const flagKey = completedChapter.completion_story_flag_key?.trim() ?? "";
     chapterTransitionShownRef.current.add(`${completedChapter.season_number}:${completedChapter.chapter_number}:${flagKey}`);
-    showGameToast({
+    showAuthoredToast("completing_chapter", {
       title: completedChapter.transition_title || `${completedChapter.name} Complete`,
       message: completedChapter.transition_body || "This chapter is complete. Look for the next story marker when the next chapter is available.",
       actionLabel: "OK",
+    }, {
+      triggerKey: `season_${completedChapter.season_number}_chapter_${completedChapter.chapter_number}`,
+      seasonNumber: completedChapter.season_number,
+      chapterNumber: completedChapter.chapter_number,
     });
-  }, [actualIsAdmin, mapChapters, mapReady, storyFlags]);
+  }, [actualIsAdmin, authoredToasts, mapChapters, mapReady, selectedChapter, selectedSeason, storyFlags]);
 
   async function loadEnemies() {
     try {
@@ -1336,14 +1394,19 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setCompletedRouteId(route.id);
     setGpsMessage(`${route.name} completed. Return to a Sign Post to choose your next path.`);
     if (!route.mini_map_id) {
-      showJourneyToast({
+      showAuthoredToast("completing_path", {
         title: "Trail Complete",
         message: "You reached the end of this path. Open the destination marker or return to a Sign Post to choose another trail.",
         nextMarker: getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
+        actionLabel: "OK",
+      }, {
+        triggerKey: route.id,
+        seasonNumber: route.season_number,
+        chapterNumber: route.chapter_number,
       });
     }
     void grantPathCompletionMarkerReward(route.id);
-  }, [allMarkerRouteLinks, completedEventIds, completedRouteId, currentRouteProgress?.source_marker_id, mapEvents, markers, progressPercent, route, routeDirection]);
+  }, [allMarkerRouteLinks, authoredToasts, completedEventIds, completedRouteId, currentRouteProgress?.source_marker_id, mapEvents, markers, progressPercent, route, routeDirection, selectedChapter, selectedSeason, storyFlags]);
 
   useEffect(() => {
     if (activeEvent || activeBattle || routeDirection === "reverse") {
@@ -1398,7 +1461,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
 
   async function loadMap() {
     setMapReady(false);
-    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks] = await Promise.all([
+    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks, loadedToasts] = await Promise.all([
       getMapRoutes(),
       getMapMarkers(),
       getMiniMaps(),
@@ -1410,6 +1473,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       getCurrentRole(),
       getMapEvents(),
       getAllMarkerRouteLinks(),
+      getGameToasts(),
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const [progressRows, playerMapState, markerUnlocks] = await Promise.all([
@@ -1451,6 +1515,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setRole(loadedRole);
     setAllMapEvents(loadedEvents);
     setAllMarkerRouteLinks(loadedMarkerRouteLinks);
+    setAuthoredToasts(loadedToasts);
     const currentMiniMap = currentRoute?.mini_map_id ? loadedMiniMaps.find((item) => item.id === currentRoute.mini_map_id) ?? null : null;
     const worldSpawnPosition = getWorldSpawnPosition(loadedMarkers);
     const savedMiniMap = !currentRoute && playerMapState?.active_mini_map_id ? loadedMiniMaps.find((item) => item.id === playerMapState.active_mini_map_id) ?? null : null;
@@ -2411,11 +2476,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       const result = await buyMarketItem(character, marketItem);
       onCharacterUpdated({ ...character, gold: result.gold });
       setMarkerPanelMessage("Item purchased.");
-      showGameToast({
+      showAuthoredToast("receiving_reward", {
         title: "Item Added",
         message: "Your purchase was added to Inventory.",
         rewards: [{ label: getItemName(itemDefinitions, marketItem.item_id) }],
         actionLabel: "OK",
+      }, {
+        triggerKey: marketItem.marker_id,
+        seasonNumber: selectedMarker?.season_number,
+        chapterNumber: selectedMarker?.chapter_number,
       });
       await loadInventory();
       if (selectedMarker) {
@@ -2477,7 +2546,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         setPreviewMarkerScene(false);
         setMarkerPanelMessage(null);
         setGpsMessage(result.claimed ? `${selectedMarker.quest_title || selectedMarker.title} completed. ${result.message}` : `${selectedMarker.quest_title || selectedMarker.title} completed.`);
-        showJourneyToast({
+        showAuthoredToast(nextMarker ? "unlocking_marker" : "receiving_reward", {
           title: `${completedMarker.quest_title || completedMarker.title} Complete`,
           message: nextMarker ? "Your story continues at the next marker." : "This story step is complete.",
           rewards: result.claimed ? buildRewardToastItems({
@@ -2488,6 +2557,11 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             fullHeal: completedMarker.reward_full_heal,
           }) : [],
           nextMarker,
+          actionLabel: "OK",
+        }, {
+          triggerKey: nextMarker?.id ?? completedMarker.id,
+          seasonNumber: completedMarker.season_number,
+          chapterNumber: completedMarker.chapter_number,
         });
         await loadInventory();
         if (result.currentHealth != null) {
@@ -2497,7 +2571,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       }
       setMarkerPanelMessage(result.message);
       if (result.claimed) {
-        showGameToast({
+        showAuthoredToast("receiving_reward", {
           title: selectedMarker.quest_title || selectedMarker.title,
           message: "Reward claimed.",
           rewards: buildRewardToastItems({
@@ -2508,6 +2582,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             fullHeal: selectedMarker.reward_full_heal,
           }),
           actionLabel: "OK",
+        }, {
+          triggerKey: selectedMarker.id,
+          seasonNumber: selectedMarker.season_number,
+          chapterNumber: selectedMarker.chapter_number,
         });
       }
       await loadInventory();
@@ -2538,9 +2616,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       setPreviewMarkerScene(false);
       setMarkerPanelMessage(null);
       setGpsMessage(result.claimed ? `${marker.quest_title || marker.title} completed. ${result.message}` : `${marker.quest_title || marker.title} completed.`);
-      showJourneyToast({
+      const nextMarker = getNextStoryMarkerAfter(marker);
+      showAuthoredToast(nextMarker ? "unlocking_marker" : "receiving_reward", {
         title: `${marker.quest_title || marker.title} Complete`,
-        message: getNextStoryMarkerAfter(marker) ? "Your story continues at the next marker." : "This story quest is complete.",
+        message: nextMarker ? "Your story continues at the next marker." : "This story quest is complete.",
         rewards: result.claimed ? buildRewardToastItems({
           xp: marker.reward_xp,
           gold: marker.reward_gold,
@@ -2548,7 +2627,12 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           itemQuantity: marker.reward_item_quantity,
           fullHeal: marker.reward_full_heal,
         }) : [],
-        nextMarker: getNextStoryMarkerAfter(marker),
+        nextMarker,
+        actionLabel: "OK",
+      }, {
+        triggerKey: nextMarker?.id ?? marker.id,
+        seasonNumber: marker.season_number,
+        chapterNumber: marker.chapter_number,
       });
       await loadInventory();
       if (result.currentHealth != null) {
@@ -2757,10 +2841,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       if (nextRoute && sourceMarker.require_all_linked_routes !== false) {
         setGpsMessage(`${route.name} completed. Return to ${sourceMarker.quest_title || sourceMarker.title} to choose the next story path.`);
         if (!suppressCompletionToast) {
-          showJourneyToast({
+          showAuthoredToast("completing_path", {
             title: "Path Complete",
             message: `The next story path is available, but it will not start automatically. Return to ${sourceMarker.quest_title || sourceMarker.title} when you are ready.`,
             nextMarker: sourceMarker,
+            actionLabel: "OK",
+          }, {
+            triggerKey: routeId,
+            seasonNumber: completedRoute.season_number,
+            chapterNumber: completedRoute.chapter_number,
           });
         }
         return;
@@ -2785,7 +2874,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
 
       setGpsMessage(result.claimed ? `${route.name} completed. ${result.message}` : `${route.name} completed. ${sourceMarker.quest_title || sourceMarker.title} is now complete.`);
       if (!suppressCompletionToast) {
-        showJourneyToast({
+        showAuthoredToast("completing_path", {
           title: `${route.name} Complete`,
           message: isStoryQuestMarker(sourceMarker)
             ? "This story path is complete. Look for the next story marker."
@@ -2798,6 +2887,11 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             fullHeal: sourceMarker.reward_full_heal,
           }) : [],
           nextMarker: getNextStoryMarkerAfter(sourceMarker),
+          actionLabel: "OK",
+        }, {
+          triggerKey: routeId,
+          seasonNumber: completedRoute.season_number,
+          chapterNumber: completedRoute.chapter_number,
         });
       }
       await loadInventory();
@@ -3022,10 +3116,14 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         await loadCombatLoadout();
         setMapItemMessage(result.message);
         if (!result.isStarter && result.abilityName) {
-          showGameToast({
+          showAuthoredToast("learning_ability", {
             title: "Ability Learned",
             message: `${result.abilityName} has been added to your ability collection.`,
             actionLabel: "OK",
+          }, {
+            triggerKey: result.abilityName,
+            seasonNumber: selectedSeason,
+            chapterNumber: selectedChapter,
           });
         }
       } catch (error) {
@@ -3307,11 +3405,17 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setClickedPercent(null);
-    if (!isAdmin && (miniMap.entry_toast_title?.trim() || miniMap.entry_toast_message?.trim())) {
-      setGameToast({
+    if (!isAdmin) {
+      const hasLegacyEntryToast = Boolean(miniMap.entry_toast_title?.trim() || miniMap.entry_toast_message?.trim());
+      showAuthoredToast("entering_area", {
         title: miniMap.entry_toast_title?.trim() || miniMap.name,
         message: miniMap.entry_toast_message?.trim() || miniMap.description || "Area entered.",
         actionLabel: "OK",
+      }, {
+        triggerKey: miniMap.id,
+        seasonNumber: miniMap.season_number,
+        chapterNumber: miniMap.chapter_number,
+        requireAuthored: !hasLegacyEntryToast,
       });
     }
     if (route.mini_map_id !== miniMap.id) {
@@ -3900,7 +4004,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         setActiveEnemy(null);
         activeBattleRouteRef.current = null;
         setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}`);
-        showGameToast({
+        showAuthoredToast("receiving_reward", {
           title: `${event.title} Complete`,
           message: drops.length ? "Battle rewards and drops were added to Inventory." : "Battle complete. Rewards were saved.",
           rewards: rewardResult.claimed ? buildRewardToastItems({
@@ -3911,6 +4015,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             fullHeal: marker?.reward_full_heal,
           }, dropRewards) : dropRewards,
           actionLabel: "OK",
+        }, {
+          triggerKey: marker?.id ?? event.id,
+          seasonNumber: marker?.season_number ?? event.season_number,
+          chapterNumber: marker?.chapter_number ?? event.chapter_number,
         });
         await loadInventory();
         if (rewardResult.currentHealth != null) {
@@ -3979,7 +4087,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       setActiveEnemy(null);
       activeBattleRouteRef.current = null;
       setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}`);
-      showGameToast({
+      showAuthoredToast("receiving_reward", {
         title: `${event.title} Complete`,
         message: drops.length ? "Rewards and drops were added to Inventory." : "Event complete. Rewards were saved.",
         rewards: rewardResult.claimed ? buildRewardToastItems({
@@ -3991,6 +4099,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         }, dropRewards) : dropRewards,
         nextMarker: completedMarker ? getNextStoryMarkerAfter(completedMarker) : getJourneyDestinationMarker(routeRef.current, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
         actionLabel: "OK",
+      }, {
+        triggerKey: completedMarker?.id ?? event.id,
+        seasonNumber: completedMarker?.season_number ?? event.season_number,
+        chapterNumber: completedMarker?.chapter_number ?? event.chapter_number,
       });
       await loadInventory();
       if (rewardResult.currentHealth != null) {
@@ -4139,11 +4251,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         effectiveMarkers.find((marker) => marker.visible_story_flag_key?.trim() === flagKey && (marker.visible_story_flag_value ?? true) === flagValue) ??
         markers.find((marker) => marker.visible_story_flag_key?.trim() === flagKey && (marker.visible_story_flag_value ?? true) === flagValue) ??
         null;
-      showGameToast({
+      showAuthoredToast("unlocking_marker", {
         title: choice.update_notification_title || "Story Updated",
         message: choice.update_notification_body || (unlockedMarker ? `${unlockedMarker.title} is now available.` : "Your story progress has been updated."),
         nextMarker: unlockedMarker,
         actionLabel: "OK",
+      }, {
+        triggerKey: unlockedMarker?.id ?? flagKey,
+        seasonNumber: unlockedMarker?.season_number ?? selectedSeason,
+        chapterNumber: unlockedMarker?.chapter_number ?? selectedChapter,
       });
     }
 
@@ -4209,11 +4325,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             effectiveMarkers.find((marker) => marker.id === choice.unlock_marker_id) ??
             markers.find((marker) => marker.id === choice.unlock_marker_id) ??
             null;
-          showGameToast({
+          showAuthoredToast("unlocking_marker", {
             title: choice.update_notification_title || "Quest Updated",
             message: choice.update_notification_body || (unlockedMarker ? `${unlockedMarker.title} is now available on the map.` : "A new map marker is now available."),
             nextMarker: unlockedMarker,
             actionLabel: "OK",
+          }, {
+            triggerKey: unlockedMarker?.id ?? choice.unlock_marker_id,
+            seasonNumber: unlockedMarker?.season_number ?? selectedSeason,
+            chapterNumber: unlockedMarker?.chapter_number ?? selectedChapter,
           });
         }
       } catch (error) {
@@ -4342,11 +4462,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           label: getItemName(itemDefinitions, item.itemId),
           quantity: item.quantity,
         }));
-        showGameToast({
+        showAuthoredToast("receiving_reward", {
           title: "Reward Received",
           message: "Items and rewards were added to your character.",
           rewards: buildRewardToastItems({ xp: rewardResult.xp, gold: rewardResult.gold }, itemRewards),
           actionLabel: "OK",
+        }, {
+          triggerKey: choice.id,
+          seasonNumber: activeEvent?.season_number ?? selectedSeason,
+          chapterNumber: activeEvent?.chapter_number ?? selectedChapter,
         });
       }
       await loadInventory();
@@ -5520,7 +5644,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           onEndChat={(completeEvent) => void endDialogueChat(completeEvent)}
           onExitPreview={closeAdminPreview}
         />
-        <GameToast toast={gameToast} onDismiss={() => setGameToast(null)} />
+        <GameToast toast={gameToast} onDismiss={dismissGameToast} />
       </>
     );
   }
@@ -5565,7 +5689,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         onReturnToStart={() => void resetCurrentRouteAfterDefeat()}
         onComplete={() => void finishEvent(activeBattle)}
         onExitPreview={closeAdminPreview}
-        onDismissToast={() => setGameToast(null)}
+        onDismissToast={dismissGameToast}
       />
     );
   }
@@ -5644,7 +5768,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           onOpenDialogueEvent={() => void openSelectedMarkerDialogue()}
           onStartBattleEvent={() => void startSelectedMarkerBattle()}
         />
-        <GameToast toast={gameToast} onDismiss={() => setGameToast(null)} />
+        <GameToast toast={gameToast} onDismiss={dismissGameToast} />
       </>
     );
   }
@@ -6449,7 +6573,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             </View>
           </Frame>
         ) : null}
-        <GameToast toast={gameToast} onDismiss={() => setGameToast(null)} />
+        <GameToast toast={gameToast} onDismiss={dismissGameToast} />
       </Screen>
     );
   }
@@ -7345,7 +7469,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           ) : null}
         </Frame>
       ) : null}
-      <GameToast toast={gameToast} onDismiss={() => setGameToast(null)} />
+      <GameToast toast={gameToast} onDismiss={dismissGameToast} />
     </Screen>
   );
 }
@@ -8183,6 +8307,13 @@ function resolveMapImageUri(imagePath?: string | null) {
 
   const normalized = trimmed.replaceAll("\\", "/");
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function formatToastTriggerLabel(triggerType: string) {
+  return triggerType
+    .split("_")
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
 function getJourneyObjective(marker: MapMarker | null | undefined, route: MapRoute, link?: MarkerRouteLink) {

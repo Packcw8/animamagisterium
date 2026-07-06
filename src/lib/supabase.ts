@@ -182,6 +182,35 @@ export type Tables = {
     training_cooldown_minutes: number;
     updated_at: string;
   };
+  game_toasts: {
+    id: string;
+    trigger_type:
+      | "entering_area"
+      | "leaving_area"
+      | "starting_path"
+      | "completing_path"
+      | "unlocking_marker"
+      | "completing_chapter"
+      | "receiving_reward"
+      | "learning_ability"
+      | "discovering_npc_enemy"
+      | "opening_game";
+    trigger_key: string | null;
+    title: string;
+    body: string;
+    icon_image_url: string | null;
+    sound_url: string | null;
+    button_text: string;
+    display_once: boolean;
+    trigger_condition: string | null;
+    sort_order: number;
+    season_number: number;
+    chapter_number: number;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
   training_attribute_configs: {
     attribute_key: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit";
     name: string;
