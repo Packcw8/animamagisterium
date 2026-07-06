@@ -274,6 +274,16 @@ export function MiniMapCanvas({
     </View>
   );
 
+  const miniMapEdgeFill = imageUri ? (
+    <Image
+      source={{ uri: imageUri }}
+      style={styles.miniMapEdgeFill}
+      resizeMode="cover"
+      blurRadius={Platform.OS === "web" ? 0 : 8}
+      {...({ pointerEvents: "none" } as object)}
+    />
+  ) : null;
+
   if (Platform.OS !== "web") {
     if (lockedToPlayer) {
       return (
@@ -286,6 +296,7 @@ export function MiniMapCanvas({
             });
           }}
         >
+          {miniMapEdgeFill}
           <View
             style={[
               styles.lockedSurface,
@@ -309,6 +320,7 @@ export function MiniMapCanvas({
     if (fixedView) {
       return (
         <View style={[styles.fixedMiniMapViewport, { height: Math.min(520, surfaceHeight) }]}>
+          {miniMapEdgeFill}
           {miniMapSurface}
         </View>
       );
@@ -334,6 +346,7 @@ export function MiniMapCanvas({
           });
         }}
       >
+        {miniMapEdgeFill}
         <View
           style={[
               styles.lockedSurface,
@@ -357,6 +370,7 @@ export function MiniMapCanvas({
   if (fixedView) {
     return (
       <View style={[styles.fixedMiniMapViewport, { height: Math.min(520, surfaceHeight) } as object]}>
+        {miniMapEdgeFill}
         {miniMapSurface}
       </View>
     );
@@ -786,6 +800,15 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: "100%",
     height: "100%",
+  },
+  miniMapEdgeFill: {
+    position: "absolute",
+    left: -18,
+    right: -18,
+    top: -18,
+    bottom: -18,
+    opacity: 0.32,
+    transform: [{ scale: 1.08 }],
   },
   miniMapFallback: {
     position: "absolute",
