@@ -61,6 +61,7 @@ function getDefaultMarkerIconLabel(type: string) {
   if (type === "Exit") return "EXT";
   if (type === "Exit/Leave") return "OUT";
   if (type === "Point of Interest") return "POI";
+  if (type === "Puzzle") return "PZL";
   return "*";
 }
 
@@ -78,6 +79,7 @@ function getDefaultMarkerIconColor(type: string) {
   if (type === "Exit") return "#f0d28a";
   if (type === "Exit/Leave") return colors.muted;
   if (type === "Point of Interest") return "#f0d28a";
+  if (type === "Puzzle") return "#c7a3ff";
   return colors.goldSoft;
 }
 

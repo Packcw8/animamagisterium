@@ -883,6 +883,54 @@ export type Tables = {
     choice_id: string | null;
     claimed_at: string;
   };
+  puzzle_definitions: {
+    id: string;
+    marker_id: string;
+    title: string;
+    intro_text: string | null;
+    image_url: string | null;
+    success_text: string | null;
+    failure_text: string | null;
+    reset_on_failure: boolean;
+    max_attempts: number;
+    unlock_marker_id: string | null;
+    set_story_flag_key: string | null;
+    set_story_flag_value: boolean;
+    complete_marker_on_success: boolean;
+    is_active: boolean;
+    season_number: number;
+    chapter_number: number;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  puzzle_tap_zones: {
+    id: string;
+    puzzle_id: string;
+    label: string;
+    player_label: string | null;
+    clue_text: string | null;
+    x_percent: number;
+    y_percent: number;
+    radius_percent: number;
+    sequence_order: number;
+    icon_label: string | null;
+    icon_image_url: string | null;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  player_puzzle_progress: {
+    id: string;
+    user_id: string;
+    character_id: string | null;
+    puzzle_id: string;
+    marker_id: string | null;
+    current_index: number;
+    attempts: number;
+    completed_at: string | null;
+    updated_at: string;
+  };
   story_marker_completions: {
     id: string;
     user_id: string;

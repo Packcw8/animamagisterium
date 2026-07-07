@@ -31,6 +31,8 @@ import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { MarkerStyleEditor } from "../components/map/MarkerStyleEditor";
 import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
 import { PlayerMapTravelHeader } from "../components/map/PlayerMapTravelHeader";
+import { PuzzleAdminPanel } from "../components/map/PuzzleAdminPanel";
+import { PuzzleSceneScreen, type PuzzleTapResult } from "../components/map/PuzzleSceneScreen";
 import { WorldMapSettingsPanel } from "../components/map/WorldMapSettingsPanel";
 import {
   EnemyPicker,
@@ -69,6 +71,7 @@ import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission } from "../services/pushNotificationService";
 import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAssetUri, type GameToastDefinition, type GameToastTriggerType } from "../services/gameToastService";
+import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { adminSections, editorModes, getDefaultDraftTypeForAdminSection, getEditorModeForAdminSection, isMapAdminSection, type MapAdminSection } from "../utils/mapAdminSections";
@@ -198,8 +201,8 @@ import {
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
-const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Point of Interest", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
-const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Market", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
+const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Point of Interest", "Puzzle", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
+const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
@@ -362,6 +365,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [allMarkerRouteLinks, setAllMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [routeDirection, setRouteDirection] = useState<"forward" | "reverse">("forward");
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
+  const [selectedPuzzle, setSelectedPuzzle] = useState<PuzzleWithZones | null>(null);
   const [activeMiniMap, setActiveMiniMap] = useState<MiniMap | null>(null);
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
   const [adminSection, setAdminSection] = useState<(typeof adminSections)[number]>("World Markers");
@@ -2175,6 +2179,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
 
     setPreviewMarkerScene(false);
     setSelectedMarker(marker);
+    setSelectedPuzzle(null);
     setDraftType(marker.type || markerTypes[0]);
     setDraftTitle(marker.title);
     setDraftDescription(marker.description ?? "");
@@ -2231,6 +2236,8 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         getMarkerRouteLinks(marker.id),
         supportsMarkerDialogue(marker.type) ? getDialogueNodesForMarker(marker.id) : Promise.resolve([]),
       ]);
+      const puzzle = marker.type === "Puzzle" ? await getPuzzleForMarker(marker.id, character.id) : null;
+      setSelectedPuzzle(puzzle);
       await loadMarkerMarketState(marker.id);
       if (isBattleMarkerType(marker.type)) {
         await loadMarkerBattlefieldCombatants(marker.id);
@@ -2329,6 +2336,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   function closeMarkerScene() {
     setPreviewMarkerScene(false);
     setSelectedMarker(null);
+    setSelectedPuzzle(null);
     setMarkerPanelMessage(null);
     setMarketPurchaseCounts({});
   }
@@ -2594,6 +2602,90 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       }
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to claim marker reward."));
+    }
+  }
+
+  async function handlePuzzleTap(result: PuzzleTapResult) {
+    if (!selectedMarker || !selectedPuzzle) {
+      return;
+    }
+
+    try {
+      const savedProgress = await savePlayerPuzzleProgress({
+        characterId: character.id,
+        puzzleId: selectedPuzzle.puzzle.id,
+        markerId: selectedMarker.id,
+        currentIndex: result.nextIndex,
+        attempts: result.attempts,
+        completed: result.completed,
+      });
+
+      setSelectedPuzzle((current) => current ? { ...current, progress: savedProgress } : current);
+
+      if (!result.correct) {
+        setMarkerPanelMessage(result.zone.clue_text || selectedPuzzle.puzzle.failure_text || "That sequence is not right.");
+        return;
+      }
+
+      if (!result.completed) {
+        setMarkerPanelMessage(result.zone.clue_text || "The symbol answers.");
+        return;
+      }
+
+      const puzzle = selectedPuzzle.puzzle;
+      if (puzzle.set_story_flag_key) {
+        await setPlayerStoryFlag(character.id, puzzle.set_story_flag_key, puzzle.set_story_flag_value, puzzle.id);
+        setStoryFlags((current) => new Map(current).set(puzzle.set_story_flag_key as string, puzzle.set_story_flag_value));
+      }
+
+      let unlockedMarker: MapMarker | null = null;
+      if (puzzle.unlock_marker_id) {
+        await unlockPlayerMarker(puzzle.unlock_marker_id, null);
+        setPlayerUnlockedMarkerIds((current) => new Set([...current, puzzle.unlock_marker_id as string]));
+        unlockedMarker = markers.find((marker) => marker.id === puzzle.unlock_marker_id) ?? null;
+      }
+
+      if (puzzle.complete_marker_on_success) {
+        await completeStoryMarker(selectedMarker.id);
+        setCompletedStoryMarkerIds((current) => new Set([...current, selectedMarker.id]));
+      }
+
+      const rewardResult = await applyRewards(character, {
+        xp: selectedMarker.reward_xp,
+        gold: selectedMarker.reward_gold,
+        itemId: selectedMarker.reward_item_id,
+        itemQuantity: selectedMarker.reward_item_quantity,
+        fullHeal: selectedMarker.reward_full_heal,
+        fullHealMaxHealth: combatResources.maxHp,
+        repeatable: selectedMarker.repeatable,
+        rewardOncePerPlayer: selectedMarker.reward_once_per_player,
+        markerId: selectedMarker.id,
+      });
+
+      if (rewardResult.currentHealth != null) {
+        onCharacterUpdated({ ...character, current_health: rewardResult.currentHealth });
+      }
+      await loadInventory();
+      setMarkerPanelMessage(puzzle.success_text || "Puzzle solved.");
+      showAuthoredToast(unlockedMarker ? "unlocking_marker" : "receiving_reward", {
+        title: puzzle.title || selectedMarker.title,
+        message: puzzle.success_text || "Puzzle solved.",
+        rewards: rewardResult.claimed ? buildRewardToastItems({
+          xp: selectedMarker.reward_xp,
+          gold: selectedMarker.reward_gold,
+          itemId: selectedMarker.reward_item_id,
+          itemQuantity: selectedMarker.reward_item_quantity,
+          fullHeal: selectedMarker.reward_full_heal,
+        }) : [],
+        nextMarker: unlockedMarker,
+        actionLabel: "OK",
+      }, {
+        triggerKey: unlockedMarker?.id ?? selectedMarker.id,
+        seasonNumber: selectedMarker.season_number,
+        chapterNumber: selectedMarker.chapter_number,
+      });
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to save puzzle progress."));
     }
   }
 
@@ -5742,6 +5834,23 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     );
   }
 
+  if (selectedMarker?.type === "Puzzle" && selectedPuzzle && (previewMarkerScene || (!isAdmin && canUseSelectedMarker && !selectedMarkerLocked))) {
+    return (
+      <>
+        <PuzzleSceneScreen
+          marker={selectedMarker}
+          puzzle={selectedPuzzle.puzzle}
+          zones={selectedPuzzle.zones}
+          progress={selectedPuzzle.progress}
+          message={markerPanelMessage}
+          onExit={closeMarkerScene}
+          onTapZone={(result) => void handlePuzzleTap(result)}
+        />
+        <GameToast toast={gameToast} onDismiss={dismissGameToast} />
+      </>
+    );
+  }
+
   if (selectedMarker && (previewMarkerScene || (!isAdmin && canUseSelectedMarker && !selectedMarkerLocked))) {
     return (
       <>
@@ -7039,6 +7148,21 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                   <Text style={styles.copy}>Use the Marker Dialogue Tree below for conversation choices. If the NPC is battle-capable, the battle setup can also use this same NPC.</Text>
                 </View>
               ) : null}
+              {draftType === "Puzzle" ? (
+                selectedMarker ? (
+                  <PuzzleAdminPanel
+                    marker={selectedMarker}
+                    markers={markers}
+                    clickedPercent={clickedPercent}
+                    onMessage={setAdminMessage}
+                  />
+                ) : (
+                  <View style={styles.storyEditor}>
+                    <Text style={styles.selectedTitle}>Sequence Puzzle</Text>
+                    <Text style={styles.copy}>Create or select this Puzzle marker first, then build the image tap sequence.</Text>
+                  </View>
+                )
+              ) : null}
               {draftType !== "Sign Post" && !isBattleMarkerType(draftType) && isStoryQuestMarker({ type: draftType }) ? (
                 isStoryQuestMarker({ type: draftType }) ? (
                   <View style={styles.storyEditor}>
@@ -8070,6 +8194,21 @@ function MiniMapMarkerAdminForm({
             <Text style={styles.debugLine}>Create or select this marker before building its dialogue tree.</Text>
           )}
         </View>
+      ) : null}
+      {draftType === "Puzzle" ? (
+        selectedMarker ? (
+          <PuzzleAdminPanel
+            marker={selectedMarker}
+            markers={allMarkers}
+            clickedPercent={clickedPercent}
+            onMessage={onMessage}
+          />
+        ) : (
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Sequence Puzzle</Text>
+            <Text style={styles.copy}>Create or select this Puzzle marker before building its image tap sequence.</Text>
+          </View>
+        )
       ) : null}
       {supportsBattle ? (
         <View style={styles.storyEditor}>
