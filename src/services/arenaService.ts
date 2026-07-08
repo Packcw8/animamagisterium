@@ -150,6 +150,56 @@ export async function claimOpenArena(arenaId: string, snapshot: PlayerBattleSnap
   return data as ArenaHolder;
 }
 
+export async function getArenaMarkerPortraits(markerIds: string[]) {
+  const uniqueMarkerIds = Array.from(new Set(markerIds.filter(Boolean)));
+  if (uniqueMarkerIds.length === 0) {
+    return new Map<string, string>();
+  }
+
+  const { data: arenas, error: arenaError } = await supabase
+    .from("arena_spots")
+    .select("*")
+    .in("marker_id", uniqueMarkerIds)
+    .eq("is_active", true);
+
+  if (arenaError) {
+    console.warn("[arena] marker portraits unavailable", arenaError.message);
+    return new Map<string, string>();
+  }
+
+  const arenaRows = (arenas ?? []) as ArenaSpot[];
+  if (arenaRows.length === 0) {
+    return new Map<string, string>();
+  }
+
+  const { data: holders, error: holderError } = await supabase
+    .from("arena_holders")
+    .select("*")
+    .in("arena_id", arenaRows.map((arena) => arena.id))
+    .eq("is_current", true);
+
+  if (holderError) {
+    console.warn("[arena] holder portraits unavailable", holderError.message);
+    return new Map<string, string>();
+  }
+
+  const holderRows = (holders ?? []) as ArenaHolder[];
+  const snapshotIds = holderRows.map((holder) => holder.holder_snapshot_id).filter(Boolean) as string[];
+  const snapshots = await getSnapshotsById(snapshotIds);
+  const markerByArenaId = new Map(arenaRows.map((arena) => [arena.id, arena.marker_id]));
+  const portraits = new Map<string, string>();
+
+  holderRows.forEach((holder) => {
+    const markerId = markerByArenaId.get(holder.arena_id);
+    const portraitUrl = snapshots.get(holder.holder_snapshot_id ?? "")?.portrait_url;
+    if (markerId && portraitUrl) {
+      portraits.set(markerId, portraitUrl);
+    }
+  });
+
+  return portraits;
+}
+
 async function getCurrentArenaHolder(arenaId: string) {
   const { data, error } = await supabase
     .from("arena_holders")

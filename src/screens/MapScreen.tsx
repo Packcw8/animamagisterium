@@ -72,7 +72,7 @@ import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission } from "../services/pushNotificationService";
 import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAssetUri, type GameToastDefinition, type GameToastTriggerType } from "../services/gameToastService";
 import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
-import { claimOpenArena, getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
+import { claimOpenArena, getArenaForMarker, getArenaMarkerPortraits, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
 import { createCurrentPlayerBattleSnapshot } from "../services/battleSnapshotService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
@@ -369,6 +369,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
   const [selectedPuzzle, setSelectedPuzzle] = useState<PuzzleWithZones | null>(null);
   const [selectedArena, setSelectedArena] = useState<ArenaWithLeaders | null>(null);
+  const [arenaMarkerPortraits, setArenaMarkerPortraits] = useState<Record<string, string>>({});
   const [activeMiniMap, setActiveMiniMap] = useState<MiniMap | null>(null);
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
   const [adminSection, setAdminSection] = useState<(typeof adminSections)[number]>("World Markers");
@@ -726,14 +727,19 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const scaledMapSize = useMemo(() => ({ width: worldMapDimensions.width * scale, height: worldMapDimensions.height * scale }), [scale, worldMapDimensions.height, worldMapDimensions.width]);
   const activeRouteScopeRoutes = activeMiniMap ? adminMiniMapRoutes : adminWorldRoutes;
   const routeProgressPosition = useMemo(() => getPointOnRoute(route.path_points, progressPercent), [route.path_points, progressPercent]);
-  const playerPosition = savedPlayerPosition ?? routeProgressPosition;
+  const playerPosition = hasActiveRoute ? routeProgressPosition : savedPlayerPosition ?? routeProgressPosition;
   const routeSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminWorldRoutes : hasActiveRoute && !route.mini_map_id ? [route] : [], route.id, worldMapDimensions, isAdmin), [adminWorldRoutes, hasActiveRoute, isAdmin, route, worldMapDimensions]);
   const miniMapRouteSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminMiniMapRoutes : hasActiveRoute && route.mini_map_id === activeMiniMap?.id ? [route] : [], route.id, mapSize, isAdmin), [activeMiniMap?.id, adminMiniMapRoutes, hasActiveRoute, isAdmin, route]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft, activeMiniMap ? mapSize : worldMapDimensions).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [activeMiniMap, pathDraft, worldMapDimensions]);
   const playerPathVisibility = useMemo(() => (hasActiveRoute ? getPathSegmentMetaAtProgress(route.path_points, route.path_segments ?? [], progressPercent).visibility : "visible"), [hasActiveRoute, progressPercent, route.path_points, route.path_segments]);
+  const arenaMarkerIdKey = useMemo(() => markers.filter((marker) => marker.type === "Arena").map((marker) => marker.id).sort().join("|"), [markers]);
   const effectiveMarkers = useMemo(
-    () => markers.map((marker) => (playerUnlockedMarkerIds.has(marker.id) ? { ...marker, is_unlocked: true } : marker)),
-    [markers, playerUnlockedMarkerIds],
+    () => markers.map((marker) => {
+      const unlockedMarker = playerUnlockedMarkerIds.has(marker.id) ? { ...marker, is_unlocked: true } : marker;
+      const arenaPortrait = marker.type === "Arena" ? arenaMarkerPortraits[marker.id] : null;
+      return arenaPortrait ? { ...unlockedMarker, icon_image_url: arenaPortrait } : unlockedMarker;
+    }),
+    [arenaMarkerPortraits, markers, playerUnlockedMarkerIds],
   );
   const worldMarkers = useMemo(() => effectiveMarkers.filter((marker) => !marker.mini_map_id), [effectiveMarkers]);
   const miniMapMarkers = useMemo(() => effectiveMarkers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [effectiveMarkers, activeMiniMap?.id]);
@@ -784,6 +790,27 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     () => availableChapters.find((chapter) => Number(chapter.season_number) === selectedSeason && Number(chapter.chapter_number) === selectedChapter) ?? null,
     [availableChapters, selectedChapter, selectedSeason],
   );
+  useEffect(() => {
+    const markerIds = arenaMarkerIdKey ? arenaMarkerIdKey.split("|").filter(Boolean) : [];
+    let cancelled = false;
+
+    if (markerIds.length === 0) {
+      setArenaMarkerPortraits({});
+      return;
+    }
+
+    getArenaMarkerPortraits(markerIds)
+      .then((portraits) => {
+        if (!cancelled) {
+          setArenaMarkerPortraits(Object.fromEntries(portraits.entries()));
+        }
+      })
+      .catch((error) => console.warn("[arena] unable to refresh arena marker portraits", getErrorMessage(error, "Unknown arena portrait error.")));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [arenaMarkerIdKey]);
   useEffect(() => {
     setChapterAccessType(selectedChapterRecord?.access_type ?? "free");
     setChapterUnlockFlagKey(selectedChapterRecord?.unlock_story_flag_key ?? "");
@@ -2389,6 +2416,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       await claimOpenArena(selectedArena.arena.id, snapshot);
       const refreshedArena = await getArenaForMarker(selectedMarker);
       setSelectedArena(refreshedArena);
+      if (snapshot.portrait_url) {
+        setArenaMarkerPortraits((current) => ({ ...current, [selectedMarker.id]: snapshot.portrait_url ?? "" }));
+      }
       setMarkerPanelMessage(`${character.name} now holds ${selectedArena.arena.name}.`);
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to claim this arena."));
