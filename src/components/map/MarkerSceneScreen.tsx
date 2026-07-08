@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
@@ -18,6 +19,9 @@ import {
   isStoryQuestMarker,
 } from "../../utils/mapVisibility";
 import { getRouteLockLabel, getRouteLockMessage, isRouteLocked } from "../../utils/mapProgress";
+
+const marketCategories = ["All", "Potions", "Equipment", "Materials", "Misc"] as const;
+type MarketCategory = (typeof marketCategories)[number];
 
 export function MarkerSceneScreen({
   marker,
@@ -288,32 +292,50 @@ function MarketScene({
   onBuy: (marketItem: MarkerMarketItem) => void;
   onSell: (item: InventoryItem) => void;
 }) {
-  const buyableItems = marketItems.filter((item) => canMarketItemBeBought(item) && getRemainingMarketStock(item, marketPurchaseCounts) > 0);
+  const [activeCategory, setActiveCategory] = useState<MarketCategory>("All");
+  const buyableItems = useMemo(
+    () => marketItems
+      .map((marketItem) => ({ marketItem, item: getItemDefinition(itemDefinitions, marketItem.item_id) }))
+      .filter(({ marketItem }) => canMarketItemBeBought(marketItem) && getRemainingMarketStock(marketItem, marketPurchaseCounts) > 0)
+      .filter(({ item }) => activeCategory === "All" || getMarketCategory(item) === activeCategory),
+    [activeCategory, itemDefinitions, marketItems, marketPurchaseCounts],
+  );
   const sellableItems = inventoryItems.filter((entry) => entry.item.sellable && marketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item)));
 
   return (
-    <View style={styles.storyEditor}>
+    <View style={styles.marketScene}>
       <View style={styles.marketHeaderRow}>
-        <Text style={styles.selectedTitle}>Market</Text>
+        <View>
+          <Text style={styles.marketTitle}>Market</Text>
+          <Text style={styles.marketSubtitle}>Goods currently available</Text>
+        </View>
         <View style={styles.marketGoldPill}>
           <Text style={styles.marketPriceLabel}>Your Gold</Text>
           <Text style={styles.marketBuyPrice}>{characterGold.toLocaleString()}</Text>
         </View>
       </View>
-      <View style={styles.marketGrid}>
+      <View style={styles.marketCategoryTabs}>
+        {marketCategories.map((category) => (
+          <Pressable key={category} style={[styles.marketCategoryButton, activeCategory === category && styles.marketCategoryActive]} onPress={() => setActiveCategory(category)}>
+            <Text style={[styles.marketCategoryText, activeCategory === category && styles.marketCategoryTextActive]}>{category}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.marketList}>
         {buyableItems.length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
-        {buyableItems.map((marketItem) => (
+        {buyableItems.map(({ marketItem, item }) => (
           <MarketBuyCard
             key={marketItem.id}
             marketItem={marketItem}
             purchasedCount={marketPurchaseCounts[marketItem.id] ?? 0}
-            item={getItemDefinition(itemDefinitions, marketItem.item_id)}
+            item={item}
             onBuy={() => onBuy(marketItem)}
           />
         ))}
       </View>
-      <Text style={styles.selectedTitle}>Sell</Text>
-      <View style={styles.marketGrid}>
+      <View style={styles.marketDivider} />
+      <Text style={styles.marketSectionLabel}>Sell to Market</Text>
+      <View style={styles.marketList}>
         {sellableItems.length === 0 ? <Text style={styles.copy}>This market is not buying anything in your inventory.</Text> : null}
         {sellableItems.map((entry) => {
           const marketItem = marketItems.find((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item));
@@ -344,15 +366,18 @@ function MarketBuyCard({ marketItem, purchasedCount, item, onBuy }: { marketItem
       <View style={styles.marketCardBody}>
         <Text style={styles.marketItemName} numberOfLines={1}>{item?.name ?? "Unknown Item"}</Text>
         <Text style={styles.marketItemType} numberOfLines={1}>{item?.type ?? "item"} / {item?.rarity ?? "common"}</Text>
-        <View style={styles.marketPriceRow}>
-          <Text style={styles.marketPriceLabel}>Buy</Text>
-          <Text style={styles.marketBuyPrice}>{marketItem.buy_price} gold</Text>
-        </View>
+        {item?.description ? <Text style={styles.marketItemDescription} numberOfLines={2}>{item.description}</Text> : null}
         <Text style={styles.marketStockText}>{marketItem.unlimited_stock ? "Unlimited stock" : `${remainingStock} available for you`}</Text>
       </View>
-      <Pressable style={[styles.marketActionButton, outOfStock && styles.disabledAction]} onPress={onBuy} disabled={outOfStock}>
-        <Text style={styles.primaryText}>{outOfStock ? "Sold Out" : "Buy"}</Text>
-      </Pressable>
+      <View style={styles.marketBuyColumn}>
+        <View style={styles.marketPriceBox}>
+          <Text style={styles.marketPriceLabel}>Buy</Text>
+          <Text style={styles.marketBuyPrice}>{marketItem.buy_price}</Text>
+        </View>
+        <Pressable style={[styles.marketActionButton, outOfStock && styles.disabledAction]} onPress={onBuy} disabled={outOfStock}>
+          <Text style={styles.marketActionText}>{outOfStock ? "Sold Out" : "Buy"}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -368,17 +393,37 @@ function MarketSellCard({ entry, sellPrice, onSell }: { entry: InventoryItem; se
       <View style={styles.marketCardBody}>
         <Text style={styles.marketItemName} numberOfLines={1}>{entry.item.name}</Text>
         <Text style={styles.marketItemType} numberOfLines={1}>{entry.item.type} / owned x{entry.quantity}</Text>
-        <View style={styles.marketPriceRow}>
-          <Text style={styles.marketPriceLabel}>Sell</Text>
-          <Text style={styles.marketSellPrice}>{sellPrice} gold</Text>
-        </View>
-        <Text style={styles.marketStockText}>{entry.item.description || "Marketable inventory item"}</Text>
+        <Text style={styles.marketItemDescription} numberOfLines={2}>{entry.item.description || "Marketable inventory item"}</Text>
       </View>
-      <Pressable style={styles.marketSellButton} onPress={onSell}>
-        <Text style={styles.secondaryText}>Sell One</Text>
-      </Pressable>
+      <View style={styles.marketBuyColumn}>
+        <View style={styles.marketPriceBox}>
+          <Text style={styles.marketPriceLabel}>Sell</Text>
+          <Text style={styles.marketSellPrice}>{sellPrice}</Text>
+        </View>
+        <Pressable style={styles.marketSellButton} onPress={onSell}>
+          <Text style={styles.secondaryText}>Sell One</Text>
+        </Pressable>
+      </View>
     </View>
   );
+}
+
+function getMarketCategory(item: ItemDefinition | null): MarketCategory {
+  const type = (item?.type ?? "").toLowerCase();
+
+  if (type.includes("potion") || type.includes("food") || type.includes("consumable") || type.includes("scroll")) {
+    return "Potions";
+  }
+
+  if (type.includes("weapon") || type.includes("armor") || type.includes("wearable") || type.includes("relic")) {
+    return "Equipment";
+  }
+
+  if (type.includes("material") || type.includes("craft")) {
+    return "Materials";
+  }
+
+  return "Misc";
 }
 
 function resolveSceneImageUri(imagePath?: string | null) {
@@ -602,10 +647,13 @@ const styles = StyleSheet.create({
   disabledAction: {
     opacity: 0.45,
   },
-  marketGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
+  marketScene: {
+    gap: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.24)",
+    backgroundColor: "rgba(0,0,0,0.48)",
+    padding: 12,
   },
   marketHeaderRow: {
     flexDirection: "row",
@@ -613,32 +661,86 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
+  marketTitle: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 22,
+  },
+  marketSubtitle: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 2,
+  },
   marketGoldPill: {
-    minWidth: 128,
-    borderRadius: 999,
+    minWidth: 116,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     backgroundColor: "rgba(218,164,65,0.1)",
     alignItems: "flex-end",
   },
-  marketCard: {
-    flexGrow: 1,
-    flexBasis: 260,
-    minWidth: 240,
-    maxWidth: "100%",
+  marketCategoryTabs: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.18)",
+    backgroundColor: "rgba(0,0,0,0.32)",
+    padding: 5,
+  },
+  marketCategoryButton: {
+    minHeight: 36,
     borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.18)",
+    paddingHorizontal: 11,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  marketCategoryActive: {
+    borderColor: colors.border,
+    backgroundColor: "rgba(217, 170, 93, 0.24)",
+  },
+  marketCategoryText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  marketCategoryTextActive: {
+    color: colors.gold,
+  },
+  marketList: {
+    gap: 10,
+  },
+  marketDivider: {
+    height: 1,
+    backgroundColor: "rgba(217, 170, 93, 0.18)",
+  },
+  marketSectionLabel: {
+    color: colors.gold,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    fontSize: 12,
+  },
+  marketCard: {
+    width: "100%",
+    minHeight: 118,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     padding: 10,
-    gap: 10,
-    backgroundColor: "rgba(0,0,0,0.34)",
+    gap: 12,
+    backgroundColor: "rgba(4, 7, 6, 0.82)",
+    flexDirection: "row",
+    alignItems: "stretch",
   },
   marketImageBox: {
-    width: "100%",
-    aspectRatio: 1.45,
-    borderRadius: 8,
+    width: 96,
+    minHeight: 96,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: "rgba(218,164,65,0.08)",
@@ -656,28 +758,25 @@ const styles = StyleSheet.create({
     fontSize: 30,
   },
   marketCardBody: {
-    gap: 5,
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+    justifyContent: "center",
   },
   marketItemName: {
     color: colors.text,
     fontFamily: fonts.title,
-    fontSize: 17,
+    fontSize: 18,
   },
   marketItemType: {
     color: colors.muted,
     fontSize: 12,
     textTransform: "capitalize",
   },
-  marketPriceRow: {
-    minHeight: 34,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    paddingHorizontal: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "rgba(218,164,65,0.08)",
+  marketItemDescription: {
+    color: colors.text,
+    fontSize: 12,
+    lineHeight: 17,
   },
   marketPriceLabel: {
     color: colors.muted,
@@ -685,31 +784,50 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
     fontSize: 11,
   },
+  marketBuyColumn: {
+    width: 94,
+    gap: 9,
+    justifyContent: "center",
+  },
+  marketPriceBox: {
+    minHeight: 48,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.22)",
+    backgroundColor: "rgba(0,0,0,0.32)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
   marketBuyPrice: {
     color: colors.gold,
     fontWeight: "900",
+    fontSize: 18,
   },
   marketSellPrice: {
     color: colors.blue,
     fontWeight: "900",
+    fontSize: 18,
   },
   marketStockText: {
-    color: colors.muted,
+    color: colors.green,
     fontSize: 12,
     lineHeight: 17,
   },
   marketActionButton: {
-    minHeight: 42,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(217, 170, 93, 0.54)",
-    backgroundColor: "rgba(2, 5, 5, 0.72)",
+    minHeight: 48,
+    borderRadius: 10,
+    backgroundColor: colors.gold,
     alignItems: "center",
     justifyContent: "center",
   },
+  marketActionText: {
+    color: "#120e08",
+    fontWeight: "900",
+  },
   marketSellButton: {
-    minHeight: 42,
-    borderRadius: 8,
+    minHeight: 48,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
     alignItems: "center",
