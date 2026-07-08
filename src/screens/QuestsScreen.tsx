@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { Frame } from "../components/Frame";
 import { GameToast, type GameToastData } from "../components/map/GameToast";
 import { Header } from "../components/Header";
@@ -7,6 +7,8 @@ import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
 import { colors } from "../components/theme";
 import { CharacterWithDetails } from "../services/characterService";
+import { CombatAbility, getCombatAbilities } from "../services/combatAdminService";
+import { resolveAbilityImageUri } from "../services/inventoryService";
 import { AttributeKey, completeTrainingSession, getTrainingLevelProgress, getTrainingState, TrainingCardState } from "../services/trainingService";
 import { getCurrentRole, Role } from "../services/mapService";
 import {
@@ -56,6 +58,8 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const [classMessage, setClassMessage] = useState<string | null>(null);
   const [previewClassKey, setPreviewClassKey] = useState<string | null>(null);
   const [editingClassKey, setEditingClassKey] = useState<string | null>(null);
+  const [classDetailKey, setClassDetailKey] = useState<string | null>(null);
+  const [classAbilities, setClassAbilities] = useState<CombatAbility[]>([]);
 
   useEffect(() => {
     void loadTraining();
@@ -67,7 +71,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
 
     try {
       const state = await getTrainingState(character);
-      const [settings, configs, currentRole, classState] = await Promise.all([getProgressionSettings(), getTrainingConfigs(), getCurrentRole(), getPlayerClassState(character)]);
+      const [settings, configs, currentRole, classState, abilityRows] = await Promise.all([getProgressionSettings(), getTrainingConfigs(), getCurrentRole(), getPlayerClassState(character), getCombatAbilities()]);
       setCards(state.cards);
       setDailyCompleted(state.dailyCompleted);
       setDailyLimit(state.dailyLimit);
@@ -76,6 +80,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
       setTrainingConfigs(configs);
       setRole(currentRole);
       setClasses(classState);
+      setClassAbilities(abilityRows);
       setPreviewClassKey((current) => current ?? classState.find((item) => !item.unlocked)?.key ?? classState[0]?.key ?? null);
       setEditingClassKey((current) => current ?? classState[0]?.key ?? null);
     } catch (loadError) {
@@ -123,6 +128,8 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
   const previewClass = classes.find((item) => item.key === previewClassKey) ?? null;
   const classProgressFocus = previewClass ?? activeClass ?? classes.find((item) => !item.unlocked) ?? classes[0] ?? null;
   const editingClass = classes.find((item) => item.key === editingClassKey) ?? classes[0] ?? null;
+  const classDetail = classes.find((item) => item.key === classDetailKey) ?? null;
+  const classDetailAbilities = classDetail ? getClassLinkedAbilities(classAbilities, classDetail.key) : [];
 
   async function saveGlobalBalance() {
     try {
@@ -355,6 +362,16 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                   ) : (
                     <Text style={styles.classLockedText}>Locked</Text>
                   )}
+                  <Pressable
+                    style={styles.classDetailsButton}
+                    onPress={(event) => {
+                      event.stopPropagation?.();
+                      setPreviewClassKey(classItem.key);
+                      setClassDetailKey(classItem.key);
+                    }}
+                  >
+                    <Text style={styles.classDetailsText}>Details</Text>
+                  </Pressable>
                 </Pressable>
               ))}
             </View>
@@ -482,6 +499,75 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
           </View>
         </View>
       </Modal>
+      <Modal transparent visible={Boolean(classDetail)} animationType="fade" onRequestClose={() => setClassDetailKey(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.classDetailCard}>
+            {classDetail ? (
+              <ScrollView contentContainerStyle={styles.classDetailScroll}>
+                <View style={styles.classDetailTop}>
+                  <ClassArt classItem={classDetail} size="large" />
+                  <View style={styles.classDetailTitleBlock}>
+                    <Text style={styles.kicker}>Class Path</Text>
+                    <Text style={styles.classDetailTitle}>{classDetail.name}</Text>
+                    <Text style={styles.copy}>{formatAttributeName(classDetail.firstAttribute)} + {formatAttributeName(classDetail.secondAttribute)}</Text>
+                  </View>
+                  <Pressable style={styles.modalCloseButton} onPress={() => setClassDetailKey(null)}>
+                    <Text style={styles.modalCloseText}>X</Text>
+                  </Pressable>
+                </View>
+
+                <Text style={styles.copy}>{classDetail.description}</Text>
+
+                <View style={styles.classDetailSection}>
+                  <Text style={styles.sectionTitle}>Unlock</Text>
+                  <ClassTrainingGoal classItem={classDetail} attributeKey={classDetail.firstAttribute} trainingConfigs={trainingConfigs} />
+                  <ClassTrainingGoal classItem={classDetail} attributeKey={classDetail.secondAttribute} trainingConfigs={trainingConfigs} />
+                </View>
+
+                <View style={styles.classDetailSection}>
+                  <View style={styles.levelProgressHeader}>
+                    <Text style={styles.sectionTitle}>Class Level</Text>
+                    <Text style={styles.attributeMeta}>Lv {classDetail.classLevel}</Text>
+                  </View>
+                  <ProgressBar value={classDetail.classProgress.progress} max={classDetail.classProgress.required} color={colors.gold} height={8} />
+                  <Text style={styles.copy}>{classDetail.unlocked ? "Train matching attributes while this class is active to level it." : "Unlock this class before class levels begin to matter."}</Text>
+                </View>
+
+                <View style={styles.classDetailSection}>
+                  <Text style={styles.sectionTitle}>Abilities</Text>
+                  {classDetailAbilities.length > 0 ? (
+                    classDetailAbilities.map((ability) => (
+                      <View key={ability.id} style={styles.classAbilityRow}>
+                        <AbilityBadge ability={ability} />
+                        <View style={styles.classAbilityBody}>
+                          <Text style={styles.classAbilityName}>{ability.name}</Text>
+                          <Text style={styles.copy}>{getClassAbilitySummary(ability)}</Text>
+                        </View>
+                        <Text style={styles.classAbilityLevel}>Lv {ability.required_class_level || 0}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <View style={styles.emptyAbilityBox}>
+                      <Text style={styles.copy}>No abilities are linked to this class yet. Add them in Ability Admin with Required Class and Required Class Level.</Text>
+                    </View>
+                  )}
+                </View>
+
+                <Pressable
+                  style={[styles.primaryButton, !classDetail.unlocked && styles.disabledButton]}
+                  disabled={!classDetail.unlocked}
+                  onPress={() => {
+                    void chooseClass(classDetail);
+                    setClassDetailKey(null);
+                  }}
+                >
+                  <Text style={styles.primaryText}>{classDetail.selected ? "Active Class" : classDetail.unlocked ? "Set Active Class" : "Locked"}</Text>
+                </Pressable>
+              </ScrollView>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
       <GameToast toast={abilityToast} onDismiss={() => setAbilityToast(null)} />
     </Screen>
   );
@@ -496,15 +582,15 @@ function Info({ label, value, compact = false }: { label: string; value: string;
   );
 }
 
-function ClassArt({ classItem }: { classItem: PlayerClassState }) {
+function ClassArt({ classItem, size = "normal" }: { classItem: PlayerClassState; size?: "normal" | "large" }) {
   const imageUri = resolveClassImageUri(classItem.imageUrl);
 
   if (imageUri) {
-    return <Image source={{ uri: imageUri }} style={styles.classImage} />;
+    return <Image source={{ uri: imageUri }} style={[styles.classImage, size === "large" && styles.classImageLarge]} />;
   }
 
   return (
-    <View style={styles.classImageFallback}>
+    <View style={[styles.classImageFallback, size === "large" && styles.classImageLarge]}>
       <Text style={styles.classImageFallbackText}>{classItem.name.slice(0, 1).toUpperCase()}</Text>
     </View>
   );
@@ -536,6 +622,39 @@ function ClassTrainingGoal({ classItem, attributeKey, trainingConfigs }: { class
       <Text style={styles.infoValue}>{config?.activities ?? "Complete focused 30 minute sessions for this attribute."}</Text>
     </View>
   );
+}
+
+function AbilityBadge({ ability }: { ability: CombatAbility }) {
+  const uri = resolveAbilityImageUri(ability.image_path);
+  if (uri) {
+    return <Image source={{ uri }} style={styles.classAbilityIcon} />;
+  }
+
+  return (
+    <View style={styles.classAbilityIconFallback}>
+      <Text style={styles.classAbilityIconText}>{ability.name.slice(0, 2).toUpperCase()}</Text>
+    </View>
+  );
+}
+
+function getClassLinkedAbilities(abilities: CombatAbility[], classKey: string) {
+  return abilities
+    .filter((ability) => ability.is_active && ability.required_class_key === classKey)
+    .sort((left, right) => (left.required_class_level || 0) - (right.required_class_level || 0) || left.name.localeCompare(right.name));
+}
+
+function getClassAbilitySummary(ability: CombatAbility) {
+  const parts = [
+    ability.type,
+    ability.damage ? `${ability.damage} damage` : null,
+    ability.healing ? `${ability.healing} healing` : null,
+    ability.defense_amount ? `${ability.defense_amount} defense` : null,
+    ability.status_effect !== "none" ? ability.status_effect : null,
+    ability.stamina_cost ? `${ability.stamina_cost} stamina` : null,
+    ability.magika_cost ? `${ability.magika_cost} mana` : null,
+  ].filter(Boolean);
+
+  return parts.join(" / ") || "Class ability";
 }
 
 function TrainingIcon({ name, imageUrl, active }: { name: string; imageUrl: string | null; active: boolean }) {
@@ -1305,6 +1424,131 @@ const styles = StyleSheet.create({
     color: colors.gold,
     fontSize: 10,
     fontWeight: "900",
+  },
+  classDetailsButton: {
+    marginTop: "auto",
+    minHeight: 28,
+    borderRadius: 7,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  classDetailsText: {
+    color: colors.blue,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  classDetailCard: {
+    width: "100%",
+    maxWidth: 460,
+    maxHeight: "88%",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    backgroundColor: "#080b0b",
+    overflow: "hidden",
+  },
+  classDetailScroll: {
+    padding: 16,
+    gap: 14,
+  },
+  classDetailTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  classDetailTitleBlock: {
+    flex: 1,
+    gap: 3,
+  },
+  classDetailTitle: {
+    color: colors.gold,
+    fontSize: 24,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  modalCloseButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  modalCloseText: {
+    color: colors.gold,
+    fontWeight: "900",
+  },
+  classImageLarge: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    borderWidth: 2,
+  },
+  classDetailSection: {
+    gap: 9,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    padding: 12,
+    backgroundColor: "rgba(217,164,65,0.05)",
+  },
+  classAbilityRow: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.07)",
+    paddingBottom: 10,
+  },
+  classAbilityIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  classAbilityIconFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(54,171,224,0.12)",
+  },
+  classAbilityIconText: {
+    color: colors.blue,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  classAbilityBody: {
+    flex: 1,
+    gap: 3,
+  },
+  classAbilityName: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 15,
+  },
+  classAbilityLevel: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  emptyAbilityBox: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 12,
+    backgroundColor: "rgba(0,0,0,0.2)",
   },
   classAdminGrid: {
     flexDirection: "row",
