@@ -272,6 +272,7 @@ export type Tables = {
     inventory_summary: Record<string, unknown>;
     is_current: boolean;
     created_at: string;
+    updated_at: string;
   };
   avatar_assets: {
     id: string;

@@ -55,6 +55,10 @@ export async function createCurrentPlayerBattleSnapshot(
 
   const payload = await buildBattleSnapshotPayload(character, source);
 
+  if (source === "system") {
+    return upsertSystemBattleSnapshot(character.id, payload);
+  }
+
   const { data: inserted, error: insertError } = await supabase
     .from("player_battle_snapshots")
     .insert({ ...payload, is_current: false })
@@ -69,6 +73,7 @@ export async function createCurrentPlayerBattleSnapshot(
     .from("player_battle_snapshots")
     .update({ is_current: false })
     .eq("character_id", character.id)
+    .eq("snapshot_source", source)
     .eq("is_current", true);
 
   if (retireError) {
@@ -159,7 +164,52 @@ async function buildBattleSnapshotPayload(character: CharacterWithDetails, sourc
       carryCapacity: inventory.carryCapacity,
     },
     is_current: true,
+    updated_at: new Date().toISOString(),
   };
+}
+
+async function upsertSystemBattleSnapshot(
+  characterId: string,
+  payload: Awaited<ReturnType<typeof buildBattleSnapshotPayload>>,
+) {
+  const { data: existing, error: existingError } = await supabase
+    .from("player_battle_snapshots")
+    .select("id")
+    .eq("character_id", characterId)
+    .eq("snapshot_source", "system")
+    .eq("is_current", true)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  if (existing?.id) {
+    const { data, error } = await supabase
+      .from("player_battle_snapshots")
+      .update(payload)
+      .eq("id", existing.id)
+      .select("*")
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    return data as PlayerBattleSnapshot;
+  }
+
+  const { data, error } = await supabase
+    .from("player_battle_snapshots")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as PlayerBattleSnapshot;
 }
 
 function normalizeAttributes(attributes: CharacterWithDetails["attributes"]): AttributeSnapshot {
