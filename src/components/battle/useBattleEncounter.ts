@@ -31,6 +31,7 @@ type StartBattleResult = {
 
 type BattleActionContext = {
   previewMode: boolean;
+  battleMode?: "normal" | "arena";
   equippedItems: Record<string, ItemDefinition | null>;
   inventoryItems: InventoryItem[];
   closePreview: () => void;
@@ -1005,6 +1006,12 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
 
+    if (context.battleMode === "arena") {
+      setRevivePromptOpen(false);
+      log.push("Arena challenge lost. No trail progress was changed.");
+      return;
+    }
+
     const reviveItem = context.inventoryItems.find((entry) => entry.quantity > 0 && isReviveBattleItem(entry.item));
 
     if (reviveItem) {
@@ -1024,6 +1031,10 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     if (context.previewMode) {
       setBattleLog((current) => ["Preview ended after defeat.", ...current].slice(0, 8));
       context.closePreview();
+      return;
+    }
+    if (context.battleMode === "arena") {
+      setBattleLog((current) => ["Arena challenge ended. No trail progress was changed.", ...current].slice(0, 8));
       return;
     }
     setBattleLog((current) => ["No revive used. Returning to the start of this trail.", ...current].slice(0, 8));

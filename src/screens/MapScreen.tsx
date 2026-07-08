@@ -73,7 +73,7 @@ import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission } from "../services/pushNotificationService";
 import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAssetUri, type GameToastDefinition, type GameToastTriggerType } from "../services/gameToastService";
 import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
-import { claimOpenArena, completeArenaChallenge, getArenaForMarker, getArenaMarkerPortraits, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
+import { claimOpenArena, completeArenaChallenge, getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
 import { buildArenaBattleLayout, deleteArenaBattleSlot, getArenaBattleSlots, saveArenaBattleSlot, type ArenaBattleSlot } from "../services/arenaBattleBoardService";
 import { createCurrentPlayerBattleSnapshot } from "../services/battleSnapshotService";
 import { createArenaChallengeEvent, createArenaSnapshotOpponent } from "../services/arenaBattleService";
@@ -373,7 +373,6 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [selectedPuzzle, setSelectedPuzzle] = useState<PuzzleWithZones | null>(null);
   const [selectedArena, setSelectedArena] = useState<ArenaWithLeaders | null>(null);
   const [activeArenaChallenge, setActiveArenaChallenge] = useState<{ arenaId: string; markerId: string; defenderSnapshotId: string | null } | null>(null);
-  const [arenaMarkerPortraits, setArenaMarkerPortraits] = useState<Record<string, string>>({});
   const [arenaBattleSlots, setArenaBattleSlots] = useState<ArenaBattleSlot[]>([]);
   const [activeMiniMap, setActiveMiniMap] = useState<MiniMap | null>(null);
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
@@ -737,14 +736,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const miniMapRouteSegments = useMemo(() => getRouteSegmentsForRoutes(isAdmin ? adminMiniMapRoutes : hasActiveRoute && route.mini_map_id === activeMiniMap?.id ? [route] : [], route.id, mapSize, isAdmin), [activeMiniMap?.id, adminMiniMapRoutes, hasActiveRoute, isAdmin, route]);
   const draftSegments = useMemo(() => getRouteSegments(pathDraft, activeMiniMap ? mapSize : worldMapDimensions).map((segment) => ({ ...segment, id: `draft-${segment.left}-${segment.top}`, isActive: true, isDraft: true })), [activeMiniMap, pathDraft, worldMapDimensions]);
   const playerPathVisibility = useMemo(() => (hasActiveRoute ? getPathSegmentMetaAtProgress(route.path_points, route.path_segments ?? [], progressPercent).visibility : "visible"), [hasActiveRoute, progressPercent, route.path_points, route.path_segments]);
-  const arenaMarkerIdKey = useMemo(() => markers.filter((marker) => marker.type === "Arena").map((marker) => marker.id).sort().join("|"), [markers]);
   const effectiveMarkers = useMemo(
-    () => markers.map((marker) => {
-      const unlockedMarker = playerUnlockedMarkerIds.has(marker.id) ? { ...marker, is_unlocked: true } : marker;
-      const arenaPortrait = marker.type === "Arena" ? arenaMarkerPortraits[marker.id] : null;
-      return arenaPortrait ? { ...unlockedMarker, icon_image_url: arenaPortrait } : unlockedMarker;
-    }),
-    [arenaMarkerPortraits, markers, playerUnlockedMarkerIds],
+    () => markers.map((marker) => playerUnlockedMarkerIds.has(marker.id) ? { ...marker, is_unlocked: true } : marker),
+    [markers, playerUnlockedMarkerIds],
   );
   const worldMarkers = useMemo(() => effectiveMarkers.filter((marker) => !marker.mini_map_id), [effectiveMarkers]);
   const miniMapMarkers = useMemo(() => effectiveMarkers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [effectiveMarkers, activeMiniMap?.id]);
@@ -795,27 +789,6 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     () => availableChapters.find((chapter) => Number(chapter.season_number) === selectedSeason && Number(chapter.chapter_number) === selectedChapter) ?? null,
     [availableChapters, selectedChapter, selectedSeason],
   );
-  useEffect(() => {
-    const markerIds = arenaMarkerIdKey ? arenaMarkerIdKey.split("|").filter(Boolean) : [];
-    let cancelled = false;
-
-    if (markerIds.length === 0) {
-      setArenaMarkerPortraits({});
-      return;
-    }
-
-    getArenaMarkerPortraits(markerIds)
-      .then((portraits) => {
-        if (!cancelled) {
-          setArenaMarkerPortraits(Object.fromEntries(portraits.entries()));
-        }
-      })
-      .catch((error) => console.warn("[arena] unable to refresh arena marker portraits", getErrorMessage(error, "Unknown arena portrait error.")));
-
-    return () => {
-      cancelled = true;
-    };
-  }, [arenaMarkerIdKey]);
   useEffect(() => {
     setChapterAccessType(selectedChapterRecord?.access_type ?? "free");
     setChapterUnlockFlagKey(selectedChapterRecord?.unlock_story_flag_key ?? "");
@@ -2427,9 +2400,6 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       await claimOpenArena(selectedArena.arena.id, snapshot);
       const refreshedArena = await getArenaForMarker(selectedMarker);
       setSelectedArena(refreshedArena);
-      if (snapshot.portrait_url) {
-        setArenaMarkerPortraits((current) => ({ ...current, [selectedMarker.id]: snapshot.portrait_url ?? "" }));
-      }
       setMarkerPanelMessage(`${character.name} now holds ${selectedArena.arena.name}.`);
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to claim this arena."));
@@ -2493,9 +2463,6 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       if (arenaMarker) {
         const refreshedArena = await getArenaForMarker(arenaMarker);
         setSelectedArena(refreshedArena);
-        if (result === "win" && snapshot.portrait_url) {
-          setArenaMarkerPortraits((current) => ({ ...current, [arenaMarker.id]: snapshot.portrait_url ?? "" }));
-        }
       }
 
       setMarkerPanelMessage(result === "win" ? `${character.name} claimed the arena. Your current loadout is now defending it.` : "Arena challenge recorded. No rewards were granted.");
@@ -4802,6 +4769,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   function getBattleActionContext() {
     return {
       previewMode: Boolean(adminPreviewMode),
+      battleMode: activeArenaChallenge ? "arena" as const : "normal" as const,
       equippedItems,
       inventoryItems,
       closePreview: closeAdminPreview,
@@ -6003,6 +5971,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         revivePromptOpen={revivePromptOpen}
         result={battleFinished}
         previewMode={adminPreviewMode === "battle"}
+        defeatTitle={activeArenaChallenge ? "Arena Challenge Lost" : undefined}
+        defeatBody={activeArenaChallenge ? "The current holder defended this arena. No trail progress was changed." : undefined}
+        defeatActionLabel={activeArenaChallenge ? "Return to Arena" : undefined}
         toast={gameToast}
         onAction={(ability) => void handleBattleAction(ability)}
         onOpeningEnemyTurn={() => void handleOpeningEnemyTurn()}
@@ -6012,7 +5983,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         onUseItem={(item) => void useBattleItem(item)}
         onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
         onDeclineRevive={() => void declineReviveAfterDefeat()}
-        onReturnToStart={() => void resetCurrentRouteAfterDefeat()}
+        onReturnToStart={() => activeArenaChallenge ? void finishEvent(activeBattle) : void resetCurrentRouteAfterDefeat()}
         onComplete={() => void finishEvent(activeBattle)}
         onExitPreview={closeAdminPreview}
         onDismissToast={dismissGameToast}

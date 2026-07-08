@@ -37,6 +37,9 @@ type BattleEventScreenProps = {
   revivePromptOpen: boolean;
   result: "victory" | "defeat" | null;
   previewMode?: boolean;
+  defeatTitle?: string;
+  defeatBody?: string;
+  defeatActionLabel?: string;
   onAction: (ability: AbilityDefinition) => void;
   onSelectOpponent?: (opponentKey: string) => void;
   onWeaponAction: (weapon: ItemDefinition) => void;
@@ -73,6 +76,9 @@ export function BattleEventScreen({
   revivePromptOpen,
   result,
   previewMode = false,
+  defeatTitle = "Defeated",
+  defeatBody = "Defeat is final for this attempt. Continue from 5% back on the path.",
+  defeatActionLabel = "Continue From Setback",
   onAction,
   onSelectOpponent,
   onFlee,
@@ -363,10 +369,10 @@ export function BattleEventScreen({
           ) : null}
           {result === "defeat" && !revivePromptOpen ? (
             <View style={styles.battleResultPanel}>
-              <Text style={styles.selectedTitle}>Defeated</Text>
-              <Text style={styles.copy}>Defeat is final for this attempt. Continue from 5% back on the path.</Text>
+              <Text style={styles.selectedTitle}>{defeatTitle}</Text>
+              <Text style={styles.copy}>{defeatBody}</Text>
               <Pressable style={styles.primaryButton} onPress={onReturnToStart}>
-                <Text style={styles.primaryText}>Continue From Setback</Text>
+                <Text style={styles.primaryText}>{defeatActionLabel}</Text>
               </Pressable>
             </View>
           ) : null}

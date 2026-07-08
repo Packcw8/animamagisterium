@@ -36,6 +36,9 @@ type ActiveBattleViewProps = {
   revivePromptOpen: boolean;
   result: "victory" | "defeat" | null;
   previewMode: boolean;
+  defeatTitle?: string;
+  defeatBody?: string;
+  defeatActionLabel?: string;
   toast: GameToastData | null;
   onAction: (ability: AbilityDefinition) => void;
   onOpeningEnemyTurn: () => void;
@@ -77,6 +80,9 @@ export function ActiveBattleView({
   revivePromptOpen,
   result,
   previewMode,
+  defeatTitle,
+  defeatBody,
+  defeatActionLabel,
   toast,
   onAction,
   onOpeningEnemyTurn,
@@ -124,6 +130,9 @@ export function ActiveBattleView({
         revivePromptOpen={revivePromptOpen}
         result={result}
         previewMode={previewMode}
+        defeatTitle={defeatTitle}
+        defeatBody={defeatBody}
+        defeatActionLabel={defeatActionLabel}
         onAction={onAction}
         onSelectOpponent={onSelectOpponent}
         onWeaponAction={onWeaponAction}
