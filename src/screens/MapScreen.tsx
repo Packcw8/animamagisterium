@@ -465,6 +465,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [markerExitTargetSpawnMarkerId, setMarkerExitTargetSpawnMarkerId] = useState<string | null>(null);
   const [markerLockType, setMarkerLockType] = useState<MapMarker["lock_type"]>("public");
   const [markerLockMessage, setMarkerLockMessage] = useState("");
+  const [markerAccessRule, setMarkerAccessRule] = useState<MapMarker["access_rule"]>("always");
+  const [markerRequiredItemId, setMarkerRequiredItemId] = useState<string | null>(null);
+  const [markerRequiredItemQuantity, setMarkerRequiredItemQuantity] = useState("1");
+  const [markerAccessHint, setMarkerAccessHint] = useState("");
   const [markerVisibleStoryFlagKey, setMarkerVisibleStoryFlagKey] = useState("");
   const [markerVisibleStoryFlagValue, setMarkerVisibleStoryFlagValue] = useState(true);
   const [markerStoryOrder, setMarkerStoryOrder] = useState("0");
@@ -854,10 +858,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   }, [storyFlags]);
   const visibleMarkers = isAdmin
     ? worldMarkers
-    : worldMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
+    : worldMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows, inventoryItems }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
   const visibleMiniMapMarkers = isAdmin
     ? adminMiniMapMarkers
-    : miniMapMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
+    : miniMapMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows, inventoryItems }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedDialogueMarker = useMemo(() => effectiveMarkers.find((marker) => marker.id === selectedDialogueMarkerId) ?? null, [effectiveMarkers, selectedDialogueMarkerId]);
@@ -865,7 +869,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     () => (choiceNodeId ? dialogueChoices.filter((choice) => choice.node_id === choiceNodeId).sort((a, b) => a.sort_order - b.sort_order) : []),
     [choiceNodeId, dialogueChoices],
   );
-  const selectedMarkerAvailability = selectedMarker ? getMarkerAvailability({ marker: selectedMarker, playerPosition: currentInteractionPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows }) : null;
+  const selectedMarkerAvailability = selectedMarker ? getMarkerAvailability({ marker: selectedMarker, playerPosition: currentInteractionPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows, inventoryItems }) : null;
   const selectedMarkerDistance = selectedMarkerAvailability?.distance ?? 0;
   const selectedMarkerRadius = selectedMarkerAvailability?.radius ?? 4;
   const canUseSelectedMarker = isAdmin || Boolean(selectedMarkerAvailability?.interactable);
@@ -2130,6 +2134,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       markerSize,
       markerLockType,
       markerLockMessage,
+      markerAccessRule,
+      markerRequiredItemId,
+      markerRequiredItemQuantity,
+      markerAccessHint,
       markerVisibleStoryFlagKey,
       markerVisibleStoryFlagValue,
       markerStoryOrder,
@@ -2200,6 +2208,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setMarkerSize(String(marker.marker_size ?? 100));
     setMarkerLockType(marker.lock_type ?? "public");
     setMarkerLockMessage(marker.lock_message ?? "");
+    setMarkerAccessRule(marker.access_rule ?? (marker.visible_story_flag_key ? "story_flag" : marker.is_unlocked === false ? "puzzle_unlock" : "always"));
+    setMarkerRequiredItemId(marker.required_item_id ?? null);
+    setMarkerRequiredItemQuantity(String(marker.required_item_quantity ?? 1));
+    setMarkerAccessHint(marker.access_hint ?? "");
     setMarkerVisibleStoryFlagKey(marker.visible_story_flag_key ?? "");
     setMarkerVisibleStoryFlagValue(marker.visible_story_flag_value ?? true);
     setMarkerStoryOrder(String(marker.story_order ?? 0));
@@ -2290,6 +2302,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setMarkerSize(String(marker.marker_size ?? 100));
     setMarkerLockType(marker.lock_type ?? "public");
     setMarkerLockMessage(marker.lock_message ?? "");
+    setMarkerAccessRule(marker.access_rule ?? (marker.visible_story_flag_key ? "story_flag" : marker.is_unlocked === false ? "puzzle_unlock" : "always"));
+    setMarkerRequiredItemId(marker.required_item_id ?? null);
+    setMarkerRequiredItemQuantity(String(marker.required_item_quantity ?? 1));
+    setMarkerAccessHint(marker.access_hint ?? "");
     setMarkerVisibleStoryFlagKey(marker.visible_story_flag_key ?? "");
     setMarkerVisibleStoryFlagValue(marker.visible_story_flag_value ?? true);
     setMarkerStoryOrder(String(marker.story_order ?? 0));
@@ -6398,6 +6414,14 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
               setMarkerLockType={setMarkerLockType}
               markerLockMessage={markerLockMessage}
               setMarkerLockMessage={setMarkerLockMessage}
+              markerAccessRule={markerAccessRule}
+              setMarkerAccessRule={setMarkerAccessRule}
+              markerRequiredItemId={markerRequiredItemId}
+              setMarkerRequiredItemId={setMarkerRequiredItemId}
+              markerRequiredItemQuantity={markerRequiredItemQuantity}
+              setMarkerRequiredItemQuantity={setMarkerRequiredItemQuantity}
+              markerAccessHint={markerAccessHint}
+              setMarkerAccessHint={setMarkerAccessHint}
               markerQuestTitle={markerQuestTitle}
               setMarkerQuestTitle={setMarkerQuestTitle}
               markerQuestDialogue={markerQuestDialogue}
@@ -7022,8 +7046,13 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                 visibleStoryFlagValue={markerVisibleStoryFlagValue}
                 markerLockType={markerLockType}
                 markerLockMessage={markerLockMessage}
+                markerAccessRule={markerAccessRule}
+                markerRequiredItemId={markerRequiredItemId}
+                markerRequiredItemQuantity={markerRequiredItemQuantity}
+                markerAccessHint={markerAccessHint}
                 markerInteractable={markerInteractable}
                 markerInitiallyUnlocked={markerInitiallyUnlocked}
+                itemDefinitions={itemDefinitions}
                 showPathRequirements={draftType !== "Sign Post" && !isBattleMarkerType(draftType) && !isStoryQuestMarker({ type: draftType })}
                 pathRequirementDescription={draftType === "Area/Town Entrance"
                   ? "Players can enter after completing any one linked path that leads to this entrance. Use the unlock point below to choose whether the entrance opens at the path end, path start after reverse travel, or either side."
@@ -7040,6 +7069,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                 }}
                 onChangeMarkerLockType={setMarkerLockType}
                 onChangeMarkerLockMessage={setMarkerLockMessage}
+                onChangeMarkerAccessRule={setMarkerAccessRule}
+                onChangeRequiredItemId={setMarkerRequiredItemId}
+                onChangeRequiredItemQuantity={setMarkerRequiredItemQuantity}
+                onChangeAccessHint={setMarkerAccessHint}
                 onToggleInteractable={() => setMarkerInteractable((value) => !value)}
                 onToggleInitiallyUnlocked={() => setMarkerInitiallyUnlocked((value) => !value)}
                 onToggleRoute={toggleSignPostRoute}
@@ -7833,6 +7866,14 @@ function MiniMapMarkerAdminForm({
   setMarkerLockType,
   markerLockMessage,
   setMarkerLockMessage,
+  markerAccessRule,
+  setMarkerAccessRule,
+  markerRequiredItemId,
+  setMarkerRequiredItemId,
+  markerRequiredItemQuantity,
+  setMarkerRequiredItemQuantity,
+  markerAccessHint,
+  setMarkerAccessHint,
   markerQuestTitle,
   setMarkerQuestTitle,
   markerQuestDialogue,
@@ -7978,6 +8019,14 @@ function MiniMapMarkerAdminForm({
   setMarkerLockType: (value: MapMarker["lock_type"]) => void;
   markerLockMessage: string;
   setMarkerLockMessage: (value: string) => void;
+  markerAccessRule: MapMarker["access_rule"];
+  setMarkerAccessRule: (value: MapMarker["access_rule"]) => void;
+  markerRequiredItemId: string | null;
+  setMarkerRequiredItemId: (value: string | null) => void;
+  markerRequiredItemQuantity: string;
+  setMarkerRequiredItemQuantity: (value: string) => void;
+  markerAccessHint: string;
+  setMarkerAccessHint: (value: string) => void;
   markerQuestTitle: string;
   setMarkerQuestTitle: (value: string) => void;
   markerQuestDialogue: string;
@@ -8127,8 +8176,13 @@ function MiniMapMarkerAdminForm({
         visibleStoryFlagValue={markerVisibleStoryFlagValue}
         markerLockType={markerLockType}
         markerLockMessage={markerLockMessage}
+        markerAccessRule={markerAccessRule}
+        markerRequiredItemId={markerRequiredItemId}
+        markerRequiredItemQuantity={markerRequiredItemQuantity}
+        markerAccessHint={markerAccessHint}
         markerInteractable={markerInteractable}
         markerInitiallyUnlocked={markerInitiallyUnlocked}
+        itemDefinitions={itemDefinitions}
         showPathRequirements={!supportsSignPost && !supportsQuest && !supportsBattle}
         pathRequirementDescription={draftType === "Area/Town Entrance"
           ? "Players can enter after completing any one linked path that leads to this entrance. Use the unlock point below to choose whether the entrance opens at the path end, path start after reverse travel, or either side."
@@ -8146,6 +8200,10 @@ function MiniMapMarkerAdminForm({
         }}
         onChangeMarkerLockType={setMarkerLockType}
         onChangeMarkerLockMessage={setMarkerLockMessage}
+        onChangeMarkerAccessRule={setMarkerAccessRule}
+        onChangeRequiredItemId={setMarkerRequiredItemId}
+        onChangeRequiredItemQuantity={setMarkerRequiredItemQuantity}
+        onChangeAccessHint={setMarkerAccessHint}
         onToggleInteractable={() => setMarkerInteractable((value) => !value)}
         onToggleInitiallyUnlocked={() => setMarkerInitiallyUnlocked((value) => !value)}
         onToggleRoute={toggleSignPostRoute}

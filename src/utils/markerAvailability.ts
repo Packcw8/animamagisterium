@@ -1,4 +1,5 @@
 import type { MapMarker, MarkerRouteLink, RouteProgress } from "../services/mapService";
+import type { InventoryItem } from "../services/inventoryService";
 import { getPercentDistance, type PercentPoint } from "./mapGeometry";
 import { isSpawnMarker, isStoryQuestMarker } from "./mapVisibility";
 
@@ -15,6 +16,7 @@ type MarkerAvailabilityInput = {
   playerPosition: PercentPoint;
   routeLinks: MarkerRouteLink[];
   routeProgressRows: RouteProgress[];
+  inventoryItems?: InventoryItem[];
 };
 
 export function getMarkerAvailability({
@@ -22,6 +24,7 @@ export function getMarkerAvailability({
   playerPosition,
   routeLinks,
   routeProgressRows,
+  inventoryItems = [],
 }: MarkerAvailabilityInput): MarkerAvailability {
   const radius = Number(marker.interaction_radius_percent ?? 4) || 4;
   const markerPosition = { x: Number(marker.x_percent), y: Number(marker.y_percent) };
@@ -32,6 +35,10 @@ export function getMarkerAvailability({
   }
 
   if (!marker.is_active || !marker.is_unlocked || marker.is_interactable === false) {
+    return { visible: false, interactable: false, reason: null, distance, radius };
+  }
+
+  if (marker.access_rule === "admin_only") {
     return { visible: false, interactable: false, reason: null, distance, radius };
   }
 
@@ -62,6 +69,23 @@ export function getMarkerAvailability({
       distance,
       radius,
     };
+  }
+
+  if (marker.access_rule === "item_required" && marker.required_item_id) {
+    const requiredQuantity = Math.max(1, Number(marker.required_item_quantity ?? 1) || 1);
+    const ownedQuantity = inventoryItems
+      .filter((entry) => entry.item_id === marker.required_item_id)
+      .reduce((total, entry) => total + Number(entry.quantity ?? 0), 0);
+
+    if (ownedQuantity < requiredQuantity) {
+      return {
+        visible: true,
+        interactable: false,
+        reason: marker.access_hint?.trim() || `Requires item x${requiredQuantity}.`,
+        distance,
+        radius,
+      };
+    }
   }
 
   return { visible: true, interactable: true, reason: null, distance, radius };

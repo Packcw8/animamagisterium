@@ -768,6 +768,10 @@ export type Tables = {
     marker_size: number;
     lock_type: "public" | "story_locked" | "quest_locked";
     lock_message: string | null;
+    access_rule: "always" | "story_flag" | "puzzle_unlock" | "item_required" | "admin_only";
+    required_item_id: string | null;
+    required_item_quantity: number;
+    access_hint: string | null;
     visible_story_flag_key: string | null;
     visible_story_flag_value: boolean;
     story_order: number;

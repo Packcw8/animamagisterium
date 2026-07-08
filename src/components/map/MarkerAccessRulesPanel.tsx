@@ -1,7 +1,8 @@
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import type { ItemDefinition } from "../../services/inventoryService";
 import type { MapMarker, MapRoute, MarkerRouteLink } from "../../services/mapService";
 import { colors, fonts } from "../theme";
-import { LockPicker } from "./MarkerEditorControls";
+import { ItemPicker, LockPicker } from "./MarkerEditorControls";
 import { MarkerPathRequirementEditor } from "./MarkerPathRequirementEditor";
 import { MarkerStoryFlagVisibilityEditor } from "./MarkerStoryFlagVisibilityEditor";
 
@@ -12,8 +13,13 @@ type MarkerAccessRulesPanelProps = {
   visibleStoryFlagValue: boolean;
   markerLockType: MapMarker["lock_type"];
   markerLockMessage: string;
+  markerAccessRule: MapMarker["access_rule"];
+  markerRequiredItemId: string | null;
+  markerRequiredItemQuantity: string;
+  markerAccessHint: string;
   markerInteractable: boolean;
   markerInitiallyUnlocked: boolean;
+  itemDefinitions: ItemDefinition[];
   showPathRequirements: boolean;
   pathRequirementTitle?: string;
   pathRequirementDescription: string;
@@ -27,6 +33,10 @@ type MarkerAccessRulesPanelProps = {
   onClearVisibleStoryFlag: () => void;
   onChangeMarkerLockType: (value: MapMarker["lock_type"]) => void;
   onChangeMarkerLockMessage: (value: string) => void;
+  onChangeMarkerAccessRule: (value: MapMarker["access_rule"]) => void;
+  onChangeRequiredItemId: (value: string | null) => void;
+  onChangeRequiredItemQuantity: (value: string) => void;
+  onChangeAccessHint: (value: string) => void;
   onToggleInteractable: () => void;
   onToggleInitiallyUnlocked: () => void;
   onToggleRoute: (routeId: string) => void;
@@ -40,8 +50,13 @@ export function MarkerAccessRulesPanel({
   visibleStoryFlagValue,
   markerLockType,
   markerLockMessage,
+  markerAccessRule,
+  markerRequiredItemId,
+  markerRequiredItemQuantity,
+  markerAccessHint,
   markerInteractable,
   markerInitiallyUnlocked,
+  itemDefinitions,
   showPathRequirements,
   pathRequirementTitle = "Required Completed Paths",
   pathRequirementDescription,
@@ -55,6 +70,10 @@ export function MarkerAccessRulesPanel({
   onClearVisibleStoryFlag,
   onChangeMarkerLockType,
   onChangeMarkerLockMessage,
+  onChangeMarkerAccessRule,
+  onChangeRequiredItemId,
+  onChangeRequiredItemQuantity,
+  onChangeAccessHint,
   onToggleInteractable,
   onToggleInitiallyUnlocked,
   onToggleRoute,
@@ -64,25 +83,106 @@ export function MarkerAccessRulesPanel({
     <View style={styles.panel}>
       <Text style={styles.title}>Access Rules</Text>
       <Text style={styles.copy}>
-        Control when this {markerType} marker appears and when the player can use it. Prefer one clear story flag for reveal, then path requirements only for gates, exits, clues, and entrances.
+        Control when this {markerType} marker appears and when the player can use it. Prefer Story Flag, Puzzle Unlock, or Item Required. Use linked path requirements only for older endpoint gates and special cases.
       </Text>
 
       <View style={styles.ruleBlock}>
-        <Text style={styles.subTitle}>1. Reveal Rule</Text>
-        <Text style={styles.copy}>Use this when an NPC choice or story event should make the marker appear for one player.</Text>
-        <MarkerStoryFlagVisibilityEditor
-          storyFlagKeys={storyFlagKeys}
-          visibleStoryFlagKey={visibleStoryFlagKey}
-          visibleStoryFlagValue={visibleStoryFlagValue}
-          onChangeVisibleStoryFlagKey={onChangeVisibleStoryFlagKey}
-          onToggleVisibleStoryFlagValue={onToggleVisibleStoryFlagValue}
-          onClear={onClearVisibleStoryFlag}
-        />
+        <Text style={styles.subTitle}>1. Simple Unlock Type</Text>
+        <Text style={styles.copy}>Choose the one main reason this marker appears or opens.</Text>
+        <View style={styles.choiceGrid}>
+          {accessRuleOptions.map((option) => (
+            <Pressable
+              key={option.value}
+              style={[styles.ruleChoice, markerAccessRule === option.value && styles.typeSelected]}
+              onPress={() => onChangeMarkerAccessRule(option.value)}
+            >
+              <Text style={styles.secondaryText}>{option.label}</Text>
+              <Text style={styles.choiceDescription}>{option.description}</Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
 
+      {markerAccessRule === "story_flag" ? (
+        <View style={styles.ruleBlock}>
+          <Text style={styles.subTitle}>2. Story Flag Reveal</Text>
+          <Text style={styles.copy}>Use this when an NPC choice or story event should make the marker appear for one player.</Text>
+          <MarkerStoryFlagVisibilityEditor
+            storyFlagKeys={storyFlagKeys}
+            visibleStoryFlagKey={visibleStoryFlagKey}
+            visibleStoryFlagValue={visibleStoryFlagValue}
+            onChangeVisibleStoryFlagKey={onChangeVisibleStoryFlagKey}
+            onToggleVisibleStoryFlagValue={onToggleVisibleStoryFlagValue}
+            onClear={onClearVisibleStoryFlag}
+          />
+        </View>
+      ) : null}
+
+      {markerAccessRule === "puzzle_unlock" ? (
+        <View style={styles.ruleBlock}>
+          <Text style={styles.subTitle}>2. Puzzle Unlock</Text>
+          <Text style={styles.copy}>Set Base Unlock State to Hidden Until Unlocked. A completed puzzle can reveal this marker for that player.</Text>
+          <Pressable style={[styles.secondaryButton, markerInitiallyUnlocked && styles.typeSelected]} onPress={onToggleInitiallyUnlocked}>
+            <Text style={styles.secondaryText}>Base Unlock State: {markerInitiallyUnlocked ? "Unlocked" : "Hidden Until Unlocked"}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
+      {markerAccessRule === "item_required" ? (
+        <View style={styles.ruleBlock}>
+          <Text style={styles.subTitle}>2. Item Requirement</Text>
+          <Text style={styles.copy}>Marker stays visible, but cannot be opened until the player owns the required item.</Text>
+          <ItemPicker label="Required item" items={itemDefinitions} selectedId={markerRequiredItemId} onSelect={onChangeRequiredItemId} />
+          <TextInput
+            value={markerRequiredItemQuantity}
+            onChangeText={onChangeRequiredItemQuantity}
+            placeholder="Required quantity"
+            placeholderTextColor={colors.muted}
+            keyboardType="numeric"
+            style={styles.input}
+          />
+          <TextInput
+            value={markerAccessHint}
+            onChangeText={onChangeAccessHint}
+            placeholder="Optional message, example Requires Old Iron Key"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+          />
+        </View>
+      ) : null}
+
+      {markerAccessRule === "admin_only" ? (
+        <View style={styles.ruleBlock}>
+          <Text style={styles.subTitle}>2. Admin Only</Text>
+          <Text style={styles.copy}>Players will not see this marker. Use this for tests, drafts, and staging.</Text>
+        </View>
+      ) : null}
+
+      {markerAccessRule === "always" ? (
+        <View style={styles.ruleBlock}>
+          <Text style={styles.subTitle}>2. Always Available</Text>
+          <Text style={styles.copy}>This marker uses only proximity and the interaction toggle.</Text>
+        </View>
+      ) : null}
+
+      {markerAccessRule !== "story_flag" ? (
+        <View style={styles.ruleBlock}>
+          <Text style={styles.subTitle}>Optional Story Flag</Text>
+          <Text style={styles.copy}>Leave blank for the selected unlock type. Use only if you need an extra story gate.</Text>
+          <MarkerStoryFlagVisibilityEditor
+            storyFlagKeys={storyFlagKeys}
+            visibleStoryFlagKey={visibleStoryFlagKey}
+            visibleStoryFlagValue={visibleStoryFlagValue}
+            onChangeVisibleStoryFlagKey={onChangeVisibleStoryFlagKey}
+            onToggleVisibleStoryFlagValue={onToggleVisibleStoryFlagValue}
+            onClear={onClearVisibleStoryFlag}
+          />
+        </View>
+      ) : null}
+
       <View style={styles.ruleBlock}>
-        <Text style={styles.subTitle}>2. Use Rule</Text>
-        <Text style={styles.copy}>Use lock text when the marker can be seen, but should explain why it cannot be opened yet.</Text>
+        <Text style={styles.subTitle}>Use Rule</Text>
+        <Text style={styles.copy}>Most markers should stay Public. Use locked text only when players should see the marker but not open it yet.</Text>
         <LockPicker label="Marker use state" value={markerLockType} onSelect={onChangeMarkerLockType} />
         {markerLockType !== "public" ? (
           <TextInput
@@ -96,15 +196,17 @@ export function MarkerAccessRulesPanel({
         <Pressable style={[styles.secondaryButton, markerInteractable && styles.typeSelected]} onPress={onToggleInteractable}>
           <Text style={styles.secondaryText}>Can Be Used When In Range: {markerInteractable ? "Yes" : "No"}</Text>
         </Pressable>
-        <Pressable style={[styles.secondaryButton, markerInitiallyUnlocked && styles.typeSelected]} onPress={onToggleInitiallyUnlocked}>
-          <Text style={styles.secondaryText}>Base Unlock State: {markerInitiallyUnlocked ? "Unlocked" : "Hidden Until Unlocked"}</Text>
-        </Pressable>
+        {markerAccessRule !== "puzzle_unlock" ? (
+          <Pressable style={[styles.secondaryButton, markerInitiallyUnlocked && styles.typeSelected]} onPress={onToggleInitiallyUnlocked}>
+            <Text style={styles.secondaryText}>Base Unlock State: {markerInitiallyUnlocked ? "Unlocked" : "Hidden Until Unlocked"}</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       {showPathRequirements ? (
         <View style={styles.ruleBlock}>
-          <Text style={styles.subTitle}>3. Linked Path Requirement</Text>
-          <Text style={styles.copy}>Use this only when the marker should open at a trail start/end, like exits, area entrances, clue locations, and gates.</Text>
+          <Text style={styles.subTitle}>Legacy Linked Path Requirement</Text>
+          <Text style={styles.copy}>Use sparingly. Prefer story flags, puzzles, or item requirements for new content.</Text>
           <MarkerPathRequirementEditor
             title={pathRequirementTitle}
             description={pathRequirementDescription}
@@ -122,10 +224,28 @@ export function MarkerAccessRulesPanel({
   );
 }
 
+const accessRuleOptions: Array<{ value: MapMarker["access_rule"]; label: string; description: string }> = [
+  { value: "always", label: "Always", description: "Visible and usable by proximity." },
+  { value: "story_flag", label: "Story Flag", description: "Hidden until dialogue/story sets a flag." },
+  { value: "puzzle_unlock", label: "Puzzle Unlock", description: "Hidden until a puzzle reveals it." },
+  { value: "item_required", label: "Item Required", description: "Visible, but needs an item to open." },
+  { value: "admin_only", label: "Admin Only", description: "Hidden from players." },
+];
+
 const styles = StyleSheet.create({
   copy: {
     color: colors.muted,
     lineHeight: 20,
+  },
+  choiceDescription: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  choiceGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   input: {
     borderColor: colors.border,
@@ -147,6 +267,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     gap: 10,
+    padding: 10,
+  },
+  ruleChoice: {
+    borderColor: colors.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flexBasis: "48%",
+    flexGrow: 1,
+    gap: 4,
+    minWidth: 140,
     padding: 10,
   },
   secondaryButton: {

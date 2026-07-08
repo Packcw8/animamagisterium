@@ -20,6 +20,10 @@ export type MarkerPayloadState = {
   markerSize: string;
   markerLockType: MapMarker["lock_type"];
   markerLockMessage: string;
+  markerAccessRule: MapMarker["access_rule"];
+  markerRequiredItemId: string | null;
+  markerRequiredItemQuantity: string;
+  markerAccessHint: string;
   markerVisibleStoryFlagKey: string;
   markerVisibleStoryFlagValue: boolean;
   markerStoryOrder: string;
@@ -82,6 +86,10 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     marker_size: Math.max(50, Math.min(220, Number(state.markerSize) || 100)),
     lock_type: state.markerLockType,
     lock_message: state.markerLockMessage.trim() || null,
+    access_rule: state.markerAccessRule,
+    required_item_id: state.markerAccessRule === "item_required" ? state.markerRequiredItemId : null,
+    required_item_quantity: Math.max(1, Number(state.markerRequiredItemQuantity) || 1),
+    access_hint: state.markerAccessHint.trim() || null,
     visible_story_flag_key: state.markerVisibleStoryFlagKey.trim() || null,
     visible_story_flag_value: state.markerVisibleStoryFlagValue,
     story_order: Number(state.markerStoryOrder) || 0,
@@ -143,6 +151,10 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     marker_size: settings.marker_size,
     lock_type: settings.lock_type,
     lock_message: settings.lock_message,
+    access_rule: settings.access_rule,
+    required_item_id: settings.required_item_id,
+    required_item_quantity: settings.required_item_quantity,
+    access_hint: settings.access_hint,
     visible_story_flag_key: settings.visible_story_flag_key,
     visible_story_flag_value: settings.visible_story_flag_value,
     story_order: settings.story_order,
