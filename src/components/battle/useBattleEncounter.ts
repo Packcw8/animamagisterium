@@ -70,7 +70,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   const [battleEnemyStamina, setBattleEnemyStamina] = useState(0);
   const [battleEnemyMagika, setBattleEnemyMagika] = useState(0);
   const [battleLog, setBattleLog] = useState<string[]>([]);
-  const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | null>(null);
+  const [battleFinished, setBattleFinished] = useState<"victory" | "defeat" | "flee" | null>(null);
   const [battleTurnPhase, setBattleTurnPhase] = useState<BattleTurnPhase>("player");
   const [openingEnemyTurnQueued, setOpeningEnemyTurnQueued] = useState(false);
   const [revivePromptOpen, setRevivePromptOpen] = useState(false);
@@ -776,8 +776,11 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       context.closePreview();
       return;
     }
+    setBattleFinished("flee");
+    setBattleTurnPhase("finished");
+    setRevivePromptOpen(false);
+    setBattleInventoryOpen(false);
     setBattleLog((current) => ["You escaped. No rewards were granted.", ...current].slice(0, 8));
-    resetBattleState();
     context.setGpsMessage("You escaped. No rewards were granted.");
   }
 
@@ -1022,8 +1025,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     setRevivePromptOpen(false);
-    log.push("No Revive Scroll found. Returning to the start of this trail.");
-    await context.resetRouteAfterDefeat();
+    log.push("No Revive Scroll found. Choose how to continue from the battle result.");
   }
 
   async function declineReviveAfterDefeat(context: BattleActionContext) {

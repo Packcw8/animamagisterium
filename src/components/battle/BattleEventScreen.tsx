@@ -35,11 +35,14 @@ type BattleEventScreenProps = {
   battleTurnPhase: BattleTurnPhase;
   combatIndicators: CombatIndicator[];
   revivePromptOpen: boolean;
-  result: "victory" | "defeat" | null;
+  result: "victory" | "defeat" | "flee" | null;
   previewMode?: boolean;
   defeatTitle?: string;
   defeatBody?: string;
   defeatActionLabel?: string;
+  fleeTitle?: string;
+  fleeBody?: string;
+  fleeActionLabel?: string;
   onAction: (ability: AbilityDefinition) => void;
   onSelectOpponent?: (opponentKey: string) => void;
   onWeaponAction: (weapon: ItemDefinition) => void;
@@ -48,6 +51,7 @@ type BattleEventScreenProps = {
   onToggleInventory: () => void;
   onDeclineRevive: () => void;
   onReturnToStart: () => void;
+  onCompleteFlee: () => void;
   onComplete: () => void;
   onExitPreview?: () => void;
 };
@@ -79,6 +83,9 @@ export function BattleEventScreen({
   defeatTitle = "Defeated",
   defeatBody = "Defeat is final for this attempt. Continue from 5% back on the path.",
   defeatActionLabel = "Continue From Setback",
+  fleeTitle = "Escaped",
+  fleeBody = "You escaped the battle. No rewards were granted.",
+  fleeActionLabel = "Continue Journey",
   onAction,
   onSelectOpponent,
   onFlee,
@@ -86,6 +93,7 @@ export function BattleEventScreen({
   onToggleInventory,
   onDeclineRevive,
   onReturnToStart,
+  onCompleteFlee,
   onComplete,
   onExitPreview,
 }: BattleEventScreenProps) {
@@ -96,7 +104,7 @@ export function BattleEventScreen({
   const enemyMaxHp = Number(activeEnemy?.health ?? event.enemy_hp) || 30;
   const rewardXp = Number(event.reward_xp ?? 0) + Number(activeEnemy?.xp_reward ?? 0);
   const rewardGold = Number(event.reward_gold ?? 0) + Number(activeEnemy?.gold_reward ?? 0);
-  const battlePhase = result === "victory" ? "Victory" : result === "defeat" ? "Defeat" : revivePromptOpen ? "Revive Choice" : battleTurnPhase === "enemy" ? "Enemy Turn" : battleTurnPhase === "rolling" ? "Rolling" : "Your Turn";
+  const battlePhase = result === "victory" ? "Victory" : result === "defeat" ? "Defeat" : result === "flee" ? "Escaped" : revivePromptOpen ? "Revive Choice" : battleTurnPhase === "enemy" ? "Enemy Turn" : battleTurnPhase === "rolling" ? "Rolling" : "Your Turn";
   const playerTurnActive = !result && !revivePromptOpen && battleTurnPhase === "player";
   const enemyTurnActive = !result && battleTurnPhase === "enemy";
   const enemyIntent = getEnemyIntent(activeEnemy, event);
@@ -373,6 +381,15 @@ export function BattleEventScreen({
               <Text style={styles.copy}>{defeatBody}</Text>
               <Pressable style={styles.primaryButton} onPress={onReturnToStart}>
                 <Text style={styles.primaryText}>{defeatActionLabel}</Text>
+              </Pressable>
+            </View>
+          ) : null}
+          {result === "flee" ? (
+            <View style={styles.battleResultPanel}>
+              <Text style={styles.selectedTitle}>{fleeTitle}</Text>
+              <Text style={styles.copy}>{fleeBody}</Text>
+              <Pressable style={styles.primaryButton} onPress={onCompleteFlee}>
+                <Text style={styles.primaryText}>{fleeActionLabel}</Text>
               </Pressable>
             </View>
           ) : null}

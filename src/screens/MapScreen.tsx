@@ -4792,12 +4792,37 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     await runOpeningEnemyTurn(getBattleActionContext());
   }
 
+  function clearActiveBattleState() {
+    setActiveEvent(null);
+    setActiveMarkerEventId(null);
+    setActiveBattle(null);
+    setActiveEnemy(null);
+    activeBattleRouteRef.current = null;
+  }
+
   async function fleeBattle() {
+    await runFleeBattle(getBattleActionContext());
+  }
+
+  async function completeFleeBattle() {
+    const fledBattle = activeBattle;
+
     if (activeArenaChallenge) {
       await completeActiveArenaChallenge("flee");
+      clearActiveBattleState();
+      setGpsMessage("Arena challenge ended. No trail progress was changed.");
+      return;
     }
-    await runFleeBattle(getBattleActionContext());
-    activeBattleRouteRef.current = null;
+
+    if (fledBattle?.route_id && !activeMarkerEventId) {
+      await reduceCurrentRouteProgress(3);
+      clearActiveBattleState();
+      setGpsMessage("You escaped, but lost 3% progress on this path.");
+      return;
+    }
+
+    clearActiveBattleState();
+    setGpsMessage("You escaped. No rewards were granted.");
   }
 
   async function declineReviveAfterDefeat() {
@@ -5974,6 +5999,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         defeatTitle={activeArenaChallenge ? "Arena Challenge Lost" : undefined}
         defeatBody={activeArenaChallenge ? "The current holder defended this arena. No trail progress was changed." : undefined}
         defeatActionLabel={activeArenaChallenge ? "Return to Arena" : undefined}
+        fleeTitle={activeArenaChallenge ? "Arena Challenge Left" : undefined}
+        fleeBody={activeArenaChallenge ? "You left the arena challenge. The holder keeps the arena, and no trail progress was changed." : activeBattle.route_id && !activeMarkerEventId ? "You escaped the battle. No rewards were granted, and you will lose 3% progress on this path." : "You escaped the battle. No rewards were granted."}
+        fleeActionLabel={activeArenaChallenge ? "Return to Arena" : activeBattle.route_id && !activeMarkerEventId ? "Accept 3% Setback" : "Return to Map"}
         toast={gameToast}
         onAction={(ability) => void handleBattleAction(ability)}
         onOpeningEnemyTurn={() => void handleOpeningEnemyTurn()}
@@ -5984,6 +6012,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
         onDeclineRevive={() => void declineReviveAfterDefeat()}
         onReturnToStart={() => activeArenaChallenge ? void finishEvent(activeBattle) : void resetCurrentRouteAfterDefeat()}
+        onCompleteFlee={() => void completeFleeBattle()}
         onComplete={() => void finishEvent(activeBattle)}
         onExitPreview={closeAdminPreview}
         onDismissToast={dismissGameToast}

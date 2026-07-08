@@ -34,11 +34,14 @@ type ActiveBattleViewProps = {
   openingEnemyTurnQueued: boolean;
   combatIndicators: CombatIndicator[];
   revivePromptOpen: boolean;
-  result: "victory" | "defeat" | null;
+  result: "victory" | "defeat" | "flee" | null;
   previewMode: boolean;
   defeatTitle?: string;
   defeatBody?: string;
   defeatActionLabel?: string;
+  fleeTitle?: string;
+  fleeBody?: string;
+  fleeActionLabel?: string;
   toast: GameToastData | null;
   onAction: (ability: AbilityDefinition) => void;
   onOpeningEnemyTurn: () => void;
@@ -49,6 +52,7 @@ type ActiveBattleViewProps = {
   onToggleInventory: () => void;
   onDeclineRevive: () => void;
   onReturnToStart: () => void;
+  onCompleteFlee: () => void;
   onComplete: () => void;
   onExitPreview: () => void;
   onDismissToast: () => void;
@@ -83,6 +87,9 @@ export function ActiveBattleView({
   defeatTitle,
   defeatBody,
   defeatActionLabel,
+  fleeTitle,
+  fleeBody,
+  fleeActionLabel,
   toast,
   onAction,
   onOpeningEnemyTurn,
@@ -93,6 +100,7 @@ export function ActiveBattleView({
   onToggleInventory,
   onDeclineRevive,
   onReturnToStart,
+  onCompleteFlee,
   onComplete,
   onExitPreview,
   onDismissToast,
@@ -133,6 +141,9 @@ export function ActiveBattleView({
         defeatTitle={defeatTitle}
         defeatBody={defeatBody}
         defeatActionLabel={defeatActionLabel}
+        fleeTitle={fleeTitle}
+        fleeBody={fleeBody}
+        fleeActionLabel={fleeActionLabel}
         onAction={onAction}
         onSelectOpponent={onSelectOpponent}
         onWeaponAction={onWeaponAction}
@@ -141,6 +152,7 @@ export function ActiveBattleView({
         onToggleInventory={onToggleInventory}
         onDeclineRevive={onDeclineRevive}
         onReturnToStart={onReturnToStart}
+        onCompleteFlee={onCompleteFlee}
         onComplete={onComplete}
         onExitPreview={onExitPreview}
       />
