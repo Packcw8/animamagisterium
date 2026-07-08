@@ -72,6 +72,7 @@ import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission } from "../services/pushNotificationService";
 import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAssetUri, type GameToastDefinition, type GameToastTriggerType } from "../services/gameToastService";
 import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
+import { getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { adminSections, editorModes, getDefaultDraftTypeForAdminSection, getEditorModeForAdminSection, isMapAdminSection, type MapAdminSection } from "../utils/mapAdminSections";
@@ -201,8 +202,8 @@ import {
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
-const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Point of Interest", "Puzzle", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
-const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
+const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Arena", "Point of Interest", "Puzzle", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
+const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Arena", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
@@ -366,6 +367,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [routeDirection, setRouteDirection] = useState<"forward" | "reverse">("forward");
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
   const [selectedPuzzle, setSelectedPuzzle] = useState<PuzzleWithZones | null>(null);
+  const [selectedArena, setSelectedArena] = useState<ArenaWithLeaders | null>(null);
   const [activeMiniMap, setActiveMiniMap] = useState<MiniMap | null>(null);
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
   const [adminSection, setAdminSection] = useState<(typeof adminSections)[number]>("World Markers");
@@ -2092,6 +2094,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       const markerState = getMarkerPayloadState(activeMiniMapId);
       const created = await createMapMarker(buildCreateMarkerInput(markerState, clickedPercent));
       const configured = await updateMarkerSettings(created.id, getMarkerSettingsPayload("create"));
+      await syncArenaMarker(configured);
       if (activeMiniMapId && configured.mini_map_id !== activeMiniMapId) {
         throw new Error("Mini-map marker was saved without the open mini map id. Try again after reopening the mini map.");
       }
@@ -2188,6 +2191,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setPreviewMarkerScene(false);
     setSelectedMarker(marker);
     setSelectedPuzzle(null);
+    setSelectedArena(null);
     setDraftType(marker.type || markerTypes[0]);
     setDraftTitle(marker.title);
     setDraftDescription(marker.description ?? "");
@@ -2244,12 +2248,14 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setMarkerPanelMessage(null);
 
     try {
-      const [links, markerNodes] = await Promise.all([
+      const [links, markerNodes, arena] = await Promise.all([
         getMarkerRouteLinks(marker.id),
         supportsMarkerDialogue(marker.type) ? getDialogueNodesForMarker(marker.id) : Promise.resolve([]),
+        marker.type === "Arena" ? getArenaForMarker(marker) : Promise.resolve(null),
       ]);
       const puzzle = marker.type === "Puzzle" ? await getPuzzleForMarker(marker.id, character.id) : null;
       setSelectedPuzzle(puzzle);
+      setSelectedArena(arena);
       await loadMarkerMarketState(marker.id);
       if (isBattleMarkerType(marker.type)) {
         await loadMarkerBattlefieldCombatants(marker.id);
@@ -2353,8 +2359,22 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setPreviewMarkerScene(false);
     setSelectedMarker(null);
     setSelectedPuzzle(null);
+    setSelectedArena(null);
     setMarkerPanelMessage(null);
     setMarketPurchaseCounts({});
+  }
+
+  async function syncArenaMarker(marker: MapMarker) {
+    if (marker.type !== "Arena") {
+      return;
+    }
+
+    try {
+      await saveArenaForMarker(marker);
+    } catch (error) {
+      console.warn("[arena] arena marker saved without arena spot", getErrorMessage(error, "Arena table unavailable."));
+      setAdminMessage("Arena marker saved, but the arena tables are not ready. Run the arena migration to enable holder boards.");
+    }
   }
 
   async function saveSelectedMarkerSettings() {
@@ -2388,6 +2408,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           })
         : selectedMarker;
       const updated = await updateMarkerSettings(moved.id, getMarkerSettingsPayload());
+      await syncArenaMarker(updated);
       const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections);
       setMarkerRouteLinks(links);
       setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== updated.id), ...links]);
@@ -5881,6 +5902,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           inventoryItems={inventoryItems}
           itemDefinitions={itemDefinitions}
           markerHasDialogue={markerDialogueIds.has(selectedMarker.id) || Boolean(selectedMarker.dialogue_event_id)}
+          arena={selectedArena}
           message={markerPanelMessage}
           onExit={closeMarkerScene}
           onBuy={(marketItem) => void buyFromMarker(marketItem)}

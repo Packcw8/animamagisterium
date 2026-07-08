@@ -19,6 +19,7 @@ import {
   isStoryQuestMarker,
 } from "../../utils/mapVisibility";
 import { getRouteLockLabel, getRouteLockMessage, isRouteLocked } from "../../utils/mapProgress";
+import type { ArenaLeaderboardEntry, ArenaWithLeaders } from "../../services/arenaService";
 
 const marketModes = ["Buy", "Sell"] as const;
 type MarketMode = (typeof marketModes)[number];
@@ -34,6 +35,7 @@ export function MarkerSceneScreen({
   inventoryItems,
   itemDefinitions,
   markerHasDialogue,
+  arena,
   message,
   onExit,
   onBuy,
@@ -56,6 +58,7 @@ export function MarkerSceneScreen({
   inventoryItems: InventoryItem[];
   itemDefinitions: ItemDefinition[];
   markerHasDialogue: boolean;
+  arena: ArenaWithLeaders | null;
   message: string | null;
   onExit: () => void;
   onBuy: (marketItem: MarkerMarketItem) => void;
@@ -198,6 +201,8 @@ export function MarkerSceneScreen({
             onBuy={onBuy}
             onSell={onSell}
           />
+        ) : marker.type === "Arena" ? (
+          <ArenaScene arena={arena} marker={marker} />
         ) : isBattleMarkerType(marker.type) ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Battle</Text>
@@ -226,6 +231,125 @@ export function MarkerSceneScreen({
       </Frame>
     </Screen>
   );
+}
+
+function ArenaScene({ arena, marker }: { arena: ArenaWithLeaders | null; marker: MapMarker }) {
+  const currentHolder = arena?.currentHolder ?? null;
+  const currentSnapshot = currentHolder?.snapshot ?? null;
+  const defenses = arena?.mostDefenses ?? [];
+  const longestHeld = arena?.longestHeld ?? [];
+  const attacks = getSnapshotAttacks(currentSnapshot);
+
+  return (
+    <View style={styles.arenaScene}>
+      <View style={styles.arenaHero}>
+        <View style={styles.arenaHeroText}>
+          <Text style={styles.markerType}>Arena</Text>
+          <Text style={styles.arenaTitle}>{arena?.arena?.name || marker.title}</Text>
+          <Text style={styles.copy}>{arena?.arena?.description || marker.description || "Face the current holder and earn your place on the board."}</Text>
+        </View>
+        <View style={styles.arenaPrizeBox}>
+          <Text style={styles.marketPriceLabel}>Prize</Text>
+          <Text style={styles.marketBuyPrice}>{arena?.arena?.reward_gold ?? marker.reward_gold ?? 0} gold</Text>
+          <Text style={styles.marketSellPrice}>{arena?.arena?.reward_xp ?? marker.reward_xp ?? 0} XP</Text>
+        </View>
+      </View>
+
+      {arena?.unavailableReason ? <Text style={styles.adminMessage}>{arena.unavailableReason}</Text> : null}
+
+      <View style={styles.currentHolderCard}>
+        <Text style={styles.selectedTitle}>Current Holder</Text>
+        {currentHolder && currentSnapshot ? (
+          <View style={styles.holderRow}>
+            <View style={styles.holderPortrait}>
+              {currentSnapshot.portrait_url ? <Image source={{ uri: currentSnapshot.portrait_url }} style={styles.holderImage} /> : <Text style={styles.marketItemFallback}>{currentSnapshot.character_name.slice(0, 1)}</Text>}
+            </View>
+            <View style={styles.holderBody}>
+              <Text style={styles.marketItemName}>{currentSnapshot.character_name}</Text>
+              <Text style={styles.marketItemType}>Level {currentSnapshot.level}{currentSnapshot.active_class_key ? ` / ${currentSnapshot.active_class_key}` : ""}</Text>
+              <View style={styles.holderStats}>
+                <Text style={styles.statPill}>DEF {currentSnapshot.defense}</Text>
+                <Text style={styles.statPill}>ATK +{currentSnapshot.attack_bonus}</Text>
+                <Text style={styles.statPill}>HP {currentSnapshot.current_health}/{currentSnapshot.max_health}</Text>
+              </View>
+              <Text style={styles.copy}>Held {formatHeldTime(currentHolder.heldMs)} / {currentHolder.holder.wins_defended} defenses</Text>
+            </View>
+          </View>
+        ) : (
+          <Text style={styles.copy}>No player holds this arena yet.</Text>
+        )}
+      </View>
+
+      <View style={styles.arenaSection}>
+        <Text style={styles.selectedTitle}>Holder Attacks</Text>
+        {attacks.length === 0 ? <Text style={styles.copy}>No equipped attacks are recorded for the current holder.</Text> : null}
+        {attacks.map((ability, index) => (
+          <View key={`${ability.name}-${index}`} style={styles.attackRow}>
+            <Text style={styles.attackName}>{ability.name}</Text>
+            <Text style={styles.attackMeta}>
+              {ability.damage ? `${ability.damage} damage` : ability.healing ? `${ability.healing} healing` : ability.type || "ability"}
+              {ability.staminaCost ? ` / ${ability.staminaCost} stamina` : ""}
+              {ability.magikaCost ? ` / ${ability.magikaCost} mana` : ""}
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      <ArenaLeaderboard title="Most Defenses" entries={defenses} metric="defenses" />
+      <ArenaLeaderboard title="Longest Held" entries={longestHeld} metric="held" />
+
+      <Pressable style={[styles.primaryButton, styles.disabledAction]} disabled>
+        <Text style={styles.primaryText}>Challenge Coming Soon</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function ArenaLeaderboard({ title, entries, metric }: { title: string; entries: ArenaLeaderboardEntry[]; metric: "defenses" | "held" }) {
+  return (
+    <View style={styles.arenaSection}>
+      <Text style={styles.selectedTitle}>{title}</Text>
+      {entries.length === 0 ? <Text style={styles.copy}>No arena history yet.</Text> : null}
+      {entries.slice(0, 10).map((entry, index) => (
+        <View key={entry.holder.id} style={styles.leaderboardRow}>
+          <Text style={styles.rankText}>{index + 1}</Text>
+          <View style={styles.leaderboardBody}>
+            <Text style={styles.marketItemName}>{entry.snapshot?.character_name ?? "Unknown Holder"}</Text>
+            <Text style={styles.marketItemType}>Level {entry.snapshot?.level ?? "?"} / Defense {entry.snapshot?.defense ?? "?"}</Text>
+          </View>
+          <Text style={styles.leaderboardMetric}>
+            {metric === "defenses" ? `${entry.holder.wins_defended}` : formatHeldTime(entry.heldMs)}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
+function getSnapshotAttacks(snapshot: ArenaLeaderboardEntry["snapshot"]) {
+  const abilities = Array.isArray(snapshot?.equipped_abilities) ? snapshot.equipped_abilities : [];
+  return abilities
+    .map((ability) => ({
+      name: String(ability.name ?? "Ability"),
+      type: String(ability.type ?? ""),
+      damage: Number(ability.damage) || 0,
+      healing: Number(ability.healing) || 0,
+      staminaCost: Number(ability.staminaCost) || 0,
+      magikaCost: Number(ability.magikaCost) || 0,
+    }))
+    .filter((ability) => ability.damage > 0 || ability.healing > 0 || ability.type === "attack");
+}
+
+function formatHeldTime(milliseconds: number) {
+  const minutes = Math.floor(milliseconds / 60000);
+  if (minutes < 60) {
+    return `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) {
+    return `${hours}h`;
+  }
+  return `${Math.floor(hours / 24)}d`;
 }
 
 function isDialogueMarkerType(type: string) {
@@ -813,5 +937,137 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(20,61,86,0.28)",
+  },
+  arenaScene: {
+    gap: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.26)",
+    backgroundColor: "rgba(0,0,0,0.52)",
+    padding: 12,
+  },
+  arenaHero: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "stretch",
+  },
+  arenaHeroText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  arenaTitle: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 24,
+  },
+  arenaPrizeBox: {
+    width: 104,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "rgba(217, 170, 93, 0.1)",
+    padding: 10,
+    justifyContent: "center",
+    alignItems: "flex-end",
+  },
+  currentHolderCard: {
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(40, 175, 234, 0.35)",
+    backgroundColor: "rgba(0, 23, 31, 0.42)",
+    padding: 12,
+  },
+  holderRow: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "center",
+  },
+  holderPortrait: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    borderWidth: 2,
+    borderColor: colors.blue,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  holderImage: {
+    width: "100%",
+    height: "100%",
+  },
+  holderBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  holderStats: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  statPill: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: "900",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.24)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: "rgba(0,0,0,0.32)",
+  },
+  arenaSection: {
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(4, 7, 6, 0.7)",
+    padding: 12,
+  },
+  attackRow: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.18)",
+    backgroundColor: "rgba(0,0,0,0.28)",
+    padding: 10,
+  },
+  attackName: {
+    color: colors.text,
+    fontWeight: "900",
+  },
+  attackMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  leaderboardRow: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.16)",
+    backgroundColor: "rgba(0,0,0,0.26)",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  rankText: {
+    width: 26,
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 16,
+  },
+  leaderboardBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+  leaderboardMetric: {
+    color: colors.blue,
+    fontWeight: "900",
   },
 });

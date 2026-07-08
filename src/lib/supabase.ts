@@ -274,6 +274,47 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  arena_spots: {
+    id: string;
+    marker_id: string;
+    name: string;
+    description: string | null;
+    background_image_url: string | null;
+    entry_cost_gold: number;
+    reward_xp: number;
+    reward_gold: number;
+    required_level: number;
+    allow_holder_replacement: boolean;
+    season_number: number;
+    chapter_number: number;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  arena_holders: {
+    id: string;
+    arena_id: string;
+    holder_user_id: string | null;
+    holder_character_id: string | null;
+    holder_snapshot_id: string | null;
+    wins_defended: number;
+    won_at: string;
+    replaced_at: string | null;
+    is_current: boolean;
+    created_at: string;
+  };
+  arena_challenge_history: {
+    id: string;
+    arena_id: string;
+    challenger_user_id: string | null;
+    challenger_character_id: string | null;
+    defender_snapshot_id: string | null;
+    result: "win" | "loss" | "flee" | "preview";
+    reward_xp: number;
+    reward_gold: number;
+    created_at: string;
+  };
   avatar_assets: {
     id: string;
     type: "base" | "face" | "hair" | "armor" | "weapon" | "cloak" | "background";
