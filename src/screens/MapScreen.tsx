@@ -72,7 +72,8 @@ import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission } from "../services/pushNotificationService";
 import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAssetUri, type GameToastDefinition, type GameToastTriggerType } from "../services/gameToastService";
 import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
-import { getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
+import { claimOpenArena, getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
+import { createCurrentPlayerBattleSnapshot } from "../services/battleSnapshotService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { adminSections, editorModes, getDefaultDraftTypeForAdminSection, getEditorModeForAdminSection, isMapAdminSection, type MapAdminSection } from "../utils/mapAdminSections";
@@ -2374,6 +2375,23 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     } catch (error) {
       console.warn("[arena] arena marker saved without arena spot", getErrorMessage(error, "Arena table unavailable."));
       setAdminMessage("Arena marker saved, but the arena tables are not ready. Run the arena migration to enable holder boards.");
+    }
+  }
+
+  async function claimSelectedArena() {
+    if (!selectedMarker || selectedMarker.type !== "Arena" || !selectedArena?.arena) {
+      setMarkerPanelMessage("This arena is not ready yet.");
+      return;
+    }
+
+    try {
+      const snapshot = await createCurrentPlayerBattleSnapshot(character, "arena_holder");
+      await claimOpenArena(selectedArena.arena.id, snapshot);
+      const refreshedArena = await getArenaForMarker(selectedMarker);
+      setSelectedArena(refreshedArena);
+      setMarkerPanelMessage(`${character.name} now holds ${selectedArena.arena.name}.`);
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to claim this arena."));
     }
   }
 
@@ -5914,6 +5932,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           onEnterArea={() => void enterAreaMarker(selectedMarker)}
           onOpenDialogueEvent={() => void openSelectedMarkerDialogue()}
           onStartBattleEvent={() => void startSelectedMarkerBattle()}
+          onClaimArena={() => void claimSelectedArena()}
         />
         <GameToast toast={gameToast} onDismiss={dismissGameToast} />
       </>

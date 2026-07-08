@@ -47,6 +47,7 @@ export function MarkerSceneScreen({
   onEnterArea,
   onOpenDialogueEvent,
   onStartBattleEvent,
+  onClaimArena,
 }: {
   marker: MapMarker;
   characterGold: number;
@@ -70,6 +71,7 @@ export function MarkerSceneScreen({
   onEnterArea: () => void;
   onOpenDialogueEvent: () => void;
   onStartBattleEvent: () => void;
+  onClaimArena: () => void;
 }) {
   const backgroundUri = resolveSceneImageUri(marker.scene_background_image_url || marker.shop_background_image_url);
   const npcUri = resolveSceneImageUri(marker.scene_npc_image_url || marker.shop_image_url || marker.quest_image_url);
@@ -202,7 +204,7 @@ export function MarkerSceneScreen({
             onSell={onSell}
           />
         ) : marker.type === "Arena" ? (
-          <ArenaScene arena={arena} marker={marker} />
+          <ArenaScene arena={arena} marker={marker} onClaimArena={onClaimArena} />
         ) : isBattleMarkerType(marker.type) ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Battle</Text>
@@ -233,12 +235,17 @@ export function MarkerSceneScreen({
   );
 }
 
-function ArenaScene({ arena, marker }: { arena: ArenaWithLeaders | null; marker: MapMarker }) {
+const arenaTabs = ["Arena", "Leaderboard", "Holder"] as const;
+type ArenaTab = (typeof arenaTabs)[number];
+
+function ArenaScene({ arena, marker, onClaimArena }: { arena: ArenaWithLeaders | null; marker: MapMarker; onClaimArena: () => void }) {
+  const [activeTab, setActiveTab] = useState<ArenaTab>("Arena");
   const currentHolder = arena?.currentHolder ?? null;
   const currentSnapshot = currentHolder?.snapshot ?? null;
   const defenses = arena?.mostDefenses ?? [];
   const longestHeld = arena?.longestHeld ?? [];
   const attacks = getSnapshotAttacks(currentSnapshot);
+  const canClaim = Boolean(arena?.arena && !currentHolder && !arena.unavailableReason);
 
   return (
     <View style={styles.arenaScene}>
@@ -257,50 +264,82 @@ function ArenaScene({ arena, marker }: { arena: ArenaWithLeaders | null; marker:
 
       {arena?.unavailableReason ? <Text style={styles.adminMessage}>{arena.unavailableReason}</Text> : null}
 
-      <View style={styles.currentHolderCard}>
-        <Text style={styles.selectedTitle}>Current Holder</Text>
-        {currentHolder && currentSnapshot ? (
-          <View style={styles.holderRow}>
-            <View style={styles.holderPortrait}>
-              {currentSnapshot.portrait_url ? <Image source={{ uri: currentSnapshot.portrait_url }} style={styles.holderImage} /> : <Text style={styles.marketItemFallback}>{currentSnapshot.character_name.slice(0, 1)}</Text>}
-            </View>
-            <View style={styles.holderBody}>
-              <Text style={styles.marketItemName}>{currentSnapshot.character_name}</Text>
-              <Text style={styles.marketItemType}>Level {currentSnapshot.level}{currentSnapshot.active_class_key ? ` / ${currentSnapshot.active_class_key}` : ""}</Text>
-              <View style={styles.holderStats}>
-                <Text style={styles.statPill}>DEF {currentSnapshot.defense}</Text>
-                <Text style={styles.statPill}>ATK +{currentSnapshot.attack_bonus}</Text>
-                <Text style={styles.statPill}>HP {currentSnapshot.current_health}/{currentSnapshot.max_health}</Text>
-              </View>
-              <Text style={styles.copy}>Held {formatHeldTime(currentHolder.heldMs)} / {currentHolder.holder.wins_defended} defenses</Text>
-            </View>
-          </View>
-        ) : (
-          <Text style={styles.copy}>No player holds this arena yet.</Text>
-        )}
-      </View>
-
-      <View style={styles.arenaSection}>
-        <Text style={styles.selectedTitle}>Holder Attacks</Text>
-        {attacks.length === 0 ? <Text style={styles.copy}>No equipped attacks are recorded for the current holder.</Text> : null}
-        {attacks.map((ability, index) => (
-          <View key={`${ability.name}-${index}`} style={styles.attackRow}>
-            <Text style={styles.attackName}>{ability.name}</Text>
-            <Text style={styles.attackMeta}>
-              {ability.damage ? `${ability.damage} damage` : ability.healing ? `${ability.healing} healing` : ability.type || "ability"}
-              {ability.staminaCost ? ` / ${ability.staminaCost} stamina` : ""}
-              {ability.magikaCost ? ` / ${ability.magikaCost} mana` : ""}
-            </Text>
-          </View>
+      <View style={styles.arenaTabs}>
+        {arenaTabs.map((tab) => (
+          <Pressable key={tab} style={[styles.arenaTabButton, activeTab === tab && styles.arenaTabActive]} onPress={() => setActiveTab(tab)}>
+            <Text style={[styles.arenaTabText, activeTab === tab && styles.arenaTabTextActive]}>{tab}</Text>
+          </Pressable>
         ))}
       </View>
 
-      <ArenaLeaderboard title="Most Defenses" entries={defenses} metric="defenses" />
-      <ArenaLeaderboard title="Longest Held" entries={longestHeld} metric="held" />
+      {activeTab === "Arena" ? (
+        <>
+          <ArenaHolderCard currentHolder={currentHolder} currentSnapshot={currentSnapshot} />
+          {canClaim ? (
+            <Pressable style={styles.primaryButton} onPress={onClaimArena}>
+              <Text style={styles.primaryText}>Claim Open Arena</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={[styles.primaryButton, styles.disabledAction]} disabled>
+              <Text style={styles.primaryText}>{currentHolder ? "Challenge Coming Soon" : "Arena Not Ready"}</Text>
+            </Pressable>
+          )}
+        </>
+      ) : null}
 
-      <Pressable style={[styles.primaryButton, styles.disabledAction]} disabled>
-        <Text style={styles.primaryText}>Challenge Coming Soon</Text>
-      </Pressable>
+      {activeTab === "Leaderboard" ? (
+        <>
+          <ArenaLeaderboard title="Most Defenses" entries={defenses} metric="defenses" />
+          <ArenaLeaderboard title="Longest Held" entries={longestHeld} metric="held" />
+        </>
+      ) : null}
+
+      {activeTab === "Holder" ? (
+        <>
+          <ArenaHolderCard currentHolder={currentHolder} currentSnapshot={currentSnapshot} />
+          <View style={styles.arenaSection}>
+            <Text style={styles.selectedTitle}>Holder Attacks</Text>
+            {attacks.length === 0 ? <Text style={styles.copy}>No equipped attacks are recorded for the current holder.</Text> : null}
+            {attacks.map((ability, index) => (
+              <View key={`${ability.name}-${index}`} style={styles.attackRow}>
+                <Text style={styles.attackName}>{ability.name}</Text>
+                <Text style={styles.attackMeta}>
+                  {ability.damage ? `${ability.damage} damage` : ability.healing ? `${ability.healing} healing` : ability.type || "ability"}
+                  {ability.staminaCost ? ` / ${ability.staminaCost} stamina` : ""}
+                  {ability.magikaCost ? ` / ${ability.magikaCost} mana` : ""}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+function ArenaHolderCard({ currentHolder, currentSnapshot }: { currentHolder: ArenaLeaderboardEntry | null; currentSnapshot: ArenaLeaderboardEntry["snapshot"] }) {
+  return (
+    <View style={styles.currentHolderCard}>
+      <Text style={styles.selectedTitle}>Current Holder</Text>
+      {currentHolder && currentSnapshot ? (
+        <View style={styles.holderRow}>
+          <View style={styles.holderPortrait}>
+            {currentSnapshot.portrait_url ? <Image source={{ uri: currentSnapshot.portrait_url }} style={styles.holderImage} /> : <Text style={styles.marketItemFallback}>{currentSnapshot.character_name.slice(0, 1)}</Text>}
+          </View>
+          <View style={styles.holderBody}>
+            <Text style={styles.marketItemName}>{currentSnapshot.character_name}</Text>
+            <Text style={styles.marketItemType}>Level {currentSnapshot.level}{currentSnapshot.active_class_key ? ` / ${currentSnapshot.active_class_key}` : ""}</Text>
+            <View style={styles.holderStats}>
+              <Text style={styles.statPill}>DEF {currentSnapshot.defense}</Text>
+              <Text style={styles.statPill}>ATK +{currentSnapshot.attack_bonus}</Text>
+              <Text style={styles.statPill}>HP {currentSnapshot.current_health}/{currentSnapshot.max_health}</Text>
+            </View>
+            <Text style={styles.copy}>Held {formatHeldTime(currentHolder.heldMs)} / {currentHolder.holder.wins_defended} defenses</Text>
+          </View>
+        </View>
+      ) : (
+        <Text style={styles.copy}>No player holds this arena yet.</Text>
+      )}
     </View>
   );
 }
@@ -970,6 +1009,36 @@ const styles = StyleSheet.create({
     padding: 10,
     justifyContent: "center",
     alignItems: "flex-end",
+  },
+  arenaTabs: {
+    flexDirection: "row",
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.18)",
+    backgroundColor: "rgba(0,0,0,0.34)",
+    padding: 5,
+  },
+  arenaTabButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.16)",
+  },
+  arenaTabActive: {
+    borderColor: colors.border,
+    backgroundColor: "rgba(217, 170, 93, 0.2)",
+  },
+  arenaTabText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  arenaTabTextActive: {
+    color: colors.gold,
   },
   currentHolderCard: {
     gap: 10,

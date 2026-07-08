@@ -123,6 +123,48 @@ export async function saveArenaForMarker(marker: MapMarker) {
   return data as ArenaSpot;
 }
 
+export async function claimOpenArena(arenaId: string, snapshot: PlayerBattleSnapshot) {
+  const existing = await getCurrentArenaHolder(arenaId);
+
+  if (existing) {
+    throw new Error("This arena already has a current holder.");
+  }
+
+  const { data, error } = await supabase
+    .from("arena_holders")
+    .insert({
+      arena_id: arenaId,
+      holder_user_id: snapshot.user_id,
+      holder_character_id: snapshot.character_id,
+      holder_snapshot_id: snapshot.id,
+      wins_defended: 0,
+      is_current: true,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as ArenaHolder;
+}
+
+async function getCurrentArenaHolder(arenaId: string) {
+  const { data, error } = await supabase
+    .from("arena_holders")
+    .select("*")
+    .eq("arena_id", arenaId)
+    .eq("is_current", true)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as ArenaHolder | null;
+}
+
 async function getSnapshotsById(snapshotIds: string[]) {
   if (snapshotIds.length === 0) {
     return new Map<string, PlayerBattleSnapshot>();
