@@ -44,6 +44,25 @@ function AppShell() {
   const [startupMessage, setStartupMessage] = useState("Starting Anima Magisterium...");
   const [error, setError] = useState<string | null>(null);
 
+  function syncBattleSnapshot(nextCharacter: CharacterWithDetails | null) {
+    if (!nextCharacter) {
+      return;
+    }
+
+    const snapshotService = loadScreen<{
+      createCurrentPlayerBattleSnapshot: (character: CharacterWithDetails, source?: "manual" | "party_ally" | "arena_holder" | "system") => Promise<unknown>;
+    }>("battleSnapshotService", () => require("./src/services/battleSnapshotService"));
+
+    snapshotService.createCurrentPlayerBattleSnapshot(nextCharacter, "system").catch((snapshotError) => {
+      console.warn("[battle-snapshot] sync skipped", snapshotError instanceof Error ? snapshotError.message : snapshotError);
+    });
+  }
+
+  function handleCharacterUpdated(nextCharacter: CharacterWithDetails | null) {
+    setCharacter(nextCharacter);
+    syncBattleSnapshot(nextCharacter);
+  }
+
   async function loadMvpState(activeSession: Session | null) {
     const characterService = loadScreen<{
       createProfileIfMissing: (user: Session["user"]) => Promise<unknown>;
@@ -63,7 +82,7 @@ function AppShell() {
 
       await characterService.createProfileIfMissing(activeSession.user);
       const [loadedCharacter, loadedAssets] = await Promise.all([characterService.getCharacter(), characterService.getAvatarAssets()]);
-      setCharacter(loadedCharacter);
+      handleCharacterUpdated(loadedCharacter);
       setAvatarAssets(loadedAssets);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load Animamagisterium.");
@@ -165,7 +184,7 @@ function AppShell() {
             {activeUtilityScreen === "settings" ? (
               <SettingsScreenView character={character} onBack={() => setActiveUtilityScreen(null)} onOpenAdmin={() => setActiveUtilityScreen("admin")} />
             ) : activeUtilityScreen === "inbox" ? (
-              <InboxScreenView character={character} onBack={() => setActiveUtilityScreen(null)} onCharacterUpdated={setCharacter} />
+              <InboxScreenView character={character} onBack={() => setActiveUtilityScreen(null)} onCharacterUpdated={handleCharacterUpdated} />
             ) : activeUtilityScreen === "admin" ? (
               <AdminScreenView
                 onBack={() => setActiveUtilityScreen("settings")}
@@ -193,14 +212,14 @@ function AppShell() {
             ) : activeScreen === "home" ? (
               <HomeScreenView
                 character={character}
-                onCharacterUpdated={setCharacter}
+                onCharacterUpdated={handleCharacterUpdated}
                 onOpenInbox={() => setActiveUtilityScreen("inbox")}
                 onOpenSettings={() => setActiveUtilityScreen("settings")}
               />
             ) : activeScreen === "map" ? (
-              <MapScreenView character={character} onCharacterUpdated={setCharacter} initialAdminSection={requestedMapAdminSection} />
+              <MapScreenView character={character} onCharacterUpdated={handleCharacterUpdated} initialAdminSection={requestedMapAdminSection} />
             ) : activeScreen === "quests" ? (
-              <QuestsScreenView character={character} onCharacterUpdated={setCharacter} />
+              <QuestsScreenView character={character} onCharacterUpdated={handleCharacterUpdated} />
             ) : activeScreen === "social" ? (
               <SocialScreenView />
             ) : (
@@ -209,7 +228,7 @@ function AppShell() {
           </AuthenticatedLayout>
         ) : (
           <AuthenticatedLayout activeScreen={activeScreen} onChangeScreen={setActiveScreen}>
-            <CharacterCreationScreenView assets={avatarAssets} onCreated={setCharacter} />
+            <CharacterCreationScreenView assets={avatarAssets} onCreated={handleCharacterUpdated} />
           </AuthenticatedLayout>
         )}
       </View>
