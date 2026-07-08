@@ -152,9 +152,6 @@ export function OverworldMapCanvas({
           {surface}
         </View>
         <View pointerEvents="none" style={styles.lockedVignette} />
-        <View pointerEvents="none" style={styles.lockedCenterReticle}>
-          <Text style={styles.lockedCenterText}>YOU</Text>
-        </View>
       </View>
     );
   }
@@ -310,9 +307,6 @@ export function MiniMapCanvas({
             {miniMapSurface}
           </View>
           <View pointerEvents="none" style={styles.lockedVignette} />
-          <View pointerEvents="none" style={styles.lockedCenterReticle}>
-            <Text style={styles.lockedCenterText}>YOU</Text>
-          </View>
         </View>
       );
     }
@@ -360,9 +354,6 @@ export function MiniMapCanvas({
           {miniMapSurface}
         </View>
         <View pointerEvents="none" style={styles.lockedVignette} />
-        <View pointerEvents="none" style={styles.lockedCenterReticle}>
-          <Text style={styles.lockedCenterText}>YOU</Text>
-        </View>
       </View>
     );
   }
@@ -494,11 +485,16 @@ function MapCanvasLayers({
           !mini && ({ transitionDuration: "450ms" } as object),
         ]}
       >
-        {playerPortraitUrl ? (
-          <Image source={{ uri: playerPortraitUrl }} style={styles.playerPortrait} />
-        ) : (
-          <Text style={[styles.playerInitial, mini && styles.miniMapPlayerInitial]}>{playerName.slice(0, 1).toUpperCase()}</Text>
-        )}
+        <View pointerEvents="none" style={styles.playerLabel}>
+          <Text style={styles.playerLabelText}>YOU</Text>
+        </View>
+        <View style={[styles.playerPortraitFrame, mini && styles.miniMapPlayerPortraitFrame]}>
+          {playerPortraitUrl ? (
+            <Image source={{ uri: playerPortraitUrl }} style={styles.playerPortrait} />
+          ) : (
+            <Text style={[styles.playerInitial, mini && styles.miniMapPlayerInitial]}>{playerName.slice(0, 1).toUpperCase()}</Text>
+          )}
+        </View>
       </View>
       {showTempMarker && clickedPercent ? (
         <View pointerEvents="none" style={[styles.tempMarker, { left: `${clickedPercent.x}%`, top: `${clickedPercent.y}%` }]}>
@@ -774,28 +770,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(218, 164, 65, 0.2)",
     backgroundColor: "transparent",
   } as object,
-  lockedCenterReticle: {
-    position: "absolute",
-    left: "50%",
-    top: "50%",
-    minWidth: 42,
-    height: 22,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(54, 184, 242, 0.75)",
-    backgroundColor: "rgba(1, 7, 9, 0.78)",
-    alignItems: "center",
-    justifyContent: "center",
-    transform: [{ translateX: -21 }, { translateY: 26 }],
-  },
-  lockedCenterText: {
-    color: colors.blue,
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 0,
-    textTransform: "uppercase",
-  },
   miniMapImage: {
     position: "absolute",
     width: "100%",
@@ -984,11 +958,6 @@ const styles = StyleSheet.create({
     zIndex: 20,
     width: 28,
     height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: colors.blue,
-    backgroundColor: "#061118",
-    overflow: "hidden",
     transform: [{ translateX: -14 }, { translateY: -14 }],
     alignItems: "center",
     justifyContent: "center",
@@ -1003,9 +972,46 @@ const styles = StyleSheet.create({
   miniMapPlayerPin: {
     width: 35,
     height: 35,
-    borderRadius: 18,
-    borderWidth: 2,
     transform: [{ translateX: -18 }, { translateY: -18 }],
+  },
+  playerLabel: {
+    position: "absolute",
+    top: -19,
+    minWidth: 34,
+    height: 18,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(54, 184, 242, 0.75)",
+    backgroundColor: "rgba(1, 7, 9, 0.86)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.blue,
+    shadowOpacity: 0.25,
+    shadowRadius: 5,
+  },
+  playerLabelText: {
+    color: colors.blue,
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase",
+  },
+  playerPortraitFrame: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.blue,
+    backgroundColor: "#061118",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  miniMapPlayerPortraitFrame: {
+    width: 35,
+    height: 35,
+    borderRadius: 18,
   },
   playerPortrait: {
     width: "100%",
