@@ -563,11 +563,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 12,
-    backgroundColor: colors.gold,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.54)",
+    backgroundColor: "rgba(2, 5, 5, 0.72)",
     paddingHorizontal: 14,
   },
   primaryText: {
-    color: "#120e08",
+    color: colors.gold,
     fontWeight: "900",
   },
   storyCard: {
@@ -699,7 +701,9 @@ const styles = StyleSheet.create({
   marketActionButton: {
     minHeight: 42,
     borderRadius: 8,
-    backgroundColor: colors.gold,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.54)",
+    backgroundColor: "rgba(2, 5, 5, 0.72)",
     alignItems: "center",
     justifyContent: "center",
   },

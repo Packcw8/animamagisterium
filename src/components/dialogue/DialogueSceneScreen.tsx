@@ -49,6 +49,9 @@ export function DialogueSceneScreen({
     getDialogueSceneState({ event, nodes, choices, npcs, activeNodeId });
   const [choicesRevealed, setChoicesRevealed] = useState(false);
   const fadeValue = useRef(new Animated.Value(1)).current;
+  const restoredPulse = useRef(new Animated.Value(0)).current;
+  const latestLogLine = dialogueLog[0] ?? "";
+  const restoredLine = latestLogLine.startsWith("Restored ") ? latestLogLine : null;
   const visibleNodeChoices = nodeChoices.filter((choice) => {
     const availability = choiceAvailability[choice.id] ?? { met: true, hidden: false, disabled: false, message: null };
     return !availability.hidden;
@@ -69,6 +72,19 @@ export function DialogueSceneScreen({
     }).start();
   }, [activeNodeId, dialogueText, fadeValue]);
 
+  useEffect(() => {
+    if (!restoredLine) {
+      return;
+    }
+
+    restoredPulse.setValue(0);
+    Animated.sequence([
+      Animated.timing(restoredPulse, { toValue: 1, duration: 220, useNativeDriver: true }),
+      Animated.delay(900),
+      Animated.timing(restoredPulse, { toValue: 0, duration: 280, useNativeDriver: true }),
+    ]).start();
+  }, [restoredLine, restoredPulse]);
+
   return (
     <Screen>
       <Frame style={styles.eventScreen}>
@@ -87,10 +103,29 @@ export function DialogueSceneScreen({
             <View style={styles.eventImagePlaceholder} />
           )}
           <View style={styles.heroShade} />
-          <View style={styles.heroTitleBar}>
-            <Text style={styles.heroTitle}>{event.title}</Text>
-          </View>
         </View>
+        {restoredLine ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.restorePulse,
+              {
+                opacity: restoredPulse,
+                transform: [
+                  {
+                    scale: restoredPulse.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.96, 1],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <Text style={styles.restorePulseTitle}>Rested</Text>
+            <Text style={styles.restorePulseText}>{restoredLine}</Text>
+          </Animated.View>
+        ) : null}
         <Animated.View style={[styles.scenePanel, { opacity: fadeValue }]}>
           <View style={styles.sceneHeader}>
             <View style={styles.npcPortraitWrap}>
@@ -177,8 +212,14 @@ export function DialogueSceneScreen({
             </>
           ) : (
             legacyChoices.map((choice, index) => (
-              <Pressable key={`${choice.label}-${index}`} style={styles.primaryButton} onPress={() => onLegacyChoice(choice.action)}>
-                <Text style={styles.primaryText}>{choice.label}</Text>
+              <Pressable key={`${choice.label}-${index}`} style={styles.choiceButton} onPress={() => onLegacyChoice(choice.action)}>
+                <View style={styles.choiceRow}>
+                  <View style={styles.choiceIcon}>
+                    <Text style={styles.choiceIconText}>...</Text>
+                  </View>
+                  <Text style={styles.choiceText}>{choice.label}</Text>
+                  <Text style={styles.choiceArrow}>{">"}</Text>
+                </View>
               </Pressable>
             ))
           )}
@@ -292,23 +333,33 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: "rgba(0,0,0,0.28)",
   },
-  heroTitleBar: {
+  restorePulse: {
     position: "absolute",
-    left: 12,
-    right: 12,
-    top: 12,
-    borderRadius: 10,
+    left: 28,
+    right: 28,
+    top: 132,
+    zIndex: 20,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: "rgba(217, 170, 93, 0.48)",
-    backgroundColor: "rgba(0, 5, 7, 0.72)",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: "rgba(64, 210, 68, 0.66)",
+    backgroundColor: "rgba(4, 28, 19, 0.9)",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    shadowColor: colors.green,
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
   },
-  heroTitle: {
-    color: colors.gold,
-    fontFamily: fonts.title,
-    fontSize: 18,
+  restorePulseTitle: {
+    color: colors.green,
+    fontSize: 12,
+    fontWeight: "900",
     textTransform: "uppercase",
+  },
+  restorePulseText: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "800",
+    lineHeight: 20,
   },
   scenePanel: {
     marginTop: -44,
@@ -418,7 +469,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.gold,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.54)",
+    backgroundColor: "rgba(2, 5, 5, 0.72)",
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
@@ -486,7 +539,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   primaryText: {
-    color: "#110b04",
+    color: colors.gold,
     fontWeight: "900",
     textAlign: "center",
   },
