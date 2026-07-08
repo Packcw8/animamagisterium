@@ -326,6 +326,29 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       .filter((companion) => !companion.summoned || (companion.remainingTurns ?? 1) > 0));
   }
 
+  function getSummonAnchor(side: "player_summon" | "enemy_summon", index: number, fallback: { x: number; y: number; size: number; sortOrder: number }) {
+    const anchors = battleLayoutCombatants
+      .filter((combatant) => combatant.is_active && combatant.side === side)
+      .sort((left, right) => left.sort_order - right.sort_order);
+    const anchor = anchors[index] ?? anchors[anchors.length - 1];
+
+    if (!anchor) {
+      return {
+        xPercent: fallback.x,
+        yPercent: fallback.y,
+        sizePercent: fallback.size,
+        sortOrder: fallback.sortOrder,
+      };
+    }
+
+    return {
+      xPercent: Number(anchor.x_percent ?? fallback.x) || fallback.x,
+      yPercent: Number(anchor.y_percent ?? fallback.y) || fallback.y,
+      sizePercent: Number(anchor.size_percent ?? fallback.size) || fallback.size,
+      sortOrder: Number(anchor.sort_order ?? fallback.sortOrder) || fallback.sortOrder,
+    };
+  }
+
   async function summonBattleCompanions(ability: AbilityDefinition) {
     const adminAbility = ability.adminAbility;
     if (!adminAbility) {
@@ -347,6 +370,12 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const createdAt = Date.now();
     const newCompanions = Array.from({ length: count }).map((_, index) => {
       const spread = count === 1 ? 0 : (index - (count - 1) / 2) * 7;
+      const anchor = getSummonAnchor("player_summon", index, {
+        x: Math.max(12, Math.min(88, 32 + spread)),
+        y: Math.max(12, Math.min(88, 58 + index * 4)),
+        size: 12,
+        sortOrder: battleCompanions.length + index + 1,
+      });
       const combatant = {
         id: `summon-${adminAbility.id}-${createdAt}-${index}`,
         event_id: activeBattle?.id ?? "",
@@ -355,10 +384,10 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         enemy_id: adminAbility.summon_kind === "enemy" ? adminAbility.summon_enemy_id : null,
         npc_id: adminAbility.summon_kind === "npc" ? adminAbility.summon_npc_id : null,
         label: summon.name,
-        x_percent: Math.max(12, Math.min(88, 32 + spread)),
-        y_percent: Math.max(12, Math.min(88, 58 + index * 4)),
-        size_percent: 12,
-        sort_order: battleCompanions.length + index + 1,
+        x_percent: anchor.xPercent,
+        y_percent: anchor.yPercent,
+        size_percent: anchor.sizePercent,
+        sort_order: anchor.sortOrder,
         is_boss: false,
         is_active: true,
         created_by: null,

@@ -18,7 +18,7 @@ type BattlefieldLayoutEditorProps = {
   onMessage: (message: string) => void;
 };
 
-const sides: BattleEventCombatant["side"][] = ["enemy", "companion", "player"];
+const sides: BattleEventCombatant["side"][] = ["enemy", "companion", "player", "player_summon", "enemy_summon"];
 
 export function BattlefieldLayoutEditor({
   eventId,
@@ -72,7 +72,7 @@ export function BattlefieldLayoutEditor({
       return npcs.find((npc) => npc.id === npcId)?.name ?? "NPC";
     }
 
-    return label.trim() || side;
+    return label.trim() || getSideLabel(side);
   }, [enemyId, enemies, label, npcId, npcs, side]);
 
   if (!eventId) {
@@ -166,6 +166,8 @@ export function BattlefieldLayoutEditor({
               styles.combatantPin,
               combatant.side === "player" && styles.playerPin,
               combatant.side === "companion" && styles.companionPin,
+              combatant.side === "player_summon" && styles.playerSummonPin,
+              combatant.side === "enemy_summon" && styles.enemySummonPin,
               combatant.is_boss && styles.bossPin,
               {
                 left: `${combatant.x_percent}%`,
@@ -204,7 +206,7 @@ export function BattlefieldLayoutEditor({
       <View style={styles.chipRow}>
         {sides.map((option) => (
           <Pressable key={option} style={[styles.chip, side === option && styles.chipActive]} onPress={() => setSide(option)}>
-            <Text style={styles.chipText}>{option === "player" ? "Player Start" : option === "companion" ? "Companion" : "Enemy"}</Text>
+            <Text style={styles.chipText}>{getSideLabel(option)}</Text>
           </Pressable>
         ))}
       </View>
@@ -236,7 +238,7 @@ export function BattlefieldLayoutEditor({
         <View key={`row-${combatant.id}`} style={styles.rowCard}>
           <View>
             <Text style={styles.rowTitle}>{getCombatantName(combatant, enemies, npcs)}</Text>
-            <Text style={styles.copy}>{combatant.side} / x {combatant.x_percent}% / y {combatant.y_percent}% / size {combatant.size_percent}%</Text>
+            <Text style={styles.copy}>{getSideLabel(combatant.side)} / x {combatant.x_percent}% / y {combatant.y_percent}% / size {combatant.size_percent}%</Text>
           </View>
           <View style={styles.rowActions}>
             <Pressable style={styles.smallButton} onPress={() => setEditing(combatant)}>
@@ -263,7 +265,7 @@ export function getCombatantName(combatant: AnyBattlefieldCombatant, enemies: En
     return npcs.find((npc) => npc.id === combatant.npc_id)?.name ?? combatant.label ?? "NPC";
   }
 
-  return combatant.label || (combatant.side === "player" ? "Player Start" : combatant.side);
+  return combatant.label || getSideLabel(combatant.side);
 }
 
 export function getCombatantImage(combatant: AnyBattlefieldCombatant, enemies: EnemyDefinition[], npcs: NpcDefinition[]) {
@@ -277,7 +279,30 @@ export function getCombatantImage(combatant: AnyBattlefieldCombatant, enemies: E
 }
 
 function getCombatantInitial(combatant: AnyBattlefieldCombatant, enemies: EnemyDefinition[], npcs: NpcDefinition[]) {
+  if (combatant.side === "player_summon") {
+    return "S+";
+  }
+
+  if (combatant.side === "enemy_summon") {
+    return "E+";
+  }
+
   return getCombatantName(combatant, enemies, npcs).slice(0, 1).toUpperCase();
+}
+
+function getSideLabel(side: BattleEventCombatant["side"]) {
+  switch (side) {
+    case "player":
+      return "Player Start";
+    case "companion":
+      return "Companion";
+    case "player_summon":
+      return "Player Summon Slot";
+    case "enemy_summon":
+      return "Enemy Summon Slot";
+    default:
+      return "Enemy";
+  }
 }
 
 function resolveBattlefieldImageUri(imagePath?: string | null) {
@@ -362,6 +387,16 @@ const styles = StyleSheet.create({
   companionPin: {
     borderColor: colors.gold,
     backgroundColor: "rgba(56,37,10,0.78)",
+  },
+  playerSummonPin: {
+    borderColor: colors.blue,
+    borderStyle: "dashed",
+    backgroundColor: "rgba(54,171,224,0.14)",
+  },
+  enemySummonPin: {
+    borderColor: "#ff9b66",
+    borderStyle: "dashed",
+    backgroundColor: "rgba(80,22,10,0.24)",
   },
   bossPin: {
     borderWidth: 3,

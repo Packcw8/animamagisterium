@@ -92,7 +92,7 @@ export async function deleteMarkerBattleCombatant(combatantId: string) {
 }
 
 function normalizeCombatantPayload(input: BattleEventCombatantInput, userId: string | null) {
-  const side = input.side === "player" || input.side === "companion" || input.side === "enemy" ? input.side : "enemy";
+  const side = isBattlefieldSide(input.side) ? input.side : "enemy";
   return {
     event_id: input.event_id,
     side,
@@ -108,6 +108,10 @@ function normalizeCombatantPayload(input: BattleEventCombatantInput, userId: str
     created_by: input.id ? undefined : userId,
     updated_at: new Date().toISOString(),
   };
+}
+
+function isBattlefieldSide(side: BattleEventCombatant["side"] | undefined): side is BattleEventCombatant["side"] {
+  return side === "player" || side === "companion" || side === "enemy" || side === "player_summon" || side === "enemy_summon";
 }
 
 function clampPercent(value: number) {

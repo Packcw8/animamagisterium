@@ -468,7 +468,7 @@ export type Tables = {
   battle_event_combatants: {
     id: string;
     event_id: string;
-    side: "player" | "companion" | "enemy";
+    side: "player" | "companion" | "enemy" | "player_summon" | "enemy_summon";
     enemy_id: string | null;
     npc_id: string | null;
     label: string | null;
@@ -485,7 +485,7 @@ export type Tables = {
   marker_battle_combatants: {
     id: string;
     marker_id: string;
-    side: "player" | "companion" | "enemy";
+    side: "player" | "companion" | "enemy" | "player_summon" | "enemy_summon";
     enemy_id: string | null;
     npc_id: string | null;
     label: string | null;
