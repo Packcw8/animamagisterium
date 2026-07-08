@@ -48,6 +48,7 @@ export function MarkerSceneScreen({
   onOpenDialogueEvent,
   onStartBattleEvent,
   onClaimArena,
+  onChallengeArena,
 }: {
   marker: MapMarker;
   characterGold: number;
@@ -72,6 +73,7 @@ export function MarkerSceneScreen({
   onOpenDialogueEvent: () => void;
   onStartBattleEvent: () => void;
   onClaimArena: () => void;
+  onChallengeArena: () => void;
 }) {
   const backgroundUri = resolveSceneImageUri(marker.scene_background_image_url || marker.shop_background_image_url);
   const npcUri = resolveSceneImageUri(marker.scene_npc_image_url || marker.shop_image_url || marker.quest_image_url);
@@ -204,7 +206,7 @@ export function MarkerSceneScreen({
             onSell={onSell}
           />
         ) : marker.type === "Arena" ? (
-          <ArenaScene arena={arena} marker={marker} onClaimArena={onClaimArena} />
+          <ArenaScene arena={arena} marker={marker} onClaimArena={onClaimArena} onChallengeArena={onChallengeArena} />
         ) : isBattleMarkerType(marker.type) ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Battle</Text>
@@ -238,7 +240,7 @@ export function MarkerSceneScreen({
 const arenaTabs = ["Arena", "Leaderboard", "Holder"] as const;
 type ArenaTab = (typeof arenaTabs)[number];
 
-function ArenaScene({ arena, marker, onClaimArena }: { arena: ArenaWithLeaders | null; marker: MapMarker; onClaimArena: () => void }) {
+function ArenaScene({ arena, marker, onClaimArena, onChallengeArena }: { arena: ArenaWithLeaders | null; marker: MapMarker; onClaimArena: () => void; onChallengeArena: () => void }) {
   const [activeTab, setActiveTab] = useState<ArenaTab>("Arena");
   const currentHolder = arena?.currentHolder ?? null;
   const currentSnapshot = currentHolder?.snapshot ?? null;
@@ -279,9 +281,13 @@ function ArenaScene({ arena, marker, onClaimArena }: { arena: ArenaWithLeaders |
             <Pressable style={styles.primaryButton} onPress={onClaimArena}>
               <Text style={styles.primaryText}>Claim Open Arena</Text>
             </Pressable>
+          ) : currentHolder ? (
+            <Pressable style={styles.primaryButton} onPress={onChallengeArena}>
+              <Text style={styles.primaryText}>Challenge Holder</Text>
+            </Pressable>
           ) : (
             <Pressable style={[styles.primaryButton, styles.disabledAction]} disabled>
-              <Text style={styles.primaryText}>{currentHolder ? "Challenge Coming Soon" : "Arena Not Ready"}</Text>
+              <Text style={styles.primaryText}>Arena Not Ready</Text>
             </Pressable>
           )}
         </>

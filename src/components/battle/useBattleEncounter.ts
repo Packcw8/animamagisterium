@@ -14,6 +14,9 @@ type StartBattleOptions = {
   preview?: boolean;
   currentHealth: number;
   combatResources: CharacterResources;
+  syntheticOpponent?: EnemyWithLoadout | NpcWithLoadout | null;
+  skipStagedLayout?: boolean;
+  suppressCompanions?: boolean;
   setActiveEvent: Dispatch<SetStateAction<MapEvent | null>>;
   setAdminPreviewMode: Dispatch<SetStateAction<PreviewMode>>;
   setAdminMessage: Dispatch<SetStateAction<string | null>>;
@@ -95,12 +98,12 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   }
 
   async function startBattle(event: MapEvent, options: StartBattleOptions): Promise<StartBattleResult> {
-    const { preview = false, currentHealth, combatResources: nextCombatResources, setActiveEvent, setAdminPreviewMode, setAdminMessage } = options;
+    const { preview = false, currentHealth, combatResources: nextCombatResources, syntheticOpponent = null, skipStagedLayout = false, suppressCompanions = false, setActiveEvent, setAdminPreviewMode, setAdminMessage } = options;
 
     try {
       const enemy = event.enemy_id ? await getEnemyLoadout(event.enemy_id) : null;
       const npcEnemy = !enemy && event.npc_id ? await getNpcLoadout(event.npc_id) : null;
-      const opponent = enemy ?? npcEnemy;
+      const opponent = syntheticOpponent ?? enemy ?? npcEnemy;
 
       if (event.enemy_id && !enemy) {
         const message = "Battle enemy could not be loaded from Enemy Admin. Check that the selected enemy is active and readable by players.";
@@ -116,9 +119,9 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         return { ok: false, message };
       }
 
-      const stagedLayout = await loadStagedLayout(event);
+      const stagedLayout = skipStagedLayout ? [] : await loadStagedLayout(event);
       const stagedOpponents = await loadStagedOpponents(event, stagedLayout);
-      const stagedCompanions = await loadStagedCompanions(event, stagedLayout);
+      const stagedCompanions = suppressCompanions ? [] : await loadStagedCompanions(event, stagedLayout);
       const fallbackOpponent = stagedOpponents.length === 0
         ? [{
           key: "primary",
@@ -172,7 +175,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       setBattleInventoryOpen(false);
       setBattleLog([
         `Initiative: you rolled ${playerInitiative.roll} + ${playerInitiative.bonus} = ${playerInitiative.total}. Fastest enemy: ${enemyInitiatives[0]?.name || "Enemy"} ${leadEnemyInitiative.roll} + ${leadEnemyInitiative.bonus} = ${leadEnemyInitiative.total}.`,
-        companionInitiatives.length > 0 ? `Companions joined: ${stagedCompanions.map((entry) => entry.ally.name || entry.combatant.label || "Ally").join(", ")}.` : "No companions joined this fight.",
+        suppressCompanions ? "Arena rules: no party members or companions may join." : companionInitiatives.length > 0 ? `Companions joined: ${stagedCompanions.map((entry) => entry.ally.name || entry.combatant.label || "Ally").join(", ")}.` : "No companions joined this fight.",
         enemyStarts ? "The enemies act first." : "Your side acts first.",
         event.battle_intro_text || `${selectedEnemy?.name || event.enemy_name || "An enemy"} blocks the trail.`,
         stagedOpponents.length > 0

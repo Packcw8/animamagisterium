@@ -150,6 +150,37 @@ export async function claimOpenArena(arenaId: string, snapshot: PlayerBattleSnap
   return data as ArenaHolder;
 }
 
+export async function completeArenaChallenge({
+  arenaId,
+  snapshot,
+  defenderSnapshotId,
+  result,
+  rewardXp,
+  rewardGold,
+}: {
+  arenaId: string;
+  snapshot: PlayerBattleSnapshot;
+  defenderSnapshotId?: string | null;
+  result: "win" | "loss" | "flee";
+  rewardXp?: number;
+  rewardGold?: number;
+}) {
+  const { data, error } = await (supabase as any).rpc("complete_arena_challenge", {
+    p_arena_id: arenaId,
+    p_holder_snapshot_id: snapshot.id,
+    p_defender_snapshot_id: defenderSnapshotId ?? null,
+    p_result: result,
+    p_reward_xp: Math.max(0, Number(rewardXp) || 0),
+    p_reward_gold: Math.max(0, Number(rewardGold) || 0),
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return data as ArenaHolder | null;
+}
+
 export async function getArenaMarkerPortraits(markerIds: string[]) {
   const uniqueMarkerIds = Array.from(new Set(markerIds.filter(Boolean)));
   if (uniqueMarkerIds.length === 0) {

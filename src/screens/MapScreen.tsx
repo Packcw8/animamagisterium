@@ -63,7 +63,7 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails, getCharacter, incrementCharacterDistanceWalked, spendCharacterGold, updateCharacter } from "../services/characterService";
 import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getCharacterResources, getCombatLoadout, getCurrentHealth, learnAbilityFromScroll } from "../services/abilityService";
-import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition } from "../services/combatAdminService";
+import { CombatAbility, EnemyDefinition, getEnemies, getNpcs, NpcDefinition, type EnemyWithLoadout } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
 import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, unequipInventorySlot } from "../services/inventoryService";
 import { isNativePedometerAvailable, requestPedometerPermission, startPedometerDistancePolling, type PedometerSubscription } from "../services/nativePedometerService";
@@ -72,8 +72,8 @@ import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission } from "../services/pushNotificationService";
 import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAssetUri, type GameToastDefinition, type GameToastTriggerType } from "../services/gameToastService";
 import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
-import { claimOpenArena, getArenaForMarker, getArenaMarkerPortraits, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
-import { createCurrentPlayerBattleSnapshot } from "../services/battleSnapshotService";
+import { claimOpenArena, completeArenaChallenge, getArenaForMarker, getArenaMarkerPortraits, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
+import { createCurrentPlayerBattleSnapshot, type PlayerBattleSnapshot } from "../services/battleSnapshotService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { adminSections, editorModes, getDefaultDraftTypeForAdminSection, getEditorModeForAdminSection, isMapAdminSection, type MapAdminSection } from "../utils/mapAdminSections";
@@ -369,6 +369,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
   const [selectedPuzzle, setSelectedPuzzle] = useState<PuzzleWithZones | null>(null);
   const [selectedArena, setSelectedArena] = useState<ArenaWithLeaders | null>(null);
+  const [activeArenaChallenge, setActiveArenaChallenge] = useState<{ arenaId: string; markerId: string; defenderSnapshotId: string | null } | null>(null);
   const [arenaMarkerPortraits, setArenaMarkerPortraits] = useState<Record<string, string>>({});
   const [activeMiniMap, setActiveMiniMap] = useState<MiniMap | null>(null);
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
@@ -2425,6 +2426,73 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
   }
 
+  async function challengeSelectedArena() {
+    if (!selectedMarker || selectedMarker.type !== "Arena" || !selectedArena?.arena || !selectedArena.currentHolder?.snapshot) {
+      setMarkerPanelMessage("This arena does not have a holder to challenge yet.");
+      return;
+    }
+
+    const defender = selectedArena.currentHolder.snapshot;
+    if (defender.user_id === character.user_id) {
+      setMarkerPanelMessage("You already hold this arena. Your current loadout is the active defense.");
+      return;
+    }
+
+    const event = createArenaChallengeEvent(selectedMarker, selectedArena, defender);
+    const opponent = createArenaSnapshotOpponent(defender);
+    setActiveArenaChallenge({
+      arenaId: selectedArena.arena.id,
+      markerId: selectedMarker.id,
+      defenderSnapshotId: defender.id,
+    });
+    setActiveMarkerEventId(null);
+    const result = await startBattle(event, false, {
+      saveRoutePosition: false,
+      skipStagedLayout: true,
+      suppressCompanions: true,
+      syntheticOpponent: opponent,
+    });
+
+    if (!result.ok) {
+      setActiveArenaChallenge(null);
+      setMarkerPanelMessage(result.message ?? "Unable to start arena challenge.");
+    }
+  }
+
+  async function completeActiveArenaChallenge(result: "win" | "loss" | "flee") {
+    if (!activeArenaChallenge) {
+      return;
+    }
+
+    try {
+      const arenaMarker = markers.find((marker) => marker.id === activeArenaChallenge.markerId) ?? selectedMarker;
+      const arena = arenaMarker ? await getArenaForMarker(arenaMarker) : selectedArena;
+      const snapshot = await createCurrentPlayerBattleSnapshot(character, "arena_holder");
+      await completeArenaChallenge({
+        arenaId: activeArenaChallenge.arenaId,
+        snapshot,
+        defenderSnapshotId: activeArenaChallenge.defenderSnapshotId,
+        result,
+        rewardXp: result === "win" ? arena?.arena?.reward_xp ?? arenaMarker?.reward_xp ?? 0 : 0,
+        rewardGold: result === "win" ? arena?.arena?.reward_gold ?? arenaMarker?.reward_gold ?? 0 : 0,
+      });
+
+      if (arenaMarker) {
+        const refreshedArena = await getArenaForMarker(arenaMarker);
+        setSelectedArena(refreshedArena);
+        if (result === "win" && snapshot.portrait_url) {
+          setArenaMarkerPortraits((current) => ({ ...current, [arenaMarker.id]: snapshot.portrait_url ?? "" }));
+        }
+      }
+
+      setMarkerPanelMessage(result === "win" ? `${character.name} claimed the arena. Your current loadout is now defending it.` : "Arena challenge recorded. No rewards were granted.");
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to save arena challenge result."));
+    } finally {
+      setActiveArenaChallenge(null);
+    }
+  }
+
   async function saveSelectedMarkerSettings() {
     if (!selectedMarker) {
       return;
@@ -4077,7 +4145,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setNodeIsStart(dialogueNodes.length === 0);
   }
 
-  async function startBattle(event: MapEvent, preview = false, options: { saveRoutePosition?: boolean } = {}) {
+  async function startBattle(event: MapEvent, preview = false, options: { saveRoutePosition?: boolean; skipStagedLayout?: boolean; suppressCompanions?: boolean; syntheticOpponent?: EnemyWithLoadout | null } = {}) {
     activeBattleRouteRef.current = preview ? null : routeRef.current;
     if (!preview && options.saveRoutePosition !== false) {
       await saveCurrentRoutePositionBeforeBattle();
@@ -4087,6 +4155,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       preview,
       currentHealth,
       combatResources,
+      syntheticOpponent: options.syntheticOpponent ?? null,
+      skipStagedLayout: options.skipStagedLayout,
+      suppressCompanions: options.suppressCompanions,
       setActiveEvent,
       setAdminPreviewMode,
       setAdminMessage,
@@ -4131,6 +4202,42 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
 
     try {
+      if (activeArenaChallenge && event.event_type === "battle") {
+        const wonArena = battleFinished === "victory";
+        const arenaMarker = markers.find((marker) => marker.id === activeArenaChallenge.markerId) ?? selectedMarker;
+        const arena = arenaMarker ? await getArenaForMarker(arenaMarker) : selectedArena;
+        const rewardResult = wonArena
+          ? await applyRewards(character, {
+              xp: arena?.arena?.reward_xp ?? arenaMarker?.reward_xp ?? 0,
+              gold: arena?.arena?.reward_gold ?? arenaMarker?.reward_gold ?? 0,
+              repeatable: true,
+              rewardOncePerPlayer: false,
+            })
+          : { message: "No rewards were granted.", claimed: false, currentHealth: null };
+
+        await completeActiveArenaChallenge(wonArena ? "win" : "loss");
+        setActiveEvent(null);
+        setActiveMarkerEventId(null);
+        setActiveBattle(null);
+        setActiveEnemy(null);
+        activeBattleRouteRef.current = null;
+        setGpsMessage(wonArena ? `${event.title} won. ${rewardResult.message} Your current loadout now defends this arena.` : `${event.title} lost. No arena rewards were granted.`);
+        showAuthoredToast("receiving_reward", {
+          title: wonArena ? "Arena Claimed" : "Arena Challenge Lost",
+          message: wonArena ? "Your current gear and equipped abilities are now defending this arena." : "You can train, adjust your loadout, and challenge again.",
+          rewards: wonArena ? buildRewardToastItems({
+            xp: arena?.arena?.reward_xp ?? arenaMarker?.reward_xp ?? 0,
+            gold: arena?.arena?.reward_gold ?? arenaMarker?.reward_gold ?? 0,
+          }) : [],
+          actionLabel: "OK",
+        }, {
+          triggerKey: arenaMarker?.id ?? event.id,
+          seasonNumber: arenaMarker?.season_number ?? event.season_number,
+          chapterNumber: arenaMarker?.chapter_number ?? event.chapter_number,
+        });
+        return;
+      }
+
       if (activeMarkerEventId && event.event_type === "battle") {
         const marker = markers.find((item) => item.id === activeMarkerEventId) ?? null;
         const rewardResult = await applyRewards(character, {
@@ -4703,6 +4810,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   }
 
   async function fleeBattle() {
+    if (activeArenaChallenge) {
+      await completeActiveArenaChallenge("flee");
+    }
     await runFleeBattle(getBattleActionContext());
     activeBattleRouteRef.current = null;
   }
@@ -5963,6 +6073,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           onOpenDialogueEvent={() => void openSelectedMarkerDialogue()}
           onStartBattleEvent={() => void startSelectedMarkerBattle()}
           onClaimArena={() => void claimSelectedArena()}
+          onChallengeArena={() => void challengeSelectedArena()}
         />
         <GameToast toast={gameToast} onDismiss={dismissGameToast} />
       </>
@@ -8755,6 +8866,126 @@ function createMarkerBattleEvent(marker: MapMarker, enemies: EnemyDefinition[], 
     created_by: marker.created_by,
     created_at: marker.created_at ?? now,
     updated_at: marker.updated_at ?? now,
+  };
+}
+
+function createArenaChallengeEvent(marker: MapMarker, arena: ArenaWithLeaders, defender: PlayerBattleSnapshot): MapEvent {
+  const now = new Date().toISOString();
+
+  return {
+    id: marker.id,
+    event_type: "battle",
+    title: `${arena.arena?.name || marker.title} Challenge`,
+    route_id: null,
+    distance_marker_percent: 0,
+    background_image_url: arena.arena?.background_image_url ?? marker.scene_background_image_url ?? null,
+    npc_name: null,
+    npc_portrait_url: null,
+    dialogue_npc_id: null,
+    npc_id: null,
+    dialogue_text: null,
+    choices: [],
+    enemy_name: defender.character_name,
+    enemy_id: null,
+    enemy_image_url: defender.portrait_url,
+    enemy_hp: Math.max(1, Number(defender.max_health) || 30),
+    enemy_attack_damage: Math.max(1, Number(defender.damage_bonus) + Number(defender.attack_bonus) || 4),
+    battle_intro_text: `${defender.character_name} is defending this arena. Party members cannot join arena challenges.`,
+    victory_text: `You defeated ${defender.character_name}.`,
+    defeat_text: `${defender.character_name} holds the arena.`,
+    reward_xp: Math.max(0, Number(arena.arena?.reward_xp ?? marker.reward_xp ?? 0) || 0),
+    reward_gold: Math.max(0, Number(arena.arena?.reward_gold ?? marker.reward_gold ?? 0) || 0),
+    reward_item: null,
+    reward_item_id: null,
+    reward_item_quantity: 1,
+    trigger_mode: "fixed",
+    random_chance_percent: 0,
+    linked_only: true,
+    season_number: Number(marker.season_number ?? arena.arena?.season_number ?? 1) || 1,
+    chapter_number: Number(marker.chapter_number ?? arena.arena?.chapter_number ?? 1) || 1,
+    is_active: true,
+    created_by: marker.created_by,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+function createArenaSnapshotOpponent(snapshot: PlayerBattleSnapshot): EnemyWithLoadout {
+  const attributes = snapshot.attributes ?? {};
+  const abilities = Array.isArray(snapshot.equipped_abilities) ? snapshot.equipped_abilities : [];
+  const syntheticAbilities = abilities.map((ability, index) => ({
+    id: `arena-${snapshot.id}-${index}`,
+    enemy_id: snapshot.id,
+    ability_id: String(ability.id ?? `arena-ability-${index}`),
+    use_weight: Math.max(1, Number(ability.useWeight ?? 1) || 1),
+    created_at: snapshot.created_at,
+    updated_at: snapshot.updated_at,
+    ability: {
+      id: String(ability.id ?? `arena-ability-${index}`),
+      name: String(ability.name ?? "Strike"),
+      type: String(ability.type ?? "attack") as CombatAbility["type"],
+      damage: Math.max(0, Number(ability.damage ?? 0) || 0),
+      healing: Math.max(0, Number(ability.healing ?? 0) || 0),
+      defense_amount: Math.max(0, Number(ability.defenseAmount ?? 0) || 0),
+      stamina_restore: Math.max(0, Number(ability.staminaRestore ?? 0) || 0),
+      magika_restore: Math.max(0, Number(ability.magikaRestore ?? 0) || 0),
+      stamina_cost: Math.max(0, Number(ability.staminaCost ?? 0) || 0),
+      magika_cost: Math.max(0, Number(ability.magikaCost ?? 0) || 0),
+      health_cost: Math.max(0, Number(ability.healthCost ?? 0) || 0),
+      hit_chance: 75,
+      critical_chance: Math.max(0, Number(ability.criticalChance ?? 5) || 0),
+      critical_multiplier: Math.max(1, Number(ability.criticalMultiplier ?? 2) || 2),
+      cooldown_turns: 0,
+      duration_turns: 0,
+      status_effect: String(ability.statusEffect ?? "none") as CombatAbility["status_effect"],
+      effect_amount: Math.max(0, Number(ability.effectAmount ?? 0) || 0),
+      effect_duration: Math.max(0, Number(ability.effectDuration ?? 0) || 0),
+      linked_stat: String(ability.attribute ?? "strength") as CombatAbility["linked_stat"],
+      learn_method: "admin" as CombatAbility["learn_method"],
+      required_level: 0,
+      required_attribute: String(ability.attribute ?? "strength") as CombatAbility["required_attribute"],
+      required_attribute_level: 0,
+      required_class_key: null,
+      image_path: typeof ability.imagePath === "string" ? ability.imagePath : null,
+      usage_context: "battle_only" as CombatAbility["usage_context"],
+      attack_bonus: Math.max(0, Number(ability.attackBonus ?? 0) || 0),
+      season_number: 1,
+      chapter_number: 1,
+      is_active: true,
+      created_by: null,
+      created_at: snapshot.created_at,
+      updated_at: snapshot.updated_at,
+    },
+  }));
+
+  return {
+    id: snapshot.id,
+    name: snapshot.character_name,
+    type: snapshot.active_class_key || "Arena Holder",
+    image_url: snapshot.portrait_url,
+    health: Math.max(1, Number(snapshot.max_health) || 30),
+    stamina: Math.max(0, Number(snapshot.max_stamina) || 0),
+    magika: Math.max(0, Number(snapshot.max_magika) || 0),
+    strength: Number(attributes.strength ?? 0) || 0,
+    endurance: Number(attributes.endurance ?? 0) || 0,
+    agility: Number(attributes.agility ?? 0) || 0,
+    intelligence: Number(attributes.intelligence ?? 0) || 0,
+    wisdom: Number(attributes.wisdom ?? 0) || 0,
+    charisma: Number(attributes.charisma ?? 0) || 0,
+    spirit: Number(attributes.spirit ?? 0) || 0,
+    defense: Math.max(10, Number(snapshot.defense) || 10),
+    attack_bonus: Math.max(0, Number(snapshot.attack_bonus) || 0),
+    armor_rating: 0,
+    xp_reward: 0,
+    gold_reward: 0,
+    season_number: 1,
+    chapter_number: 1,
+    is_active: true,
+    created_by: null,
+    created_at: snapshot.created_at,
+    updated_at: snapshot.updated_at,
+    abilities: syntheticAbilities as EnemyWithLoadout["abilities"],
+    drops: [],
   };
 }
 
