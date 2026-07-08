@@ -162,12 +162,14 @@ export function BattleActionCard({
   slotNumber,
   disabled,
   unavailableReason,
+  cooldownTurns = 0,
   onPress,
 }: {
   ability: AbilityDefinition | null;
   slotNumber: number;
   disabled: boolean;
   unavailableReason: string | null;
+  cooldownTurns?: number;
   onPress: () => void;
 }) {
   return (
@@ -183,6 +185,7 @@ export function BattleActionCard({
         <Text style={styles.battleActionName}>{ability?.name ?? `Empty Slot ${slotNumber}`}</Text>
         {ability ? <Text style={styles.battleActionMeta}>{getAbilityPowerLabel(ability)}</Text> : <Text style={styles.battleActionMeta}>Equip an ability on Home</Text>}
         {ability ? <Text style={styles.actionCost}>{getAbilityCostLabel(ability)}</Text> : null}
+        {ability && cooldownTurns > 0 ? <Text style={styles.cooldownText}>Cooldown {cooldownTurns}</Text> : null}
         {unavailableReason ? <Text style={styles.battleActionWarning}>{unavailableReason}</Text> : null}
       </View>
     </Pressable>
@@ -464,6 +467,13 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 2,
     textTransform: "capitalize",
+  },
+  cooldownText: {
+    color: colors.gold,
+    fontSize: 10,
+    fontWeight: "900",
+    marginTop: 2,
+    textTransform: "uppercase",
   },
   battleActionWarning: {
     color: "#ffb4aa",

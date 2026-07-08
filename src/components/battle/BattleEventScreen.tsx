@@ -28,6 +28,7 @@ type BattleEventScreenProps = {
   layoutCombatants?: Array<BattleEventCombatant | MarkerBattleCombatant>;
   selectedOpponentKey?: string | null;
   equippedAbilities: Array<AbilityDefinition | null>;
+  abilityCooldowns?: Record<string, number>;
   weapon: ItemDefinition | null;
   battleItems: InventoryItem[];
   inventoryOpen: boolean;
@@ -72,6 +73,7 @@ export function BattleEventScreen({
   layoutCombatants = [],
   selectedOpponentKey = null,
   equippedAbilities,
+  abilityCooldowns = {},
   battleItems,
   inventoryOpen,
   battleLog,
@@ -308,13 +310,15 @@ export function BattleEventScreen({
             {equippedAbilities.map((ability, index) => {
               const resourcePool = ability?.resource === "stamina" ? stamina : ability?.resource === "magicka" ? magicka : ability?.resource === "health" ? playerHp : Number.POSITIVE_INFINITY;
               const hasResource = ability ? resourcePool >= ability.cost : false;
+              const cooldownTurns = ability ? abilityCooldowns[ability.adminAbility?.id ?? ability.key] ?? 0 : 0;
               return (
                 <BattleActionCard
                   key={`ability-${index}`}
                   ability={ability}
                   slotNumber={index + 1}
-                  disabled={!ability || !hasResource || Boolean(result) || !playerTurnActive}
-                  unavailableReason={ability && !hasResource ? "Not enough resource" : null}
+                  disabled={!ability || !hasResource || cooldownTurns > 0 || Boolean(result) || !playerTurnActive}
+                  cooldownTurns={cooldownTurns}
+                  unavailableReason={ability && cooldownTurns > 0 ? `${cooldownTurns} turn cooldown` : ability && !hasResource ? "Not enough resource" : null}
                   onPress={() => ability ? onAction(ability) : undefined}
                 />
               );

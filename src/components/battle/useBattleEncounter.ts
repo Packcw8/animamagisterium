@@ -61,6 +61,13 @@ export type BattleCompanionState = {
 
 export type BattleTurnPhase = "rolling" | "player" | "enemy" | "finished";
 
+type BattleTimedEffect = {
+  status: "poison" | "burn" | "regen" | "shield" | "weakness" | "slow" | "stun";
+  amount: number;
+  turns: number;
+  source: string;
+};
+
 export function useBattleEncounter(character: CharacterWithDetails, onCharacterUpdated: (character: CharacterWithDetails) => void) {
   const [activeBattle, setActiveBattle] = useState<MapEvent | null>(null);
   const [battlePlayerHp, setBattlePlayerHp] = useState(100);
@@ -83,6 +90,9 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   const [combatResources, setCombatResources] = useState<CharacterResources>(() => getCharacterResources(character));
   const [equippedAbilities, setEquippedAbilities] = useState<Array<AbilityDefinition | null>>([null, null, null, null]);
   const [battleInventoryOpen, setBattleInventoryOpen] = useState(false);
+  const [battleAbilityCooldowns, setBattleAbilityCooldowns] = useState<Record<string, number>>({});
+  const [playerTimedEffects, setPlayerTimedEffects] = useState<BattleTimedEffect[]>([]);
+  const [enemyTimedEffects, setEnemyTimedEffects] = useState<Record<string, BattleTimedEffect[]>>({});
 
   function resetBattleState() {
     setActiveBattle(null);
@@ -98,6 +108,9 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setBattleInventoryOpen(false);
     setBattleLog([]);
     setCombatIndicators([]);
+    setBattleAbilityCooldowns({});
+    setPlayerTimedEffects([]);
+    setEnemyTimedEffects({});
   }
 
   async function startBattle(event: MapEvent, options: StartBattleOptions): Promise<StartBattleResult> {
@@ -482,6 +495,30 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
 
+    if (consumePlayerStun()) {
+      const nextLog = ["You are stunned and lose your action."];
+      setBattleTurnPhase("enemy");
+      await delayEnemyTurn();
+      const counter = await resolveEnemyRound(context);
+      const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
+      nextLog.push(...counter.log);
+      await savePlayerHealth(nextPlayerHp, context.previewMode);
+      if (nextPlayerHp <= 0) {
+        await resolvePlayerDefeat(nextLog, context);
+      } else {
+        finishEnemyExchange();
+      }
+      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+      return;
+    }
+
+    const abilityKey = getBattleAbilityKey(ability);
+    const cooldownTurns = battleAbilityCooldowns[abilityKey] ?? 0;
+    if (cooldownTurns > 0) {
+      setBattleLog((current) => [`${ability.name} is on cooldown for ${cooldownTurns} turn${cooldownTurns === 1 ? "" : "s"}.`, ...current].slice(0, 8));
+      return;
+    }
+
     const currentResource = ability.resource === "stamina" ? battleStamina : ability.resource === "magicka" ? battleMagicka : ability.resource === "health" ? battlePlayerHp : Number.POSITIVE_INFINITY;
 
     if (currentResource < ability.cost) {
@@ -500,7 +537,52 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const healthRestore = Math.max(0, Number(ability.adminAbility?.healing ?? 0));
     const staminaRestore = Math.max(0, Number(ability.adminAbility?.stamina_restore ?? 0));
     const magikaRestore = Math.max(0, Number(ability.adminAbility?.magika_restore ?? 0));
-    const isPureRestoreAbility = ability.adminAbility && ability.adminAbility.type === "heal" && Number(ability.adminAbility.damage ?? 0) <= 0;
+    const abilityType = ability.adminAbility?.type ?? "attack";
+    const isPureRestoreAbility = ability.adminAbility && abilityType === "heal" && Number(ability.adminAbility.damage ?? 0) <= 0;
+
+    setAbilityCooldownAfterUse(ability);
+
+    if (ability.adminAbility && (abilityType === "defense" || abilityType === "buff") && Number(ability.adminAbility.damage ?? 0) <= 0) {
+      const nextLog: string[] = [`${ability.name} is active.`];
+      const immediateDefense = applySelfStatusOrDefense(ability, nextLog);
+      if (healthRestore > 0) {
+        pushCombatIndicator("player", `+${healthRestore}`, "#42d77d");
+        nextLog.push(`${ability.name} restores ${healthRestore} Health.`);
+      }
+      if (staminaRestore > 0) {
+        pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6");
+        setBattleStamina((current) => Math.min(combatResources.maxStamina, current + staminaRestore));
+        nextLog.push(`${ability.name} restores ${staminaRestore} Stamina.`);
+      }
+      if (magikaRestore > 0) {
+        pushCombatIndicator("player", `+${magikaRestore} Mana`, "#7dd3fc");
+        setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + magikaRestore));
+        nextLog.push(`${ability.name} restores ${magikaRestore} Mana.`);
+      }
+
+      setBattleTurnPhase("enemy");
+      await delayEnemyTurn();
+      const allies = await resolveCompanionRound(battleEnemyHp, context);
+      nextLog.push(...allies.log);
+      if (allOpponentsDefeated(allies.selectedHp)) {
+        setBattleFinished("victory");
+        setBattleTurnPhase("finished");
+        setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+        return;
+      }
+      const postAbilityPlayerHp = Math.min(combatResources.maxHp, battlePlayerHp + healthRestore);
+      const counter = await resolveEnemyRound(context, allies.selectedHp, immediateDefense);
+      const nextPlayerHp = Math.max(0, postAbilityPlayerHp - counter.damage);
+      nextLog.push(...counter.log);
+      await savePlayerHealth(nextPlayerHp, context.previewMode);
+      if (nextPlayerHp <= 0) {
+        await resolvePlayerDefeat(nextLog, context);
+      } else {
+        finishEnemyExchange();
+      }
+      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+      return;
+    }
 
     if (isPureRestoreAbility) {
       const nextLog: string[] = [];
@@ -538,7 +620,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog, context);
       } else {
-        setBattleTurnPhase("player");
+        finishEnemyExchange();
       }
       setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
@@ -568,7 +650,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog, context);
       } else {
-        setBattleTurnPhase("player");
+        finishEnemyExchange();
       }
       setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
@@ -580,7 +662,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
     pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c");
     nextLog.push(`${ability.name} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} ${ability.kind} damage.`);
-    applyAbilityStatusToTarget(ability, "enemy", nextLog);
+    applyAbilityStatusToTarget(ability, "enemy", nextLog, selectedOpponentKey);
     let postAbilityPlayerHp = battlePlayerHp;
     if (healthRestore > 0) {
       postAbilityPlayerHp = Math.min(combatResources.maxHp, battlePlayerHp + healthRestore);
@@ -638,7 +720,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     if (nextPlayerHp <= 0) {
       await resolvePlayerDefeat(nextLog, context);
     } else {
-      setBattleTurnPhase("player");
+      finishEnemyExchange();
     }
 
     setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
@@ -699,7 +781,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       if (nextPlayerHp <= 0) {
         await resolvePlayerDefeat(nextLog, context);
       } else {
-        setBattleTurnPhase("player");
+        finishEnemyExchange();
       }
       setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
@@ -760,7 +842,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     if (nextPlayerHp <= 0) {
       await resolvePlayerDefeat(nextLog, context);
     } else {
-      setBattleTurnPhase("player");
+      finishEnemyExchange();
     }
 
     setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
@@ -788,24 +870,50 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const livingOpponents = getEnemyRoundOpponents(selectedNextHp);
     const log: string[] = [];
     let totalDamage = 0;
+    let nextEnemyEffects = { ...enemyTimedEffects };
 
     if (livingOpponents.length === 0) {
       return { damage: 0, log };
     }
 
+    const playerStartEffects = tickPlayerTimedEffects(log);
+    const effectivePlayerDefense = extraPlayerDefense + playerStartEffects.defenseBonus;
+
     log.push(`Enemy turn: ${livingOpponents.length} foe${livingOpponents.length === 1 ? "" : "s"} act.`);
 
     for (const opponent of livingOpponents) {
       await delayEnemyTurn(livingOpponents.length > 1 ? 360 : 0);
-      const result = resolveSingleEnemyAction(opponent, context, extraPlayerDefense);
+      const tick = tickEnemyTimedEffects(opponent, nextEnemyEffects, log);
+      nextEnemyEffects = tick.effects;
+      if (tick.nextHp <= 0) {
+        continue;
+      }
+      if (tick.skipTurn) {
+        log.push(`${opponent.enemy?.name || "Enemy"} is stunned and loses its turn.`);
+        continue;
+      }
+      const readyOpponent = { ...opponent, hp: tick.nextHp };
+      const result = resolveSingleEnemyAction(readyOpponent, context, effectivePlayerDefense, playerStartEffects.attackPenalty + tick.attackPenalty, (targetKey, effect) => {
+        nextEnemyEffects = {
+          ...nextEnemyEffects,
+          [targetKey]: mergeTimedEffects(nextEnemyEffects[targetKey] ?? [], effect),
+        };
+      });
       totalDamage += result.damage;
       log.push(...result.log);
     }
 
-    return { damage: totalDamage, log };
+    setEnemyTimedEffects(nextEnemyEffects);
+    return { damage: totalDamage - playerStartEffects.healing, log };
   }
 
-  function resolveSingleEnemyAction(opponent: BattleOpponentState, context: BattleActionContext, extraPlayerDefense = 0) {
+  function resolveSingleEnemyAction(
+    opponent: BattleOpponentState,
+    context: BattleActionContext,
+    extraPlayerDefense = 0,
+    attackPenalty = 0,
+    queueEnemyEffect?: (targetKey: string, effect: BattleTimedEffect) => void,
+  ) {
     const enemy = opponent.enemy;
     const enemyName = enemy?.name || activeBattle?.enemy_name || "Enemy";
     const ability = chooseWeightedEnemyAbility(enemy, opponent.stamina, opponent.magika, opponent.hp);
@@ -818,7 +926,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     if (!ability) {
-      const roll = rollD20Attack(getEnemyStatAttackBonus(enemy, "strength"), getEnemyAttackBonus(enemy), targetDefense, 0, 2);
+      const roll = rollD20Attack(getEnemyStatAttackBonus(enemy, "strength"), getEnemyAttackBonus(enemy) - attackPenalty, targetDefense, 0, 2);
       if (!roll.hit) {
         pushCombatIndicator(target.kind === "player" ? "player" : "companion", "MISS", "#9ca3af", target.kind === "companion" ? target.companion.key : null);
         return { damage: 0, log: [`${enemyName} attacks ${targetName} and misses. d20 ${roll.roll} + bonuses = ${roll.total} vs Defense ${targetDefense}.`] };
@@ -863,11 +971,24 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     if (ability.type === "defense" || ability.type === "buff" || ability.type === "passive") {
+      const defenseAmount = Math.max(0, Number(ability.defense_amount ?? 0));
+      const duration = Math.max(1, Number(ability.duration_turns ?? ability.effect_duration ?? 1) || 1);
+      if (defenseAmount > 0) {
+        queueEnemyEffect?.(opponent.key, { status: "shield", amount: defenseAmount, turns: duration, source: ability.name });
+      }
+      if (ability.status_effect === "regen" || ability.status_effect === "shield") {
+        queueEnemyEffect?.(opponent.key, {
+          status: ability.status_effect,
+          amount: Math.max(ability.status_effect === "shield" ? defenseAmount : 0, Number(ability.effect_amount ?? 0)),
+          turns: Math.max(1, Number(ability.effect_duration ?? ability.duration_turns ?? 1) || 1),
+          source: ability.name,
+        });
+      }
       return { damage: 0, log: [`${enemyName} uses ${ability.name}. ${ability.status_effect !== "none" ? `Status: ${ability.status_effect}.` : "It braces for the next exchange."}`] };
     }
 
     const statBonus = getEnemyStatAttackBonus(enemy, ability.required_attribute);
-    const roll = rollD20Attack(statBonus, Number(ability.attack_bonus ?? 0) + getEnemyAttackBonus(enemy), targetDefense, ability.critical_chance, ability.critical_multiplier);
+    const roll = rollD20Attack(statBonus, Number(ability.attack_bonus ?? 0) + getEnemyAttackBonus(enemy) - attackPenalty, targetDefense, ability.critical_chance, ability.critical_multiplier);
     if (!roll.hit) {
       pushCombatIndicator(target.kind === "player" ? "player" : "companion", "MISS", "#9ca3af", target.kind === "companion" ? target.companion.key : null);
       return { damage: 0, log: [`${enemyName} uses ${ability.name} on ${targetName} and misses. d20 ${roll.roll} + bonuses = ${roll.total} vs Defense ${targetDefense}.`] };
@@ -879,6 +1000,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const statusText = ability.status_effect !== "none" ? ` ${ability.status_effect} may linger.` : "";
     applyEnemyDamageToTarget(target, damage, roll.critical);
     pushStatusIndicator(target.kind === "player" ? "player" : "companion", ability.status_effect, ability.effect_amount, target.kind === "companion" ? target.companion.key : null);
+    applyEnemyAbilityStatusToTarget(ability, target);
     return { damage: target.kind === "player" ? damage : 0, log: [`${enemyName} uses ${ability.name} on ${targetName} for ${roll.critical ? "Critical " : ""}${damage}.${statusText}`] };
   }
 
@@ -915,7 +1037,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   }
 
   function getEnemyDefense() {
-    return Number(activeEnemy?.defense ?? 10) + Number(activeEnemy?.armor_rating ?? 0);
+    return Number(activeEnemy?.defense ?? 10) + Number(activeEnemy?.armor_rating ?? 0) + getEnemyDefenseEffectBonus(selectedOpponentKey);
   }
 
   function getEnemyAttackBonus(enemy: EnemyWithLoadout | NpcWithLoadout | null = activeEnemy) {
@@ -970,17 +1092,248 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     return getD20StatBonus(Number(enemy[key as keyof typeof enemy] ?? 0));
   }
 
-  function applyAbilityStatusToTarget(ability: AbilityDefinition, target: CombatIndicator["target"], log: string[]) {
-    const status = ability.adminAbility?.status_effect;
+  function getEnemyDefenseEffectBonus(targetKey: string | null | undefined) {
+    if (!targetKey) {
+      return 0;
+    }
+    return (enemyTimedEffects[targetKey] ?? []).reduce((sum, effect) => effect.status === "shield" ? sum + effect.amount : sum, 0);
+  }
 
+  function consumePlayerStun() {
+    const stun = playerTimedEffects.find((effect) => effect.status === "stun" && effect.turns > 0);
+    if (!stun) {
+      return false;
+    }
+    setPlayerTimedEffects((current) => current
+      .map((effect) => effect.status === "stun" ? { ...effect, turns: effect.turns - 1 } : effect)
+      .filter((effect) => effect.turns > 0));
+    pushCombatIndicator("player", "STUNNED", "#9ca3af");
+    return true;
+  }
+
+  function applyEnemyAbilityStatusToTarget(ability: NonNullable<EnemyWithLoadout["abilities"][number]["ability"]>, target: ReturnType<typeof chooseEnemyTarget>) {
+    const status = ability.status_effect;
     if (!status || status === "none") {
       return;
     }
 
+    const effect: BattleTimedEffect = {
+      status,
+      amount: status === "stun" ? Math.max(1, Number(ability.effect_amount ?? 1) || 1) : Math.max(1, Number(ability.effect_amount ?? 0) || 1),
+      turns: Math.max(1, Number(ability.effect_duration ?? ability.duration_turns ?? 1) || 1),
+      source: ability.name,
+    };
+
+    if (target.kind === "player") {
+      addPlayerTimedEffect(effect);
+    }
+  }
+
+  function getBattleAbilityKey(ability: AbilityDefinition) {
+    return ability.adminAbility?.id ?? ability.key;
+  }
+
+  function setAbilityCooldownAfterUse(ability: AbilityDefinition) {
+    const cooldown = Math.max(0, Number(ability.adminAbility?.cooldown_turns ?? 0));
+    if (cooldown <= 0) {
+      return;
+    }
+    setBattleAbilityCooldowns((current) => ({ ...current, [getBattleAbilityKey(ability)]: cooldown }));
+  }
+
+  function finishEnemyExchange() {
+    setBattleTurnPhase("player");
+    setBattleAbilityCooldowns((current) => {
+      const entries = Object.entries(current)
+        .map(([key, turns]) => [key, Math.max(0, Number(turns) - 1)] as const)
+        .filter(([, turns]) => turns > 0);
+      return Object.fromEntries(entries);
+    });
+  }
+
+  function addPlayerTimedEffect(effect: BattleTimedEffect) {
+    setPlayerTimedEffects((current) => mergeTimedEffects(current, effect));
+  }
+
+  function addEnemyTimedEffect(targetKey: string | null | undefined, effect: BattleTimedEffect) {
+    if (!targetKey) {
+      return;
+    }
+    setEnemyTimedEffects((current) => ({
+      ...current,
+      [targetKey]: mergeTimedEffects(current[targetKey] ?? [], effect),
+    }));
+  }
+
+  function mergeTimedEffects(current: BattleTimedEffect[], incoming: BattleTimedEffect[]) : BattleTimedEffect[];
+  function mergeTimedEffects(current: BattleTimedEffect[], incoming: BattleTimedEffect) : BattleTimedEffect[];
+  function mergeTimedEffects(current: BattleTimedEffect[], incoming: BattleTimedEffect | BattleTimedEffect[]) {
+    const incomingItems = Array.isArray(incoming) ? incoming : [incoming];
+    const next = [...current];
+    for (const effect of incomingItems) {
+      const existingIndex = next.findIndex((item) => item.status === effect.status && item.source === effect.source);
+      if (existingIndex >= 0) {
+        next[existingIndex] = {
+          ...next[existingIndex],
+          amount: Math.max(next[existingIndex].amount, effect.amount),
+          turns: Math.max(next[existingIndex].turns, effect.turns),
+        };
+      } else {
+        next.push(effect);
+      }
+    }
+    return next.filter((effect) => effect.turns > 0);
+  }
+
+  function buildTimedEffect(ability: AbilityDefinition): BattleTimedEffect | null {
+    const status = ability.adminAbility?.status_effect;
+
+    if (!status || status === "none") {
+      return null;
+    }
+
     const amount = Number(ability.adminAbility?.effect_amount ?? 0);
-    const duration = Number(ability.adminAbility?.effect_duration ?? 0);
-    pushStatusIndicator(target, status, amount);
-    log.push(`${status} applied${duration ? ` for ${duration} turns` : ""}.`);
+    const duration = Math.max(1, Number(ability.adminAbility?.effect_duration ?? ability.adminAbility?.duration_turns ?? 1) || 1);
+    if (amount <= 0 && status !== "stun") {
+      return null;
+    }
+    return {
+      status,
+      amount: status === "stun" && amount <= 0 ? 1 : amount,
+      turns: duration,
+      source: ability.name,
+    };
+  }
+
+  function applySelfStatusOrDefense(ability: AbilityDefinition, log: string[]) {
+    let immediateDefense = 0;
+    const defenseAmount = Math.max(0, Number(ability.adminAbility?.defense_amount ?? 0));
+    const duration = Math.max(1, Number(ability.adminAbility?.duration_turns ?? ability.adminAbility?.effect_duration ?? 1) || 1);
+    if (defenseAmount > 0) {
+      immediateDefense += defenseAmount;
+      if (duration > 1) {
+        addPlayerTimedEffect({ status: "shield", amount: defenseAmount, turns: duration - 1, source: ability.name });
+      }
+      pushCombatIndicator("player", `Shield +${defenseAmount}`, "#7dd3fc");
+      log.push(`${ability.name} adds +${defenseAmount} Defense for ${duration} turn${duration === 1 ? "" : "s"}.`);
+    }
+
+    const effect = buildTimedEffect(ability);
+    if (!effect) {
+      return immediateDefense;
+    }
+
+    if (effect.status === "shield") {
+      immediateDefense += effect.amount;
+      if (effect.turns > 1) {
+        addPlayerTimedEffect({ ...effect, turns: effect.turns - 1 });
+      }
+      pushStatusIndicator("player", effect.status, effect.amount);
+      log.push(`${effect.status} applied for ${effect.turns} turn${effect.turns === 1 ? "" : "s"}.`);
+    } else if (effect.status === "regen") {
+      addPlayerTimedEffect(effect);
+      pushStatusIndicator("player", effect.status, effect.amount);
+      log.push(`${effect.status} applied for ${effect.turns} turn${effect.turns === 1 ? "" : "s"}.`);
+    }
+
+    return immediateDefense;
+  }
+
+  function applyAbilityStatusToTarget(ability: AbilityDefinition, target: CombatIndicator["target"], log: string[], targetKey?: string | null) {
+    const effect = buildTimedEffect(ability);
+
+    if (!effect) {
+      return;
+    }
+
+    if (target === "enemy") {
+      addEnemyTimedEffect(targetKey, effect);
+    } else if (target === "player") {
+      addPlayerTimedEffect(effect);
+    }
+
+    pushStatusIndicator(target, effect.status, effect.amount, targetKey);
+    log.push(`${effect.status} applied for ${effect.turns} turn${effect.turns === 1 ? "" : "s"}.`);
+  }
+
+  function tickPlayerTimedEffects(log: string[]) {
+    let defenseBonus = 0;
+    let attackPenalty = 0;
+    let healing = 0;
+    const nextEffects: BattleTimedEffect[] = [];
+
+    for (const effect of playerTimedEffects) {
+      if (effect.status === "shield") {
+        defenseBonus += effect.amount;
+      } else if (effect.status === "weakness" || effect.status === "slow") {
+        attackPenalty += effect.amount;
+      } else if (effect.status === "regen") {
+        healing += effect.amount;
+      }
+
+      if (effect.turns > 1) {
+        nextEffects.push({ ...effect, turns: effect.turns - 1 });
+      }
+    }
+
+    if (healing > 0) {
+      pushCombatIndicator("player", `+${healing}`, "#42d77d");
+      log.push(`Regeneration restores ${healing} Health.`);
+    }
+
+    setPlayerTimedEffects(nextEffects);
+    return { defenseBonus, attackPenalty, healing };
+  }
+
+  function tickEnemyTimedEffects(opponent: BattleOpponentState, effectsByTarget: Record<string, BattleTimedEffect[]>, log: string[]) {
+    const effects = effectsByTarget[opponent.key] ?? [];
+    let damage = 0;
+    let healing = 0;
+    let attackPenalty = 0;
+    let defenseBonus = 0;
+    let skipTurn = false;
+    const nextEffects: BattleTimedEffect[] = [];
+
+    for (const effect of effects) {
+      if (effect.status === "poison" || effect.status === "burn") {
+        damage += effect.amount;
+        pushStatusIndicator("enemy", effect.status, effect.amount, opponent.key);
+      } else if (effect.status === "stun") {
+        skipTurn = true;
+      } else if (effect.status === "weakness" || effect.status === "slow") {
+        attackPenalty += effect.amount;
+      } else if (effect.status === "regen") {
+        healing += effect.amount;
+        pushStatusIndicator("enemy", effect.status, effect.amount, opponent.key);
+      } else if (effect.status === "shield") {
+        defenseBonus += effect.amount;
+      }
+
+      if (effect.turns > 1) {
+        nextEffects.push({ ...effect, turns: effect.turns - 1 });
+      }
+    }
+
+    const nextHp = Math.max(0, Math.min(Number(opponent.enemy?.health ?? activeBattle?.enemy_hp ?? 30), opponent.hp + healing - damage));
+    if (damage > 0) {
+      updateOpponent(opponent.key, { hp: nextHp });
+      log.push(`${opponent.enemy?.name || "Enemy"} takes ${damage} lingering damage.`);
+    }
+    if (healing > 0) {
+      updateOpponent(opponent.key, { hp: nextHp });
+      log.push(`${opponent.enemy?.name || "Enemy"} regenerates ${healing} Health.`);
+    }
+
+    return {
+      nextHp,
+      skipTurn,
+      attackPenalty,
+      defenseBonus,
+      effects: {
+        ...effectsByTarget,
+        [opponent.key]: nextEffects,
+      },
+    };
   }
 
   function pushStatusIndicator(target: CombatIndicator["target"], status: string | null | undefined, amount: number, targetKey?: string | null) {
@@ -1101,7 +1454,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     if (nextPlayerHp <= 0) {
       await resolvePlayerDefeat(nextLog, context);
     } else {
-      setBattleTurnPhase("player");
+      finishEnemyExchange();
     }
 
     setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
@@ -1142,6 +1495,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     setCombatResources,
     equippedAbilities,
     setEquippedAbilities,
+    battleAbilityCooldowns,
     battleInventoryOpen,
     setBattleInventoryOpen,
     resetBattleState,

@@ -321,6 +321,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setCombatResources,
     equippedAbilities,
     setEquippedAbilities,
+    battleAbilityCooldowns,
     battleInventoryOpen,
     setBattleInventoryOpen,
     resetBattleState,
@@ -5986,6 +5987,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         layoutCombatants={battleLayoutCombatants}
         selectedOpponentKey={selectedOpponentKey}
         equippedAbilities={equippedAbilities}
+        abilityCooldowns={battleAbilityCooldowns}
         equippedWeapon={equippedItems.weapon ?? null}
         inventoryItems={inventoryItems}
         inventoryOpen={battleInventoryOpen}

@@ -26,6 +26,7 @@ type ActiveBattleViewProps = {
   layoutCombatants: Array<BattleEventCombatant | MarkerBattleCombatant>;
   selectedOpponentKey: string | null;
   equippedAbilities: Array<AbilityDefinition | null>;
+  abilityCooldowns: Record<string, number>;
   equippedWeapon: ItemDefinition | null;
   inventoryItems: InventoryItem[];
   inventoryOpen: boolean;
@@ -74,6 +75,7 @@ export function ActiveBattleView({
   layoutCombatants,
   selectedOpponentKey,
   equippedAbilities,
+  abilityCooldowns,
   equippedWeapon,
   inventoryItems,
   inventoryOpen,
@@ -129,6 +131,7 @@ export function ActiveBattleView({
         layoutCombatants={layoutCombatants}
         selectedOpponentKey={selectedOpponentKey}
         equippedAbilities={equippedAbilities}
+        abilityCooldowns={abilityCooldowns}
         weapon={equippedWeapon}
         battleItems={getBattleUsableItems(inventoryItems, playerHp <= 0 || result === "defeat")}
         inventoryOpen={inventoryOpen}
