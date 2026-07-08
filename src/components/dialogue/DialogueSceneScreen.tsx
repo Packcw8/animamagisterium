@@ -80,11 +80,18 @@ export function DialogueSceneScreen({
             </Pressable>
           </View>
         ) : null}
-        {backgroundImageUrl ? (
-          <Image source={{ uri: backgroundImageUrl }} style={styles.eventImage} />
-        ) : (
-          <View style={styles.eventImagePlaceholder} />
-        )}
+        <View style={styles.sceneHero}>
+          {backgroundImageUrl ? (
+            <Image source={{ uri: backgroundImageUrl }} style={styles.eventImage} />
+          ) : (
+            <View style={styles.eventImagePlaceholder} />
+          )}
+          <View style={styles.heroShade} />
+          <View style={styles.heroTitleBar}>
+            <Text style={styles.heroEyebrow}>Encounter</Text>
+            <Text style={styles.heroTitle}>{event.title}</Text>
+          </View>
+        </View>
         <Animated.View style={[styles.scenePanel, { opacity: fadeValue }]}>
           <View style={styles.sceneHeader}>
             <View style={styles.npcPortraitWrap}>
@@ -95,8 +102,7 @@ export function DialogueSceneScreen({
               )}
             </View>
             <View style={styles.sceneTitleWrap}>
-              <Text style={styles.sectionTitle}>{event.title}</Text>
-              {npcName ? <Text style={styles.selectedTitle}>{npcName}</Text> : null}
+              <Text style={styles.sectionTitle}>{npcName || event.title}</Text>
             </View>
           </View>
           <Pressable style={styles.dialoguePanel} onPress={() => setChoicesRevealed(true)} disabled={!shouldPaceChoices || choicesRevealed}>
@@ -147,13 +153,14 @@ export function DialogueSceneScreen({
                   >
                     <View style={styles.choiceRow}>
                       <View style={[styles.choiceIcon, availability.disabled && styles.choiceIconLocked]}>
-                        <Text style={[styles.choiceIconText, availability.disabled && styles.lockedText]}>{availability.disabled ? "!" : hasRequirement ? "DC" : ">"}</Text>
+                        <Text style={[styles.choiceIconText, availability.disabled && styles.lockedText]}>{availability.disabled ? "!" : hasRequirement ? "?" : "..."}</Text>
                       </View>
                       <View style={styles.choiceTextWrap}>
                         {checkSummary ? <Text style={styles.checkBadge}>{checkSummary}</Text> : null}
                         <Text style={[styles.choiceText, availability.disabled && styles.lockedText]}>{choice.button_text}</Text>
                         {availability.disabled && availability.message ? <Text style={styles.requirementText}>{availability.message}</Text> : null}
                       </View>
+                      <Text style={[styles.choiceArrow, availability.disabled && styles.lockedText]}>{">"}</Text>
                     </View>
                   </Pressable>
                 );
@@ -258,24 +265,64 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.32)",
   },
+  sceneHero: {
+    position: "relative",
+    minHeight: 214,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    overflow: "hidden",
+    backgroundColor: "rgba(4, 10, 10, 0.82)",
+  },
   eventImage: {
     width: "100%",
-    height: 220,
-    borderRadius: 8,
+    height: 250,
   },
   eventImagePlaceholder: {
     width: "100%",
-    height: 160,
-    borderRadius: 8,
+    height: 220,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     backgroundColor: "rgba(20, 61, 86, 0.35)",
   },
+  heroShade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  heroTitleBar: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    top: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.48)",
+    backgroundColor: "rgba(0, 5, 7, 0.72)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  heroEyebrow: {
+    color: colors.blue,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  heroTitle: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 18,
+    textTransform: "uppercase",
+  },
   scenePanel: {
+    marginTop: -44,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    backgroundColor: "rgba(1, 6, 7, 0.74)",
+    backgroundColor: "rgba(3, 5, 5, 0.92)",
     padding: 12,
     gap: 12,
   },
@@ -285,9 +332,9 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   npcPortraitWrap: {
-    width: 74,
-    height: 74,
-    borderRadius: 37,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     borderWidth: 2,
     borderColor: colors.gold,
     backgroundColor: "rgba(0,0,0,0.45)",
@@ -309,11 +356,12 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     gap: 4,
+    paddingTop: 24,
   },
   sectionTitle: {
     color: colors.gold,
     fontFamily: fonts.title,
-    fontSize: 20,
+    fontSize: 24,
     textTransform: "uppercase",
   },
   selectedTitle: {
@@ -323,15 +371,15 @@ const styles = StyleSheet.create({
   dialoguePanel: {
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    borderRadius: 10,
-    padding: 12,
-    backgroundColor: "rgba(0,0,0,0.34)",
+    borderRadius: 8,
+    padding: 16,
+    backgroundColor: "rgba(0,0,0,0.48)",
     gap: 10,
   },
   dialogueText: {
     color: colors.text,
     fontSize: 16,
-    lineHeight: 24,
+    lineHeight: 26,
   },
   tapHint: {
     color: colors.blue,
@@ -451,10 +499,10 @@ const styles = StyleSheet.create({
   },
   choiceButton: {
     minHeight: 58,
-    borderRadius: 10,
+    borderRadius: 6,
     borderWidth: 1,
-    borderColor: "rgba(217, 170, 93, 0.54)",
-    backgroundColor: "rgba(217, 170, 93, 0.14)",
+    borderColor: "rgba(217, 170, 93, 0.45)",
+    backgroundColor: "rgba(2, 5, 5, 0.74)",
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -468,8 +516,8 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 15,
     borderWidth: 1,
-    borderColor: colors.gold,
-    backgroundColor: "rgba(217, 170, 93, 0.18)",
+    borderColor: "rgba(217, 170, 93, 0.42)",
+    backgroundColor: "rgba(217, 170, 93, 0.16)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -479,7 +527,7 @@ const styles = StyleSheet.create({
   },
   choiceIconText: {
     color: colors.gold,
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "900",
   },
   choiceTextWrap: {
@@ -489,8 +537,13 @@ const styles = StyleSheet.create({
   choiceText: {
     color: colors.text,
     fontSize: 15,
-    fontWeight: "900",
+    fontWeight: "800",
     lineHeight: 20,
+  },
+  choiceArrow: {
+    color: colors.gold,
+    fontSize: 20,
+    fontWeight: "900",
   },
   lockedButton: {
     borderWidth: 1,
