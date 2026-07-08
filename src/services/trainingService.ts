@@ -1,6 +1,7 @@
 import { supabase, Tables } from "../lib/supabase";
 import { CharacterWithDetails, getCharacter } from "./characterService";
 import { syncUnlockedAbilities } from "./abilityService";
+import { advanceActiveClassProgress } from "./classService";
 import { recordSocialContribution } from "./partyGuildService";
 import {
   applyCharacterXpGold,
@@ -264,11 +265,17 @@ export async function completeTrainingSession(character: CharacterWithDetails, a
     throw new Error("Training completed, but character could not be reloaded.");
   }
 
+  const classProgress = await advanceActiveClassProgress(updatedCharacter, attributeKey);
   const learnedAbilities = await syncUnlockedAbilities(updatedCharacter);
+  const classMessage = classProgress
+    ? classProgress.leveledUp
+      ? ` ${classProgress.className} reached class level ${classProgress.nextLevel}.`
+      : ` ${classProgress.className} class progress advanced.`
+    : "";
 
   return {
     character: updatedCharacter,
-    message: `${config.name} training complete. ${config.name} is now level ${nextAttributeLevel}. +${config.character_xp_reward} character XP.`,
+    message: `${config.name} training complete. ${config.name} is now level ${nextAttributeLevel}.${classMessage} +${config.character_xp_reward} character XP.`,
     learnedAbilities,
   };
 }

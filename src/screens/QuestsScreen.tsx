@@ -335,7 +335,7 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
               </View>
               <Text style={styles.classCount}>{unlockedClassCount} / {classes.length}</Text>
             </View>
-            <Text style={styles.copy}>Tap a locked class to preview what it needs. Once unlocked, tapping it makes it your active class.</Text>
+            <Text style={styles.copy}>Classes unlock from attributes, then level through matching active-class training. Class levels can unlock abilities.</Text>
             {classMessage ? <Text style={styles.successText}>{classMessage}</Text> : null}
             <View style={styles.classGrid}>
               {classes.map((classItem) => (
@@ -350,14 +350,30 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                     <Text style={classItem.firstLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.firstLevel}/{classUnlockLevel}</Text>
                     <Text style={classItem.secondLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.secondLevel}/{classUnlockLevel}</Text>
                   </View>
-                  <Text style={classItem.unlocked ? styles.classUnlockedText : styles.classLockedText}>{classItem.selected ? "Active" : classItem.unlocked ? "Unlocked" : "Locked"}</Text>
+                  {classItem.unlocked ? (
+                    <Text style={classItem.selected ? styles.classUnlockedText : styles.classLockedText}>Class Lv {classItem.classLevel}</Text>
+                  ) : (
+                    <Text style={styles.classLockedText}>Locked</Text>
+                  )}
                 </Pressable>
               ))}
             </View>
             {classProgressFocus ? (
               <View style={styles.classGoalPanel}>
-                <Text style={styles.sectionTitle}>{classProgressFocus.name} Goals</Text>
+                <Text style={styles.sectionTitle}>{classProgressFocus.name} Progress</Text>
                 <Text style={styles.copy}>{classProgressFocus.description}</Text>
+                {classProgressFocus.unlocked ? (
+                  <View style={styles.xpBlock}>
+                    <View style={styles.levelProgressHeader}>
+                      <Text style={styles.xpText}>Class Level {classProgressFocus.classLevel}</Text>
+                      <Text style={styles.attributeMeta}>
+                        {classProgressFocus.classProgress.progress} / {classProgressFocus.classProgress.required}
+                      </Text>
+                    </View>
+                    <ProgressBar value={classProgressFocus.classProgress.progress} max={classProgressFocus.classProgress.required} color={colors.gold} height={8} />
+                    <Text style={styles.copy}>Train {formatAttributeName(classProgressFocus.firstAttribute)} or {formatAttributeName(classProgressFocus.secondAttribute)} while this class is active to advance it.</Text>
+                  </View>
+                ) : null}
                 <ClassTrainingGoal classItem={classProgressFocus} attributeKey={classProgressFocus.firstAttribute} trainingConfigs={trainingConfigs} />
                 <ClassTrainingGoal classItem={classProgressFocus} attributeKey={classProgressFocus.secondAttribute} trainingConfigs={trainingConfigs} />
               </View>

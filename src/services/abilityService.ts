@@ -2,7 +2,7 @@ import { supabase, Tables } from "../lib/supabase";
 import type { CharacterWithDetails } from "./characterService";
 import type { AttributeKey } from "./trainingService";
 import type { CombatAbility } from "./combatAdminService";
-import { classCombinations, classUnlockLevel } from "./classService";
+import { classCombinations, classUnlockLevel, getClassProgressRows } from "./classService";
 
 export type PlayerAbility = Tables["player_abilities"];
 export type EquippedAbility = Tables["equipped_abilities"];
@@ -304,17 +304,22 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
     return [];
   }
 
-  const [adminAbilitiesResult] = await Promise.all([
+  const [adminAbilitiesResult, classProgressRows] = await Promise.all([
     supabase
       .from("combat_abilities")
       .select("*")
       .eq("is_active", true),
+    getClassProgressRows(character.id),
   ]);
 
   if (adminAbilitiesResult.error) {
     throw adminAbilitiesResult.error;
   }
 
+  const classProgressByKey = classProgressRows.reduce<Record<string, number>>((map, progress) => {
+    map[progress.class_key] = Number(progress.current_level ?? 0);
+    return map;
+  }, {});
   const unlocked = abilityDefinitions.filter((ability) => ability.attribute && (character.attributes?.[ability.attribute] ?? 0) >= ability.unlockLevel);
   const adminUnlocked = ((adminAbilitiesResult.data ?? []) as CombatAbility[]).filter((ability) => {
     if (ability.learn_method === "starter") {
@@ -323,6 +328,13 @@ export async function syncUnlockedAbilities(character: CharacterWithDetails) {
 
     if (ability.required_class_key && !isClassUnlocked(character, ability.required_class_key)) {
       return false;
+    }
+
+    if (ability.required_class_key && Number(ability.required_class_level ?? 0) > 0) {
+      const classLevel = classProgressByKey[ability.required_class_key] ?? 0;
+      if (classLevel < Number(ability.required_class_level ?? 0)) {
+        return false;
+      }
     }
 
     const attribute = ability.required_attribute;
@@ -478,7 +490,7 @@ function adminAbilityToDefinition(ability: CombatAbility): AbilityDefinition {
     key: getAdminAbilityKey(ability.id),
     name: ability.name,
     attribute: primaryAttribute,
-    unlockLevel: ability.required_attribute_level,
+    unlockLevel: ability.required_class_key && ability.required_class_level > 0 ? ability.required_class_level : ability.required_attribute_level,
     kind,
     resource,
     cost,

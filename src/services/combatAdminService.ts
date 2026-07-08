@@ -26,7 +26,7 @@ export const statusEffects: CombatAbility["status_effect"][] = ["none", "poison"
 export const linkedStats: CombatAbility["linked_stat"][] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit", "weapon", "item", "none"];
 export const requiredAttributes: NonNullable<CombatAbility["required_attribute"]>[] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"];
 export const requiredClassKeys = classCombinations.map((combo) => combo.key);
-export const learnMethods: CombatAbility["learn_method"][] = ["starter", "level", "weapon equipped", "armor equipped", "wearable equipped", "scroll", "quest", "admin"];
+export const learnMethods: CombatAbility["learn_method"][] = ["starter", "level", "class level", "weapon equipped", "armor equipped", "wearable equipped", "scroll", "quest", "admin"];
 export const usageContexts: CombatAbility["usage_context"][] = ["battle_only", "outside_battle_only", "both"];
 export const enemyAssetBasePath = "/assets/Enemies/";
 
@@ -84,6 +84,7 @@ export function blankCombatAbility(): Partial<CombatAbility> {
     required_attribute: null,
     required_attribute_level: 0,
     required_class_key: null,
+    required_class_level: 0,
     image_path: "/assets/abilities/",
     usage_context: "battle_only",
     attack_bonus: 0,
@@ -405,6 +406,7 @@ function normalizeCombatAbility(input: Partial<CombatAbility>, userId: string | 
     required_attribute: input.required_attribute ?? null,
     required_attribute_level: Number(input.required_attribute_level) || 0,
     required_class_key: input.required_class_key?.trim() || null,
+    required_class_level: Number(input.required_class_level) || 0,
     image_path: input.image_path?.trim() || null,
     usage_context: input.usage_context ?? "battle_only",
     attack_bonus: Number(input.attack_bonus) || 0,

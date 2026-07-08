@@ -1146,6 +1146,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 <ChoiceRow label="Required Attribute" options={["", ...requiredAttributes]} value={abilityForm.required_attribute ?? ""} onSelect={(value) => setAbilityForm((current) => ({ ...current, required_attribute: value || null, linked_stat: value || current.linked_stat }))} />
                 <ItemText label="Required Attribute Level" value={String(abilityForm.required_attribute_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_attribute_level: Number(value) || 0, required_level: Number(value) || current.required_level || 0 }))} />
                 <ChoiceRow label="Required Class" options={["", ...requiredClassKeys]} value={abilityForm.required_class_key ?? ""} labels={getClassChoiceLabels()} onSelect={(value) => setAbilityForm((current) => ({ ...current, required_class_key: value || null }))} />
+                <ItemText label="Required Class Level" value={String(abilityForm.required_class_level ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, required_class_level: Number(value) || 0 }))} />
                 <View style={styles.slotActions}>
                   <ItemText label="Stamina Restore" value={String(abilityForm.stamina_restore ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, stamina_restore: Number(value) || 0 }))} />
                   <ItemText label="Mana Restore" value={String(abilityForm.magika_restore ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, magika_restore: Number(value) || 0 }))} />
@@ -1933,7 +1934,7 @@ function formatAbilityUnlockText(ability: CombatAbility) {
 
   if (ability.required_class_key) {
     const className = classCombinations.find((combo) => combo.key === ability.required_class_key)?.name ?? ability.required_class_key;
-    parts.push(className);
+    parts.push(`${className}${ability.required_class_level > 0 ? ` class level ${ability.required_class_level}` : ""}`);
   }
 
   return parts.join(" + ");

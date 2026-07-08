@@ -242,6 +242,17 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  class_progress: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    class_key: string;
+    current_level: number;
+    current_xp: number;
+    last_trained_at: string | null;
+    created_at: string;
+    updated_at: string;
+  };
   player_class_selection: {
     id: string;
     user_id: string;
@@ -1094,11 +1105,12 @@ export type Tables = {
     effect_amount: number;
     effect_duration: number;
     linked_stat: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | "weapon" | "item" | "none";
-    learn_method: "starter" | "level" | "weapon equipped" | "armor equipped" | "wearable equipped" | "scroll" | "quest" | "admin";
+    learn_method: "starter" | "level" | "class level" | "weapon equipped" | "armor equipped" | "wearable equipped" | "scroll" | "quest" | "admin";
     required_level: number;
     required_attribute: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | null;
     required_attribute_level: number;
     required_class_key: string | null;
+    required_class_level: number;
     image_path: string | null;
     usage_context: "battle_only" | "outside_battle_only" | "both";
     attack_bonus: number;

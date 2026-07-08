@@ -1,6 +1,7 @@
 import { supabase, Tables } from "../lib/supabase";
 import type { AttributeKey } from "./trainingService";
 import type { CharacterWithDetails } from "./characterService";
+import { getAttributeLevelFromXp, getAttributeLevelProgress, seasonOneAttributeLevelCap } from "./progressionService";
 
 export type ClassKey =
   | "warrior"
@@ -26,6 +27,7 @@ export type ClassKey =
   | "prophet";
 
 export type ClassDefinition = Tables["class_definitions"];
+export type ClassProgress = Tables["class_progress"];
 export type PlayerClassSelection = Tables["player_class_selection"];
 
 export type ClassCombo = {
@@ -40,6 +42,9 @@ export type PlayerClassState = ClassCombo & {
   secondLevel: number;
   unlocked: boolean;
   selected: boolean;
+  classLevel: number;
+  classXp: number;
+  classProgress: ReturnType<typeof getAttributeLevelProgress>;
   imageUrl: string | null;
   backgroundImageUrl: string | null;
   description: string;
@@ -73,6 +78,15 @@ export const classCombinations: ClassCombo[] = [
 ];
 
 export async function getPlayerClassState(character: CharacterWithDetails): Promise<PlayerClassState[]> {
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError) {
+    throw userError;
+  }
+
+  if (user) {
+    await ensureClassProgress(user.id, character.id);
+  }
+
   const [definitionsResult, selectionResult] = await Promise.all([
     supabase.from("class_definitions").select("*"),
     supabase.from("player_class_selection").select("*").eq("character_id", character.id).maybeSingle(),
@@ -91,12 +105,20 @@ export async function getPlayerClassState(character: CharacterWithDetails): Prom
     return map;
   }, {});
   const selectedKey = (selectionResult.data as PlayerClassSelection | null)?.class_key ?? null;
+  const progressRows = user ? await getClassProgressRows(character.id) : [];
+  const progressMap = progressRows.reduce<Record<string, ClassProgress>>((map, progress) => {
+    map[progress.class_key] = progress;
+    return map;
+  }, {});
 
   return classCombinations.map((combo) => {
     const definition = definitions[combo.key];
+    const progress = progressMap[combo.key];
     const firstLevel = Number(character.attributes?.[combo.firstAttribute] ?? 0);
     const secondLevel = Number(character.attributes?.[combo.secondAttribute] ?? 0);
     const unlocked = firstLevel >= classUnlockLevel && secondLevel >= classUnlockLevel;
+    const classXp = Number(progress?.current_xp ?? 0);
+    const classLevel = getAttributeLevelFromXp(classXp, seasonOneAttributeLevelCap);
 
     return {
       ...combo,
@@ -105,6 +127,9 @@ export async function getPlayerClassState(character: CharacterWithDetails): Prom
       secondLevel,
       unlocked,
       selected: unlocked && selectedKey === combo.key,
+      classLevel,
+      classXp,
+      classProgress: getAttributeLevelProgress(classXp, seasonOneAttributeLevelCap),
       imageUrl: definition?.image_url ?? null,
       backgroundImageUrl: definition?.background_image_url ?? null,
       description: definition?.description || `${formatAttributeName(combo.firstAttribute)} and ${formatAttributeName(combo.secondAttribute)} training unlock this path.`,
@@ -140,6 +165,108 @@ export async function selectActiveClass(character: CharacterWithDetails, classKe
   if (error) {
     throw error;
   }
+}
+
+export async function ensureClassProgress(userId: string, characterId: string) {
+  const now = new Date().toISOString();
+  const rows = classCombinations.map((combo) => ({
+    user_id: userId,
+    character_id: characterId,
+    class_key: combo.key,
+    updated_at: now,
+  }));
+
+  const { error } = await supabase.from("class_progress").upsert(rows, { onConflict: "character_id,class_key", ignoreDuplicates: true });
+  if (error && !isMissingClassTableError(error)) {
+    throw error;
+  }
+}
+
+export async function getClassProgressRows(characterId: string) {
+  const { data, error } = await supabase
+    .from("class_progress")
+    .select("*")
+    .eq("character_id", characterId);
+
+  if (error) {
+    if (isMissingClassTableError(error)) {
+      return [];
+    }
+    throw error;
+  }
+
+  return (data ?? []) as ClassProgress[];
+}
+
+export async function advanceActiveClassProgress(character: CharacterWithDetails, trainedAttribute: AttributeKey) {
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError) {
+    throw userError;
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  const selectionResult = await supabase
+    .from("player_class_selection")
+    .select("class_key")
+    .eq("character_id", character.id)
+    .maybeSingle();
+
+  if (selectionResult.error) {
+    if (isMissingClassTableError(selectionResult.error)) {
+      return null;
+    }
+    throw selectionResult.error;
+  }
+
+  const classKey = selectionResult.data?.class_key as ClassKey | undefined;
+  const combo = classCombinations.find((item) => item.key === classKey);
+  if (!combo || (trainedAttribute !== combo.firstAttribute && trainedAttribute !== combo.secondAttribute)) {
+    return null;
+  }
+
+  await ensureClassProgress(user.id, character.id);
+
+  const currentResult = await supabase
+    .from("class_progress")
+    .select("*")
+    .eq("character_id", character.id)
+    .eq("class_key", combo.key)
+    .single();
+
+  if (currentResult.error) {
+    throw currentResult.error;
+  }
+
+  const current = currentResult.data as ClassProgress;
+  const previousLevel = getAttributeLevelFromXp(Number(current.current_xp ?? 0), seasonOneAttributeLevelCap);
+  const nextXp = Number(current.current_xp ?? 0) + 1;
+  const nextLevel = getAttributeLevelFromXp(nextXp, seasonOneAttributeLevelCap);
+  const now = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("class_progress")
+    .update({
+      current_xp: nextXp,
+      current_level: nextLevel,
+      last_trained_at: now,
+      updated_at: now,
+    })
+    .eq("id", current.id);
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    classKey: combo.key,
+    className: combo.name,
+    previousLevel,
+    nextLevel,
+    leveledUp: nextLevel > previousLevel,
+  };
 }
 
 export async function saveClassDefinition(input: Pick<ClassDefinition, "class_key" | "name" | "description" | "image_url" | "background_image_url">) {
@@ -195,5 +322,5 @@ export function resolveClassImageUri(imagePath?: string | null) {
 
 function isMissingClassTableError(error: { message?: string; code?: string }) {
   const message = error.message?.toLowerCase() ?? "";
-  return error.code === "42P01" || message.includes("class_definitions") || message.includes("player_class_selection");
+  return error.code === "42P01" || message.includes("class_definitions") || message.includes("player_class_selection") || message.includes("class_progress");
 }
