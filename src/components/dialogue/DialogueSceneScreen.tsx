@@ -88,7 +88,6 @@ export function DialogueSceneScreen({
           )}
           <View style={styles.heroShade} />
           <View style={styles.heroTitleBar}>
-            <Text style={styles.heroEyebrow}>Encounter</Text>
             <Text style={styles.heroTitle}>{event.title}</Text>
           </View>
         </View>
@@ -304,12 +303,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 5, 7, 0.72)",
     paddingHorizontal: 12,
     paddingVertical: 10,
-  },
-  heroEyebrow: {
-    color: colors.blue,
-    fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase",
   },
   heroTitle: {
     color: colors.gold,

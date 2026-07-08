@@ -84,15 +84,26 @@ export function MarkerSceneScreen({
   return (
     <Screen>
       <Frame style={backgroundUri ? [styles.eventScreen, ({ backgroundImage: `url(${backgroundUri})`, backgroundSize: "cover", backgroundPosition: "center" } as never)] : styles.eventScreen}>
-        <View style={styles.panelHeader}>
-          <View>
+        <View style={styles.sceneIntro}>
+          <View style={styles.panelHeader}>
+            <View style={styles.titleBlock}>
+              <Text style={styles.markerType}>{marker.type}</Text>
             <Text style={styles.sectionTitle}>{marker.quest_title || marker.title}</Text>
-            <Text style={styles.copy}>{marker.type}</Text>
+            </View>
+            {marker.reward_xp || marker.reward_gold || marker.reward_item_id || marker.reward_full_heal ? (
+              <View style={styles.rewardPill}>
+                <Text style={styles.rewardPillText}>Reward</Text>
+              </View>
+            ) : null}
           </View>
+          {npcUri ? (
+            <View style={marker.type === "Market" ? styles.sceneImageWrap : styles.portraitSceneWrap}>
+              <Image source={{ uri: npcUri }} style={marker.type === "Market" ? styles.eventImage : styles.npcPortrait} />
+            </View>
+          ) : null}
+          {marker.description ? <Text style={styles.copy}>{marker.description}</Text> : null}
+          {marker.quest_dialogue ? <Text style={styles.dialogueText}>{marker.quest_dialogue}</Text> : null}
         </View>
-        {npcUri ? <Image source={{ uri: npcUri }} style={marker.type === "Market" ? styles.eventImage : styles.npcPortrait} /> : null}
-        {marker.description ? <Text style={styles.copy}>{marker.description}</Text> : null}
-        {marker.quest_dialogue ? <Text style={styles.dialogueText}>{marker.quest_dialogue}</Text> : null}
         {message ? <Text style={styles.adminMessage}>{message}</Text> : null}
         {isExitMarker(marker) ? (
           <View style={styles.storyEditor}>
@@ -121,7 +132,6 @@ export function MarkerSceneScreen({
           />
         ) : marker.type === "NPC" ? (
           <View style={styles.storyEditor}>
-            <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
             {markerHasDialogue ? (
               <Pressable style={styles.primaryButton} onPress={onOpenDialogueEvent}>
                 <Text style={styles.primaryText}>Talk</Text>
@@ -415,19 +425,55 @@ function getRemainingMarketStock(marketItem: MarkerMarketItem, purchaseCounts: R
 const styles = StyleSheet.create({
   eventScreen: {
     margin: 12,
-    padding: 14,
+    padding: 16,
     gap: 12,
+    borderRadius: 14,
+    backgroundColor: "rgba(8, 7, 5, 0.92)",
+  },
+  sceneIntro: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.32)",
+    backgroundColor: "rgba(0, 5, 6, 0.62)",
+    padding: 14,
+    gap: 14,
   },
   panelHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     gap: 12,
-    alignItems: "center",
+    alignItems: "flex-start",
+  },
+  titleBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  markerType: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    letterSpacing: 0,
   },
   sectionTitle: {
     color: colors.gold,
     fontFamily: fonts.title,
-    fontSize: 18,
+    fontSize: 24,
+    textTransform: "uppercase",
+  },
+  rewardPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.42)",
+    backgroundColor: "rgba(217, 170, 93, 0.12)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  rewardPillText: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: "900",
     textTransform: "uppercase",
   },
   copy: {
@@ -435,12 +481,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   secondaryButton: {
-    minHeight: 46,
+    minHeight: 50,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.38)",
   },
   secondaryButtonFlex: {
     flex: 1,
@@ -458,14 +505,30 @@ const styles = StyleSheet.create({
   eventImage: {
     width: "100%",
     height: 220,
-    borderRadius: 8,
   },
-  npcPortrait: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
+  sceneImageWrap: {
+    width: "100%",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    overflow: "hidden",
+    backgroundColor: "rgba(0,0,0,0.36)",
+  },
+  portraitSceneWrap: {
+    width: 118,
+    height: 118,
+    borderRadius: 59,
     borderWidth: 2,
     borderColor: colors.gold,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    overflow: "hidden",
+    shadowColor: colors.gold,
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+  },
+  npcPortrait: {
+    width: "100%",
+    height: "100%",
   },
   adminMessage: {
     color: colors.blue,
@@ -473,14 +536,17 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   storyEditor: {
-    gap: 10,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
+    gap: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.24)",
+    backgroundColor: "rgba(0,0,0,0.44)",
+    padding: 14,
   },
   selectedTitle: {
     color: colors.gold,
     fontWeight: "900",
+    fontSize: 16,
   },
   dialogueText: {
     color: colors.text,
@@ -488,16 +554,17 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    borderRadius: 8,
+    borderRadius: 10,
     padding: 12,
-    backgroundColor: "rgba(0,0,0,0.3)",
+    backgroundColor: "rgba(0,0,0,0.42)",
   },
   primaryButton: {
-    minHeight: 52,
+    minHeight: 56,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 8,
+    borderRadius: 12,
     backgroundColor: colors.gold,
+    paddingHorizontal: 14,
   },
   primaryText: {
     color: "#120e08",
