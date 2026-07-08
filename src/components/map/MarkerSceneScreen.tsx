@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
@@ -20,8 +20,8 @@ import {
 } from "../../utils/mapVisibility";
 import { getRouteLockLabel, getRouteLockMessage, isRouteLocked } from "../../utils/mapProgress";
 
-const marketCategories = ["All", "Potions", "Equipment", "Materials", "Misc"] as const;
-type MarketCategory = (typeof marketCategories)[number];
+const marketModes = ["Buy", "Sell"] as const;
+type MarketMode = (typeof marketModes)[number];
 
 export function MarkerSceneScreen({
   marker,
@@ -292,14 +292,10 @@ function MarketScene({
   onBuy: (marketItem: MarkerMarketItem) => void;
   onSell: (item: InventoryItem) => void;
 }) {
-  const [activeCategory, setActiveCategory] = useState<MarketCategory>("All");
-  const buyableItems = useMemo(
-    () => marketItems
-      .map((marketItem) => ({ marketItem, item: getItemDefinition(itemDefinitions, marketItem.item_id) }))
-      .filter(({ marketItem }) => canMarketItemBeBought(marketItem) && getRemainingMarketStock(marketItem, marketPurchaseCounts) > 0)
-      .filter(({ item }) => activeCategory === "All" || getMarketCategory(item) === activeCategory),
-    [activeCategory, itemDefinitions, marketItems, marketPurchaseCounts],
-  );
+  const [activeMode, setActiveMode] = useState<MarketMode>("Buy");
+  const buyableItems = marketItems
+    .map((marketItem) => ({ marketItem, item: getItemDefinition(itemDefinitions, marketItem.item_id) }))
+    .filter(({ marketItem }) => canMarketItemBeBought(marketItem) && getRemainingMarketStock(marketItem, marketPurchaseCounts) > 0);
   const sellableItems = inventoryItems.filter((entry) => entry.item.sellable && marketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item)));
 
   return (
@@ -315,40 +311,42 @@ function MarketScene({
         </View>
       </View>
       <View style={styles.marketCategoryTabs}>
-        {marketCategories.map((category) => (
-          <Pressable key={category} style={[styles.marketCategoryButton, activeCategory === category && styles.marketCategoryActive]} onPress={() => setActiveCategory(category)}>
-            <Text style={[styles.marketCategoryText, activeCategory === category && styles.marketCategoryTextActive]}>{category}</Text>
+        {marketModes.map((mode) => (
+          <Pressable key={mode} style={[styles.marketCategoryButton, activeMode === mode && styles.marketCategoryActive]} onPress={() => setActiveMode(mode)}>
+            <Text style={[styles.marketCategoryText, activeMode === mode && styles.marketCategoryTextActive]}>{mode}</Text>
           </Pressable>
         ))}
       </View>
-      <View style={styles.marketList}>
-        {buyableItems.length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
-        {buyableItems.map(({ marketItem, item }) => (
-          <MarketBuyCard
-            key={marketItem.id}
-            marketItem={marketItem}
-            purchasedCount={marketPurchaseCounts[marketItem.id] ?? 0}
-            item={item}
-            onBuy={() => onBuy(marketItem)}
-          />
-        ))}
-      </View>
-      <View style={styles.marketDivider} />
-      <Text style={styles.marketSectionLabel}>Sell to Market</Text>
-      <View style={styles.marketList}>
-        {sellableItems.length === 0 ? <Text style={styles.copy}>This market is not buying anything in your inventory.</Text> : null}
-        {sellableItems.map((entry) => {
-          const marketItem = marketItems.find((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item));
-          return (
-            <MarketSellCard
-              key={entry.id}
-              entry={entry}
-              sellPrice={marketItem?.sell_price ?? 0}
-              onSell={() => onSell(entry)}
+
+      {activeMode === "Buy" ? (
+        <View style={styles.marketList}>
+          {buyableItems.length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
+          {buyableItems.map(({ marketItem, item }) => (
+            <MarketBuyCard
+              key={marketItem.id}
+              marketItem={marketItem}
+              purchasedCount={marketPurchaseCounts[marketItem.id] ?? 0}
+              item={item}
+              onBuy={() => onBuy(marketItem)}
             />
-          );
-        })}
-      </View>
+          ))}
+        </View>
+      ) : (
+        <View style={styles.marketList}>
+          {sellableItems.length === 0 ? <Text style={styles.copy}>This market is not buying anything in your inventory.</Text> : null}
+          {sellableItems.map((entry) => {
+            const marketItem = marketItems.find((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item));
+            return (
+              <MarketSellCard
+                key={entry.id}
+                entry={entry}
+                sellPrice={marketItem?.sell_price ?? 0}
+                onSell={() => onSell(entry)}
+              />
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -406,24 +404,6 @@ function MarketSellCard({ entry, sellPrice, onSell }: { entry: InventoryItem; se
       </View>
     </View>
   );
-}
-
-function getMarketCategory(item: ItemDefinition | null): MarketCategory {
-  const type = (item?.type ?? "").toLowerCase();
-
-  if (type.includes("potion") || type.includes("food") || type.includes("consumable") || type.includes("scroll")) {
-    return "Potions";
-  }
-
-  if (type.includes("weapon") || type.includes("armor") || type.includes("wearable") || type.includes("relic")) {
-    return "Equipment";
-  }
-
-  if (type.includes("material") || type.includes("craft")) {
-    return "Materials";
-  }
-
-  return "Misc";
 }
 
 function resolveSceneImageUri(imagePath?: string | null) {
