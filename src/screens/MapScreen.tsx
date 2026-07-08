@@ -4,6 +4,7 @@ import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from "r
 import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButton";
 import { AdminCollapsibleSection } from "../components/admin/AdminCollapsibleSection";
 import { ActiveBattleView } from "../components/battle/ActiveBattleView";
+import { ArenaBattleBoardEditor } from "../components/battle/ArenaBattleBoardEditor";
 import { BattlefieldLayoutEditor } from "../components/battle/BattlefieldLayoutEditor";
 import { useBattleEncounter } from "../components/battle/useBattleEncounter";
 import { BrandLogo } from "../components/BrandLogo";
@@ -73,6 +74,7 @@ import { requestPushNotificationPermission } from "../services/pushNotificationS
 import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAssetUri, type GameToastDefinition, type GameToastTriggerType } from "../services/gameToastService";
 import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
 import { claimOpenArena, completeArenaChallenge, getArenaForMarker, getArenaMarkerPortraits, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
+import { buildArenaBattleLayout, deleteArenaBattleSlot, getArenaBattleSlots, saveArenaBattleSlot, type ArenaBattleSlot } from "../services/arenaBattleBoardService";
 import { createCurrentPlayerBattleSnapshot } from "../services/battleSnapshotService";
 import { createArenaChallengeEvent, createArenaSnapshotOpponent } from "../services/arenaBattleService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
@@ -372,6 +374,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [selectedArena, setSelectedArena] = useState<ArenaWithLeaders | null>(null);
   const [activeArenaChallenge, setActiveArenaChallenge] = useState<{ arenaId: string; markerId: string; defenderSnapshotId: string | null } | null>(null);
   const [arenaMarkerPortraits, setArenaMarkerPortraits] = useState<Record<string, string>>({});
+  const [arenaBattleSlots, setArenaBattleSlots] = useState<ArenaBattleSlot[]>([]);
   const [activeMiniMap, setActiveMiniMap] = useState<MiniMap | null>(null);
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
   const [adminSection, setAdminSection] = useState<(typeof adminSections)[number]>("World Markers");
@@ -2222,6 +2225,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setSelectedMarker(marker);
     setSelectedPuzzle(null);
     setSelectedArena(null);
+    setArenaBattleSlots([]);
     setDraftType(marker.type || markerTypes[0]);
     setDraftTitle(marker.title);
     setDraftDescription(marker.description ?? "");
@@ -2286,6 +2290,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       const puzzle = marker.type === "Puzzle" ? await getPuzzleForMarker(marker.id, character.id) : null;
       setSelectedPuzzle(puzzle);
       setSelectedArena(arena);
+      if (arena?.arena) {
+        const slots = await getArenaBattleSlots(arena.arena.id);
+        setArenaBattleSlots(slots);
+      }
       await loadMarkerMarketState(marker.id);
       if (isBattleMarkerType(marker.type)) {
         await loadMarkerBattlefieldCombatants(marker.id);
@@ -2390,6 +2398,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setSelectedMarker(null);
     setSelectedPuzzle(null);
     setSelectedArena(null);
+    setArenaBattleSlots([]);
     setMarkerPanelMessage(null);
     setMarketPurchaseCounts({});
   }
@@ -2441,6 +2450,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
 
     const event = createArenaChallengeEvent(selectedMarker, selectedArena, defender);
     const opponent = createArenaSnapshotOpponent(defender);
+    const arenaLayout = buildArenaBattleLayout(arenaBattleSlots, selectedArena.arena.id);
     setActiveArenaChallenge({
       arenaId: selectedArena.arena.id,
       markerId: selectedMarker.id,
@@ -2452,6 +2462,8 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       skipStagedLayout: true,
       suppressCompanions: true,
       syntheticOpponent: opponent,
+      syntheticOpponentCombatant: arenaLayout.holderCombatant,
+      syntheticLayout: arenaLayout.combatants,
     });
 
     if (!result.ok) {
@@ -4146,7 +4158,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setNodeIsStart(dialogueNodes.length === 0);
   }
 
-  async function startBattle(event: MapEvent, preview = false, options: { saveRoutePosition?: boolean; skipStagedLayout?: boolean; suppressCompanions?: boolean; syntheticOpponent?: EnemyWithLoadout | null } = {}) {
+  async function startBattle(event: MapEvent, preview = false, options: { saveRoutePosition?: boolean; skipStagedLayout?: boolean; suppressCompanions?: boolean; syntheticOpponent?: EnemyWithLoadout | null; syntheticOpponentCombatant?: BattleEventCombatant | MarkerBattleCombatant | null; syntheticLayout?: Array<BattleEventCombatant | MarkerBattleCombatant> } = {}) {
     activeBattleRouteRef.current = preview ? null : routeRef.current;
     if (!preview && options.saveRoutePosition !== false) {
       await saveCurrentRoutePositionBeforeBattle();
@@ -4157,6 +4169,8 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       currentHealth,
       combatResources,
       syntheticOpponent: options.syntheticOpponent ?? null,
+      syntheticOpponentCombatant: options.syntheticOpponentCombatant ?? null,
+      syntheticLayout: options.syntheticLayout,
       skipStagedLayout: options.skipStagedLayout,
       suppressCompanions: options.suppressCompanions,
       setActiveEvent,
@@ -4937,6 +4951,30 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       setAdminMessage("Marker battlefield actor removed.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to delete marker battlefield actor."));
+    }
+  }
+
+  async function saveSelectedArenaBattleSlot(input: Partial<ArenaBattleSlot> & { arena_id: string }) {
+    try {
+      const saved = await saveArenaBattleSlot(input);
+      setArenaBattleSlots((current) => {
+        const exists = current.some((slot) => slot.id === saved.id);
+        const next = exists ? current.map((slot) => slot.id === saved.id ? saved : slot) : [...current, saved];
+        return next.sort((left, right) => Number(left.sort_order) - Number(right.sort_order));
+      });
+      setAdminMessage("Arena battle slot saved.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save arena battle slot. Confirm the arena battle slots migration has run."));
+    }
+  }
+
+  async function removeSelectedArenaBattleSlot(slotId: string) {
+    try {
+      await deleteArenaBattleSlot(slotId);
+      setArenaBattleSlots((current) => current.filter((slot) => slot.id !== slotId));
+      setAdminMessage("Arena battle slot removed.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to delete arena battle slot."));
     }
   }
 
@@ -6704,6 +6742,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
               battlefieldCombatants={battlefieldCombatants}
               onSaveMarkerBattlefieldCombatant={saveMarkerBattlefieldCombatant}
               onRemoveMarkerBattlefieldCombatant={removeMarkerBattlefieldCombatant}
+              selectedArena={selectedArena}
+              arenaBattleSlots={arenaBattleSlots}
+              onSaveArenaBattleSlot={saveSelectedArenaBattleSlot}
+              onRemoveArenaBattleSlot={removeSelectedArenaBattleSlot}
               onMessage={setAdminMessage}
               renderMarkerDialogueEditor={(marker) => renderBranchingDialogueEditor(marker)}
             /> : (
@@ -7378,6 +7420,16 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                     <Text style={styles.copy}>Create or select this Puzzle marker first, then build the image tap sequence.</Text>
                   </View>
                 )
+              ) : null}
+              {draftType === "Arena" ? (
+                <ArenaBattleBoardEditor
+                  arena={selectedArena?.arena ?? null}
+                  backgroundImageUrl={markerSceneBackground || markerQuestImage}
+                  slots={arenaBattleSlots}
+                  onSave={saveSelectedArenaBattleSlot}
+                  onDelete={removeSelectedArenaBattleSlot}
+                  onMessage={setAdminMessage}
+                />
               ) : null}
               {draftType !== "Sign Post" && !isBattleMarkerType(draftType) && isStoryQuestMarker({ type: draftType }) ? (
                 isStoryQuestMarker({ type: draftType }) ? (
@@ -8156,6 +8208,10 @@ function MiniMapMarkerAdminForm({
   battlefieldCombatants,
   onSaveMarkerBattlefieldCombatant,
   onRemoveMarkerBattlefieldCombatant,
+  selectedArena,
+  arenaBattleSlots,
+  onSaveArenaBattleSlot,
+  onRemoveArenaBattleSlot,
   onMessage,
   renderMarkerDialogueEditor,
 }: {
@@ -8309,6 +8365,10 @@ function MiniMapMarkerAdminForm({
   battlefieldCombatants: Array<BattleEventCombatant | MarkerBattleCombatant>;
   onSaveMarkerBattlefieldCombatant: (input: Partial<BattleEventCombatant> & { event_id: string }) => Promise<void>;
   onRemoveMarkerBattlefieldCombatant: (combatantId: string) => Promise<void>;
+  selectedArena: ArenaWithLeaders | null;
+  arenaBattleSlots: ArenaBattleSlot[];
+  onSaveArenaBattleSlot: (input: Partial<ArenaBattleSlot> & { arena_id: string }) => Promise<void>;
+  onRemoveArenaBattleSlot: (slotId: string) => Promise<void>;
   onMessage: (message: string) => void;
   renderMarkerDialogueEditor: (marker: MapMarker) => ReactNode;
 }) {
@@ -8450,6 +8510,16 @@ function MiniMapMarkerAdminForm({
             <Text style={styles.copy}>Create or select this Puzzle marker before building its image tap sequence.</Text>
           </View>
         )
+      ) : null}
+      {draftType === "Arena" ? (
+        <ArenaBattleBoardEditor
+          arena={selectedArena?.arena ?? null}
+          backgroundImageUrl={markerSceneBackground || markerQuestImage}
+          slots={arenaBattleSlots}
+          onSave={onSaveArenaBattleSlot}
+          onDelete={onRemoveArenaBattleSlot}
+          onMessage={onMessage}
+        />
       ) : null}
       {supportsBattle ? (
         <View style={styles.storyEditor}>

@@ -15,6 +15,8 @@ type StartBattleOptions = {
   currentHealth: number;
   combatResources: CharacterResources;
   syntheticOpponent?: EnemyWithLoadout | NpcWithLoadout | null;
+  syntheticOpponentCombatant?: BattleEventCombatant | MarkerBattleCombatant | null;
+  syntheticLayout?: Array<BattleEventCombatant | MarkerBattleCombatant>;
   skipStagedLayout?: boolean;
   suppressCompanions?: boolean;
   setActiveEvent: Dispatch<SetStateAction<MapEvent | null>>;
@@ -98,7 +100,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   }
 
   async function startBattle(event: MapEvent, options: StartBattleOptions): Promise<StartBattleResult> {
-    const { preview = false, currentHealth, combatResources: nextCombatResources, syntheticOpponent = null, skipStagedLayout = false, suppressCompanions = false, setActiveEvent, setAdminPreviewMode, setAdminMessage } = options;
+    const { preview = false, currentHealth, combatResources: nextCombatResources, syntheticOpponent = null, syntheticOpponentCombatant = null, syntheticLayout = null, skipStagedLayout = false, suppressCompanions = false, setActiveEvent, setAdminPreviewMode, setAdminMessage } = options;
 
     try {
       const enemy = event.enemy_id ? await getEnemyLoadout(event.enemy_id) : null;
@@ -119,13 +121,13 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         return { ok: false, message };
       }
 
-      const stagedLayout = skipStagedLayout ? [] : await loadStagedLayout(event);
+      const stagedLayout = syntheticLayout ?? (skipStagedLayout ? [] : await loadStagedLayout(event));
       const stagedOpponents = await loadStagedOpponents(event, stagedLayout);
       const stagedCompanions = suppressCompanions ? [] : await loadStagedCompanions(event, stagedLayout);
       const fallbackOpponent = stagedOpponents.length === 0
         ? [{
           key: "primary",
-          combatant: null,
+          combatant: syntheticOpponentCombatant,
           enemy: opponent,
           hp: Number(opponent?.health ?? event.enemy_hp) || 30,
           stamina: Number(opponent?.stamina ?? 0) || 0,

@@ -315,6 +315,20 @@ export type Tables = {
     reward_gold: number;
     created_at: string;
   };
+  arena_battle_slots: {
+    id: string;
+    arena_id: string;
+    slot_type: "challenger_start" | "holder_start";
+    label: string | null;
+    x_percent: number;
+    y_percent: number;
+    size_percent: number;
+    sort_order: number;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
   avatar_assets: {
     id: string;
     type: "base" | "face" | "hair" | "armor" | "weapon" | "cloak" | "background";
