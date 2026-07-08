@@ -19,7 +19,9 @@ export type NpcWithLoadout = NpcDefinition & {
   drops: NpcItemDrop[];
 };
 
-export const combatAbilityTypes: CombatAbility["type"][] = ["attack", "heal", "buff", "debuff", "defense", "passive"];
+export const combatAbilityTypes: CombatAbility["type"][] = ["attack", "heal", "buff", "debuff", "defense", "passive", "summon", "conjure"];
+export const abilityTargetModes: CombatAbility["target_mode"][] = ["single_enemy", "all_enemies", "random_enemy", "self", "all_allies"];
+export const summonKinds: NonNullable<CombatAbility["summon_kind"]>[] = ["enemy", "npc"];
 export const statusEffects: CombatAbility["status_effect"][] = ["none", "poison", "burn", "regen", "shield", "weakness", "slow", "stun"];
 export const linkedStats: CombatAbility["linked_stat"][] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit", "weapon", "item", "none"];
 export const requiredAttributes: NonNullable<CombatAbility["required_attribute"]>[] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"];
@@ -85,6 +87,12 @@ export function blankCombatAbility(): Partial<CombatAbility> {
     image_path: "/assets/abilities/",
     usage_context: "battle_only",
     attack_bonus: 0,
+    target_mode: "single_enemy",
+    summon_kind: null,
+    summon_enemy_id: null,
+    summon_npc_id: null,
+    summon_count: 1,
+    summon_duration_turns: 3,
     season_number: 1,
     chapter_number: 1,
     is_active: true,
@@ -400,6 +408,12 @@ function normalizeCombatAbility(input: Partial<CombatAbility>, userId: string | 
     image_path: input.image_path?.trim() || null,
     usage_context: input.usage_context ?? "battle_only",
     attack_bonus: Number(input.attack_bonus) || 0,
+    target_mode: input.target_mode ?? "single_enemy",
+    summon_kind: input.summon_kind ?? null,
+    summon_enemy_id: input.summon_kind === "enemy" ? input.summon_enemy_id ?? null : null,
+    summon_npc_id: input.summon_kind === "npc" ? input.summon_npc_id ?? null : null,
+    summon_count: Math.max(1, Number(input.summon_count) || 1),
+    summon_duration_turns: Math.max(1, Number(input.summon_duration_turns) || 3),
     season_number: Number(input.season_number) || 1,
     chapter_number: Number(input.chapter_number) || 1,
     is_active: input.is_active ?? true,

@@ -178,6 +178,7 @@ export function BattleEventScreen({
                         const size = Math.max(48, Math.min(112, sizePercent * 5.6));
                         const ringSize = Math.max(50, size - 2);
                         const ringRadius = Math.max(20, ringSize / 2 - 7);
+                        const opponentIndicators = combatIndicators.filter((indicator) => indicator.target === "enemy" && (!indicator.targetKey || indicator.targetKey === opponent.key));
                         return (
                           <Pressable
                             key={`stage-${opponent.key}`}
@@ -203,7 +204,7 @@ export function BattleEventScreen({
                               manaPercent={getPercent(opponent.magika, maxMana)}
                           />
                           {imageUri ? <Image source={{ uri: imageUri }} style={styles.stagedCombatantImage} /> : <Text style={styles.stagedCombatantFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
-                          {isSelected ? <CombatIndicatorStackOverlay indicators={enemyIndicators} /> : null}
+                          <CombatIndicatorStackOverlay indicators={opponentIndicators} />
                         </Pressable>
                         );
                       })}

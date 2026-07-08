@@ -19,6 +19,7 @@ import {
   blankCombatAbility,
   blankEnemy,
   blankNpc,
+  abilityTargetModes,
   combatAbilityTypes,
   CombatAbility,
   deleteCombatAbility,
@@ -52,6 +53,7 @@ import {
   saveNpcAbility,
   saveNpcDrop,
   statusEffects,
+  summonKinds,
   usageContexts as abilityUsageContexts,
 } from "../services/combatAdminService";
 import { classCombinations } from "../services/classService";
@@ -1036,6 +1038,14 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     <AssetPreview label="Selected ability image" uri={resolveAbilityImageUri(selectedAdminAbility.image_path)} />
                     <Text style={styles.abilityName}>{selectedAdminAbility.name}</Text>
                     <Text style={styles.muted}>{selectedAdminAbility.type} / Damage {selectedAdminAbility.damage} / Healing {selectedAdminAbility.healing} / Defense {selectedAdminAbility.defense_amount}</Text>
+                    <Text style={styles.muted}>Target: {(selectedAdminAbility.target_mode ?? "single_enemy").replaceAll("_", " ")}</Text>
+                    {selectedAdminAbility.summon_kind ? (
+                      <Text style={styles.muted}>
+                        Summons: {selectedAdminAbility.summon_count} {selectedAdminAbility.summon_kind === "enemy"
+                          ? enemies.find((enemy) => enemy.id === selectedAdminAbility.summon_enemy_id)?.name ?? "enemy"
+                          : npcs.find((npc) => npc.id === selectedAdminAbility.summon_npc_id)?.name ?? "NPC"} for {selectedAdminAbility.summon_duration_turns} turns
+                      </Text>
+                    ) : null}
                     <Text style={styles.muted}>Restores: {selectedAdminAbility.stamina_restore} Stamina / {selectedAdminAbility.magika_restore} Mana</Text>
                     <Text style={styles.muted}>Costs: {selectedAdminAbility.stamina_cost} Stamina / {selectedAdminAbility.magika_cost} Mana / {selectedAdminAbility.health_cost} Health</Text>
                     <Text style={styles.muted}>Unlock: {formatAbilityUnlockText(selectedAdminAbility)}</Text>
@@ -1049,6 +1059,45 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 <ItemText label="Name" value={abilityForm.name ?? ""} onChange={(value) => setAbilityForm((current) => ({ ...current, name: value }))} />
                 <ChoiceRow label="Type" options={combatAbilityTypes} value={abilityForm.type ?? "attack"} onSelect={(value) => setAbilityForm((current) => ({ ...current, type: value }))} />
                 <ChoiceRow label="Use context" options={abilityUsageContexts} value={abilityForm.usage_context ?? "battle_only"} onSelect={(value) => setAbilityForm((current) => ({ ...current, usage_context: value }))} />
+                <ChoiceRow
+                  label="Battle target"
+                  options={abilityTargetModes}
+                  value={abilityForm.target_mode ?? "single_enemy"}
+                  labels={{
+                    single_enemy: "Single enemy",
+                    all_enemies: "All enemies",
+                    random_enemy: "Random enemy",
+                    self: "Self",
+                    all_allies: "All allies",
+                  }}
+                  onSelect={(value) => setAbilityForm((current) => ({ ...current, target_mode: value }))}
+                />
+                {abilityForm.type === "summon" || abilityForm.type === "conjure" ? (
+                  <View style={styles.adminSubPanel}>
+                    <Text style={styles.sectionTitleSmall}>Summon / Conjure</Text>
+                    <Text style={styles.muted}>Choose an existing Enemy or NPC to temporarily join the player side during battle.</Text>
+                    <ChoiceRow label="Summon source" options={summonKinds} value={abilityForm.summon_kind ?? "enemy"} labels={{ enemy: "Enemy Admin", npc: "NPC Admin" }} onSelect={(value) => setAbilityForm((current) => ({ ...current, summon_kind: value, summon_enemy_id: value === "enemy" ? current.summon_enemy_id : null, summon_npc_id: value === "npc" ? current.summon_npc_id : null }))} />
+                    {(abilityForm.summon_kind ?? "enemy") === "enemy" ? (
+                      <NamedChoiceRow
+                        label="Summoned enemy"
+                        options={[{ id: "", label: "None" }, ...enemies.map((enemy) => ({ id: enemy.id, label: enemy.name }))]}
+                        value={abilityForm.summon_enemy_id ?? ""}
+                        onSelect={(value) => setAbilityForm((current) => ({ ...current, summon_kind: "enemy", summon_enemy_id: value || null, summon_npc_id: null }))}
+                      />
+                    ) : (
+                      <NamedChoiceRow
+                        label="Summoned NPC"
+                        options={[{ id: "", label: "None" }, ...npcs.map((npc) => ({ id: npc.id, label: npc.name }))]}
+                        value={abilityForm.summon_npc_id ?? ""}
+                        onSelect={(value) => setAbilityForm((current) => ({ ...current, summon_kind: "npc", summon_npc_id: value || null, summon_enemy_id: null }))}
+                      />
+                    )}
+                    <View style={styles.slotActions}>
+                      <ItemText label="Summon count" value={String(abilityForm.summon_count ?? 1)} onChange={(value) => setAbilityForm((current) => ({ ...current, summon_count: Math.max(1, Number(value) || 1) }))} />
+                      <ItemText label="Summon duration turns" value={String(abilityForm.summon_duration_turns ?? 3)} onChange={(value) => setAbilityForm((current) => ({ ...current, summon_duration_turns: Math.max(1, Number(value) || 3) }))} />
+                    </View>
+                  </View>
+                ) : null}
                 <View style={styles.slotActions}>
                   <ItemText label="Damage" value={String(abilityForm.damage ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, damage: Number(value) || 0 }))} />
                   <ItemText label="Healing" value={String(abilityForm.healing ?? 0)} onChange={(value) => setAbilityForm((current) => ({ ...current, healing: Number(value) || 0 }))} />
@@ -1121,6 +1170,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     <Text style={styles.abilityName}>{ability.name}</Text>
                     <Text style={styles.muted}>Season {ability.season_number ?? 1} / Chapter {ability.chapter_number ?? 1}</Text>
                     <Text style={styles.muted}>{ability.type} / {ability.damage} damage / {ability.healing} healing / {ability.status_effect}</Text>
+                    <Text style={styles.muted}>Target: {(ability.target_mode ?? "single_enemy").replaceAll("_", " ")}</Text>
                     <Text style={styles.muted}>Restores {ability.stamina_restore} Stamina / {ability.magika_restore} Mana</Text>
                     <Text style={styles.muted}>Unlock: {formatAbilityUnlockText(ability)}</Text>
                       </View>

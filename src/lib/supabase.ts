@@ -1076,7 +1076,7 @@ export type Tables = {
   combat_abilities: {
     id: string;
     name: string;
-    type: "attack" | "heal" | "buff" | "debuff" | "defense" | "passive";
+    type: "attack" | "heal" | "buff" | "debuff" | "defense" | "passive" | "summon" | "conjure";
     damage: number;
     healing: number;
     defense_amount: number;
@@ -1102,6 +1102,12 @@ export type Tables = {
     image_path: string | null;
     usage_context: "battle_only" | "outside_battle_only" | "both";
     attack_bonus: number;
+    target_mode: "single_enemy" | "all_enemies" | "random_enemy" | "self" | "all_allies";
+    summon_kind: "enemy" | "npc" | null;
+    summon_enemy_id: string | null;
+    summon_npc_id: string | null;
+    summon_count: number;
+    summon_duration_turns: number;
     season_number: number;
     chapter_number: number;
     is_active: boolean;
