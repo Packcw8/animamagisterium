@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Animated, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
@@ -47,6 +47,8 @@ export function DialogueSceneScreen({
 }: DialogueSceneScreenProps) {
   const { activeNode, nodeChoices, legacyChoices, npcName, npcPortrait, backgroundImageUrl, dialogueText } =
     getDialogueSceneState({ event, nodes, choices, npcs, activeNodeId });
+  const [choicesRevealed, setChoicesRevealed] = useState(false);
+  const fadeValue = useRef(new Animated.Value(1)).current;
   const visibleNodeChoices = nodeChoices.filter((choice) => {
     const availability = choiceAvailability[choice.id] ?? { met: true, hidden: false, disabled: false, message: null };
     return !availability.hidden;
@@ -54,6 +56,18 @@ export function DialogueSceneScreen({
   const pendingRewardPreview = pendingRewardChoice
     ? getChoiceRewardPreview(pendingRewardChoice, choiceRewards, itemDefinitions)
     : [];
+  const shouldPaceChoices = Boolean(activeNode && dialogueText.trim() && !pendingRewardChoice);
+  const canShowChoices = !shouldPaceChoices || choicesRevealed;
+
+  useEffect(() => {
+    setChoicesRevealed(false);
+    fadeValue.setValue(0);
+    Animated.timing(fadeValue, {
+      toValue: 1,
+      duration: 220,
+      useNativeDriver: true,
+    }).start();
+  }, [activeNodeId, dialogueText, fadeValue]);
 
   return (
     <Screen>
@@ -71,10 +85,25 @@ export function DialogueSceneScreen({
         ) : (
           <View style={styles.eventImagePlaceholder} />
         )}
-        {npcPortrait ? <Image source={{ uri: resolveEnemyImageUri(npcPortrait) ?? npcPortrait }} style={styles.npcPortrait} /> : null}
-        <Text style={styles.sectionTitle}>{event.title}</Text>
-        {npcName ? <Text style={styles.selectedTitle}>{npcName}</Text> : null}
-        <DialogueTypewriterText text={dialogueText} />
+        <Animated.View style={[styles.scenePanel, { opacity: fadeValue }]}>
+          <View style={styles.sceneHeader}>
+            <View style={styles.npcPortraitWrap}>
+              {npcPortrait ? (
+                <Image source={{ uri: resolveEnemyImageUri(npcPortrait) ?? npcPortrait }} style={styles.npcPortrait} />
+              ) : (
+                <Text style={styles.npcInitial}>{(npcName || event.title || "?").slice(0, 1).toUpperCase()}</Text>
+              )}
+            </View>
+            <View style={styles.sceneTitleWrap}>
+              <Text style={styles.sectionTitle}>{event.title}</Text>
+              {npcName ? <Text style={styles.selectedTitle}>{npcName}</Text> : null}
+            </View>
+          </View>
+          <Pressable style={styles.dialoguePanel} onPress={() => setChoicesRevealed(true)} disabled={!shouldPaceChoices || choicesRevealed}>
+            <Text style={styles.dialogueText}>{dialogueText}</Text>
+            {shouldPaceChoices && !choicesRevealed ? <Text style={styles.tapHint}>Tap to continue</Text> : null}
+          </Pressable>
+        </Animated.View>
         {dialogueLog.map((line, index) => (
           <Text key={`${line}-${index}`} style={styles.copy}>
             {line}
@@ -102,30 +131,39 @@ export function DialogueSceneScreen({
             </View>
           </View>
         ) : null}
-        <View style={styles.choiceStack}>
+        <View style={[styles.choiceStack, !canShowChoices && styles.choiceStackHidden]}>
           {activeNode ? (
             <>
-              {visibleNodeChoices.map((choice) => {
+              {canShowChoices ? visibleNodeChoices.map((choice) => {
                 const availability = choiceAvailability[choice.id] ?? { met: true, hidden: false, disabled: false, message: null };
+                const checkSummary = getAttributeCheckSummary(choice);
+                const hasRequirement = (choice.requirement_type ?? "none") !== "none" || Boolean(checkSummary);
                 return (
                   <Pressable
                     key={choice.id}
-                    style={[styles.primaryButton, availability.disabled && styles.lockedButton]}
+                    style={[styles.choiceButton, availability.disabled && styles.lockedButton]}
                     onPress={() => onChoice(choice)}
                     disabled={availability.disabled}
                   >
-                    {getAttributeCheckSummary(choice) ? <Text style={styles.checkBadge}>{getAttributeCheckSummary(choice)}</Text> : null}
-                    <Text style={[styles.primaryText, availability.disabled && styles.lockedText]}>{choice.button_text}</Text>
-                    {availability.disabled && availability.message ? <Text style={styles.requirementText}>{availability.message}</Text> : null}
+                    <View style={styles.choiceRow}>
+                      <View style={[styles.choiceIcon, availability.disabled && styles.choiceIconLocked]}>
+                        <Text style={[styles.choiceIconText, availability.disabled && styles.lockedText]}>{availability.disabled ? "!" : hasRequirement ? "DC" : ">"}</Text>
+                      </View>
+                      <View style={styles.choiceTextWrap}>
+                        {checkSummary ? <Text style={styles.checkBadge}>{checkSummary}</Text> : null}
+                        <Text style={[styles.choiceText, availability.disabled && styles.lockedText]}>{choice.button_text}</Text>
+                        {availability.disabled && availability.message ? <Text style={styles.requirementText}>{availability.message}</Text> : null}
+                      </View>
+                    </View>
                   </Pressable>
                 );
-              })}
-              {visibleNodeChoices.length === 0 || activeNode.is_ending ? (
+              }) : null}
+              {canShowChoices && (visibleNodeChoices.length === 0 || activeNode.is_ending) ? (
                 <Pressable style={styles.primaryButton} onPress={() => onEndChat(activeNode.end_completes_event)}>
                   <Text style={styles.primaryText}>{activeNode.end_completes_event ? "Complete Event" : "Return to Map"}</Text>
                 </Pressable>
               ) : null}
-              {activeNode.allow_end_chat ? (
+              {canShowChoices && activeNode.allow_end_chat ? (
                 <Pressable style={styles.secondaryButton} onPress={() => onEndChat(activeNode.end_completes_event)}>
                   <Text style={styles.secondaryText}>End Chat</Text>
                 </Pressable>
@@ -192,30 +230,6 @@ function getChoiceRewardPreview(choice: StoryDialogueChoice, rewards: DialogueCh
   return preview;
 }
 
-function DialogueTypewriterText({ text }: { text: string }) {
-  const [visibleText, setVisibleText] = useState(text);
-
-  useEffect(() => {
-    setVisibleText("");
-    if (!text) {
-      return;
-    }
-
-    let index = 0;
-    const timer = setInterval(() => {
-      index += 1;
-      setVisibleText(text.slice(0, index));
-      if (index >= text.length) {
-        clearInterval(timer);
-      }
-    }, 18);
-
-    return () => clearInterval(timer);
-  }, [text]);
-
-  return <Text style={styles.dialogueText}>{visibleText}</Text>;
-}
-
 const styles = StyleSheet.create({
   eventScreen: {
     margin: 12,
@@ -257,32 +271,74 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSoft,
     backgroundColor: "rgba(20, 61, 86, 0.35)",
   },
-  npcPortrait: {
-    width: 92,
-    height: 92,
-    borderRadius: 46,
+  scenePanel: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(1, 6, 7, 0.74)",
+    padding: 12,
+    gap: 12,
+  },
+  sceneHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  npcPortraitWrap: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
     borderWidth: 2,
     borderColor: colors.gold,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  npcPortrait: {
+    width: "100%",
+    height: "100%",
+  },
+  npcInitial: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 26,
+    fontWeight: "900",
+  },
+  sceneTitleWrap: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
   },
   sectionTitle: {
     color: colors.gold,
     fontFamily: fonts.title,
-    fontSize: 22,
+    fontSize: 20,
     textTransform: "uppercase",
   },
   selectedTitle: {
     color: colors.text,
     fontWeight: "900",
   },
+  dialoguePanel: {
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    padding: 12,
+    backgroundColor: "rgba(0,0,0,0.34)",
+    gap: 10,
+  },
   dialogueText: {
     color: colors.text,
     fontSize: 16,
     lineHeight: 24,
-    borderWidth: 1,
-    borderColor: colors.borderSoft,
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: "rgba(0,0,0,0.3)",
+  },
+  tapHint: {
+    color: colors.blue,
+    fontSize: 12,
+    fontWeight: "900",
+    textAlign: "right",
+    textTransform: "uppercase",
   },
   copy: {
     color: colors.muted,
@@ -312,6 +368,9 @@ const styles = StyleSheet.create({
   },
   choiceStack: {
     gap: 10,
+  },
+  choiceStackHidden: {
+    minHeight: 48,
   },
   primaryButton: {
     minHeight: 52,
@@ -389,6 +448,49 @@ const styles = StyleSheet.create({
     color: "#110b04",
     fontWeight: "900",
     textAlign: "center",
+  },
+  choiceButton: {
+    minHeight: 58,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.54)",
+    backgroundColor: "rgba(217, 170, 93, 0.14)",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  choiceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  choiceIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    backgroundColor: "rgba(217, 170, 93, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  choiceIconLocked: {
+    borderColor: colors.red,
+    backgroundColor: "rgba(120, 22, 22, 0.22)",
+  },
+  choiceIconText: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  choiceTextWrap: {
+    flex: 1,
+    minWidth: 0,
+  },
+  choiceText: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "900",
+    lineHeight: 20,
   },
   lockedButton: {
     borderWidth: 1,
