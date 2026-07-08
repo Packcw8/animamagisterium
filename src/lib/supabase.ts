@@ -249,6 +249,30 @@ export type Tables = {
     class_key: string;
     updated_at: string;
   };
+  player_battle_snapshots: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    snapshot_source: "manual" | "party_ally" | "arena_holder" | "system";
+    character_name: string;
+    portrait_url: string | null;
+    level: number;
+    xp: number;
+    active_class_key: string | null;
+    max_health: number;
+    max_stamina: number;
+    max_magika: number;
+    current_health: number;
+    defense: number;
+    attack_bonus: number;
+    damage_bonus: number;
+    attributes: Record<string, unknown>;
+    equipped_items: Record<string, unknown>;
+    equipped_abilities: Array<Record<string, unknown>>;
+    inventory_summary: Record<string, unknown>;
+    is_current: boolean;
+    created_at: string;
+  };
   avatar_assets: {
     id: string;
     type: "base" | "face" | "hair" | "armor" | "weapon" | "cloak" | "background";
