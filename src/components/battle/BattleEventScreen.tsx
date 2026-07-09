@@ -9,7 +9,7 @@ import { BattleEventCombatant, MarkerBattleCombatant } from "../../services/batt
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
-import { BattleActionCard, CircularResourceArcs, CombatPortraitFrame, type CombatIndicator } from "./BattleDisplay";
+import { BattleActionCard, CircularResourceArcs, CombatEffectBadge, CombatPortraitFrame, type CombatIndicator } from "./BattleDisplay";
 import { type BattleCompanionState, type BattleOpponentState, type BattleTurnPhase } from "./useBattleEncounter";
 
 type BattleEventScreenProps = {
@@ -423,9 +423,12 @@ function CombatIndicatorStackOverlay({ indicators }: { indicators: CombatIndicat
   return (
     <View style={styles.stageIndicatorStack} pointerEvents="none">
       {indicators.map((indicator, index) => (
-        <Text key={indicator.id} style={[styles.stageIndicatorText, { color: indicator.color, top: -20 - index * 20 } as object]}>
-          {indicator.text}
-        </Text>
+        <View key={indicator.id} style={[styles.stageIndicatorGroup, { top: -58 - index * 54 } as object]}>
+          <CombatEffectBadge indicator={indicator} compact />
+          <Text style={[styles.stageIndicatorText, { color: indicator.color } as object]}>
+            {indicator.text}
+          </Text>
+        </View>
       ))}
     </View>
   );
@@ -677,11 +680,16 @@ const styles = StyleSheet.create({
     left: "50%",
     top: 0,
     alignItems: "center",
+    zIndex: 30,
+    elevation: 30,
   },
-  stageIndicatorText: {
+  stageIndicatorGroup: {
     position: "absolute",
     minWidth: 96,
     marginLeft: -48,
+    alignItems: "center",
+  },
+  stageIndicatorText: {
     textAlign: "center",
     fontSize: 16,
     fontWeight: "900",

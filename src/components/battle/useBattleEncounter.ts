@@ -3,7 +3,7 @@ import { AbilityDefinition, CharacterResources, clampHealth, getCharacterResourc
 import { CharacterWithDetails, updateCharacterHealth } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout, getEnemyLoadout, getNpcLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants } from "../../services/battlefieldService";
-import { InventoryItem, ItemDefinition, consumeInventoryItem, getInventoryResourceBonuses, isReviveBattleItem } from "../../services/inventoryService";
+import { InventoryItem, ItemDefinition, consumeInventoryItem, getInventoryResourceBonuses, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
 import { chooseWeightedEnemyAbility, getD20StatBonus, rollD20Attack } from "../../utils/combatMath";
 import { type CombatIndicator } from "./BattleDisplay";
@@ -583,12 +583,28 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       .map((entry) => entry.opponent);
   }
 
-  function pushCombatIndicator(target: CombatIndicator["target"], text: string, color: string, targetKey?: string | null) {
+  function pushCombatIndicator(target: CombatIndicator["target"], text: string, color: string, targetKey?: string | null, iconUri?: string | null) {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    setCombatIndicators((current) => [...current, { id, target, targetKey, text, color }].slice(-8));
+    setCombatIndicators((current) => [...current, { id, target, targetKey, text, color, iconUri }].slice(-8));
     setTimeout(() => {
       setCombatIndicators((current) => current.filter((indicator) => indicator.id !== id));
     }, 1150);
+  }
+
+  function getAbilityIndicatorIcon(ability: AbilityDefinition) {
+    if (ability.adminAbility?.image_path) {
+      return resolveAbilityImageUri(ability.adminAbility.image_path);
+    }
+
+    if (ability.sourceWeapon?.image_path) {
+      return resolveInventoryImageUri(ability.sourceWeapon.image_path);
+    }
+
+    return null;
+  }
+
+  function getWeaponIndicatorIcon(weapon: ItemDefinition) {
+    return weapon.image_path ? resolveInventoryImageUri(weapon.image_path) : null;
   }
 
   async function savePlayerHealth(nextHealth: number, previewMode = false) {
@@ -655,6 +671,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const healthRestore = Math.max(0, Number(ability.adminAbility?.healing ?? 0));
     const staminaRestore = Math.max(0, Number(ability.adminAbility?.stamina_restore ?? 0));
     const magikaRestore = Math.max(0, Number(ability.adminAbility?.magika_restore ?? 0));
+    const abilityIndicatorIcon = getAbilityIndicatorIcon(ability);
     const abilityType = ability.adminAbility?.type ?? "attack";
     const targetMode = ability.adminAbility?.target_mode ?? "single_enemy";
     const isPureRestoreAbility = ability.adminAbility && abilityType === "heal" && Number(ability.adminAbility.damage ?? 0) <= 0;
@@ -692,13 +709,13 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const nextLog: string[] = [`${ability.name} is active.`];
       const immediateDefense = applySelfStatusOrDefense(ability, nextLog);
       if (healthRestore > 0) {
-        pushCombatIndicator("player", `+${healthRestore}`, "#42d77d");
+        pushCombatIndicator("player", `+${healthRestore}`, "#42d77d", null, abilityIndicatorIcon);
         nextLog.push(`${ability.name} restores ${healthRestore} Health.`);
         if (targetMode === "all_allies") {
           battleCompanions.filter((companion) => companion.hp > 0).forEach((companion) => {
             const maxHp = Number(companion.ally.health ?? 30) || 30;
             updateCompanion(companion.key, { hp: Math.min(maxHp, companion.hp + healthRestore) });
-            pushCombatIndicator("companion", `+${healthRestore}`, "#42d77d", companion.key);
+            pushCombatIndicator("companion", `+${healthRestore}`, "#42d77d", companion.key, abilityIndicatorIcon);
           });
           if (battleCompanions.some((companion) => companion.hp > 0)) {
             nextLog.push(`${ability.name} also restores nearby allies.`);
@@ -706,12 +723,12 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         }
       }
       if (staminaRestore > 0) {
-        pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6");
+        pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6", null, abilityIndicatorIcon);
         setBattleStamina((current) => Math.min(combatResources.maxStamina, current + staminaRestore));
         nextLog.push(`${ability.name} restores ${staminaRestore} Stamina.`);
       }
       if (magikaRestore > 0) {
-        pushCombatIndicator("player", `+${magikaRestore} Mana`, "#7dd3fc");
+        pushCombatIndicator("player", `+${magikaRestore} Mana`, "#7dd3fc", null, abilityIndicatorIcon);
         setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + magikaRestore));
         nextLog.push(`${ability.name} restores ${magikaRestore} Mana.`);
       }
@@ -743,16 +760,16 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     if (isPureRestoreAbility) {
       const nextLog: string[] = [];
       if (healthRestore > 0) {
-        pushCombatIndicator("player", `+${healthRestore}`, "#42d77d");
+        pushCombatIndicator("player", `+${healthRestore}`, "#42d77d", null, abilityIndicatorIcon);
         nextLog.push(`${ability.name} restores ${healthRestore} Health.`);
       }
       if (staminaRestore > 0) {
-        pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6");
+        pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6", null, abilityIndicatorIcon);
         setBattleStamina((current) => Math.min(combatResources.maxStamina, current + staminaRestore));
         nextLog.push(`${ability.name} restores ${staminaRestore} Stamina.`);
       }
       if (magikaRestore > 0) {
-        pushCombatIndicator("player", `+${magikaRestore} Mana`, "#7dd3fc");
+        pushCombatIndicator("player", `+${magikaRestore} Mana`, "#7dd3fc", null, abilityIndicatorIcon);
         setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + magikaRestore));
         nextLog.push(`${ability.name} restores ${magikaRestore} Mana.`);
       }
@@ -800,7 +817,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         nextLog.push(`${targetName}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`);
 
         if (!attackRoll.hit) {
-          pushCombatIndicator("enemy", "MISS", "#9ca3af", target.key);
+          pushCombatIndicator("enemy", "MISS", "#9ca3af", target.key, abilityIndicatorIcon);
           nextLog.push(attackRoll.roll === 1 ? `${targetName}: natural 1. Automatic miss.` : `${ability.name} misses ${targetName}.`);
           nextHpByKey.set(target.key, target.hp);
           continue;
@@ -812,23 +829,23 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         const nextHp = Math.max(0, target.hp - totalDamage);
         nextHpByKey.set(target.key, nextHp);
         updateOpponent(target.key, { hp: nextHp });
-        pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", target.key);
+        pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", target.key, abilityIndicatorIcon);
         nextLog.push(`${ability.name} hits ${targetName} for ${attackRoll.critical ? "Critical " : ""}${totalDamage} ${ability.kind} damage.`);
         applyAbilityStatusToTarget(ability, "enemy", nextLog, target.key);
       }
 
       if (healthRestore > 0) {
         postAbilityPlayerHp = Math.min(combatResources.maxHp, battlePlayerHp + healthRestore);
-        pushCombatIndicator("player", `+${healthRestore}`, "#42d77d");
+        pushCombatIndicator("player", `+${healthRestore}`, "#42d77d", null, abilityIndicatorIcon);
         nextLog.push(`${ability.name} restores ${healthRestore} Health.`);
       }
       if (staminaRestore > 0) {
-        pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6");
+        pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6", null, abilityIndicatorIcon);
         setBattleStamina((current) => Math.min(combatResources.maxStamina, current + staminaRestore));
         nextLog.push(`${ability.name} restores ${staminaRestore} Stamina.`);
       }
       if (magikaRestore > 0) {
-        pushCombatIndicator("player", `+${magikaRestore} Mana`, "#7dd3fc");
+        pushCombatIndicator("player", `+${magikaRestore} Mana`, "#7dd3fc", null, abilityIndicatorIcon);
         setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + magikaRestore));
         nextLog.push(`${ability.name} restores ${magikaRestore} Mana.`);
       }
@@ -884,7 +901,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const nextLog = [`${ability.name}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
 
     if (!attackRoll.hit) {
-      pushCombatIndicator("enemy", "MISS", "#9ca3af");
+      pushCombatIndicator("enemy", "MISS", "#9ca3af", null, abilityIndicatorIcon);
       nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${ability.name} misses.`);
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
@@ -913,21 +930,21 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const reducedDamage = Math.max(1, rawDamage - getEnemyArmorReduction());
     const totalDamage = attackRoll.critical ? Math.ceil(reducedDamage * Number(attackRoll.criticalMultiplier || 2)) : reducedDamage;
     const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
-    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c");
+    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", null, abilityIndicatorIcon);
     nextLog.push(`${ability.name} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} ${ability.kind} damage.`);
     applyAbilityStatusToTarget(ability, "enemy", nextLog, selectedOpponentKey);
     if (healthRestore > 0) {
       postAbilityPlayerHp = Math.min(combatResources.maxHp, battlePlayerHp + healthRestore);
-      pushCombatIndicator("player", `+${healthRestore}`, "#42d77d");
+      pushCombatIndicator("player", `+${healthRestore}`, "#42d77d", null, abilityIndicatorIcon);
       nextLog.push(`${ability.name} restores ${healthRestore} Health.`);
     }
     if (staminaRestore > 0) {
-      pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6");
+      pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6", null, abilityIndicatorIcon);
       setBattleStamina((current) => Math.min(combatResources.maxStamina, current + staminaRestore));
       nextLog.push(`${ability.name} restores ${staminaRestore} Stamina.`);
     }
     if (magikaRestore > 0) {
-      pushCombatIndicator("player", `+${magikaRestore} Mana`, "#7dd3fc");
+      pushCombatIndicator("player", `+${magikaRestore} Mana`, "#7dd3fc", null, abilityIndicatorIcon);
       setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + magikaRestore));
       nextLog.push(`${ability.name} restores ${magikaRestore} Mana.`);
     }
@@ -1011,10 +1028,11 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const enemyDefense = getEnemyDefense();
     const attackRoll = rollD20Attack(getStrengthAttackBonus(character.attributes?.strength ?? 0), bonuses.damage, enemyDefense, 0, 2);
     const actionName = weapon.ability_name || weapon.name;
+    const weaponIndicatorIcon = getWeaponIndicatorIcon(weapon);
     const nextLog = [`${actionName}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
 
     if (!attackRoll.hit) {
-      pushCombatIndicator("enemy", "MISS", "#9ca3af");
+      pushCombatIndicator("enemy", "MISS", "#9ca3af", null, weaponIndicatorIcon);
       nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${actionName} misses.`);
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
@@ -1042,7 +1060,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const weaponDamage = Number(weapon.damage_amount ?? 0) + Number(weapon.elemental_damage_amount ?? 0) + bonuses.damage + getStrengthAttackBonus(character.attributes?.strength ?? 0);
     const totalDamage = attackRoll.critical ? Math.ceil(Math.max(1, weaponDamage - getEnemyArmorReduction()) * 2) : Math.max(1, weaponDamage - getEnemyArmorReduction());
     const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
-    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c");
+    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", null, weaponIndicatorIcon);
     nextLog.push(`${actionName} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} damage${weapon.elemental_damage_type !== "none" ? ` with ${weapon.elemental_damage_type}` : ""}.`);
 
     if (weapon.on_hit_effect === "restore health per hit") {

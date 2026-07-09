@@ -11,6 +11,7 @@ export type CombatIndicator = {
   targetKey?: string | null;
   text: string;
   color: string;
+  iconUri?: string | null;
 };
 
 export function ResourceMeter({ label, value, max, color, compact = false }: { label: string; value: number; max: number; color: string; compact?: boolean }) {
@@ -196,10 +197,26 @@ export function CombatIndicatorStack({ indicators }: { indicators: CombatIndicat
   return (
     <View style={styles.combatIndicatorStack} pointerEvents="none">
       {indicators.map((indicator, index) => (
-        <Text key={indicator.id} style={[styles.combatIndicator, { color: indicator.color, top: -10 - index * 24 } as object]}>
-          {indicator.text}
-        </Text>
+        <View key={indicator.id} style={[styles.combatIndicatorGroup, { top: -48 - index * 48 } as object]}>
+          <CombatEffectBadge indicator={indicator} />
+          <Text style={[styles.combatIndicator, { color: indicator.color } as object]}>
+            {indicator.text}
+          </Text>
+        </View>
       ))}
+    </View>
+  );
+}
+
+export function CombatEffectBadge({ indicator, compact = false }: { indicator: CombatIndicator; compact?: boolean }) {
+  if (!indicator.iconUri) {
+    return null;
+  }
+
+  return (
+    <View style={[styles.combatEffectBadge, compact && styles.combatEffectBadgeCompact, { borderColor: indicator.color, shadowColor: indicator.color } as object]}>
+      <Image source={{ uri: indicator.iconUri }} style={styles.combatEffectIcon} />
+      <View style={[styles.combatEffectGlow, { backgroundColor: indicator.color } as object]} />
     </View>
   );
 }
@@ -502,13 +519,46 @@ const styles = StyleSheet.create({
     zIndex: 20,
     elevation: 20,
   },
-  combatIndicator: {
+  combatIndicatorGroup: {
     position: "absolute",
+    alignItems: "center",
+    minWidth: 108,
+    marginLeft: -54,
+  },
+  combatIndicator: {
     fontWeight: "900",
     fontSize: 19,
     textShadowColor: "rgba(0,0,0,0.9)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 6,
     opacity: 0.96,
+  },
+  combatEffectBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "rgba(0,0,0,0.78)",
+    shadowOpacity: 0.7,
+    shadowRadius: 10,
+    marginBottom: 3,
+  },
+  combatEffectBadgeCompact: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+  },
+  combatEffectIcon: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 999,
+    opacity: 0.96,
+  },
+  combatEffectGlow: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.16,
   },
 });
