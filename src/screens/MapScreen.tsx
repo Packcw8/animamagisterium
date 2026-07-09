@@ -31,6 +31,7 @@ import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { MarkerStyleEditor } from "../components/map/MarkerStyleEditor";
 import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
+import { JourneyRecoveryAction } from "../components/map/JourneyRecoveryAction";
 import { PlayerMapTravelHeader } from "../components/map/PlayerMapTravelHeader";
 import { PuzzleAdminPanel } from "../components/map/PuzzleAdminPanel";
 import { PuzzleSceneScreen, type PuzzleTapResult } from "../components/map/PuzzleSceneScreen";
@@ -73,6 +74,7 @@ import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission } from "../services/pushNotificationService";
 import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAssetUri, type GameToastDefinition, type GameToastTriggerType } from "../services/gameToastService";
 import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
+import { recoverPlayerMapPosition } from "../services/mapRecoveryService";
 import { claimOpenArena, completeArenaChallenge, getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
 import { buildArenaBattleLayout, deleteArenaBattleSlot, getArenaBattleSlots, saveArenaBattleSlot, type ArenaBattleSlot } from "../services/arenaBattleBoardService";
 import { createCurrentPlayerBattleSnapshot } from "../services/battleSnapshotService";
@@ -360,6 +362,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [lastPosition, setLastPosition] = useState<Coordinate | null>(null);
   const [isTracking, setIsTracking] = useState(false);
   const [gpsMessage, setGpsMessage] = useState(Platform.OS === "web" ? "GPS is off. Start tracking to count real-world walking distance." : "Pedometer is off. Start tracking to count steps toward your path.");
+  const [isRecoveringPosition, setIsRecoveringPosition] = useState(false);
   const [playerMovementState, setPlayerMovementState] = useState<PlayerMovementState>("IDLE");
   const [movementStatus, setMovementStatus] = useState<MovementStatus>({
     label: "IDLE",
@@ -3232,6 +3235,63 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
     await selectRoute(nextRoute, true);
     setGpsMessage(`${nextRoute.name} is now your active walking path.`);
+  }
+
+  async function recoverJourneyPosition() {
+    if (isRecoveringPosition) {
+      return;
+    }
+
+    setIsRecoveringPosition(true);
+    try {
+      const fallbackPosition = activeMiniMap ? miniMapSpawnPosition : getWorldSpawnPosition();
+      const result = await recoverPlayerMapPosition({
+        hasActiveRoute,
+        route,
+        distanceWalked,
+        progressPercent,
+        routeDirection,
+        activeMiniMapId: activeMiniMap?.id ?? null,
+        fallbackPosition,
+      });
+      const recoveredMiniMap = result.activeMiniMapId ? miniMaps.find((item) => item.id === result.activeMiniMapId) ?? null : null;
+
+      setLastPosition(null);
+      if (hasActiveRoute) {
+        distanceWalkedRef.current = distanceWalked;
+        routeDirectionRef.current = routeDirection;
+        setSavedPlayerPosition(result.position);
+        setRouteProgressRows((current) =>
+          upsertRouteProgressRow(current, route.id, progressPercent, true).map((row) =>
+            row.route_id === route.id
+              ? {
+                  ...row,
+                  distance_walked_meters: distanceWalked,
+                  current_x_percent: result.position.x,
+                  current_y_percent: result.position.y,
+                  travel_direction: routeDirection,
+                  is_current: true,
+                }
+              : { ...row, is_current: false },
+          ),
+        );
+      } else if (recoveredMiniMap) {
+        setSavedMiniMapPosition(result.position);
+      } else {
+        setSavedPlayerPosition(result.position);
+      }
+
+      setActiveMiniMap(recoveredMiniMap);
+      setSelectedMiniMapId(recoveredMiniMap?.id ?? null);
+      if (!recoveredMiniMap) {
+        setSavedMiniMapPosition(null);
+      }
+      setGpsMessage(result.message);
+    } catch (error) {
+      setGpsMessage(getErrorMessage(error, "Unable to recover your map position."));
+    } finally {
+      setIsRecoveringPosition(false);
+    }
   }
 
   async function turnBackOnCurrentPath() {
@@ -6335,6 +6395,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("abilities")}>
             <Text style={styles.journeySecondaryText}>Abilities</Text>
           </Pressable>
+          <JourneyRecoveryAction disabled={isRecoveringPosition} onRecover={() => void recoverJourneyPosition()} />
         </View>
 
         <View style={styles.journeyDebugGrid}>
