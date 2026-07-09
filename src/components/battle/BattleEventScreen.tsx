@@ -178,7 +178,15 @@ export function BattleEventScreen({
                         const size = Math.max(48, Math.min(112, sizePercent * 5.6));
                         const ringSize = Math.max(50, size - 2);
                         const ringRadius = Math.max(20, ringSize / 2 - 7);
-                        const opponentIndicators = combatIndicators.filter((indicator) => indicator.target === "enemy" && (!indicator.targetKey || indicator.targetKey === opponent.key));
+                        const opponentIndicators = combatIndicators.filter((indicator) => {
+                          if (indicator.target !== "enemy") {
+                            return false;
+                          }
+                          if (indicator.targetKey) {
+                            return indicator.targetKey === opponent.key;
+                          }
+                          return opponent.key === selectedOpponentKey;
+                        });
                         return (
                           <Pressable
                             key={`stage-${opponent.key}`}

@@ -532,7 +532,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const actionName = ability?.name || "Strike";
 
       if (!roll.hit) {
-        pushCombatIndicator("enemy", "MISS", "#9ca3af");
+        pushCombatIndicator("enemy", "MISS", "#9ca3af", activeTarget.key);
         log.push(`${companionName} uses ${actionName} and misses. d20 ${roll.roll} + bonuses = ${roll.total}.`);
         continue;
       }
@@ -549,7 +549,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const damage = roll.critical ? Math.ceil(reducedDamage * Number(ability?.critical_multiplier || 2)) : reducedDamage;
       selectedHp = Math.max(0, selectedHp - damage);
       setSelectedOpponentSnapshotHp(activeTarget, selectedHp);
-      pushCombatIndicator("enemy", roll.critical ? `CRITICAL -${damage}` : `-${damage}`, roll.critical ? "#f6d365" : "#ff5c5c");
+      pushCombatIndicator("enemy", roll.critical ? `CRITICAL -${damage}` : `-${damage}`, roll.critical ? "#f6d365" : "#ff5c5c", activeTarget.key);
       log.push(`${companionName} uses ${actionName} for ${roll.critical ? "Critical " : ""}${damage}.`);
 
       if (selectedHp <= 0) {
@@ -901,7 +901,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const nextLog = [`${ability.name}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
 
     if (!attackRoll.hit) {
-      pushCombatIndicator("enemy", "MISS", "#9ca3af", null, abilityIndicatorIcon);
+      pushCombatIndicator("enemy", "MISS", "#9ca3af", selectedOpponentKey, abilityIndicatorIcon);
       nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${ability.name} misses.`);
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
@@ -930,7 +930,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const reducedDamage = Math.max(1, rawDamage - getEnemyArmorReduction());
     const totalDamage = attackRoll.critical ? Math.ceil(reducedDamage * Number(attackRoll.criticalMultiplier || 2)) : reducedDamage;
     const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
-    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", null, abilityIndicatorIcon);
+    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", selectedOpponentKey, abilityIndicatorIcon);
     nextLog.push(`${ability.name} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} ${ability.kind} damage.`);
     applyAbilityStatusToTarget(ability, "enemy", nextLog, selectedOpponentKey);
     if (healthRestore > 0) {
@@ -1032,7 +1032,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const nextLog = [`${actionName}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
 
     if (!attackRoll.hit) {
-      pushCombatIndicator("enemy", "MISS", "#9ca3af", null, weaponIndicatorIcon);
+      pushCombatIndicator("enemy", "MISS", "#9ca3af", selectedOpponentKey, weaponIndicatorIcon);
       nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${actionName} misses.`);
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
@@ -1060,7 +1060,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const weaponDamage = Number(weapon.damage_amount ?? 0) + Number(weapon.elemental_damage_amount ?? 0) + bonuses.damage + getStrengthAttackBonus(character.attributes?.strength ?? 0);
     const totalDamage = attackRoll.critical ? Math.ceil(Math.max(1, weaponDamage - getEnemyArmorReduction()) * 2) : Math.max(1, weaponDamage - getEnemyArmorReduction());
     const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
-    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", null, weaponIndicatorIcon);
+    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", selectedOpponentKey, weaponIndicatorIcon);
     nextLog.push(`${actionName} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} damage${weapon.elemental_damage_type !== "none" ? ` with ${weapon.elemental_damage_type}` : ""}.`);
 
     if (weapon.on_hit_effect === "restore health per hit") {
@@ -1223,7 +1223,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         const nextHp = Math.min(Number(enemy.health ?? activeBattle?.enemy_hp ?? 30), opponent.hp + healing);
         updateOpponent(opponent.key, { hp: nextHp });
         if (opponent.key === selectedOpponentKey) {
-          pushCombatIndicator("enemy", `+${healing}`, "#42d77d");
+          pushCombatIndicator("enemy", `+${healing}`, "#42d77d", opponent.key);
         }
         logs.push(`${enemyName} heals ${healing}.`);
       }
