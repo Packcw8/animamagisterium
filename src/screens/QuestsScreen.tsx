@@ -348,14 +348,21 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
               {classes.map((classItem) => (
                 <Pressable key={classItem.key} style={[styles.classCard, isCompact && styles.classCardCompact, classItem.unlocked && styles.classCardUnlocked, classItem.key === previewClassKey && styles.classCardPreviewed, classItem.selected && styles.classCardSelected]} onPress={() => void chooseClass(classItem)}>
                   <ClassCardBackground classItem={classItem} />
-                  <ClassArt classItem={classItem} />
-                  <Text style={styles.className} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{classItem.name}</Text>
-                  <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={styles.classPair}>
-                    {formatAttributeName(classItem.firstAttribute)} + {formatAttributeName(classItem.secondAttribute)}
-                  </Text>
-                  <View style={styles.classProgressRow}>
-                    <Text style={classItem.firstLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.firstLevel}/{classUnlockLevel}</Text>
-                    <Text style={classItem.secondLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.secondLevel}/{classUnlockLevel}</Text>
+                  <View style={styles.classCardHeader}>
+                    <ClassArt classItem={classItem} />
+                    <View style={styles.classCardTextBlock}>
+                      <Text style={styles.className} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{classItem.name}</Text>
+                      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72} style={styles.classPair}>
+                        {formatAttributeName(classItem.firstAttribute)} + {formatAttributeName(classItem.secondAttribute)}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.classCardProgressBox}>
+                    <Text style={styles.classCardMiniLabel}>Unlock</Text>
+                    <View style={styles.classProgressRow}>
+                      <Text style={classItem.firstLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.firstLevel}/{classUnlockLevel}</Text>
+                      <Text style={classItem.secondLevel >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{classItem.secondLevel}/{classUnlockLevel}</Text>
+                    </View>
                   </View>
                   {classItem.unlocked ? (
                     <Text style={classItem.selected ? styles.classUnlockedText : styles.classLockedText}>Class Lv {classItem.classLevel}</Text>
@@ -504,24 +511,28 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
           <View style={styles.classDetailCard}>
             {classDetail ? (
               <ScrollView contentContainerStyle={styles.classDetailScroll}>
+                <ClassDetailBanner classItem={classDetail} />
                 <View style={styles.classDetailTop}>
-                  <ClassArt classItem={classDetail} size="large" />
+                  <View style={styles.classDetailPortraitWrap}>
+                    <ClassArt classItem={classDetail} size="large" />
+                  </View>
                   <View style={styles.classDetailTitleBlock}>
                     <Text style={styles.kicker}>Class Path</Text>
                     <Text style={styles.classDetailTitle}>{classDetail.name}</Text>
-                    <Text style={styles.copy}>{formatAttributeName(classDetail.firstAttribute)} + {formatAttributeName(classDetail.secondAttribute)}</Text>
+                    <Text style={styles.classDetailSubtitle}>{getClassRoleLine(classDetail)}</Text>
                   </View>
                   <Pressable style={styles.modalCloseButton} onPress={() => setClassDetailKey(null)}>
                     <Text style={styles.modalCloseText}>X</Text>
                   </Pressable>
                 </View>
 
-                <Text style={styles.copy}>{classDetail.description}</Text>
+                <Text style={styles.classDescription}>{classDetail.description}</Text>
 
                 <View style={styles.classDetailSection}>
-                  <Text style={styles.sectionTitle}>Unlock</Text>
-                  <ClassTrainingGoal classItem={classDetail} attributeKey={classDetail.firstAttribute} trainingConfigs={trainingConfigs} />
-                  <ClassTrainingGoal classItem={classDetail} attributeKey={classDetail.secondAttribute} trainingConfigs={trainingConfigs} />
+                  <Text style={styles.sectionTitle}>Unlock Requirements</Text>
+                  <Text style={styles.copy}>Reach level {classUnlockLevel} in both linked attributes to unlock this class.</Text>
+                  <ClassRequirementRow classItem={classDetail} attributeKey={classDetail.firstAttribute} trainingConfigs={trainingConfigs} />
+                  <ClassRequirementRow classItem={classDetail} attributeKey={classDetail.secondAttribute} trainingConfigs={trainingConfigs} />
                 </View>
 
                 <View style={styles.classDetailSection}>
@@ -534,7 +545,8 @@ export function QuestsScreen({ character, onCharacterUpdated }: QuestsScreenProp
                 </View>
 
                 <View style={styles.classDetailSection}>
-                  <Text style={styles.sectionTitle}>Abilities</Text>
+                  <Text style={styles.sectionTitle}>Class Abilities</Text>
+                  <Text style={styles.copy}>These are pulled from Ability Admin when Required Class is set to {classDetail.name}.</Text>
                   {classDetailAbilities.length > 0 ? (
                     classDetailAbilities.map((ability) => (
                       <View key={ability.id} style={styles.classAbilityRow}>
@@ -610,6 +622,25 @@ function ClassCardBackground({ classItem }: { classItem: PlayerClassState }) {
   );
 }
 
+function ClassDetailBanner({ classItem }: { classItem: PlayerClassState }) {
+  const backgroundUri = resolveClassImageUri(classItem.backgroundImageUrl);
+  if (!backgroundUri) {
+    return (
+      <View style={styles.classDetailBannerFallback}>
+        <Text style={styles.classDetailBannerText}>{classItem.name}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.classDetailBanner}>
+      <Image source={{ uri: backgroundUri }} style={styles.classDetailBannerImage} />
+      <View style={styles.classDetailBannerScrim} />
+      <Text style={styles.classDetailBannerText}>{classItem.name}</Text>
+    </View>
+  );
+}
+
 function ClassTrainingGoal({ classItem, attributeKey, trainingConfigs }: { classItem: PlayerClassState; attributeKey: AttributeKey; trainingConfigs: TrainingAttributeConfig[] }) {
   const level = attributeKey === classItem.firstAttribute ? classItem.firstLevel : classItem.secondLevel;
   const config = trainingConfigs.find((item) => item.attribute_key === attributeKey);
@@ -620,6 +651,23 @@ function ClassTrainingGoal({ classItem, attributeKey, trainingConfigs }: { class
         <Text style={level >= classUnlockLevel ? styles.classProgressReady : styles.classProgress}>{level}/{classUnlockLevel}</Text>
       </View>
       <Text style={styles.infoValue}>{config?.activities ?? "Complete focused 30 minute sessions for this attribute."}</Text>
+    </View>
+  );
+}
+
+function ClassRequirementRow({ classItem, attributeKey, trainingConfigs }: { classItem: PlayerClassState; attributeKey: AttributeKey; trainingConfigs: TrainingAttributeConfig[] }) {
+  const level = attributeKey === classItem.firstAttribute ? classItem.firstLevel : classItem.secondLevel;
+  const config = trainingConfigs.find((item) => item.attribute_key === attributeKey);
+  const ready = level >= classUnlockLevel;
+
+  return (
+    <View style={styles.classRequirementRow}>
+      <View style={styles.classRequirementTop}>
+        <Text style={styles.infoLabel}>{formatAttributeName(attributeKey)}</Text>
+        <Text style={ready ? styles.classProgressReady : styles.classProgress}>{level} / {classUnlockLevel}</Text>
+      </View>
+      <ProgressBar value={Math.min(level, classUnlockLevel)} max={classUnlockLevel} color={ready ? colors.blue : colors.gold} height={6} />
+      <Text style={styles.copy}>{config?.effect ?? "Train this attribute to open the class path."}</Text>
     </View>
   );
 }
@@ -655,6 +703,12 @@ function getClassAbilitySummary(ability: CombatAbility) {
   ].filter(Boolean);
 
   return parts.join(" / ") || "Class ability";
+}
+
+function getClassRoleLine(classItem: PlayerClassState) {
+  const first = formatAttributeName(classItem.firstAttribute);
+  const second = formatAttributeName(classItem.secondAttribute);
+  return `${first} discipline with ${second} mastery`;
 }
 
 function TrainingIcon({ name, imageUrl, active }: { name: string; imageUrl: string | null; active: boolean }) {
@@ -1332,12 +1386,12 @@ const styles = StyleSheet.create({
   },
   classCard: {
     width: "31.5%",
-    minHeight: 142,
+    minHeight: 156,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     borderRadius: 8,
-    padding: 8,
-    gap: 5,
+    padding: 9,
+    gap: 7,
     backgroundColor: "rgba(0,0,0,0.34)",
     opacity: 0.72,
     overflow: "hidden",
@@ -1350,11 +1404,11 @@ const styles = StyleSheet.create({
   },
   classCardBackgroundScrim: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.58)",
+    backgroundColor: "rgba(0,0,0,0.42)",
   },
   classCardCompact: {
     width: "48%",
-    minHeight: 132,
+    minHeight: 150,
   },
   classCardUnlocked: {
     opacity: 1,
@@ -1390,16 +1444,43 @@ const styles = StyleSheet.create({
     color: colors.gold,
     fontWeight: "900",
   },
+  classCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  classCardTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
   className: {
     color: colors.text,
     fontSize: 12,
     fontWeight: "900",
     maxWidth: "100%",
+    textShadowColor: "rgba(0,0,0,0.9)",
+    textShadowRadius: 4,
   },
   classPair: {
-    color: colors.muted,
+    color: "#dfcfad",
     fontSize: 10,
     fontWeight: "800",
+    textShadowColor: "rgba(0,0,0,0.9)",
+    textShadowRadius: 4,
+  },
+  classCardProgressBox: {
+    gap: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(217,164,65,0.24)",
+    padding: 7,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  classCardMiniLabel: {
+    color: colors.gold,
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
   },
   classProgressRow: {
     flexDirection: "row",
@@ -1451,13 +1532,19 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   classDetailScroll: {
-    padding: 16,
+    padding: 14,
     gap: 14,
   },
   classDetailTop: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    marginTop: -8,
+  },
+  classDetailPortraitWrap: {
+    borderRadius: 999,
+    padding: 3,
+    backgroundColor: "rgba(0,0,0,0.55)",
   },
   classDetailTitleBlock: {
     flex: 1,
@@ -1468,6 +1555,15 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: "900",
     textTransform: "uppercase",
+  },
+  classDetailSubtitle: {
+    color: "#dfcfad",
+    fontWeight: "800",
+  },
+  classDescription: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 22,
   },
   modalCloseButton: {
     width: 34,
@@ -1489,6 +1585,42 @@ const styles = StyleSheet.create({
     borderRadius: 41,
     borderWidth: 2,
   },
+  classDetailBanner: {
+    height: 118,
+    borderRadius: 8,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    justifyContent: "flex-end",
+  },
+  classDetailBannerFallback: {
+    height: 84,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    justifyContent: "flex-end",
+    padding: 12,
+    backgroundColor: "rgba(20, 61, 86, 0.34)",
+  },
+  classDetailBannerImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: "100%",
+    height: "100%",
+    resizeMode: "cover",
+  },
+  classDetailBannerScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.38)",
+  },
+  classDetailBannerText: {
+    color: colors.gold,
+    fontSize: 22,
+    fontWeight: "900",
+    padding: 12,
+    textTransform: "uppercase",
+    textShadowColor: "rgba(0,0,0,0.9)",
+    textShadowRadius: 5,
+  },
   classDetailSection: {
     gap: 9,
     borderWidth: 1,
@@ -1496,6 +1628,20 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     backgroundColor: "rgba(217,164,65,0.05)",
+  },
+  classRequirementRow: {
+    gap: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  classRequirementTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
   },
   classAbilityRow: {
     minHeight: 64,
