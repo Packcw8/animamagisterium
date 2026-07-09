@@ -954,6 +954,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
   }
 
+  async function refreshRewardState() {
+    await loadInventory();
+    const refreshedCharacter = await getCharacter();
+    if (refreshedCharacter) {
+      onCharacterUpdated(refreshedCharacter);
+    }
+    return refreshedCharacter;
+  }
+
   function buildRewardToastItems(reward: { xp?: number | null; gold?: number | null; itemId?: string | null; itemQuantity?: number | null; fullHeal?: boolean | null }, extraRewards: GameToastReward[] = []) {
     const rewards: GameToastReward[] = [];
     const xp = Number(reward.xp ?? 0) || 0;
@@ -2708,10 +2717,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           seasonNumber: completedMarker.season_number,
           chapterNumber: completedMarker.chapter_number,
         });
-        await loadInventory();
-        if (result.currentHealth != null) {
-          onCharacterUpdated({ ...character, current_health: result.currentHealth });
-        }
+        await refreshRewardState();
         return;
       }
       setMarkerPanelMessage(result.message);
@@ -2733,10 +2739,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           chapterNumber: selectedMarker.chapter_number,
         });
       }
-      await loadInventory();
-      if (result.currentHealth != null) {
-        onCharacterUpdated({ ...character, current_health: result.currentHealth });
-      }
+      await refreshRewardState();
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to claim marker reward."));
     }
@@ -2799,10 +2802,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         markerId: selectedMarker.id,
       });
 
-      if (rewardResult.currentHealth != null) {
-        onCharacterUpdated({ ...character, current_health: rewardResult.currentHealth });
-      }
-      await loadInventory();
+      await refreshRewardState();
       setMarkerPanelMessage(puzzle.success_text || "Puzzle solved.");
       showAuthoredToast(unlockedMarker ? "unlocking_marker" : "receiving_reward", {
         title: puzzle.title || selectedMarker.title,
@@ -2863,10 +2863,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         seasonNumber: marker.season_number,
         chapterNumber: marker.chapter_number,
       });
-      await loadInventory();
-      if (result.currentHealth != null) {
-        onCharacterUpdated({ ...character, current_health: result.currentHealth });
-      }
+      await refreshRewardState();
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to complete story quest."));
     }
@@ -3123,10 +3120,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           chapterNumber: completedRoute.chapter_number,
         });
       }
-      await loadInventory();
-      if (result.currentHealth != null) {
-        onCharacterUpdated({ ...character, current_health: result.currentHealth });
-      }
+      await refreshRewardState();
     } catch (error) {
       setGpsMessage(getErrorMessage(error, "Path completed, but the linked quest reward could not be granted."));
     }
@@ -4278,6 +4272,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           seasonNumber: arenaMarker?.season_number ?? event.season_number,
           chapterNumber: arenaMarker?.chapter_number ?? event.chapter_number,
         });
+        if (wonArena) {
+          await refreshRewardState();
+        }
         return;
       }
 
@@ -4347,10 +4344,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           seasonNumber: marker?.season_number ?? event.season_number,
           chapterNumber: marker?.chapter_number ?? event.chapter_number,
         });
-        await loadInventory();
-        if (rewardResult.currentHealth != null) {
-          onCharacterUpdated({ ...character, current_health: rewardResult.currentHealth });
-        }
+        await refreshRewardState();
         return;
       }
 
@@ -4431,10 +4425,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         seasonNumber: completedMarker?.season_number ?? event.season_number,
         chapterNumber: completedMarker?.chapter_number ?? event.chapter_number,
       });
-      await loadInventory();
-      if (rewardResult.currentHealth != null) {
-        onCharacterUpdated({ ...character, current_health: rewardResult.currentHealth });
-      }
+      await refreshRewardState();
     } catch (error) {
       const message = getErrorMessage(error, "Unable to complete event.");
       setAdminMessage(message);
@@ -4800,11 +4791,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           chapterNumber: activeEvent?.chapter_number ?? selectedChapter,
         });
       }
-      await loadInventory();
-      const refreshedCharacter = await getCharacter();
-      if (refreshedCharacter) {
-        onCharacterUpdated(refreshedCharacter);
-      }
+      await refreshRewardState();
     } catch (error) {
       setDialogueLog((current) => [getErrorMessage(error, "Unable to claim reward."), ...current].slice(0, 4));
     }
