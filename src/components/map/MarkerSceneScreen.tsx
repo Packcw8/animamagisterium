@@ -610,14 +610,15 @@ function MarketSellCard({ entry, sellPrice, onSell, onInspect }: { entry: Invent
       </View>
       <View style={styles.marketBuyColumn}>
         <View style={styles.marketPriceBox}>
-          <Text style={styles.marketPriceLabel}>Sell</Text>
+          <Text style={styles.marketPriceLabel}>You Get</Text>
           <Text style={styles.marketSellPrice}>{sellPrice}</Text>
+          <Text style={styles.marketPriceUnit}>gold each</Text>
         </View>
         <Pressable style={styles.marketSellButton} onPress={(event) => {
           event.stopPropagation();
           onSell();
         }}>
-          <Text style={styles.secondaryText}>Sell One</Text>
+          <Text style={styles.secondaryText}>Sell 1 Item</Text>
         </Pressable>
       </View>
     </Pressable>
@@ -656,7 +657,7 @@ function MarketItemDetail({
       </View>
       <View style={styles.marketDetailStats}>
         <Text style={styles.statPill}>{selected.mode}</Text>
-        <Text style={styles.statPill}>{price} gold</Text>
+        <Text style={styles.statPill}>{selected.mode === "Buy" ? `${price} gold` : `${price} gold each`}</Text>
         <Text style={styles.statPill}>{selected.mode === "Buy" ? selected.marketItem.unlimited_stock ? "Unlimited" : `${remainingStock} left` : `Owned x${remainingStock}`}</Text>
         {item?.damage_amount ? <Text style={styles.statPill}>DMG {item.damage_amount}</Text> : null}
         {item?.armor_value ? <Text style={styles.statPill}>Armor {item.armor_value}</Text> : null}
@@ -665,7 +666,7 @@ function MarketItemDetail({
       </View>
       <View style={styles.marketDetailActions}>
         <Pressable style={selected.mode === "Buy" ? styles.marketActionButton : styles.marketSellButton} onPress={selected.mode === "Buy" ? onBuy : onSell}>
-          <Text style={selected.mode === "Buy" ? styles.marketActionText : styles.secondaryText}>{selected.mode === "Buy" ? "Buy Item" : "Sell One"}</Text>
+          <Text style={selected.mode === "Buy" ? styles.marketActionText : styles.secondaryText}>{selected.mode === "Buy" ? "Buy Item" : "Sell 1 Item"}</Text>
         </Pressable>
         <Pressable style={styles.marketCloseButton} onPress={onClose}>
           <Text style={styles.secondaryText}>Close</Text>
@@ -1118,6 +1119,12 @@ const styles = StyleSheet.create({
     color: colors.blue,
     fontWeight: "900",
     fontSize: 18,
+  },
+  marketPriceUnit: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: "800",
+    textTransform: "uppercase",
   },
   marketStockText: {
     color: colors.green,
