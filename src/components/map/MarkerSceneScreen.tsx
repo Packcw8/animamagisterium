@@ -1,6 +1,6 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useMemo, useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
@@ -96,6 +96,7 @@ export function MarkerSceneScreen({
   return (
     <Screen>
       <Frame style={backgroundUri ? [styles.eventScreen, ({ backgroundImage: `url(${backgroundUri})`, backgroundSize: "cover", backgroundPosition: "center" } as never)] : styles.eventScreen}>
+        {backgroundUri ? <Image source={{ uri: backgroundUri }} style={styles.sceneBackgroundImage} resizeMode="cover" fadeDuration={0} /> : null}
         <View style={styles.sceneIntro}>
           <View style={styles.panelHeader}>
             <View style={styles.titleBlock}>
@@ -110,7 +111,7 @@ export function MarkerSceneScreen({
           </View>
           {npcUri ? (
             <View style={marker.type === "Market" ? styles.sceneImageWrap : styles.portraitSceneWrap}>
-              <Image source={{ uri: npcUri }} style={marker.type === "Market" ? styles.eventImage : styles.npcPortrait} />
+              <Image source={{ uri: npcUri }} style={marker.type === "Market" ? styles.eventImage : styles.npcPortrait} resizeMode="cover" fadeDuration={0} />
             </View>
           ) : null}
           {marker.description ? <Text style={styles.copy}>{marker.description}</Text> : null}
@@ -497,35 +498,42 @@ function MarketScene({
         ))}
       </View>
 
-      {activeMode === "Buy" ? (
-        <View style={styles.marketList}>
-          {buyableItems.length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
-          {buyableItems.map(({ marketItem, item }) => (
-            <MarketBuyCard
-              key={marketItem.id}
-              marketItem={marketItem}
-              purchasedCount={marketPurchaseCounts[marketItem.id] ?? 0}
-              item={item}
-              onBuy={() => onBuy(marketItem)}
-            />
-          ))}
-        </View>
-      ) : (
-        <View style={styles.marketList}>
-          {sellableItems.length === 0 ? <Text style={styles.copy}>This market is not buying anything in your inventory.</Text> : null}
-          {sellableItems.map((entry) => {
-            const marketItem = marketItemByItemId.get(entry.item_id);
-            return (
-              <MarketSellCard
-                key={entry.id}
-                entry={entry}
-                sellPrice={marketItem?.sell_price ?? 0}
-                onSell={() => onSell(entry)}
+      <ScrollView
+        style={styles.marketListScroller}
+        contentContainerStyle={styles.marketListContent}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+      >
+        {activeMode === "Buy" ? (
+          <View style={styles.marketList}>
+            {buyableItems.length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
+            {buyableItems.map(({ marketItem, item }) => (
+              <MarketBuyCard
+                key={marketItem.id}
+                marketItem={marketItem}
+                purchasedCount={marketPurchaseCounts[marketItem.id] ?? 0}
+                item={item}
+                onBuy={() => onBuy(marketItem)}
               />
-            );
-          })}
-        </View>
-      )}
+            ))}
+          </View>
+        ) : (
+          <View style={styles.marketList}>
+            {sellableItems.length === 0 ? <Text style={styles.copy}>This market is not buying anything in your inventory.</Text> : null}
+            {sellableItems.map((entry) => {
+              const marketItem = marketItemByItemId.get(entry.item_id);
+              return (
+                <MarketSellCard
+                  key={entry.id}
+                  entry={entry}
+                  sellPrice={marketItem?.sell_price ?? 0}
+                  onSell={() => onSell(entry)}
+                />
+              );
+            })}
+          </View>
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -633,6 +641,11 @@ const styles = StyleSheet.create({
     gap: 12,
     borderRadius: 14,
     backgroundColor: "rgba(8, 7, 5, 0.92)",
+    overflow: "hidden",
+  },
+  sceneBackgroundImage: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.42,
   },
   sceneIntro: {
     borderRadius: 14,
@@ -808,6 +821,7 @@ const styles = StyleSheet.create({
   },
   marketScene: {
     gap: 14,
+    minHeight: 360,
     borderRadius: 14,
     borderWidth: 1,
     borderColor: "rgba(217, 170, 93, 0.24)",
@@ -873,6 +887,12 @@ const styles = StyleSheet.create({
   },
   marketList: {
     gap: 10,
+  },
+  marketListScroller: {
+    maxHeight: 560,
+  },
+  marketListContent: {
+    paddingBottom: 18,
   },
   marketDivider: {
     height: 1,

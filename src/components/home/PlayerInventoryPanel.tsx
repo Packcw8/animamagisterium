@@ -131,7 +131,7 @@ export function PlayerInventoryPanel({
               return (
                 <View key={`${selectedSlot}-${entry.id}`} style={styles.slotEquipRow}>
                   {imageUri ? (
-                    <Image source={{ uri: imageUri }} style={styles.slotEquipImage} />
+                    <Image source={{ uri: imageUri }} style={styles.slotEquipImage} resizeMode="cover" fadeDuration={0} />
                   ) : (
                     <View style={styles.slotEquipPlaceholder}>
                       <Text style={styles.itemInitial}>{entry.item.name.slice(0, 1).toUpperCase()}</Text>
@@ -215,7 +215,7 @@ export function PlayerInventoryPanel({
           >
             <View style={styles.itemImageShell}>
               {resolveInventoryImageUri(entry.item.image_path) ? (
-                <Image source={{ uri: resolveInventoryImageUri(entry.item.image_path) ?? "" }} style={styles.itemImage} />
+                <Image source={{ uri: resolveInventoryImageUri(entry.item.image_path) ?? "" }} style={styles.itemImage} resizeMode="cover" fadeDuration={0} />
               ) : (
                 <View style={styles.itemPlaceholder}><Text style={styles.itemInitial}>{entry.item.name.slice(0, 1).toUpperCase()}</Text></View>
               )}
@@ -245,7 +245,7 @@ function EquipmentSlotCard({ slot, item, selected, onSelect, onUnequip }: {
     <Pressable style={[styles.slotCard, item && styles.slotFilled, selected && styles.selectedSlotCard]} onPress={onSelect}>
       <Text style={styles.slotLabel}>{formatEquipmentSlotLabel(slot)}</Text>
       <View style={styles.slotIcon}>
-        {uri ? <Image source={{ uri }} style={styles.slotImage} /> : <Text style={styles.slotInitial}>{slot.slice(0, 1).toUpperCase()}</Text>}
+        {uri ? <Image source={{ uri }} style={styles.slotImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.slotInitial}>{slot.slice(0, 1).toUpperCase()}</Text>}
       </View>
       <Text style={styles.slotName} numberOfLines={2}>{item?.name ?? "Empty"}</Text>
       {item ? (
@@ -276,7 +276,7 @@ function ItemDetail({ entry, currentHealth, maxHealth, onEquipItem, onUnequipSlo
   return (
     <View style={styles.detailPanel}>
       <View style={styles.detailHeader}>
-        {imageUri ? <Image source={{ uri: imageUri }} style={styles.detailImage} /> : <View style={styles.detailPlaceholder}><Text style={styles.itemInitial}>{entry.item.name.slice(0, 1).toUpperCase()}</Text></View>}
+        {imageUri ? <Image source={{ uri: imageUri }} style={styles.detailImage} resizeMode="cover" fadeDuration={0} /> : <View style={styles.detailPlaceholder}><Text style={styles.itemInitial}>{entry.item.name.slice(0, 1).toUpperCase()}</Text></View>}
         <View style={styles.detailBody}>
           <Text style={styles.detailTitle}>{entry.item.name}</Text>
           <Text style={styles.detailTag}>{entry.equippedSlot ? `Equipped: ${entry.equippedSlot}` : entry.item.rarity}</Text>

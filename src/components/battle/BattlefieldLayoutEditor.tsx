@@ -317,7 +317,8 @@ function resolveBattlefieldImageUri(imagePath?: string | null) {
     return trimmed;
   }
 
-  return trimmed.startsWith("/") ? trimmed : `/${trimmed.replaceAll("\\", "/")}`;
+  const normalized = trimmed.replaceAll("\\", "/");
+  return encodeURI(normalized.startsWith("/") ? normalized : `/${normalized}`);
 }
 
 function formatPercent(value: number) {

@@ -425,7 +425,7 @@ function resolveSceneImageUri(imagePath?: string | null) {
   }
 
   const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return encodeURI(normalized.startsWith("/") ? normalized : `/${normalized}`);
 }
 
 function CombatIndicatorStackOverlay({ indicators }: { indicators: CombatIndicator[] }) {
