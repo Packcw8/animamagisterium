@@ -20,6 +20,9 @@ type Props = {
   isEnding: boolean;
   allowEndChat: boolean;
   endCompletesEvent: boolean;
+  contentScope: StoryDialogueNode["content_scope"];
+  selectedSeason: number;
+  selectedChapter: number;
   selectedDialogueEventId: string | null;
   renderNpcPicker: ReactNode;
   renderNpcPortraitUploader: ReactNode;
@@ -35,6 +38,7 @@ type Props = {
   onToggleEnding: () => void;
   onToggleAllowEndChat: () => void;
   onToggleEndCompletesEvent: () => void;
+  onChangeContentScope: (value: StoryDialogueNode["content_scope"]) => void;
   onSave: () => void;
   onCancelEdit: () => void;
   onSelectNode: (nodeId: string) => void;
@@ -59,6 +63,9 @@ export function DialogueNodeEditor({
   isEnding,
   allowEndChat,
   endCompletesEvent,
+  contentScope,
+  selectedSeason,
+  selectedChapter,
   selectedDialogueEventId,
   renderNpcPicker,
   renderNpcPortraitUploader,
@@ -74,6 +81,7 @@ export function DialogueNodeEditor({
   onToggleEnding,
   onToggleAllowEndChat,
   onToggleEndCompletesEvent,
+  onChangeContentScope,
   onSave,
   onCancelEdit,
   onSelectNode,
@@ -95,6 +103,14 @@ export function DialogueNodeEditor({
       {renderBackgroundUploader}
       <TextInput value={dialogue} onChangeText={onChangeDialogue} placeholder="NPC dialogue text" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
       <TextInput value={sortOrder} onChangeText={onChangeSortOrder} placeholder="Dialogue step order" placeholderTextColor={colors.muted} style={styles.input} />
+      <View style={styles.storyCard}>
+        <Text style={styles.flowStepTitle}>Chapter Scope</Text>
+        <Text style={styles.copy}>Current Chapter changes this dialogue for Season {selectedSeason}, Chapter {selectedChapter}. Universal appears in every chapter.</Text>
+        <View style={styles.typeGrid}>
+          <Pressable style={[styles.typeButton, contentScope === "chapter" && styles.typeSelected]} onPress={() => onChangeContentScope("chapter")}><Text style={styles.typeText}>Current Chapter</Text></Pressable>
+          <Pressable style={[styles.typeButton, contentScope === "universal" && styles.typeSelected]} onPress={() => onChangeContentScope("universal")}><Text style={styles.typeText}>Universal</Text></Pressable>
+        </View>
+      </View>
       <View style={styles.typeGrid}>
         <Pressable style={[styles.typeButton, isStart && styles.typeSelected]} onPress={onToggleStart}><Text style={styles.typeText}>Start Step</Text></Pressable>
         <Pressable style={[styles.typeButton, isEnding && styles.typeSelected]} onPress={onToggleEnding}><Text style={styles.typeText}>Ending Step</Text></Pressable>
@@ -109,6 +125,7 @@ export function DialogueNodeEditor({
       {nodes.map((node) => (
         <View key={node.id} style={[styles.storyCard, selectedNodeId === node.id && styles.storyCardActive]}>
           <Text style={styles.flowStepTitle}>{node.sort_order}. {node.title}{node.is_start ? " - Start" : ""}{node.is_ending ? " - Ending" : ""}</Text>
+          <Text style={styles.debugLine}>{node.content_scope === "universal" ? "Universal dialogue" : `Season ${node.season_number ?? "?"} / Chapter ${node.chapter_number ?? "?"}`}</Text>
           <Text style={styles.copy}>{node.dialogue_text || "No dialogue yet."}</Text>
           <Text style={styles.debugLine}>{getNodeChoiceCount(node.id)} choice{getNodeChoiceCount(node.id) === 1 ? "" : "s"}</Text>
           <View style={styles.modeRow}>

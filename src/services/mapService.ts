@@ -30,6 +30,7 @@ export type StoryMarkerStart = Tables["story_marker_starts"];
 export type StoryDialogueNode = Tables["story_dialogue_nodes"];
 export type StoryDialogueChoice = Tables["story_dialogue_choices"];
 export type DialogueChoiceReward = Tables["dialogue_choice_rewards"];
+export type DialogueNodeContentScope = StoryDialogueNode["content_scope"];
 export type PlayerStoryFlag = Tables["player_story_flags"];
 export type PlayerTutorialCompletion = Tables["player_tutorial_completions"];
 export type PlayerAttributeCheck = Tables["player_attribute_checks"];
@@ -1960,7 +1961,39 @@ function formatRewardMessage(xp: number, gold: number, itemQuantity: number, ful
   return parts.length > 0 ? `Reward claimed: ${parts.join(", ")}.` : "No reward configured.";
 }
 
-export async function getDialogueNodes(eventId: string) {
+type DialogueChapterFilter = {
+  seasonNumber?: number | null;
+  chapterNumber?: number | null;
+};
+
+function filterDialogueNodesForChapter(nodes: StoryDialogueNode[], filter?: DialogueChapterFilter) {
+  const seasonNumber = filter?.seasonNumber;
+  const chapterNumber = filter?.chapterNumber;
+
+  if (!seasonNumber || !chapterNumber) {
+    return nodes;
+  }
+
+  const exactNodes = nodes.filter((node) =>
+    (node.content_scope ?? "chapter") === "chapter"
+    && Number(node.season_number) === Number(seasonNumber)
+    && Number(node.chapter_number) === Number(chapterNumber)
+  );
+  const universalNodes = nodes.filter((node) =>
+    node.content_scope === "universal"
+    || node.season_number == null
+    || node.chapter_number == null
+  );
+
+  return [...exactNodes, ...universalNodes].sort((a, b) => {
+    if (a.sort_order !== b.sort_order) {
+      return a.sort_order - b.sort_order;
+    }
+    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  });
+}
+
+export async function getDialogueNodes(eventId: string, filter?: DialogueChapterFilter) {
   const { data, error } = await supabase
     .from("story_dialogue_nodes")
     .select("*")
@@ -1973,10 +2006,10 @@ export async function getDialogueNodes(eventId: string) {
     return [];
   }
 
-  return (data ?? []) as StoryDialogueNode[];
+  return filterDialogueNodesForChapter((data ?? []) as StoryDialogueNode[], filter);
 }
 
-export async function getDialogueNodesForMarker(markerId: string) {
+export async function getDialogueNodesForMarker(markerId: string, filter?: DialogueChapterFilter) {
   const { data, error } = await supabase
     .from("story_dialogue_nodes")
     .select("*")
@@ -1988,7 +2021,7 @@ export async function getDialogueNodesForMarker(markerId: string) {
     throw error;
   }
 
-  return (data ?? []) as StoryDialogueNode[];
+  return filterDialogueNodesForChapter((data ?? []) as StoryDialogueNode[], filter);
 }
 
 export async function getDialogueChoices(nodeIds: string[]) {

@@ -181,6 +181,7 @@ import {
   StoryDialogueChoice,
   DialogueChoiceReward,
   StoryDialogueNode,
+  DialogueNodeContentScope,
   saveMarkerMarketItem,
   saveMarkerLegendItem,
   saveMarkerRouteLinks,
@@ -575,6 +576,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [nodeIsEnding, setNodeIsEnding] = useState(false);
   const [nodeAllowEndChat, setNodeAllowEndChat] = useState(true);
   const [nodeEndCompletesEvent, setNodeEndCompletesEvent] = useState(false);
+  const [nodeContentScope, setNodeContentScope] = useState<DialogueNodeContentScope>("chapter");
   const [choiceNodeId, setChoiceNodeId] = useState<string | null>(null);
   const [choiceButtonText, setChoiceButtonText] = useState("");
   const [choicePlayerText, setChoicePlayerText] = useState("");
@@ -2271,7 +2273,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     try {
       const [links, markerNodes, arena] = await Promise.all([
         getMarkerRouteLinks(marker.id),
-        supportsMarkerDialogue(marker.type) ? getDialogueNodesForMarker(marker.id) : Promise.resolve([]),
+        supportsMarkerDialogue(marker.type) ? getDialogueNodesForMarker(marker.id, { seasonNumber: selectedSeason, chapterNumber: selectedChapter }) : Promise.resolve([]),
         marker.type === "Arena" ? getArenaForMarker(marker) : Promise.resolve(null),
       ]);
       const puzzle = marker.type === "Puzzle" ? await getPuzzleForMarker(marker.id, character.id) : null;
@@ -2974,7 +2976,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
 
     try {
-      const markerNodes = await getDialogueNodesForMarker(selectedMarker.id);
+      const markerNodes = await getDialogueNodesForMarker(selectedMarker.id, { seasonNumber: selectedSeason, chapterNumber: selectedChapter });
       const event = markerNodes.length > 0
         ? createMarkerDialogueEvent(selectedMarker)
         : selectedMarker.dialogue_event_id
@@ -4031,7 +4033,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
 
   async function loadDialogueForEvent(event: MapEvent) {
     try {
-      const nodes = await getDialogueNodes(event.id);
+      const nodes = await getDialogueNodes(event.id, { seasonNumber: selectedSeason, chapterNumber: selectedChapter });
       const choices = await getDialogueChoices(nodes.map((node) => node.id));
       const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
       const [claimedRewardChoices, selectedChoices] = await Promise.all([
@@ -4063,7 +4065,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
 
   async function loadDialogueForMarker(markerId: string, existingNodes?: StoryDialogueNode[]) {
     try {
-      const nodes = existingNodes ?? await getDialogueNodesForMarker(markerId);
+      const nodes = existingNodes ?? await getDialogueNodesForMarker(markerId, { seasonNumber: selectedSeason, chapterNumber: selectedChapter });
       const choices = await getDialogueChoices(nodes.map((node) => node.id));
       const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
       const [claimedRewardChoices, selectedChoices] = await Promise.all([
@@ -4111,7 +4113,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   async function loadDialogueEditor(eventId: string) {
     setSelectedDialogueEventId(eventId);
     setSelectedDialogueMarkerId(null);
-    const nodes = await getDialogueNodes(eventId);
+    const nodes = await getDialogueNodes(eventId, { seasonNumber: selectedSeason, chapterNumber: selectedChapter });
     const choices = await getDialogueChoices(nodes.map((node) => node.id));
     const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
     setDialogueNodes(nodes);
@@ -4127,7 +4129,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   async function loadMarkerDialogueEditor(marker: MapMarker) {
     setSelectedDialogueEventId(null);
     setSelectedDialogueMarkerId(marker.id);
-    const nodes = await getDialogueNodesForMarker(marker.id);
+    const nodes = await getDialogueNodesForMarker(marker.id, { seasonNumber: selectedSeason, chapterNumber: selectedChapter });
     const choices = await getDialogueChoices(nodes.map((node) => node.id));
     const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
     setDialogueNodes(nodes);
@@ -5264,6 +5266,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         is_ending: node.is_ending,
         allow_end_chat: node.allow_end_chat,
         end_completes_event: node.end_completes_event,
+        content_scope: node.content_scope ?? "chapter",
+        season_number: node.content_scope === "universal" ? null : selectedSeason,
+        chapter_number: node.content_scope === "universal" ? null : selectedChapter,
         sort_order: node.sort_order,
       });
       nodeIdMap.set(node.id, copiedNode.id);
@@ -5350,6 +5355,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setNodeIsEnding(node.is_ending);
     setNodeAllowEndChat(node.allow_end_chat);
     setNodeEndCompletesEvent(node.end_completes_event);
+    setNodeContentScope(node.content_scope ?? "chapter");
     setChoiceNodeId(node.id);
   }
 
@@ -5372,6 +5378,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setNodeIsEnding(false);
     setNodeAllowEndChat(true);
     setNodeEndCompletesEvent(false);
+    setNodeContentScope("chapter");
   }
 
   async function saveDialogueNode() {
@@ -5393,6 +5400,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         is_ending: nodeIsEnding,
         allow_end_chat: nodeAllowEndChat,
         end_completes_event: nodeEndCompletesEvent,
+        content_scope: nodeContentScope,
+        season_number: nodeContentScope === "chapter" ? selectedSeason : null,
+        chapter_number: nodeContentScope === "chapter" ? selectedChapter : null,
         sort_order: Number(nodeSortOrder) || 0,
       };
       const saved = editingNode
@@ -5887,6 +5897,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             isEnding={nodeIsEnding}
             allowEndChat={nodeAllowEndChat}
             endCompletesEvent={nodeEndCompletesEvent}
+            contentScope={nodeContentScope}
+            selectedSeason={selectedSeason}
+            selectedChapter={selectedChapter}
             selectedDialogueEventId={editorSelectedId}
             renderNpcPicker={<NpcPicker label="Reuse NPC for this dialogue step" npcs={npcDefinitions} selectedId={nodeNpcId} onSelect={selectNodeDialogueNpc} />}
             renderNpcPortraitUploader={<AdminImageUploadButton folder="dialogue-npcs" onUploaded={setNodeNpcPortrait} onMessage={setAdminMessage} />}
@@ -5902,6 +5915,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             onToggleEnding={() => setNodeIsEnding((value) => !value)}
             onToggleAllowEndChat={() => setNodeAllowEndChat((value) => !value)}
             onToggleEndCompletesEvent={() => setNodeEndCompletesEvent((value) => !value)}
+            onChangeContentScope={setNodeContentScope}
             onSave={() => void saveDialogueNode()}
             onCancelEdit={clearDialogueNodeForm}
             onSelectNode={selectDialogueNode}

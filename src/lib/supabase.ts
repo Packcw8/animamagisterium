@@ -710,6 +710,9 @@ export type Tables = {
     is_ending: boolean;
     allow_end_chat: boolean;
     end_completes_event: boolean;
+    content_scope: "chapter" | "universal";
+    season_number: number | null;
+    chapter_number: number | null;
     sort_order: number;
     created_at: string;
     updated_at: string;
