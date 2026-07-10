@@ -508,10 +508,10 @@ function MapCanvasLayers({
           key={marker.id}
           style={[styles.marker, mini && styles.miniMapMarker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, playerPosition, scaledMarkerSize)]}
           onPress={(event) => {
-            event.stopPropagation();
+            event.stopPropagation?.();
             onSelectMarker(marker);
           }}
-          {...({ onClick: (event: { stopPropagation?: () => void }) => event.stopPropagation?.() } as object)}
+          hitSlop={mini ? 10 : 12}
         >
           <MarkerIcon marker={safeMarkerScale === 1 ? marker : { ...marker, marker_size: Math.round(Number(marker.marker_size ?? 100) * safeMarkerScale) }} mini={mini} />
         </Pressable>
