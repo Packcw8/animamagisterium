@@ -58,6 +58,15 @@ export function PlayerInventoryPanel({
   onDropItem,
 }: PlayerInventoryPanelProps) {
   const [sortMode, setSortMode] = useState<InventorySort>("equipped");
+  const [selectedSlot, setSelectedSlot] = useState<EquipmentSlot | null>(null);
+  const visibleEquipmentSlots = equipmentSlots.filter((slot) => slot !== "weapon" && slot !== "armor");
+  const slotItems = useMemo(() => {
+    if (!selectedSlot) return [];
+    return sortInventoryItems(
+      items.filter((entry) => getCompatibleEquipmentSlots(entry.item).includes(selectedSlot)),
+      sortMode,
+    );
+  }, [items, selectedSlot, sortMode]);
   const filteredItems = useMemo(() => sortInventoryItems(
     items.filter((entry) => itemMatchesCategory(entry.item, activeTab)),
     sortMode,
@@ -87,9 +96,68 @@ export function PlayerInventoryPanel({
       <View style={styles.loadoutPanel}>
         <View style={styles.loadoutHeader}>
           <Text style={styles.subTitle}>Equipped</Text>
-          <Text style={styles.badge}>Loadout</Text>
+          <Text style={styles.badge}>Tap a slot</Text>
         </View>
-        <GearSilhouette equippedItems={equippedItems} onUnequipSlot={onUnequipSlot} />
+        <View style={styles.equipmentGrid}>
+          {visibleEquipmentSlots.map((slot) => (
+            <EquipmentSlotCard
+              key={slot}
+              slot={slot}
+              item={equippedItems[slot] ?? null}
+              selected={selectedSlot === slot}
+              onSelect={() => setSelectedSlot(slot)}
+              onUnequip={() => onUnequipSlot(slot)}
+            />
+          ))}
+        </View>
+        {selectedSlot ? (
+          <View style={styles.slotEquipPanel}>
+            <View style={styles.slotEquipHeader}>
+              <View style={styles.slotEquipTitleBlock}>
+                <Text style={styles.subTitle}>Equip {formatEquipmentSlotLabel(selectedSlot)}</Text>
+                <Text style={styles.copy}>
+                  {slotItems.length > 0
+                    ? `${slotItems.length} compatible ${slotItems.length === 1 ? "item" : "items"} available.`
+                    : "No compatible gear in your inventory yet."}
+                </Text>
+              </View>
+              <Pressable style={styles.closeSlotButton} onPress={() => setSelectedSlot(null)}>
+                <Text style={styles.smallButtonText}>Close</Text>
+              </Pressable>
+            </View>
+            {slotItems.map((entry) => {
+              const imageUri = resolveInventoryImageUri(entry.item.image_path);
+              const alreadyEquippedHere = entry.equippedSlot === selectedSlot;
+              return (
+                <View key={`${selectedSlot}-${entry.id}`} style={styles.slotEquipRow}>
+                  {imageUri ? (
+                    <Image source={{ uri: imageUri }} style={styles.slotEquipImage} />
+                  ) : (
+                    <View style={styles.slotEquipPlaceholder}>
+                      <Text style={styles.itemInitial}>{entry.item.name.slice(0, 1).toUpperCase()}</Text>
+                    </View>
+                  )}
+                  <View style={styles.slotEquipBody}>
+                    <Text style={styles.slotEquipName}>{entry.item.name}</Text>
+                    <Text style={styles.cardMeta}>
+                      {entry.item.rarity} / {entry.item.type}{entry.quantity > 1 ? ` x${entry.quantity}` : ""}
+                    </Text>
+                    {entry.equippedSlot && !alreadyEquippedHere ? (
+                      <Text style={styles.cardMeta}>Currently in {formatEquipmentSlotLabel(entry.equippedSlot as EquipmentSlot)}</Text>
+                    ) : null}
+                  </View>
+                  <Pressable
+                    style={[styles.slotEquipButton, alreadyEquippedHere && styles.disabledAction]}
+                    onPress={() => onEquipItem(entry, selectedSlot)}
+                    disabled={alreadyEquippedHere}
+                  >
+                    <Text style={styles.smallButtonText}>{alreadyEquippedHere ? "Equipped" : "Equip"}</Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
         {equipmentBonuses.completedArmorSets.length > 0 ? (
           <View style={styles.setBonusPanel}>
             <Text style={styles.subTitle}>Completed Armor Sets</Text>
@@ -164,49 +232,19 @@ export function PlayerInventoryPanel({
   );
 }
 
-function GearSilhouette({ equippedItems, onUnequipSlot }: { equippedItems: Record<string, ItemDefinition | null>; onUnequipSlot: (slot: EquipmentSlot) => void }) {
-  const leftSlots: EquipmentSlot[] = ["main_hand", "helmet", "gloves", "legs"];
-  const rightSlots: EquipmentSlot[] = ["off_hand", "chest", "boots", "necklace"];
-  const bottomSlots: EquipmentSlot[] = ["ring", "charm", "relic"];
-
-  return (
-    <View style={styles.gearPanel}>
-      <View style={styles.gearColumn}>
-        {leftSlots.map((slot) => (
-          <EquipmentSlotCard key={slot} slot={slot} item={equippedItems[slot] ?? null} onUnequip={() => onUnequipSlot(slot)} />
-        ))}
-      </View>
-      <View style={styles.silhouetteBody}>
-        <View style={styles.silhouetteHead} />
-        <View style={styles.silhouetteTorso}>
-          <Text style={styles.silhouetteText}>GEAR</Text>
-        </View>
-        <View style={styles.silhouetteLegs}>
-          <View style={styles.silhouetteLeg} />
-          <View style={styles.silhouetteLeg} />
-        </View>
-      </View>
-      <View style={styles.gearColumn}>
-        {rightSlots.map((slot) => (
-          <EquipmentSlotCard key={slot} slot={slot} item={equippedItems[slot] ?? null} onUnequip={() => onUnequipSlot(slot)} />
-        ))}
-      </View>
-      <View style={styles.gearBottomRow}>
-        {bottomSlots.map((slot) => (
-          <EquipmentSlotCard key={slot} slot={slot} item={equippedItems[slot] ?? null} onUnequip={() => onUnequipSlot(slot)} compact />
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function EquipmentSlotCard({ slot, item, onUnequip, compact = false }: { slot: EquipmentSlot; item: ItemDefinition | null; onUnequip: () => void; compact?: boolean }) {
+function EquipmentSlotCard({ slot, item, selected, onSelect, onUnequip }: {
+  slot: EquipmentSlot;
+  item: ItemDefinition | null;
+  selected: boolean;
+  onSelect: () => void;
+  onUnequip: () => void;
+}) {
   const uri = resolveInventoryImageUri(item?.image_path);
 
   return (
-    <View style={[styles.slotCard, compact && styles.compactSlotCard, item && styles.slotFilled]}>
+    <Pressable style={[styles.slotCard, item && styles.slotFilled, selected && styles.selectedSlotCard]} onPress={onSelect}>
       <Text style={styles.slotLabel}>{formatEquipmentSlotLabel(slot)}</Text>
-      <View style={[styles.slotIcon, compact && styles.compactSlotIcon]}>
+      <View style={styles.slotIcon}>
         {uri ? <Image source={{ uri }} style={styles.slotImage} /> : <Text style={styles.slotInitial}>{slot.slice(0, 1).toUpperCase()}</Text>}
       </View>
       <Text style={styles.slotName} numberOfLines={2}>{item?.name ?? "Empty"}</Text>
@@ -215,7 +253,7 @@ function EquipmentSlotCard({ slot, item, onUnequip, compact = false }: { slot: E
           <Text style={styles.smallButtonText}>Unequip</Text>
         </Pressable>
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 
@@ -414,70 +452,6 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 10,
   },
-  gearPanel: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    paddingVertical: 4,
-  },
-  gearColumn: {
-    flex: 1,
-    minWidth: 104,
-    gap: 8,
-  },
-  silhouetteBody: {
-    width: 92,
-    minHeight: 250,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  silhouetteHead: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    borderWidth: 1,
-    borderColor: "rgba(217,164,65,0.55)",
-    backgroundColor: "rgba(217,164,65,0.08)",
-  },
-  silhouetteTorso: {
-    width: 76,
-    height: 116,
-    borderTopLeftRadius: 34,
-    borderTopRightRadius: 34,
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(217,164,65,0.45)",
-    backgroundColor: "rgba(20,61,86,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  silhouetteText: {
-    color: colors.gold,
-    fontSize: 11,
-    fontWeight: "900",
-    letterSpacing: 0,
-  },
-  silhouetteLegs: {
-    flexDirection: "row",
-    gap: 8,
-  },
-  silhouetteLeg: {
-    width: 24,
-    height: 58,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(217,164,65,0.35)",
-    backgroundColor: "rgba(0,0,0,0.28)",
-  },
-  gearBottomRow: {
-    width: "100%",
-    flexDirection: "row",
-    gap: 8,
-  },
   setBonusPanel: {
     gap: 5,
     padding: 10,
@@ -499,14 +473,16 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: "rgba(5,9,10,0.6)",
   },
-  compactSlotCard: {
-    flexBasis: 92,
-    minWidth: 92,
-    minHeight: 108,
-  },
   slotFilled: {
     borderColor: colors.gold,
     backgroundColor: "rgba(217,170,93,0.08)",
+  },
+  selectedSlotCard: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20,61,86,0.5)",
+    shadowColor: colors.blue,
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
   },
   slotLabel: {
     color: colors.goldSoft,
@@ -525,11 +501,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "rgba(0,0,0,0.32)",
   },
-  compactSlotIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 9,
-  },
   slotImage: {
     width: "100%",
     height: "100%",
@@ -544,6 +515,80 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textAlign: "center",
     minHeight: 34,
+  },
+  slotEquipPanel: {
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "rgba(40,185,255,0.45)",
+    borderRadius: 12,
+    padding: 10,
+    backgroundColor: "rgba(20,61,86,0.24)",
+  },
+  slotEquipHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  slotEquipTitleBlock: {
+    flex: 1,
+    gap: 3,
+  },
+  closeSlotButton: {
+    minHeight: 36,
+    minWidth: 74,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 9,
+    backgroundColor: "rgba(0,0,0,0.25)",
+  },
+  slotEquipRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 12,
+    padding: 8,
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  slotEquipImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+  },
+  slotEquipPlaceholder: {
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+  slotEquipBody: {
+    flex: 1,
+    gap: 3,
+  },
+  slotEquipName: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 15,
+  },
+  slotEquipButton: {
+    minHeight: 38,
+    minWidth: 78,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.gold,
+    borderRadius: 9,
+    backgroundColor: "rgba(217,164,65,0.14)",
   },
   tabs: {
     flexDirection: "row",
