@@ -7,6 +7,7 @@ export type PlayerInventoryRow = Tables["player_inventory"];
 export type EquippedItemRow = Tables["equipped_items"];
 export type GameBalanceSetting = Tables["game_balance_settings"];
 export type EquipmentSlot = EquippedItemRow["slot"];
+export type ArmorPieceSlot = "helmet" | "chest" | "gloves" | "legs" | "boots";
 
 export type InventoryItem = PlayerInventoryRow & {
   item: ItemDefinition;
@@ -27,13 +28,15 @@ export type CarrySettings = {
 };
 
 export const itemTypes: ItemDefinition["type"][] = ["weapon", "armor", "wearable", "potion", "revive potion", "consumable", "food", "scroll", "special", "material", "misc"];
-export const equipmentSlots: EquipmentSlot[] = ["weapon", "armor", "necklace", "ring", "charm", "relic"];
+export const armorPieceSlots: ArmorPieceSlot[] = ["helmet", "chest", "gloves", "legs", "boots"];
+export const equipmentSlots: EquipmentSlot[] = ["weapon", ...armorPieceSlots, "armor", "necklace", "ring", "charm", "relic"];
 export const rarityOptions = ["common", "uncommon", "rare", "epic", "legendary"];
 export const costTypes: ItemDefinition["ability_cost_type"][] = ["none", "health", "stamina", "magika"];
 export const elementalTypes: ItemDefinition["elemental_damage_type"][] = ["none", "fire", "ice", "poison", "lightning", "shadow", "holy"];
 export const onHitEffects = ["restore health per hit", "restore stamina per hit", "restore magika per hit", "burn enemy", "poison enemy", "weaken enemy"] as const;
-export const buffTargets = ["max health", "max stamina", "max magika", "strength", "agility", "intelligence", "charisma", "defense", "damage", "gold gain", "xp gain"] as const;
-export const boostTargets = ["health", "stamina", "magika", "strength", "agility", "intelligence", "charisma", "defense", "damage", "gold gain", "xp gain"] as const;
+export const equipmentBonusTargets = ["max health", "max stamina", "max magika", "strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit", "defense", "damage", "gold gain", "xp gain"] as const;
+export const buffTargets = equipmentBonusTargets;
+export const boostTargets = ["health", "stamina", "magika", "strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit", "defense", "damage", "gold gain", "xp gain"] as const;
 export const potionTargets = ["health", "stamina", "magika"] as const;
 export const usageContexts: ItemDefinition["usage_context"][] = ["battle_only", "outside_battle_only", "both"];
 export const inventoryAssetBasePath = "/assets/InventoryItems/";
@@ -107,6 +110,15 @@ export function blankItemDefinition(): Partial<ItemDefinition> {
     armor_value: 0,
     buff_target: null,
     buff_amount: 0,
+    equip_penalty_target: null,
+    equip_penalty_amount: 0,
+    armor_set_key: null,
+    armor_set_name: null,
+    armor_piece_slot: null,
+    set_bonus_target: null,
+    set_bonus_amount: 0,
+    set_penalty_target: null,
+    set_penalty_amount: 0,
     potion_target: null,
     restore_amount: 0,
     restore_percent: null,
@@ -369,12 +381,127 @@ export async function consumeInventoryItem(inventoryItem: InventoryItem, amount 
 
 export function getInventoryResourceBonuses(equipped: Record<EquipmentSlot, ItemDefinition | null>) {
   const items = Object.values(equipped).filter(Boolean) as ItemDefinition[];
+  const bonuses = {
+    maxHp: 0,
+    maxStamina: 0,
+    maxMagicka: 0,
+    damage: 0,
+    defense: 0,
+    strength: 0,
+    endurance: 0,
+    agility: 0,
+    intelligence: 0,
+    wisdom: 0,
+    charisma: 0,
+    spirit: 0,
+    goldGain: 0,
+    xpGain: 0,
+    completedArmorSets: [] as Array<{ key: string; name: string; bonusTarget: string | null; bonusAmount: number; penaltyTarget: string | null; penaltyAmount: number }>,
+  };
+
+  const setGroups = new Map<string, { name: string; pieces: Set<ArmorPieceSlot>; sourceItems: ItemDefinition[] }>();
+
+  for (const item of items) {
+    bonuses.defense += Number(item.armor_value ?? 0);
+    applyEquipmentBonus(bonuses, item.buff_target, Number(item.buff_amount ?? 0));
+    applyEquipmentBonus(bonuses, item.equip_penalty_target, -Math.abs(Number(item.equip_penalty_amount ?? 0)));
+
+    const setKey = item.armor_set_key?.trim();
+    const pieceSlot = getArmorPieceSlot(item);
+    if (setKey && pieceSlot) {
+      const current = setGroups.get(setKey) ?? {
+        name: item.armor_set_name?.trim() || setKey,
+        pieces: new Set<ArmorPieceSlot>(),
+        sourceItems: [],
+      };
+      current.name = item.armor_set_name?.trim() || current.name;
+      current.pieces.add(pieceSlot);
+      current.sourceItems.push(item);
+      setGroups.set(setKey, current);
+    }
+  }
+
+  for (const [key, group] of setGroups) {
+    const hasFullSet = armorPieceSlots.every((slot) => group.pieces.has(slot));
+    if (!hasFullSet) {
+      continue;
+    }
+
+    const source = group.sourceItems.find((item) => item.set_bonus_target || item.set_penalty_target) ?? group.sourceItems[0];
+    const bonusTarget = source?.set_bonus_target ?? null;
+    const bonusAmount = Number(source?.set_bonus_amount ?? 0);
+    const penaltyTarget = source?.set_penalty_target ?? null;
+    const penaltyAmount = Math.abs(Number(source?.set_penalty_amount ?? 0));
+    applyEquipmentBonus(bonuses, bonusTarget, bonusAmount);
+    applyEquipmentBonus(bonuses, penaltyTarget, -penaltyAmount);
+    bonuses.completedArmorSets.push({
+      key,
+      name: group.name,
+      bonusTarget,
+      bonusAmount,
+      penaltyTarget,
+      penaltyAmount,
+    });
+  }
+
+  return bonuses;
+}
+
+function getArmorPieceSlot(item: ItemDefinition): ArmorPieceSlot | null {
+  const explicitSlot = item.armor_piece_slot;
+  if (explicitSlot && armorPieceSlots.includes(explicitSlot as ArmorPieceSlot)) {
+    return explicitSlot as ArmorPieceSlot;
+  }
+
+  if (item.equipment_slot && armorPieceSlots.includes(item.equipment_slot as ArmorPieceSlot)) {
+    return item.equipment_slot as ArmorPieceSlot;
+  }
+
+  return null;
+}
+
+function applyEquipmentBonus(
+  bonuses: ReturnType<typeof createBonusAccumulator>,
+  target: string | null | undefined,
+  amount: number,
+) {
+  if (!target || !Number.isFinite(amount) || amount === 0) {
+    return;
+  }
+
+  if (target === "max health") bonuses.maxHp += amount;
+  else if (target === "max stamina") bonuses.maxStamina += amount;
+  else if (target === "max magika") bonuses.maxMagicka += amount;
+  else if (target === "damage") bonuses.damage += amount;
+  else if (target === "defense") bonuses.defense += amount;
+  else if (target === "strength") bonuses.strength += amount;
+  else if (target === "endurance") bonuses.endurance += amount;
+  else if (target === "agility") bonuses.agility += amount;
+  else if (target === "intelligence") bonuses.intelligence += amount;
+  else if (target === "wisdom") bonuses.wisdom += amount;
+  else if (target === "charisma") bonuses.charisma += amount;
+  else if (target === "spirit") bonuses.spirit += amount;
+  else if (target === "gold gain") bonuses.goldGain += amount;
+  else if (target === "xp gain") bonuses.xpGain += amount;
+}
+
+function createBonusAccumulator() {
   return {
-    maxHp: items.filter((item) => item.buff_target === "max health").reduce((sum, item) => sum + item.buff_amount, 0),
-    maxStamina: items.filter((item) => item.buff_target === "max stamina").reduce((sum, item) => sum + item.buff_amount, 0),
-    maxMagicka: items.filter((item) => item.buff_target === "max magika").reduce((sum, item) => sum + item.buff_amount, 0),
-    damage: items.filter((item) => item.buff_target === "damage").reduce((sum, item) => sum + item.buff_amount, 0),
-    defense: items.reduce((sum, item) => sum + item.armor_value + (item.buff_target === "defense" ? item.buff_amount : 0), 0),
+    maxHp: 0,
+    maxStamina: 0,
+    maxMagicka: 0,
+    damage: 0,
+    defense: 0,
+    strength: 0,
+    endurance: 0,
+    agility: 0,
+    intelligence: 0,
+    wisdom: 0,
+    charisma: 0,
+    spirit: 0,
+    goldGain: 0,
+    xpGain: 0,
+    completedArmorSets: [] as Array<{ key: string; name: string; bonusTarget: string | null; bonusAmount: number; penaltyTarget: string | null; penaltyAmount: number }>,
   };
 }
 
@@ -507,6 +634,15 @@ function normalizeItemInput(input: Partial<ItemDefinition>, userId: string | nul
     armor_value: Number(input.armor_value) || 0,
     buff_target: input.buff_target ?? null,
     buff_amount: Number(input.buff_amount) || 0,
+    equip_penalty_target: input.equip_penalty_target ?? null,
+    equip_penalty_amount: Number(input.equip_penalty_amount) || 0,
+    armor_set_key: input.armor_set_key?.trim() || null,
+    armor_set_name: input.armor_set_name?.trim() || null,
+    armor_piece_slot: input.armor_piece_slot ?? null,
+    set_bonus_target: input.set_bonus_target ?? null,
+    set_bonus_amount: Number(input.set_bonus_amount) || 0,
+    set_penalty_target: input.set_penalty_target ?? null,
+    set_penalty_amount: Number(input.set_penalty_amount) || 0,
     potion_target: input.potion_target ?? null,
     restore_amount: Number(input.restore_amount) || 0,
     restore_percent: input.restore_percent === null || input.restore_percent === undefined ? null : Number(input.restore_percent) || null,

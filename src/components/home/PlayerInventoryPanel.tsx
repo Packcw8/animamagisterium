@@ -5,6 +5,7 @@ import { colors, fonts } from "../theme";
 import {
   canUseItemInContext,
   equipmentSlots,
+  getInventoryResourceBonuses,
   InventoryItem,
   isHealingConsumable,
   ItemDefinition,
@@ -54,6 +55,7 @@ export function PlayerInventoryPanel({
 }: PlayerInventoryPanelProps) {
   const filteredItems = items.filter((entry) => itemMatchesCategory(entry.item, activeTab));
   const overCapacity = totalWeight > carryCapacity;
+  const equipmentBonuses = getInventoryResourceBonuses(equippedItems as Record<EquipmentSlot, ItemDefinition | null>);
 
   return (
     <View style={styles.section}>
@@ -89,6 +91,17 @@ export function PlayerInventoryPanel({
             />
           ))}
         </View>
+        {equipmentBonuses.completedArmorSets.length > 0 ? (
+          <View style={styles.setBonusPanel}>
+            <Text style={styles.subTitle}>Completed Armor Sets</Text>
+            {equipmentBonuses.completedArmorSets.map((set) => (
+              <Text key={set.key} style={styles.copy}>
+                {set.name}{set.bonusTarget && set.bonusAmount ? `: +${set.bonusAmount} ${set.bonusTarget}` : ""}
+                {set.penaltyTarget && set.penaltyAmount ? ` / -${set.penaltyAmount} ${set.penaltyTarget}` : ""}
+              </Text>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.tabs}>
@@ -195,6 +208,10 @@ function ItemDetail({ entry, currentHealth, maxHealth, onEquipItem, onUnequipSlo
       <Info label="Weight" value={`${(Number(entry.item.weight ?? 0) * entry.quantity).toFixed(1)} total`} />
       {entry.item.damage_amount ? <Info label="Damage" value={String(entry.item.damage_amount)} /> : null}
       {entry.item.armor_value ? <Info label="Armor" value={String(entry.item.armor_value)} /> : null}
+      {entry.item.armor_piece_slot ? <Info label="Armor Piece" value={entry.item.armor_piece_slot} /> : null}
+      {entry.item.armor_set_name || entry.item.armor_set_key ? <Info label="Armor Set" value={entry.item.armor_set_name ?? entry.item.armor_set_key ?? ""} /> : null}
+      {entry.item.equip_penalty_target && entry.item.equip_penalty_amount ? <Info label="Equip Penalty" value={`-${entry.item.equip_penalty_amount} ${entry.item.equip_penalty_target}`} /> : null}
+      {entry.item.set_bonus_target && entry.item.set_bonus_amount ? <Info label="Full Set Bonus" value={`+${entry.item.set_bonus_amount} ${entry.item.set_bonus_target}`} /> : null}
       {entry.item.restore_amount ? <Info label="Restore" value={`${entry.item.restore_amount} ${entry.item.potion_target ?? ""}`} /> : null}
       {canUseOutside ? (
         <View style={styles.healBox}>
@@ -320,6 +337,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 10,
+  },
+  setBonusPanel: {
+    gap: 5,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "rgba(217,164,65,0.35)",
+    borderRadius: 10,
+    backgroundColor: "rgba(217,164,65,0.08)",
   },
   slotCard: {
     flexGrow: 1,

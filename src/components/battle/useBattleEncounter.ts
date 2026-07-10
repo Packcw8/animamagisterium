@@ -3,7 +3,7 @@ import { AbilityDefinition, CharacterResources, clampHealth, getCharacterResourc
 import { CharacterWithDetails, updateCharacterHealth } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout, getEnemyLoadout, getNpcLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants } from "../../services/battlefieldService";
-import { InventoryItem, ItemDefinition, consumeInventoryItem, getInventoryResourceBonuses, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../../services/inventoryService";
+import { EquipmentSlot, InventoryItem, ItemDefinition, consumeInventoryItem, getInventoryResourceBonuses, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
 import { chooseWeightedEnemyAbility, getD20StatBonus, rollD20Attack } from "../../utils/combatMath";
 import { type CombatIndicator } from "./BattleDisplay";
@@ -1024,7 +1024,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       setBattleMagicka((current) => Math.max(0, current - cost));
     }
 
-    const bonuses = getInventoryResourceBonuses(context.equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
+    const bonuses = getInventoryResourceBonuses(context.equippedItems as Record<EquipmentSlot, ItemDefinition | null>);
     const enemyDefense = getEnemyDefense();
     const attackRoll = rollD20Attack(getStrengthAttackBonus(character.attributes?.strength ?? 0), bonuses.damage, enemyDefense, 0, 2);
     const actionName = weapon.ability_name || weapon.name;
@@ -1332,7 +1332,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   }
 
   function getPlayerDefense(equippedItems: Record<string, ItemDefinition | null>, extraDefense = 0) {
-    const bonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
+    const bonuses = getInventoryResourceBonuses(equippedItems as Record<EquipmentSlot, ItemDefinition | null>);
     return 10 + bonuses.defense + extraDefense;
   }
 
@@ -1349,7 +1349,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   }
 
   function getEquipmentDamageBonus(equippedItems: Record<string, ItemDefinition | null>) {
-    const bonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
+    const bonuses = getInventoryResourceBonuses(equippedItems as Record<EquipmentSlot, ItemDefinition | null>);
     return bonuses.damage;
   }
 

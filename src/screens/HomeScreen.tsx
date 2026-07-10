@@ -60,13 +60,16 @@ import {
 import { classCombinations } from "../services/classService";
 import {
   blankItemDefinition,
+  armorPieceSlots,
   boostTargets,
   buffTargets,
   costTypes,
   consumeInventoryItem,
   deleteItemDefinition,
   elementalTypes,
+  equipmentBonusTargets,
   equipmentSlots,
+  EquipmentSlot,
   equipInventoryItem,
   getCarrySettings,
   getInventoryResourceBonuses,
@@ -213,7 +216,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [progressionSettings, setProgressionSettings] = useState<GameProgressionSettings>(defaultProgressionSettings);
   const knownAbilityKeysRef = useRef<Set<string> | null>(null);
   const knownInventoryRef = useRef<Map<string, number> | null>(null);
-  const inventoryBonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
+  const inventoryBonuses = getInventoryResourceBonuses(equippedItems as Record<EquipmentSlot, ItemDefinition | null>);
   const resources = getCharacterResources(character, {
     maxHp: inventoryBonuses.maxHp,
     maxStamina: inventoryBonuses.maxStamina,
@@ -252,7 +255,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     });
   }
   const battleStats = useMemo(
-    () => getDerivedBattleStats(character, resources, inventoryBonuses, equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>, totalInventoryWeight, carryCapacity),
+    () => getDerivedBattleStats(character, resources, inventoryBonuses, equippedItems as Record<EquipmentSlot, ItemDefinition | null>, totalInventoryWeight, carryCapacity),
     [character, resources, inventoryBonuses, equippedItems, totalInventoryWeight, carryCapacity],
   );
   const characterXpProgress = useMemo(() => getCharacterXpProgress(character.xp, progressionSettings), [character.xp, progressionSettings]);
@@ -418,7 +421,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   }
 
   function applyEnemyBalance(profile: EnemyBalanceProfile) {
-    const equipmentBonuses = getInventoryResourceBonuses(equippedItems as Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>);
+    const equipmentBonuses = getInventoryResourceBonuses(equippedItems as Record<EquipmentSlot, ItemDefinition | null>);
     const resources = getCharacterResources(character, equipmentBonuses);
     const attributes = character.attributes;
     const attributeAverage = attributeKeys.reduce((sum, key) => sum + Number(attributes?.[key] ?? 0), 0) / attributeKeys.length;
@@ -695,7 +698,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     }
   }
 
-  async function unequipSlot(slot: "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic") {
+  async function unequipSlot(slot: EquipmentSlot) {
     try {
       await unequipInventorySlot(character.id, slot);
       setInventoryMessage("Item unequipped.");
@@ -1469,6 +1472,21 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     <ItemText label="Armor value" value={String(itemForm.armor_value ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, armor_value: Number(value) || 0 }))} />
                     <ChoiceRow label="Buff target" options={["", ...buffTargets]} value={itemForm.buff_target ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, buff_target: value || null }))} />
                     <ItemText label="Buff amount" value={String(itemForm.buff_amount ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, buff_amount: Number(value) || 0 }))} />
+                    <ChoiceRow label="Equip penalty target" options={["", ...equipmentBonusTargets]} value={itemForm.equip_penalty_target ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, equip_penalty_target: value || null }))} />
+                    <ItemText label="Equip penalty amount" value={String(itemForm.equip_penalty_amount ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, equip_penalty_amount: Number(value) || 0 }))} />
+                    {itemForm.type === "armor" ? (
+                      <View style={styles.adminBuilder}>
+                        <Text style={styles.subTitle}>Armor Set</Text>
+                        <Text style={styles.muted}>Use the same set key on helmet, chest, gloves, legs, and boots. The full set bonus applies once all five are equipped.</Text>
+                        <ChoiceRow label="Armor piece" options={["", ...armorPieceSlots]} value={itemForm.armor_piece_slot ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, armor_piece_slot: value || null, equipment_slot: value || current.equipment_slot }))} />
+                        <ItemText label="Set key" value={itemForm.armor_set_key ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, armor_set_key: value }))} />
+                        <ItemText label="Set display name" value={itemForm.armor_set_name ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, armor_set_name: value }))} />
+                        <ChoiceRow label="Full set bonus target" options={["", ...equipmentBonusTargets]} value={itemForm.set_bonus_target ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, set_bonus_target: value || null }))} />
+                        <ItemText label="Full set bonus amount" value={String(itemForm.set_bonus_amount ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, set_bonus_amount: Number(value) || 0 }))} />
+                        <ChoiceRow label="Full set penalty target" options={["", ...equipmentBonusTargets]} value={itemForm.set_penalty_target ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, set_penalty_target: value || null }))} />
+                        <ItemText label="Full set penalty amount" value={String(itemForm.set_penalty_amount ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, set_penalty_amount: Number(value) || 0 }))} />
+                      </View>
+                    ) : null}
                   </>
                 ) : null}
                 {(itemForm.type === "potion" || itemForm.type === "revive potion") ? (
@@ -1586,7 +1604,7 @@ function AbilitySlotCard({ slot, ability, selectedAbility, onEquip, onClear }: {
   );
 }
 
-function EquipmentSlotCard({ slot, item, onUnequip }: { slot: "weapon" | "armor" | "necklace" | "ring" | "charm" | "relic"; item: ItemDefinition | null; onUnequip: () => void }) {
+function EquipmentSlotCard({ slot, item, onUnequip }: { slot: EquipmentSlot; item: ItemDefinition | null; onUnequip: () => void }) {
   const uri = resolveInventoryImageUri(item?.image_path);
   return (
     <View style={[styles.monitoredSlot, item && styles.monitoredSlotFilled]}>
@@ -1785,7 +1803,7 @@ function defaultSlotForType(type: ItemDefinition["type"]) {
     return "weapon";
   }
   if (type === "armor") {
-    return "armor";
+    return "chest";
   }
   if (type === "wearable") {
     return "charm";
@@ -1945,7 +1963,7 @@ function getDerivedBattleStats(
   character: CharacterWithDetails,
   resources: ReturnType<typeof getCharacterResources>,
   inventoryBonuses: ReturnType<typeof getInventoryResourceBonuses>,
-  equipped: Record<"weapon" | "armor" | "necklace" | "ring" | "charm" | "relic", ItemDefinition | null>,
+  equipped: Record<EquipmentSlot, ItemDefinition | null>,
   totalInventoryWeight: number,
   carryCapacity: number,
 ) {
@@ -1976,7 +1994,7 @@ function getDerivedBattleStats(
     currentWeight: totalInventoryWeight.toFixed(1),
     maxWeight: carryCapacity.toFixed(1),
     weaponName: equipped.weapon?.name ?? "Unarmed",
-    armorName: equipped.armor?.name ?? "None",
+    armorName: equipped.chest?.name ?? equipped.armor?.name ?? "None",
     gearDamageBonus: inventoryBonuses.damage,
     gearDefenseBonus: inventoryBonuses.defense,
   };
@@ -2928,3 +2946,4 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
+
