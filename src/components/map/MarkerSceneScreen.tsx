@@ -24,6 +24,9 @@ import type { ArenaLeaderboardEntry, ArenaWithLeaders } from "../../services/are
 
 const marketModes = ["Buy", "Sell"] as const;
 type MarketMode = (typeof marketModes)[number];
+type SelectedMarketItem =
+  | { mode: "Buy"; marketItem: MarkerMarketItem; item: ItemDefinition | null; purchasedCount: number }
+  | { mode: "Sell"; entry: InventoryItem; marketItem: MarkerMarketItem | undefined };
 
 export function MarkerSceneScreen({
   marker,
@@ -464,6 +467,7 @@ function MarketScene({
   onSell: (item: InventoryItem) => void;
 }) {
   const [activeMode, setActiveMode] = useState<MarketMode>("Buy");
+  const [selectedMarketItem, setSelectedMarketItem] = useState<SelectedMarketItem | null>(null);
   const itemById = useMemo(() => new Map(itemDefinitions.map((item) => [item.id, item])), [itemDefinitions]);
   const marketItemByItemId = useMemo(() => new Map(marketItems.map((marketItem) => [marketItem.item_id, marketItem])), [marketItems]);
   const sellableMarketItemIds = useMemo(() => new Set(marketItems.filter(canMarketItemBeSoldTo).map((marketItem) => marketItem.item_id)), [marketItems]);
@@ -492,11 +496,30 @@ function MarketScene({
       </View>
       <View style={styles.marketCategoryTabs}>
         {marketModes.map((mode) => (
-          <Pressable key={mode} style={[styles.marketCategoryButton, activeMode === mode && styles.marketCategoryActive]} onPress={() => setActiveMode(mode)}>
+          <Pressable key={mode} style={[styles.marketCategoryButton, activeMode === mode && styles.marketCategoryActive]} onPress={() => {
+            setActiveMode(mode);
+            setSelectedMarketItem(null);
+          }}>
             <Text style={[styles.marketCategoryText, activeMode === mode && styles.marketCategoryTextActive]}>{mode}</Text>
           </Pressable>
         ))}
       </View>
+      {selectedMarketItem ? (
+        <MarketItemDetail
+          selected={selectedMarketItem}
+          onClose={() => setSelectedMarketItem(null)}
+          onBuy={() => {
+            if (selectedMarketItem.mode === "Buy") {
+              onBuy(selectedMarketItem.marketItem);
+            }
+          }}
+          onSell={() => {
+            if (selectedMarketItem.mode === "Sell") {
+              onSell(selectedMarketItem.entry);
+            }
+          }}
+        />
+      ) : null}
 
       <ScrollView
         style={styles.marketListScroller}
@@ -514,6 +537,7 @@ function MarketScene({
                 purchasedCount={marketPurchaseCounts[marketItem.id] ?? 0}
                 item={item}
                 onBuy={() => onBuy(marketItem)}
+                onInspect={() => setSelectedMarketItem({ mode: "Buy", marketItem, item, purchasedCount: marketPurchaseCounts[marketItem.id] ?? 0 })}
               />
             ))}
           </View>
@@ -528,6 +552,7 @@ function MarketScene({
                   entry={entry}
                   sellPrice={marketItem?.sell_price ?? 0}
                   onSell={() => onSell(entry)}
+                  onInspect={() => setSelectedMarketItem({ mode: "Sell", entry, marketItem })}
                 />
               );
             })}
@@ -538,13 +563,13 @@ function MarketScene({
   );
 }
 
-function MarketBuyCard({ marketItem, purchasedCount, item, onBuy }: { marketItem: MarkerMarketItem; purchasedCount: number; item: ItemDefinition | null; onBuy: () => void }) {
+function MarketBuyCard({ marketItem, purchasedCount, item, onBuy, onInspect }: { marketItem: MarkerMarketItem; purchasedCount: number; item: ItemDefinition | null; onBuy: () => void; onInspect: () => void }) {
   const imageUri = resolveInventoryImageUri(item?.image_path);
   const remainingStock = getRemainingMarketStock(marketItem, { [marketItem.id]: purchasedCount });
   const outOfStock = remainingStock <= 0;
 
   return (
-    <View style={[styles.marketCard, outOfStock && styles.lockedCard]}>
+    <Pressable style={[styles.marketCard, outOfStock && styles.lockedCard]} onPress={onInspect}>
       <View style={styles.marketImageBox}>
         {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{(item?.name ?? "?").slice(0, 1).toUpperCase()}</Text>}
       </View>
@@ -559,19 +584,22 @@ function MarketBuyCard({ marketItem, purchasedCount, item, onBuy }: { marketItem
           <Text style={styles.marketPriceLabel}>Buy</Text>
           <Text style={styles.marketBuyPrice}>{marketItem.buy_price}</Text>
         </View>
-        <Pressable style={[styles.marketActionButton, outOfStock && styles.disabledAction]} onPress={onBuy} disabled={outOfStock}>
+        <Pressable style={[styles.marketActionButton, outOfStock && styles.disabledAction]} onPress={(event) => {
+          event.stopPropagation();
+          onBuy();
+        }} disabled={outOfStock}>
           <Text style={styles.marketActionText}>{outOfStock ? "Sold Out" : "Buy"}</Text>
         </Pressable>
       </View>
-    </View>
+    </Pressable>
   );
 }
 
-function MarketSellCard({ entry, sellPrice, onSell }: { entry: InventoryItem; sellPrice: number; onSell: () => void }) {
+function MarketSellCard({ entry, sellPrice, onSell, onInspect }: { entry: InventoryItem; sellPrice: number; onSell: () => void; onInspect: () => void }) {
   const imageUri = resolveInventoryImageUri(entry.item.image_path);
 
   return (
-    <View style={styles.marketCard}>
+    <Pressable style={styles.marketCard} onPress={onInspect}>
       <View style={styles.marketImageBox}>
         {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{entry.item.name.slice(0, 1).toUpperCase()}</Text>}
       </View>
@@ -585,8 +613,62 @@ function MarketSellCard({ entry, sellPrice, onSell }: { entry: InventoryItem; se
           <Text style={styles.marketPriceLabel}>Sell</Text>
           <Text style={styles.marketSellPrice}>{sellPrice}</Text>
         </View>
-        <Pressable style={styles.marketSellButton} onPress={onSell}>
+        <Pressable style={styles.marketSellButton} onPress={(event) => {
+          event.stopPropagation();
+          onSell();
+        }}>
           <Text style={styles.secondaryText}>Sell One</Text>
+        </Pressable>
+      </View>
+    </Pressable>
+  );
+}
+
+function MarketItemDetail({
+  selected,
+  onClose,
+  onBuy,
+  onSell,
+}: {
+  selected: SelectedMarketItem;
+  onClose: () => void;
+  onBuy: () => void;
+  onSell: () => void;
+}) {
+  const item = selected.mode === "Buy" ? selected.item : selected.entry.item;
+  const imageUri = resolveInventoryImageUri(item?.image_path);
+  const remainingStock = selected.mode === "Buy"
+    ? getRemainingMarketStock(selected.marketItem, { [selected.marketItem.id]: selected.purchasedCount })
+    : Number(selected.entry.quantity) || 0;
+  const price = selected.mode === "Buy" ? selected.marketItem.buy_price : selected.marketItem?.sell_price ?? 0;
+
+  return (
+    <View style={styles.marketDetailPanel}>
+      <View style={styles.marketDetailHeader}>
+        <View style={styles.marketDetailImageBox}>
+          {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{(item?.name ?? "?").slice(0, 1).toUpperCase()}</Text>}
+        </View>
+        <View style={styles.marketDetailBody}>
+          <Text style={styles.marketItemName} numberOfLines={2}>{item?.name ?? "Unknown Item"}</Text>
+          <Text style={styles.marketItemType}>{item?.type ?? "item"} / {item?.rarity ?? "common"}</Text>
+          <Text style={styles.marketItemDescription}>{item?.description || "No item details available yet."}</Text>
+        </View>
+      </View>
+      <View style={styles.marketDetailStats}>
+        <Text style={styles.statPill}>{selected.mode}</Text>
+        <Text style={styles.statPill}>{price} gold</Text>
+        <Text style={styles.statPill}>{selected.mode === "Buy" ? selected.marketItem.unlimited_stock ? "Unlimited" : `${remainingStock} left` : `Owned x${remainingStock}`}</Text>
+        {item?.damage_amount ? <Text style={styles.statPill}>DMG {item.damage_amount}</Text> : null}
+        {item?.armor_value ? <Text style={styles.statPill}>Armor {item.armor_value}</Text> : null}
+        {item?.restore_amount ? <Text style={styles.statPill}>Restore {item.restore_amount}</Text> : null}
+        {item?.weight ? <Text style={styles.statPill}>{Number(item.weight).toFixed(1)} wt</Text> : null}
+      </View>
+      <View style={styles.marketDetailActions}>
+        <Pressable style={selected.mode === "Buy" ? styles.marketActionButton : styles.marketSellButton} onPress={selected.mode === "Buy" ? onBuy : onSell}>
+          <Text style={selected.mode === "Buy" ? styles.marketActionText : styles.secondaryText}>{selected.mode === "Buy" ? "Buy Item" : "Sell One"}</Text>
+        </Pressable>
+        <Pressable style={styles.marketCloseButton} onPress={onClose}>
+          <Text style={styles.secondaryText}>Close</Text>
         </Pressable>
       </View>
     </View>
@@ -894,6 +976,54 @@ const styles = StyleSheet.create({
   marketListContent: {
     paddingBottom: 18,
   },
+  marketDetailPanel: {
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(54, 171, 224, 0.5)",
+    backgroundColor: "rgba(6, 20, 28, 0.78)",
+    padding: 10,
+  },
+  marketDetailHeader: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+  },
+  marketDetailImageBox: {
+    width: 84,
+    height: 84,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: "rgba(218,164,65,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  marketDetailBody: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
+  },
+  marketDetailStats: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 7,
+  },
+  marketDetailActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  marketCloseButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(0,0,0,0.32)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   marketDivider: {
     height: 1,
     backgroundColor: "rgba(217, 170, 93, 0.18)",
@@ -995,6 +1125,7 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   marketActionButton: {
+    flex: 1,
     minHeight: 48,
     borderRadius: 10,
     backgroundColor: colors.gold,
@@ -1006,6 +1137,7 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   marketSellButton: {
+    flex: 1,
     minHeight: 48,
     borderRadius: 10,
     borderWidth: 1,
