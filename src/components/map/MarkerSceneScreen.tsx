@@ -1,5 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
@@ -463,10 +463,19 @@ function MarketScene({
   onSell: (item: InventoryItem) => void;
 }) {
   const [activeMode, setActiveMode] = useState<MarketMode>("Buy");
-  const buyableItems = marketItems
-    .map((marketItem) => ({ marketItem, item: getItemDefinition(itemDefinitions, marketItem.item_id) }))
-    .filter(({ marketItem }) => canMarketItemBeBought(marketItem) && getRemainingMarketStock(marketItem, marketPurchaseCounts) > 0);
-  const sellableItems = inventoryItems.filter((entry) => entry.item.sellable && marketItems.some((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item)));
+  const itemById = useMemo(() => new Map(itemDefinitions.map((item) => [item.id, item])), [itemDefinitions]);
+  const marketItemByItemId = useMemo(() => new Map(marketItems.map((marketItem) => [marketItem.item_id, marketItem])), [marketItems]);
+  const sellableMarketItemIds = useMemo(() => new Set(marketItems.filter(canMarketItemBeSoldTo).map((marketItem) => marketItem.item_id)), [marketItems]);
+  const buyableItems = useMemo(
+    () => marketItems
+      .filter((marketItem) => canMarketItemBeBought(marketItem) && getRemainingMarketStock(marketItem, marketPurchaseCounts) > 0)
+      .map((marketItem) => ({ marketItem, item: itemById.get(marketItem.item_id) ?? null })),
+    [itemById, marketItems, marketPurchaseCounts],
+  );
+  const sellableItems = useMemo(
+    () => inventoryItems.filter((entry) => entry.item.sellable && sellableMarketItemIds.has(entry.item_id)),
+    [inventoryItems, sellableMarketItemIds],
+  );
 
   return (
     <View style={styles.marketScene}>
@@ -505,7 +514,7 @@ function MarketScene({
         <View style={styles.marketList}>
           {sellableItems.length === 0 ? <Text style={styles.copy}>This market is not buying anything in your inventory.</Text> : null}
           {sellableItems.map((entry) => {
-            const marketItem = marketItems.find((item) => item.item_id === entry.item_id && canMarketItemBeSoldTo(item));
+            const marketItem = marketItemByItemId.get(entry.item_id);
             return (
               <MarketSellCard
                 key={entry.id}
@@ -529,7 +538,7 @@ function MarketBuyCard({ marketItem, purchasedCount, item, onBuy }: { marketItem
   return (
     <View style={[styles.marketCard, outOfStock && styles.lockedCard]}>
       <View style={styles.marketImageBox}>
-        {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} /> : <Text style={styles.marketItemFallback}>{(item?.name ?? "?").slice(0, 1).toUpperCase()}</Text>}
+        {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{(item?.name ?? "?").slice(0, 1).toUpperCase()}</Text>}
       </View>
       <View style={styles.marketCardBody}>
         <Text style={styles.marketItemName} numberOfLines={1}>{item?.name ?? "Unknown Item"}</Text>
@@ -556,7 +565,7 @@ function MarketSellCard({ entry, sellPrice, onSell }: { entry: InventoryItem; se
   return (
     <View style={styles.marketCard}>
       <View style={styles.marketImageBox}>
-        {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} /> : <Text style={styles.marketItemFallback}>{entry.item.name.slice(0, 1).toUpperCase()}</Text>}
+        {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{entry.item.name.slice(0, 1).toUpperCase()}</Text>}
       </View>
       <View style={styles.marketCardBody}>
         <Text style={styles.marketItemName} numberOfLines={1}>{entry.item.name}</Text>
@@ -877,19 +886,19 @@ const styles = StyleSheet.create({
   },
   marketCard: {
     width: "100%",
-    minHeight: 118,
+    minHeight: 112,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    padding: 10,
-    gap: 12,
+    padding: 9,
+    gap: 10,
     backgroundColor: "rgba(4, 7, 6, 0.82)",
     flexDirection: "row",
-    alignItems: "stretch",
+    alignItems: "center",
   },
   marketImageBox: {
-    width: 96,
-    minHeight: 96,
+    width: 88,
+    height: 88,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
@@ -901,6 +910,7 @@ const styles = StyleSheet.create({
   marketItemImage: {
     width: "100%",
     height: "100%",
+    borderRadius: 9,
   },
   marketItemFallback: {
     color: colors.gold,
@@ -935,8 +945,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   marketBuyColumn: {
-    width: 94,
-    gap: 9,
+    width: 88,
+    gap: 8,
     justifyContent: "center",
   },
   marketPriceBox: {
