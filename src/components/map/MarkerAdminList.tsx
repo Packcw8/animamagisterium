@@ -1,5 +1,6 @@
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import type { MapMarker } from "../../services/mapService";
 import { colors, fonts } from "../theme";
 

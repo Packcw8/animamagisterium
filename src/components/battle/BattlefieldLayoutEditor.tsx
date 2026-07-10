@@ -1,5 +1,6 @@
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useEffect, useMemo, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import { EnemyDefinition, NpcDefinition, resolveEnemyImageUri } from "../../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant } from "../../services/battlefieldService";
 import { colors, fonts } from "../theme";

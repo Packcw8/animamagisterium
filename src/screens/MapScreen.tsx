@@ -1,6 +1,7 @@
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { distance as turfDistance } from "@turf/turf";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButton";
 import { AdminCollapsibleSection } from "../components/admin/AdminCollapsibleSection";
 import { ActiveBattleView } from "../components/battle/ActiveBattleView";

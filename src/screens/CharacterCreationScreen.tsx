@@ -1,5 +1,6 @@
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useState } from "react";
-import { ActivityIndicator, Image, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { Screen } from "../components/Screen";

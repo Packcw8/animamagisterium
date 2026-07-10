@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { StyleSheet, Text, View } from "react-native";
 import { colors, fonts } from "../theme";
 
 type MarkerTypeSelectorProps = {

@@ -37,7 +37,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.packcw8.animamagisterium",
-      "buildNumber": "15",
+      "buildNumber": "16",
       "icon": "./assets/icon.png",
       "infoPlist": {
         "NSCameraUsageDescription": "Anima Magisterium uses the camera so you can take a character photo for avatar generation.",

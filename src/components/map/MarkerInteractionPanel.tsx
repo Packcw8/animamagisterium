@@ -1,5 +1,6 @@
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import type { ReactNode } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 import { canMarketItemBeBought, canMarketItemBeSoldTo, type MapMarker, type MapRoute, type MarkerMarketItem, type MarkerRouteLink } from "../../services/mapService";
 import type { InventoryItem, ItemDefinition } from "../../services/inventoryService";
 import { getMarkerLockMessage } from "../../utils/mapVisibility";

@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { StyleSheet, Text, View } from "react-native";
 import type { EnemyDefinition, NpcDefinition } from "../../services/combatAdminService";
 import type { ItemDefinition } from "../../services/inventoryService";
 import { marketListingModes, type MapEvent, type MapMarker, type MapRoute, type MarkerMarketItem, type MarkerRouteLink, type MiniMap } from "../../services/mapService";

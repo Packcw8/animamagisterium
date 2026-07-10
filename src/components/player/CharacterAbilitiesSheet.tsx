@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { StyleSheet, Text, View } from "react-native";
 import { PlayerAbilitiesPanel, type PlayerAbilityTab } from "../home/PlayerAbilitiesPanel";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";

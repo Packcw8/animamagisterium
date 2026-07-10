@@ -1,4 +1,5 @@
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { Image, StyleSheet, Text, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { ProgressBar } from "../components/ProgressBar";

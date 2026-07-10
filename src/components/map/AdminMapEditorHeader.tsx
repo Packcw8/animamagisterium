@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import type { MapChapter, MapSeason } from "../../services/mapService";
 import { getChapterAccessStatus, getChapterLabel, getSeasonLabel, type ChapterAccessType } from "../../utils/mapProgress";
 import { AdminCollapsibleSection } from "../admin/AdminCollapsibleSection";

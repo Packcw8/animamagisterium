@@ -1,4 +1,5 @@
-import { Pressable, Text, TextInput, View } from "react-native";
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { Text, TextInput, View } from "react-native";
 import { EventPicker, ItemPicker, MarkerPicker } from "../map/MarkerEditorControls";
 import { colors } from "../theme";
 import type { ItemDefinition } from "../../services/inventoryService";

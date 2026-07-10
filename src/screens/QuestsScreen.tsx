@@ -1,5 +1,6 @@
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Image, Modal, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { Frame } from "../components/Frame";
 import { GameToast, type GameToastData } from "../components/map/GameToast";
 import { Header } from "../components/Header";

@@ -1,4 +1,5 @@
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { Image, StyleSheet, Text, View } from "react-native";
 import type { JourneyJournalEntry } from "../../services/journeyJournalService";
 import { colors, fonts } from "../theme";
 

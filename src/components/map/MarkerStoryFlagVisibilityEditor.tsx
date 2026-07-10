@@ -1,4 +1,5 @@
-import { Pressable, Text, TextInput, View } from "react-native";
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { Text, TextInput, View } from "react-native";
 import { StoryFlagPicker } from "../dialogue/StoryFlagPicker";
 import { dialogueAdminStyles as styles } from "../dialogue/dialogueAdminStyles";
 import { colors } from "../theme";

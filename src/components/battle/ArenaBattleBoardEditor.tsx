@@ -1,5 +1,6 @@
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useEffect, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import { ArenaBattleSlot, ArenaBattleSlotType, arenaBattleSlotTypes, getArenaSlotLabel } from "../../services/arenaBattleBoardService";
 import { ArenaSpot } from "../../services/arenaService";
 import { colors, fonts } from "../theme";

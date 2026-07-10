@@ -1,5 +1,6 @@
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { ReactNode } from "react";
-import { Pressable, Text, TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 import { colors } from "../theme";
 import type { StoryDialogueNode } from "../../services/mapService";
 import { dialogueAdminStyles as styles } from "./dialogueAdminStyles";

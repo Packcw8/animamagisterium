@@ -1,6 +1,7 @@
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useRef, useState } from "react";
 import type { MutableRefObject } from "react";
-import { Image, ImageSourcePropType, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, ImageSourcePropType, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { MapMarker } from "../../services/mapService";
 import { getCenteredMapOffset } from "../../utils/mapCamera";
 import { getMarkerRenderStyle } from "../../utils/mapVisibility";

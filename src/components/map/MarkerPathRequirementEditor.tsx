@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { StyleSheet, Text, View } from "react-native";
 import type { MapRoute, MarkerRouteLink } from "../../services/mapService";
 import { colors, fonts } from "../theme";
 import { RouteCompletionConditionPicker } from "./MarkerEditorControls";
