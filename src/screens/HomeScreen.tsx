@@ -108,12 +108,25 @@ const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisd
 const inventoryCategoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
 const adminToolTabs = ["Items", "Abilities", "Enemies", "NPCs"] as const;
+const adminRecordSortModes = ["newest", "name", "type", "chapter"] as const;
 const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
 const enemyBalanceProfiles = ["minion", "standard", "elite", "boss"] as const;
 const currentStorySeason = 1;
 const currentStoryChapter = 1;
 type AbilityCostResource = (typeof abilityCostResources)[number];
 type EnemyBalanceProfile = (typeof enemyBalanceProfiles)[number];
+type AdminRecordSortMode = (typeof adminRecordSortModes)[number];
+type AdminListRecord = {
+  name?: string | null;
+  type?: string | null;
+  rarity?: string | null;
+  description?: string | null;
+  season_number?: number | null;
+  chapter_number?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  is_active?: boolean | null;
+};
 const abilityCostResourceLabels: Record<AbilityCostResource, string> = {
   none: "No Cost",
   stamina: "Stamina",
@@ -200,6 +213,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [adminToolTab, setAdminToolTab] = useState<(typeof adminToolTabs)[number]>("Items");
   const [adminContentSeason, setAdminContentSeason] = useState(1);
   const [adminContentChapter, setAdminContentChapter] = useState(1);
+  const [adminRecordSearch, setAdminRecordSearch] = useState("");
+  const [adminRecordSort, setAdminRecordSort] = useState<AdminRecordSortMode>("newest");
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
   const [totalInventoryWeight, setTotalInventoryWeight] = useState(0);
   const [carryCapacity, setCarryCapacity] = useState(50);
@@ -233,12 +248,24 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const scopedAdminAbilities = useMemo(() => adminAbilities.filter((ability) => isInAdminContentScope(ability, adminContentSeason, adminContentChapter)), [adminAbilities, adminContentChapter, adminContentSeason]);
   const scopedEnemies = useMemo(() => enemies.filter((enemy) => isInAdminContentScope(enemy, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, enemies]);
   const scopedNpcs = useMemo(() => npcs.filter((npc) => isInAdminContentScope(npc, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, npcs]);
-  const filteredAdminItems = useMemo(() => scopedAdminItems.filter((item) => itemMatchesCategory(item, inventoryCategory)), [scopedAdminItems, inventoryCategory]);
-  const filteredAdminAbilities = useMemo(() => scopedAdminAbilities.filter((ability) => ability.type === abilityTypeTab.toLowerCase()), [scopedAdminAbilities, abilityTypeTab]);
+  const filteredAdminItems = useMemo(() => sortAdminRecords(
+    scopedAdminItems.filter((item) => itemMatchesCategory(item, inventoryCategory) && adminRecordMatchesSearch(item, adminRecordSearch)),
+    adminRecordSort,
+  ), [adminRecordSearch, adminRecordSort, scopedAdminItems, inventoryCategory]);
+  const filteredAdminAbilities = useMemo(() => sortAdminRecords(
+    scopedAdminAbilities.filter((ability) => ability.type === abilityTypeTab.toLowerCase() && adminRecordMatchesSearch(ability, adminRecordSearch)),
+    adminRecordSort,
+  ), [adminRecordSearch, adminRecordSort, scopedAdminAbilities, abilityTypeTab]);
   const enemyTypeOptions = useMemo(() => getRecordTypeOptions(scopedEnemies.map((enemy) => enemy.type)), [scopedEnemies]);
   const npcTypeOptions = useMemo(() => getRecordTypeOptions(scopedNpcs.map((npc) => npc.type)), [scopedNpcs]);
-  const filteredEnemies = useMemo(() => scopedEnemies.filter((enemy) => enemyTypeFilter === "all" || (enemy.type || "untagged") === enemyTypeFilter), [enemyTypeFilter, scopedEnemies]);
-  const filteredNpcs = useMemo(() => scopedNpcs.filter((npc) => npcTypeFilter === "all" || (npc.type || "untagged") === npcTypeFilter), [npcTypeFilter, scopedNpcs]);
+  const filteredEnemies = useMemo(() => sortAdminRecords(
+    scopedEnemies.filter((enemy) => (enemyTypeFilter === "all" || (enemy.type || "untagged") === enemyTypeFilter) && adminRecordMatchesSearch(enemy, adminRecordSearch)),
+    adminRecordSort,
+  ), [adminRecordSearch, adminRecordSort, enemyTypeFilter, scopedEnemies]);
+  const filteredNpcs = useMemo(() => sortAdminRecords(
+    scopedNpcs.filter((npc) => (npcTypeFilter === "all" || (npc.type || "untagged") === npcTypeFilter) && adminRecordMatchesSearch(npc, adminRecordSearch)),
+    adminRecordSort,
+  ), [adminRecordSearch, adminRecordSort, npcTypeFilter, scopedNpcs]);
   const selectedAdminAbility = useMemo(() => scopedAdminAbilities.find((ability) => ability.id === selectedAdminAbilityId) ?? filteredAdminAbilities[0] ?? null, [filteredAdminAbilities, scopedAdminAbilities, selectedAdminAbilityId]);
 
   function showAbilityLearnedToast(abilityNames: string[]) {
@@ -1030,6 +1057,15 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 {adminToolTab === "Abilities" ? (
                   <>
                 <Text style={styles.sectionTitle}>Admin Abilities</Text>
+                <View style={styles.adminQuickActions}>
+                  <Pressable style={styles.smallButton} onPress={() => {
+                    setEditingAdminAbilityId(null);
+                    setAbilityForm({ ...blankCombatAbility(), season_number: adminContentSeason, chapter_number: adminContentChapter, type: (abilityTypeTab.toLowerCase() as CombatAbility["type"]) });
+                    setAbilityCostResource("none");
+                  }}>
+                    <Text style={styles.smallButtonText}>New Ability</Text>
+                  </Pressable>
+                </View>
                 <View style={styles.tabs}>
                   {abilityTypeTabs.map((tab) => (
                     <Pressable key={tab} style={[styles.tab, abilityTypeTab === tab && styles.activeTab]} onPress={() => setAbilityTypeTab(tab)}>
@@ -1037,6 +1073,15 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     </Pressable>
                   ))}
                 </View>
+                <AdminRecordControls
+                  search={adminRecordSearch}
+                  sort={adminRecordSort}
+                  count={filteredAdminAbilities.length}
+                  total={scopedAdminAbilities.length}
+                  noun="abilities"
+                  onSearch={setAdminRecordSearch}
+                  onSort={setAdminRecordSort}
+                />
                 {selectedAdminAbility ? (
                   <View style={styles.detailPanel}>
                     <AssetPreview label="Selected ability image" uri={resolveAbilityImageUri(selectedAdminAbility.image_path)} />
@@ -1191,7 +1236,28 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 {adminToolTab === "Enemies" ? (
                   <>
                 <Text style={styles.sectionTitle}>Enemy Admin</Text>
+                <View style={styles.adminQuickActions}>
+                  <Pressable style={styles.smallButton} onPress={() => {
+                    setEditingEnemyId(null);
+                    setEnemyForm({ ...blankEnemy(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+                    setEnemyAbilities([]);
+                    setEnemyDrops([]);
+                    setSelectedEnemyAbilityId(null);
+                    setSelectedDropItemId(null);
+                  }}>
+                    <Text style={styles.smallButtonText}>New Enemy</Text>
+                  </Pressable>
+                </View>
                 <ChoiceRow label="Enemy Type Filter" options={["all", ...enemyTypeOptions]} value={enemyTypeFilter} labels={{ all: "All Enemy Types", untagged: "Untagged" }} onSelect={setEnemyTypeFilter} />
+                <AdminRecordControls
+                  search={adminRecordSearch}
+                  sort={adminRecordSort}
+                  count={filteredEnemies.length}
+                  total={scopedEnemies.length}
+                  noun="enemies"
+                  onSearch={setAdminRecordSearch}
+                  onSort={setAdminRecordSort}
+                />
                 <ItemText label="Name" value={enemyForm.name ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, name: value }))} />
                 <ItemText label="Type" value={enemyForm.type ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, type: value }))} />
                 <ItemText label="Image URL/path" value={enemyForm.image_url ?? ""} onChange={(value) => setEnemyForm((current) => ({ ...current, image_url: value }))} />
@@ -1295,7 +1361,28 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                   <>
                 <Text style={styles.sectionTitle}>NPC Admin</Text>
                 <Text style={styles.muted}>Create reusable characters for dialogue. Turn on Battle Capable when this NPC can also be selected for battles.</Text>
+                <View style={styles.adminQuickActions}>
+                  <Pressable style={styles.smallButton} onPress={() => {
+                    setEditingNpcId(null);
+                    setNpcForm({ ...blankNpc(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+                    setNpcAbilities([]);
+                    setNpcDrops([]);
+                    setSelectedNpcAbilityId(null);
+                    setSelectedNpcDropItemId(null);
+                  }}>
+                    <Text style={styles.smallButtonText}>New NPC</Text>
+                  </Pressable>
+                </View>
                 <ChoiceRow label="NPC Type Filter" options={["all", ...npcTypeOptions]} value={npcTypeFilter} labels={{ all: "All NPC Types", untagged: "Untagged" }} onSelect={setNpcTypeFilter} />
+                <AdminRecordControls
+                  search={adminRecordSearch}
+                  sort={adminRecordSort}
+                  count={filteredNpcs.length}
+                  total={scopedNpcs.length}
+                  noun="NPCs"
+                  onSearch={setAdminRecordSearch}
+                  onSort={setAdminRecordSort}
+                />
                 <ItemText label="Name" value={npcForm.name ?? ""} onChange={(value) => setNpcForm((current) => ({ ...current, name: value }))} />
                 <ItemText label="Type / Role" value={npcForm.type ?? ""} onChange={(value) => setNpcForm((current) => ({ ...current, type: value }))} />
                 <ItemText label="Description" value={npcForm.description ?? ""} onChange={(value) => setNpcForm((current) => ({ ...current, description: value }))} />
@@ -1427,6 +1514,23 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                   <>
                 <Text style={styles.sectionTitle}>Admin Items</Text>
                 <Text style={styles.muted}>Create/edit items. Use /assets/InventoryItems/filename.png, paste a full URL, or type just the filename.</Text>
+                <View style={styles.adminQuickActions}>
+                  <Pressable style={styles.smallButton} onPress={() => {
+                    setEditingItemId(null);
+                    setItemForm({ ...blankItemDefinition(), season_number: adminContentSeason, chapter_number: adminContentChapter, type: itemForm.type ?? "misc" });
+                  }}>
+                    <Text style={styles.smallButtonText}>New Item</Text>
+                  </Pressable>
+                </View>
+                <AdminRecordControls
+                  search={adminRecordSearch}
+                  sort={adminRecordSort}
+                  count={filteredAdminItems.length}
+                  total={scopedAdminItems.length}
+                  noun="items"
+                  onSearch={setAdminRecordSearch}
+                  onSort={setAdminRecordSort}
+                />
                 <Text style={styles.subTitle}>Carry Balance</Text>
                 <View style={styles.slotActions}>
                   <ItemText label="Base Carry Weight" value={baseCarryWeight} onChange={setBaseCarryWeight} />
@@ -1558,6 +1662,47 @@ function SummaryTile({ icon, label, value }: { icon: string; label: string; valu
   );
 }
 
+function AdminRecordControls({
+  search,
+  sort,
+  count,
+  total,
+  noun,
+  onSearch,
+  onSort,
+}: {
+  search: string;
+  sort: AdminRecordSortMode;
+  count: number;
+  total: number;
+  noun: string;
+  onSearch: (value: string) => void;
+  onSort: (value: AdminRecordSortMode) => void;
+}) {
+  return (
+    <View style={styles.adminListControls}>
+      <View style={styles.adminListControlHeader}>
+        <Text style={styles.subTitle}>Saved {noun}</Text>
+        <Text style={styles.badge}>{count} / {total}</Text>
+      </View>
+      <TextInput
+        value={search}
+        onChangeText={onSearch}
+        placeholder={`Search ${noun}`}
+        placeholderTextColor={colors.muted}
+        style={styles.input}
+      />
+      <View style={styles.sortRow}>
+        {adminRecordSortModes.map((mode) => (
+          <Pressable key={mode} style={[styles.sortButton, sort === mode && styles.sortButtonActive]} onPress={() => onSort(mode)}>
+            <Text style={[styles.sortButtonText, sort === mode && styles.sortButtonTextActive]}>{formatAdminSortLabel(mode)}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function ResourceBar({ label, value, max, color, icon }: { label: string; value: number; max: number; color: string; icon: string }) {
   return (
     <View style={styles.resourceBarCard}>
@@ -1662,6 +1807,50 @@ function Resource({ label, value, color }: { label: string; value: number | stri
 
 function getRecordTypeOptions(types: Array<string | null | undefined>) {
   return Array.from(new Set(types.map((type) => type?.trim() || "untagged"))).sort((left, right) => left.localeCompare(right));
+}
+
+function adminRecordMatchesSearch(record: AdminListRecord, search: string) {
+  const query = search.trim().toLowerCase();
+  if (!query) return true;
+
+  return [
+    record.name,
+    record.type,
+    record.rarity,
+    record.description,
+    record.is_active === false ? "inactive" : "active",
+    `season ${record.season_number ?? 1}`,
+    `chapter ${record.chapter_number ?? 1}`,
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(query));
+}
+
+function sortAdminRecords<T extends AdminListRecord>(records: T[], sortMode: AdminRecordSortMode) {
+  return [...records].sort((left, right) => {
+    if (sortMode === "name") {
+      return (left.name ?? "").localeCompare(right.name ?? "");
+    }
+
+    if (sortMode === "type") {
+      return (left.type ?? left.rarity ?? "").localeCompare(right.type ?? right.rarity ?? "") || (left.name ?? "").localeCompare(right.name ?? "");
+    }
+
+    if (sortMode === "chapter") {
+      return (left.season_number ?? 1) - (right.season_number ?? 1)
+        || (left.chapter_number ?? 1) - (right.chapter_number ?? 1)
+        || (left.name ?? "").localeCompare(right.name ?? "");
+    }
+
+    return new Date(right.updated_at ?? right.created_at ?? 0).getTime() - new Date(left.updated_at ?? left.created_at ?? 0).getTime();
+  });
+}
+
+function formatAdminSortLabel(mode: AdminRecordSortMode) {
+  if (mode === "newest") return "Newest";
+  if (mode === "name") return "Name";
+  if (mode === "type") return "Type";
+  return "Chapter";
 }
 
 function CombatStat({ label, value, note }: { label: string; value: string | number; note: string }) {
@@ -2836,6 +3025,55 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSoft,
     paddingTop: 12,
     marginTop: 8,
+  },
+  adminQuickActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  adminListControls: {
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.2)",
+  },
+  adminListControlHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  badge: {
+    color: colors.blue,
+    fontWeight: "900",
+    fontSize: 11,
+    textTransform: "uppercase",
+  },
+  sortRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  sortButton: {
+    minHeight: 34,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    justifyContent: "center",
+  },
+  sortButtonActive: {
+    borderColor: colors.blue,
+    backgroundColor: "rgba(20,61,86,0.45)",
+  },
+  sortButtonText: {
+    color: colors.muted,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  sortButtonTextActive: {
+    color: colors.text,
   },
   inputGroup: {
     gap: 6,
