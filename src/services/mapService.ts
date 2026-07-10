@@ -1057,7 +1057,7 @@ export async function getMarkerMarketItems(markerId: string) {
     return [];
   }
 
-  return (data ?? []) as MarkerMarketItem[];
+  return ((data ?? []) as MarkerMarketItem[]).map(normalizeMarketItem);
 }
 
 export async function getPlayerMarketPurchaseCounts(marketItemIds: string[]) {
@@ -1922,11 +1922,25 @@ export async function sellMarketInventoryItem(character: CharacterWithDetails, i
 }
 
 export function canMarketItemBeBought(marketItem: MarkerMarketItem) {
-  return marketItem.listing_mode === "buy_and_sell" || marketItem.listing_mode === "buy_only";
+  const mode = normalizeMarketListingMode(marketItem.listing_mode);
+  return mode === "buy_and_sell" || mode === "buy_only";
 }
 
 export function canMarketItemBeSoldTo(marketItem: MarkerMarketItem) {
-  return marketItem.listing_mode === "buy_and_sell" || marketItem.listing_mode === "sell_only";
+  const mode = normalizeMarketListingMode(marketItem.listing_mode);
+  return mode === "buy_and_sell" || mode === "sell_only";
+}
+
+function normalizeMarketItem(marketItem: MarkerMarketItem): MarkerMarketItem {
+  return {
+    ...marketItem,
+    listing_mode: normalizeMarketListingMode(marketItem.listing_mode),
+    unlimited_stock: marketItem.unlimited_stock ?? true,
+  };
+}
+
+function normalizeMarketListingMode(mode: MarkerMarketItem["listing_mode"] | null | undefined): MarketListingMode {
+  return marketListingModes.includes(mode as MarketListingMode) ? (mode as MarketListingMode) : "buy_and_sell";
 }
 
 function formatRewardMessage(xp: number, gold: number, itemQuantity: number, fullHeal = false) {
