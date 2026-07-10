@@ -470,6 +470,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [markerRewardTiming, setMarkerRewardTiming] = useState<MapMarker["reward_timing"]>("on_interact");
   const [markerRepeatable, setMarkerRepeatable] = useState(false);
   const [markerRewardOnce, setMarkerRewardOnce] = useState(true);
+  const [markerContentScope, setMarkerContentScope] = useState<MapMarker["content_scope"]>("chapter");
   const [markerLinkedRouteId, setMarkerLinkedRouteId] = useState<string | null>(null);
   const [markerLinkedRouteStartDirection, setMarkerLinkedRouteStartDirection] = useState<MapMarker["linked_route_start_direction"]>("forward");
   const [markerStartsRouteOnAccept, setMarkerStartsRouteOnAccept] = useState(false);
@@ -747,15 +748,16 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     () => markers.map((marker) => playerUnlockedMarkerIds.has(marker.id) ? { ...marker, is_unlocked: true } : marker),
     [markers, playerUnlockedMarkerIds],
   );
-  const worldMarkers = useMemo(() => effectiveMarkers.filter((marker) => !marker.mini_map_id), [effectiveMarkers]);
-  const miniMapMarkers = useMemo(() => effectiveMarkers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [effectiveMarkers, activeMiniMap?.id]);
+  const chapterScopedMarkers = useMemo(() => effectiveMarkers.filter((marker) => isInSelectedChapter(marker, selectedSeason, selectedChapter)), [effectiveMarkers, selectedChapter, selectedSeason]);
+  const worldMarkers = useMemo(() => chapterScopedMarkers.filter((marker) => !marker.mini_map_id), [chapterScopedMarkers]);
+  const miniMapMarkers = useMemo(() => chapterScopedMarkers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [chapterScopedMarkers, activeMiniMap?.id]);
   const miniMapSpawnMarker = useMemo(() => miniMapMarkers.find((marker) => marker.type === "Player Spawn") ?? null, [miniMapMarkers]);
   const miniMapSpawnPosition = miniMapSpawnMarker ? { x: Number(miniMapSpawnMarker.x_percent), y: Number(miniMapSpawnMarker.y_percent) } : { x: 50, y: 50 };
   const miniMapPlayerPosition = route.mini_map_id === activeMiniMap?.id ? playerPosition : savedMiniMapPosition ?? miniMapSpawnPosition;
   const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
   const adminWorldMarkers = useMemo(() => worldMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, worldMarkers]);
   const adminMiniMapMarkers = useMemo(() => miniMapMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMapMarkers, selectedChapter, selectedSeason]);
-  const adminStoryMarkers = useMemo(() => effectiveMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter) && isStoryQuestMarker(item)), [effectiveMarkers, selectedChapter, selectedSeason]);
+  const adminStoryMarkers = useMemo(() => chapterScopedMarkers.filter((item) => isStoryQuestMarker(item)), [chapterScopedMarkers]);
   const adminMiniMaps = useMemo(() => sortMiniMaps(miniMaps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter))), [miniMaps, selectedChapter, selectedSeason]);
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
@@ -873,10 +875,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   }, [storyFlags]);
   const visibleMarkers = isAdmin
     ? worldMarkers
-    : worldMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows, inventoryItems }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
+    : worldMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows, inventoryItems }).visible && canPlayerSeeStoryMarker(marker, chapterScopedMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
   const visibleMiniMapMarkers = isAdmin
     ? adminMiniMapMarkers
-    : miniMapMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows, inventoryItems }).visible && canPlayerSeeStoryMarker(marker, effectiveMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
+    : miniMapMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows, inventoryItems }).visible && canPlayerSeeStoryMarker(marker, chapterScopedMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedDialogueMarker = useMemo(() => effectiveMarkers.find((marker) => marker.id === selectedDialogueMarkerId) ?? null, [effectiveMarkers, selectedDialogueMarkerId]);
@@ -2131,6 +2133,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       setMarkerJournalBody("");
       setMarkerJournalImageUrl("");
       setMarkerJournalSortOrder("0");
+      setMarkerContentScope("chapter");
       setClickedPercent(null);
       setAdminMessage("Marker created.");
     } catch (error) {
@@ -2195,6 +2198,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       markerRewardTiming,
       markerRepeatable,
       markerRewardOnce,
+      markerContentScope,
       selectedSeason,
       selectedChapter,
     };
@@ -2260,6 +2264,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setMarkerRewardTiming(marker.reward_timing ?? "on_interact");
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
+    setMarkerContentScope(marker.content_scope ?? "chapter");
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
     setMarkerLinkedRouteStartDirection(marker.linked_route_start_direction ?? "forward");
     setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
@@ -2355,6 +2360,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setMarkerRewardTiming(marker.reward_timing ?? "on_interact");
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
+    setMarkerContentScope(marker.content_scope ?? "chapter");
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
     setMarkerLinkedRouteStartDirection(marker.linked_route_start_direction ?? "forward");
     setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
@@ -5860,6 +5866,27 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setAdminMessage(`Applied legend style: ${item.title}.`);
   }
 
+  function renderMarkerChapterScopeEditor() {
+    return (
+      <View style={styles.storyEditor}>
+        <Text style={styles.selectedTitle}>Marker Chapter Scope</Text>
+        <Text style={styles.copy}>
+          Use This Chapter for story changes, NPC movement, and chapter-specific objects. Use Universal for permanent towns, shops, exits, and NPCs that stay in the same place.
+        </Text>
+        <View style={styles.modeRow}>
+          <Pressable style={[styles.secondaryButtonFlex, markerContentScope === "chapter" && styles.typeSelected]} onPress={() => setMarkerContentScope("chapter")}>
+            <Text style={styles.secondaryText}>This Chapter</Text>
+            <Text style={styles.debugLine}>S{selectedSeason} / C{selectedChapter}</Text>
+          </Pressable>
+          <Pressable style={[styles.secondaryButtonFlex, markerContentScope === "universal" && styles.typeSelected]} onPress={() => setMarkerContentScope("universal")}>
+            <Text style={styles.secondaryText}>Universal</Text>
+            <Text style={styles.debugLine}>Always shown</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   function renderBranchingDialogueEditor(markerSource?: MapMarker) {
     const markerDialogueEvent = markerSource ? createMarkerDialogueEvent(markerSource) : null;
     const editorSelectedEvent = markerDialogueEvent ?? selectedDialogueEvent;
@@ -6620,6 +6647,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                   <View style={styles.markerTableInfo}>
                     <Text style={styles.markerName}>{marker.title}</Text>
                     <Text style={styles.copy}>{marker.type} / X {Number(marker.x_percent).toFixed(2)}% / Y {Number(marker.y_percent).toFixed(2)}%</Text>
+                    <Text style={styles.debugLine}>{marker.content_scope === "universal" ? "Universal marker" : `Season ${marker.season_number} / Chapter ${marker.chapter_number}`}</Text>
                     {marker.linked_route_id ? <Text style={styles.debugLine}>Linked path: {getRouteName(routes, marker.linked_route_id)} / Starts on accept: {marker.starts_route_on_accept ? "Yes" : "No"}</Text> : null}
                   </View>
                   <View style={styles.markerTableActions}>
@@ -6660,6 +6688,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
               activeSectionMarkerTypes={miniMapMarkerTypes}
               legendItems={adminLegendItems}
               onApplyLegendStyle={applyLegendStyleToMarker}
+              markerScopeEditor={renderMarkerChapterScopeEditor()}
               draftType={draftType}
               setDraftType={setDraftType}
               draftTitle={draftTitle}
@@ -7300,6 +7329,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             <>
               <MarkerTypeSelector types={activeSectionMarkerTypes} selectedType={draftType} onSelectType={setDraftType} />
               <LegendStylePicker items={adminLegendItems} onApply={applyLegendStyleToMarker} />
+              {renderMarkerChapterScopeEditor()}
               <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
@@ -8126,6 +8156,7 @@ function MiniMapMarkerAdminForm({
   activeSectionMarkerTypes,
   legendItems,
   onApplyLegendStyle,
+  markerScopeEditor,
   draftType,
   setDraftType,
   draftTitle,
@@ -8283,6 +8314,7 @@ function MiniMapMarkerAdminForm({
   activeSectionMarkerTypes: readonly string[];
   legendItems: MarkerLegendItem[];
   onApplyLegendStyle: (item: MarkerLegendItem) => void;
+  markerScopeEditor: ReactNode;
   draftType: string;
   setDraftType: (value: string) => void;
   draftTitle: string;
@@ -8448,6 +8480,7 @@ function MiniMapMarkerAdminForm({
       <Text style={styles.selectedTitle}>Create / Edit Mini Map Marker</Text>
       <MarkerTypeSelector types={activeSectionMarkerTypes} selectedType={draftType} onSelectType={setDraftType} />
       <LegendStylePicker items={legendItems} onApply={onApplyLegendStyle} />
+      {markerScopeEditor}
       <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
       <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />

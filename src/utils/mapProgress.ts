@@ -109,7 +109,11 @@ export function getRouteLockMessage(route: MapRoute) {
   return route.lock_type === "quest_locked" ? "Continue the required quest to unlock this path." : "Progress further in the story to unlock this path.";
 }
 
-export function isInSelectedChapter(item: { season_number?: number | null; chapter_number?: number | null }, seasonNumber: number, chapterNumber: number) {
+export function isInSelectedChapter(item: { content_scope?: string | null; season_number?: number | null; chapter_number?: number | null }, seasonNumber: number, chapterNumber: number) {
+  if (item.content_scope === "universal") {
+    return true;
+  }
+
   return Number(item.season_number ?? 1) === seasonNumber && Number(item.chapter_number ?? 1) === chapterNumber;
 }
 

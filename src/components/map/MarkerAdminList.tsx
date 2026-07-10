@@ -61,6 +61,9 @@ export function MarkerAdminList({ title, emptyText, markers, onEdit, onPreview, 
             <Text style={styles.debugLine}>
               Interactable: {marker.is_interactable ? "true" : "false"} / Visible: {marker.is_active ? "true" : "false"} / Unlocked: {marker.is_unlocked ? "true" : "false"}
             </Text>
+            <Text style={styles.debugLine}>
+              Scope: {marker.content_scope === "universal" ? "Universal" : `Season ${marker.season_number} / Chapter ${marker.chapter_number}`}
+            </Text>
             {warnings.map((warning) => <Text key={warning} style={styles.warningText}>{warning}</Text>)}
           </View>
           <View style={styles.markerTableActions}>

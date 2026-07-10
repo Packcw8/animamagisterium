@@ -889,6 +889,7 @@ export type Tables = {
     journal_body: string | null;
     journal_image_url: string | null;
     journal_sort_order: number;
+    content_scope: "chapter" | "universal";
     season_number: number;
     chapter_number: number;
     created_by: string | null;

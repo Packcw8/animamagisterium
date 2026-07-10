@@ -56,6 +56,7 @@ export type MarkerPayloadState = {
   markerRewardTiming: MapMarker["reward_timing"];
   markerRepeatable: boolean;
   markerRewardOnce: boolean;
+  markerContentScope: MapMarker["content_scope"];
   selectedSeason: number;
   selectedChapter: number;
 };
@@ -110,6 +111,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     reward_timing: state.markerRewardTiming,
     repeatable: state.markerRepeatable,
     reward_once_per_player: state.markerRewardOnce,
+    content_scope: state.markerContentScope,
     linked_mini_map_id: linkedMiniMapId,
     mini_map_id: state.activeMiniMapId ?? (mode === "update" ? state.selectedMarker?.mini_map_id ?? null : null),
     parent_marker_id: state.activeMiniMapId || mode === "create" ? null : state.selectedMarker?.parent_marker_id ?? null,
@@ -119,8 +121,8 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     linked_route_id: supportsLinkedRoute(state.draftType) ? state.markerLinkedRouteId : null,
     linked_route_start_direction: supportsLinkedRoute(state.draftType) ? state.markerLinkedRouteStartDirection ?? "forward" : "forward",
     starts_route_on_accept: supportsLinkedRoute(state.draftType) && state.markerStartsRouteOnAccept,
-    season_number: state.selectedSeason,
-    chapter_number: state.selectedChapter,
+    season_number: state.markerContentScope === "universal" ? 1 : state.selectedSeason,
+    chapter_number: state.markerContentScope === "universal" ? 1 : state.selectedChapter,
   };
 }
 
@@ -169,8 +171,9 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     journal_body: settings.journal_body,
     journal_image_url: settings.journal_image_url,
     journal_sort_order: settings.journal_sort_order,
-    season_number: state.selectedSeason,
-    chapter_number: state.selectedChapter,
+    content_scope: settings.content_scope,
+    season_number: settings.season_number,
+    chapter_number: settings.chapter_number,
   };
 }
 
