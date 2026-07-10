@@ -7,6 +7,7 @@ export type PlayerInventoryRow = Tables["player_inventory"];
 export type EquippedItemRow = Tables["equipped_items"];
 export type GameBalanceSetting = Tables["game_balance_settings"];
 export type EquipmentSlot = EquippedItemRow["slot"];
+export type WeaponEquipmentSlot = "main_hand" | "off_hand" | "weapon";
 export type ArmorPieceSlot = "helmet" | "chest" | "gloves" | "legs" | "boots";
 
 export type InventoryItem = PlayerInventoryRow & {
@@ -28,8 +29,9 @@ export type CarrySettings = {
 };
 
 export const itemTypes: ItemDefinition["type"][] = ["weapon", "armor", "wearable", "potion", "revive potion", "consumable", "food", "scroll", "special", "material", "misc"];
+export const weaponEquipmentSlots: WeaponEquipmentSlot[] = ["main_hand", "off_hand"];
 export const armorPieceSlots: ArmorPieceSlot[] = ["helmet", "chest", "gloves", "legs", "boots"];
-export const equipmentSlots: EquipmentSlot[] = ["weapon", ...armorPieceSlots, "armor", "necklace", "ring", "charm", "relic"];
+export const equipmentSlots: EquipmentSlot[] = ["main_hand", "off_hand", ...armorPieceSlots, "armor", "weapon", "necklace", "ring", "charm", "relic"];
 export const rarityOptions = ["common", "uncommon", "rare", "epic", "legendary"];
 export const costTypes: ItemDefinition["ability_cost_type"][] = ["none", "health", "stamina", "magika"];
 export const elementalTypes: ItemDefinition["elemental_damage_type"][] = ["none", "fire", "ice", "poison", "lightning", "shadow", "holy"];
@@ -301,9 +303,15 @@ function isMissingRpcError(error: { message?: string; code?: string } | null) {
   return error.code === "42883" || message.includes("function") && message.includes("does not exist");
 }
 
-export async function equipInventoryItem(characterId: string, item: ItemDefinition) {
-  if (!item.equipment_slot) {
+export async function equipInventoryItem(characterId: string, item: ItemDefinition, slotOverride?: EquipmentSlot) {
+  const targetSlot = slotOverride ?? (item.type === "weapon" ? normalizeWeaponSlot(item.equipment_slot) : item.equipment_slot);
+
+  if (!targetSlot) {
     throw new Error("This item has no equipment slot.");
+  }
+
+  if (!isItemCompatibleWithSlot(item, targetSlot)) {
+    throw new Error(`${item.name} cannot be equipped in ${formatEquipmentSlotLabel(targetSlot)}.`);
   }
 
   const {
@@ -320,11 +328,12 @@ export async function equipInventoryItem(characterId: string, item: ItemDefiniti
   }
 
   await ensureEquipmentSlots(characterId);
+  await assertCanEquipItemInAdditionalSlot(characterId, item, targetSlot);
   const { error } = await supabase.from("equipped_items").upsert(
     {
       user_id: user.id,
       character_id: characterId,
-      slot: item.equipment_slot,
+      slot: targetSlot,
       item_id: item.id,
       updated_at: new Date().toISOString(),
     },
@@ -333,6 +342,75 @@ export async function equipInventoryItem(characterId: string, item: ItemDefiniti
 
   if (error) {
     throw error;
+  }
+}
+
+export function getCompatibleEquipmentSlots(item: ItemDefinition): EquipmentSlot[] {
+  if (item.type === "weapon") {
+    return weaponEquipmentSlots;
+  }
+
+  if (item.type === "armor") {
+    const armorSlot = item.armor_piece_slot ?? item.equipment_slot;
+    if (armorSlot && armorPieceSlots.includes(armorSlot as ArmorPieceSlot)) {
+      return [armorSlot as EquipmentSlot];
+    }
+    return ["chest"];
+  }
+
+  if (item.equipment_slot) {
+    return [item.equipment_slot];
+  }
+
+  return [];
+}
+
+export function formatEquipmentSlotLabel(slot: EquipmentSlot | string) {
+  const labels: Record<string, string> = {
+    main_hand: "Main Hand",
+    off_hand: "Off Hand",
+    weapon: "Legacy Weapon",
+    helmet: "Helmet",
+    chest: "Chest",
+    gloves: "Gloves",
+    legs: "Legs",
+    boots: "Boots",
+    armor: "Legacy Armor",
+    necklace: "Necklace",
+    ring: "Ring",
+    charm: "Charm",
+    relic: "Relic",
+  };
+  return labels[slot] ?? slot.replaceAll("_", " ");
+}
+
+function isItemCompatibleWithSlot(item: ItemDefinition, slot: EquipmentSlot) {
+  return getCompatibleEquipmentSlots(item).includes(slot);
+}
+
+function normalizeWeaponSlot(slot: ItemDefinition["equipment_slot"]): EquipmentSlot {
+  return slot === "off_hand" ? "off_hand" : "main_hand";
+}
+
+async function assertCanEquipItemInAdditionalSlot(characterId: string, item: ItemDefinition, targetSlot: EquipmentSlot) {
+  const [inventoryResult, equippedResult] = await Promise.all([
+    supabase.from("player_inventory").select("quantity").eq("character_id", characterId).eq("item_id", item.id).maybeSingle(),
+    supabase.from("equipped_items").select("slot,item_id").eq("character_id", characterId).eq("item_id", item.id),
+  ]);
+
+  if (inventoryResult.error) {
+    throw inventoryResult.error;
+  }
+
+  if (equippedResult.error) {
+    throw equippedResult.error;
+  }
+
+  const ownedQuantity = Math.max(0, Number(inventoryResult.data?.quantity ?? 0));
+  const equippedInOtherSlots = (equippedResult.data ?? []).filter((row) => row.slot !== targetSlot).length;
+
+  if (ownedQuantity > 0 && equippedInOtherSlots >= ownedQuantity) {
+    throw new Error(`You need another ${item.name} to equip it in another slot.`);
   }
 }
 

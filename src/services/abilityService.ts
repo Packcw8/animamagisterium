@@ -114,8 +114,8 @@ export async function getCombatLoadout(character: CharacterWithDetails): Promise
     ...abilityDefinitions.filter((ability) => unlockedRows.some((row) => row.ability_key === ability.key)),
     ...adminAbilityDefinitions,
   ];
-  const weaponAbility = await getEquippedWeaponAbility(character.id);
-  const unlocked = weaponAbility ? [...availableAbilities, weaponAbility] : availableAbilities;
+  const weaponAbilities = await getEquippedWeaponAbilities(character.id);
+  const unlocked = [...availableAbilities, ...weaponAbilities];
   const equipped = [1, 2, 3, 4].map((slot) => {
     const row = equippedRows.find((item) => item.slot === slot);
     return unlocked.find((ability) => ability.key === row?.ability_key) ?? null;
@@ -156,9 +156,9 @@ export async function equipAbility(characterId: string, slot: number, abilityKey
     }
 
     if (!owned) {
-      const weaponAbility = await getEquippedWeaponAbility(characterId);
+      const weaponAbilities = await getEquippedWeaponAbilities(characterId);
 
-      if (weaponAbility?.key !== abilityKey) {
+      if (!weaponAbilities.some((ability) => ability.key === abilityKey)) {
         throw new Error("That ability is not unlocked yet.");
       }
     }
@@ -180,40 +180,46 @@ export async function equipAbility(characterId: string, slot: number, abilityKey
   }
 }
 
-async function getEquippedWeaponAbility(characterId: string): Promise<AbilityDefinition | null> {
+async function getEquippedWeaponAbilities(characterId: string): Promise<AbilityDefinition[]> {
   const { data: equipped, error: equippedError } = await supabase
     .from("equipped_items")
-    .select("item_id")
+    .select("slot,item_id")
     .eq("character_id", characterId)
-    .eq("slot", "weapon")
-    .maybeSingle();
+    .in("slot", ["main_hand", "off_hand", "weapon"]);
 
   if (equippedError) {
     throw equippedError;
   }
 
-  if (!equipped?.item_id) {
-    return null;
+  const equippedRows = (equipped ?? []).filter((row) => row.item_id);
+  if (equippedRows.length === 0) {
+    return [];
   }
 
-  const { data: weapon, error: weaponError } = await supabase
+  const { data: weapons, error: weaponError } = await supabase
     .from("item_definitions")
     .select("*")
-    .eq("id", equipped.item_id)
-    .eq("type", "weapon")
-    .maybeSingle();
+    .in("id", equippedRows.map((row) => row.item_id as string))
+    .eq("type", "weapon");
 
   if (weaponError) {
     throw weaponError;
   }
 
-  if (!weapon) {
-    return null;
-  }
+  const weaponItems = (weapons ?? []) as ItemDefinition[];
+  const abilities: AbilityDefinition[] = [];
 
-  const weaponItem = weapon as ItemDefinition;
+  for (const row of equippedRows) {
+    const weaponItem = weaponItems.find((weapon) => weapon.id === row.item_id);
+    if (!weaponItem) {
+      continue;
+    }
 
-  if (weaponItem.linked_ability_id) {
+    if (!weaponItem.linked_ability_id) {
+      abilities.push(weaponToAbility(weaponItem, row.slot));
+      continue;
+    }
+
     const { data: linkedAbility, error: linkedAbilityError } = await supabase
       .from("combat_abilities")
       .select("*")
@@ -225,27 +231,30 @@ async function getEquippedWeaponAbility(characterId: string): Promise<AbilityDef
     }
 
     if (linkedAbility) {
-      return {
+      abilities.push({
         ...adminAbilityToDefinition(linkedAbility as CombatAbility),
-        key: `weapon:${weaponItem.id}:${linkedAbility.id}`,
+        key: `weapon:${row.slot}:${weaponItem.id}:${linkedAbility.id}`,
         source: "weapon",
         sourceWeapon: weaponItem,
-      };
+      });
+      continue;
     }
+
+    abilities.push(weaponToAbility(weaponItem, row.slot));
   }
 
-  return weaponToAbility(weaponItem);
+  return abilities;
 }
 
-function weaponToAbility(weapon: ItemDefinition): AbilityDefinition {
+function weaponToAbility(weapon: ItemDefinition, slot = "weapon"): AbilityDefinition {
   const costType = weapon.ability_cost_type === "magika" ? "magicka" : weapon.ability_cost_type;
   const elementText = weapon.elemental_damage_type !== "none" && weapon.elemental_damage_amount > 0
     ? ` plus ${weapon.elemental_damage_amount} ${weapon.elemental_damage_type} damage`
     : "";
 
   return {
-    key: `weapon:${weapon.id}`,
-    name: weapon.ability_name || weapon.name,
+    key: `weapon:${slot}:${weapon.id}`,
+    name: weapon.ability_name || `${formatWeaponSlot(slot)} ${weapon.name}`,
     attribute: null,
     unlockLevel: 0,
     kind: weapon.elemental_damage_type === "holy" ? "divine" : weapon.elemental_damage_type === "none" ? "physical" : "magic",
@@ -257,6 +266,12 @@ function weaponToAbility(weapon: ItemDefinition): AbilityDefinition {
     source: "weapon",
     sourceWeapon: weapon,
   };
+}
+
+function formatWeaponSlot(slot: string) {
+  if (slot === "main_hand") return "Main Hand";
+  if (slot === "off_hand") return "Off Hand";
+  return "Weapon";
 }
 
 export function getAbilityCostLabel(ability: AbilityDefinition) {

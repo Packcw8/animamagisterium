@@ -105,7 +105,7 @@ type HomeScreenProps = {
 
 const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Journal", "Abilities", "Inventory"] as const;
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
-const inventoryCategoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
+const inventoryCategoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
 const adminToolTabs = ["Items", "Abilities", "Enemies", "NPCs"] as const;
 const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
@@ -687,10 +687,10 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     }
   }
 
-  async function equipItem(entry: InventoryItem) {
+  async function equipItem(entry: InventoryItem, slot?: EquipmentSlot) {
     try {
-      await equipInventoryItem(character.id, entry.item);
-      setInventoryMessage(`${entry.item.name} equipped.`);
+      await equipInventoryItem(character.id, entry.item, slot);
+      setInventoryMessage(`${entry.item.name} equipped${slot ? ` to ${slot.replaceAll("_", " ")}` : ""}.`);
       await loadInventory();
       await loadAbilities();
     } catch (error) {
@@ -1402,7 +1402,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
               message={inventoryMessage}
               onSelectTab={setInventoryCategory}
               onSelectItem={setSelectedInventoryItemId}
-              onEquipItem={(entry) => void equipItem(entry)}
+              onEquipItem={(entry, slot) => void equipItem(entry, slot)}
               onUnequipSlot={(slot) => void unequipSlot(slot)}
               onUseItem={(entry) => void useOutsideBattleItem(entry)}
               onUseScroll={(entry) => void useAbilityScroll(entry)}
@@ -1800,7 +1800,7 @@ function NamedChoiceRow({ label, options, value, onSelect }: { label: string; op
 
 function defaultSlotForType(type: ItemDefinition["type"]) {
   if (type === "weapon") {
-    return "weapon";
+    return "main_hand";
   }
   if (type === "armor") {
     return "chest";
@@ -1911,8 +1911,10 @@ function AbilityIcon({ ability }: { ability: AbilityDefinition }) {
 }
 
 function itemMatchesCategory(item: ItemDefinition, category: (typeof inventoryCategoryTabs)[number]) {
+  if (category === "All") return true;
   if (category === "Weapons") return item.type === "weapon";
-  if (category === "Armor") return item.type === "armor";
+  if (category === "Armor Sets") return item.type === "armor" && Boolean(item.armor_set_key || item.armor_set_name);
+  if (category === "Armor Pieces") return item.type === "armor";
   if (category === "Wearables") return item.type === "wearable";
   if (category === "Consumables") return ["potion", "revive potion", "consumable", "food", "scroll"].includes(item.type);
   if (category === "Materials") return item.type === "material";
@@ -1922,7 +1924,7 @@ function itemMatchesCategory(item: ItemDefinition, category: (typeof inventoryCa
 
 function toInventoryCategory(type: ItemDefinition["type"]): (typeof inventoryCategoryTabs)[number] {
   if (type === "weapon") return "Weapons";
-  if (type === "armor") return "Armor";
+  if (type === "armor") return "Armor Pieces";
   if (type === "wearable") return "Wearables";
   if (["potion", "revive potion", "consumable", "food", "scroll"].includes(type)) return "Consumables";
   if (type === "material") return "Materials";
@@ -1973,7 +1975,8 @@ function getDerivedBattleStats(
   const intelligence = attributes?.intelligence ?? 0;
   const wisdom = attributes?.wisdom ?? 0;
   const spirit = attributes?.spirit ?? 0;
-  const weaponDamage = Number(equipped.weapon?.damage_amount ?? 0) + Number(equipped.weapon?.elemental_damage_amount ?? 0);
+  const equippedWeapons = [equipped.main_hand, equipped.off_hand, equipped.weapon].filter(Boolean) as ItemDefinition[];
+  const weaponDamage = equippedWeapons.reduce((sum, weapon) => sum + Number(weapon.damage_amount ?? 0) + Number(weapon.elemental_damage_amount ?? 0), 0);
   const armorValue = Object.values(equipped).reduce((sum, item) => sum + Number(item?.armor_value ?? 0), 0);
   const meleeAttackBonus = strength + weaponDamage + inventoryBonuses.damage;
   const agilityBonus = Math.floor(agility / 2);
@@ -1993,7 +1996,7 @@ function getDerivedBattleStats(
     armorValue,
     currentWeight: totalInventoryWeight.toFixed(1),
     maxWeight: carryCapacity.toFixed(1),
-    weaponName: equipped.weapon?.name ?? "Unarmed",
+    weaponName: equippedWeapons.length > 0 ? equippedWeapons.map((weapon) => weapon.name).join(" / ") : "Unarmed",
     armorName: equipped.chest?.name ?? equipped.armor?.name ?? "None",
     gearDamageBonus: inventoryBonuses.damage,
     gearDefenseBonus: inventoryBonuses.defense,

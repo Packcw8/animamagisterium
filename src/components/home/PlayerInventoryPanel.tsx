@@ -1,10 +1,13 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { ProgressBar } from "../ProgressBar";
 import { colors, fonts } from "../theme";
 import {
   canUseItemInContext,
   equipmentSlots,
+  formatEquipmentSlotLabel,
+  getCompatibleEquipmentSlots,
   getInventoryResourceBonuses,
   InventoryItem,
   isHealingConsumable,
@@ -12,9 +15,10 @@ import {
   resolveInventoryImageUri,
 } from "../../services/inventoryService";
 
-export const playerInventoryTabs = ["Weapons", "Armor", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
+export const playerInventoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 export type PlayerInventoryTab = (typeof playerInventoryTabs)[number];
 type EquipmentSlot = (typeof equipmentSlots)[number];
+type InventorySort = "newest" | "rarity" | "equipped" | "set" | "name";
 
 type PlayerInventoryPanelProps = {
   items: InventoryItem[];
@@ -28,7 +32,7 @@ type PlayerInventoryPanelProps = {
   message: string | null;
   onSelectTab: (tab: PlayerInventoryTab) => void;
   onSelectItem: (itemId: string | null) => void;
-  onEquipItem: (entry: InventoryItem) => void;
+  onEquipItem: (entry: InventoryItem, slot?: EquipmentSlot) => void;
   onUnequipSlot: (slot: EquipmentSlot) => void;
   onUseItem: (entry: InventoryItem) => void;
   onUseScroll: (entry: InventoryItem) => void;
@@ -53,7 +57,11 @@ export function PlayerInventoryPanel({
   onUseScroll,
   onDropItem,
 }: PlayerInventoryPanelProps) {
-  const filteredItems = items.filter((entry) => itemMatchesCategory(entry.item, activeTab));
+  const [sortMode, setSortMode] = useState<InventorySort>("equipped");
+  const filteredItems = useMemo(() => sortInventoryItems(
+    items.filter((entry) => itemMatchesCategory(entry.item, activeTab)),
+    sortMode,
+  ), [activeTab, items, sortMode]);
   const overCapacity = totalWeight > carryCapacity;
   const equipmentBonuses = getInventoryResourceBonuses(equippedItems as Record<EquipmentSlot, ItemDefinition | null>);
 
@@ -81,16 +89,7 @@ export function PlayerInventoryPanel({
           <Text style={styles.subTitle}>Equipped</Text>
           <Text style={styles.badge}>Loadout</Text>
         </View>
-        <View style={styles.equipmentGrid}>
-          {equipmentSlots.map((slot) => (
-            <EquipmentSlotCard
-              key={slot}
-              slot={slot}
-              item={equippedItems[slot] ?? null}
-              onUnequip={() => onUnequipSlot(slot)}
-            />
-          ))}
-        </View>
+        <GearSilhouette equippedItems={equippedItems} onUnequipSlot={onUnequipSlot} />
         {equipmentBonuses.completedArmorSets.length > 0 ? (
           <View style={styles.setBonusPanel}>
             <Text style={styles.subTitle}>Completed Armor Sets</Text>
@@ -108,6 +107,13 @@ export function PlayerInventoryPanel({
         {playerInventoryTabs.map((tab) => (
           <Pressable key={tab} style={[styles.tab, activeTab === tab && styles.activeTab]} onPress={() => onSelectTab(tab)}>
             <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.sortBar}>
+        {(["equipped", "rarity", "set", "name", "newest"] as InventorySort[]).map((mode) => (
+          <Pressable key={mode} style={[styles.sortButton, sortMode === mode && styles.activeSortButton]} onPress={() => setSortMode(mode)}>
+            <Text style={[styles.sortText, sortMode === mode && styles.activeSortText]}>{formatSortLabel(mode)}</Text>
           </Pressable>
         ))}
       </View>
@@ -158,13 +164,49 @@ export function PlayerInventoryPanel({
   );
 }
 
-function EquipmentSlotCard({ slot, item, onUnequip }: { slot: EquipmentSlot; item: ItemDefinition | null; onUnequip: () => void }) {
+function GearSilhouette({ equippedItems, onUnequipSlot }: { equippedItems: Record<string, ItemDefinition | null>; onUnequipSlot: (slot: EquipmentSlot) => void }) {
+  const leftSlots: EquipmentSlot[] = ["main_hand", "helmet", "gloves", "legs"];
+  const rightSlots: EquipmentSlot[] = ["off_hand", "chest", "boots", "necklace"];
+  const bottomSlots: EquipmentSlot[] = ["ring", "charm", "relic"];
+
+  return (
+    <View style={styles.gearPanel}>
+      <View style={styles.gearColumn}>
+        {leftSlots.map((slot) => (
+          <EquipmentSlotCard key={slot} slot={slot} item={equippedItems[slot] ?? null} onUnequip={() => onUnequipSlot(slot)} />
+        ))}
+      </View>
+      <View style={styles.silhouetteBody}>
+        <View style={styles.silhouetteHead} />
+        <View style={styles.silhouetteTorso}>
+          <Text style={styles.silhouetteText}>GEAR</Text>
+        </View>
+        <View style={styles.silhouetteLegs}>
+          <View style={styles.silhouetteLeg} />
+          <View style={styles.silhouetteLeg} />
+        </View>
+      </View>
+      <View style={styles.gearColumn}>
+        {rightSlots.map((slot) => (
+          <EquipmentSlotCard key={slot} slot={slot} item={equippedItems[slot] ?? null} onUnequip={() => onUnequipSlot(slot)} />
+        ))}
+      </View>
+      <View style={styles.gearBottomRow}>
+        {bottomSlots.map((slot) => (
+          <EquipmentSlotCard key={slot} slot={slot} item={equippedItems[slot] ?? null} onUnequip={() => onUnequipSlot(slot)} compact />
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function EquipmentSlotCard({ slot, item, onUnequip, compact = false }: { slot: EquipmentSlot; item: ItemDefinition | null; onUnequip: () => void; compact?: boolean }) {
   const uri = resolveInventoryImageUri(item?.image_path);
 
   return (
-    <View style={[styles.slotCard, item && styles.slotFilled]}>
-      <Text style={styles.slotLabel}>{slot}</Text>
-      <View style={styles.slotIcon}>
+    <View style={[styles.slotCard, compact && styles.compactSlotCard, item && styles.slotFilled]}>
+      <Text style={styles.slotLabel}>{formatEquipmentSlotLabel(slot)}</Text>
+      <View style={[styles.slotIcon, compact && styles.compactSlotIcon]}>
         {uri ? <Image source={{ uri }} style={styles.slotImage} /> : <Text style={styles.slotInitial}>{slot.slice(0, 1).toUpperCase()}</Text>}
       </View>
       <Text style={styles.slotName} numberOfLines={2}>{item?.name ?? "Empty"}</Text>
@@ -181,7 +223,7 @@ function ItemDetail({ entry, currentHealth, maxHealth, onEquipItem, onUnequipSlo
   entry: InventoryItem;
   currentHealth: number;
   maxHealth: number;
-  onEquipItem: (entry: InventoryItem) => void;
+  onEquipItem: (entry: InventoryItem, slot?: EquipmentSlot) => void;
   onUnequipSlot: (slot: EquipmentSlot) => void;
   onUseItem: (entry: InventoryItem) => void;
   onUseScroll: (entry: InventoryItem) => void;
@@ -191,6 +233,7 @@ function ItemDetail({ entry, currentHealth, maxHealth, onEquipItem, onUnequipSlo
   const imageUri = resolveInventoryImageUri(entry.item.image_path);
   const canUseOutside = canUseItemOutsideBattle(entry);
   const isScroll = entry.item.type === "scroll" && Boolean(entry.item.teaches_ability_id);
+  const compatibleSlots = getCompatibleEquipmentSlots(entry.item) as EquipmentSlot[];
 
   return (
     <View style={styles.detailPanel}>
@@ -220,7 +263,11 @@ function ItemDetail({ entry, currentHealth, maxHealth, onEquipItem, onUnequipSlo
         </View>
       ) : null}
       <View style={styles.actionRow}>
-        {entry.item.equipment_slot ? <Pressable style={styles.smallButton} onPress={() => onEquipItem(entry)}><Text style={styles.smallButtonText}>Equip</Text></Pressable> : null}
+        {compatibleSlots.map((slot) => (
+          <Pressable key={slot} style={styles.smallButton} onPress={() => onEquipItem(entry, slot)}>
+            <Text style={styles.smallButtonText}>Equip {formatEquipmentSlotLabel(slot)}</Text>
+          </Pressable>
+        ))}
         {entry.equippedSlot ? <Pressable style={styles.smallButton} onPress={() => onUnequipSlot(entry.equippedSlot as EquipmentSlot)}><Text style={styles.smallButtonText}>Unequip</Text></Pressable> : null}
         {isScroll ? <Pressable style={styles.smallButton} onPress={() => onUseScroll(entry)}><Text style={styles.smallButtonText}>Use Scroll</Text></Pressable> : null}
         {canUseOutside ? <Pressable style={[styles.smallButton, currentHealth >= maxHealth && styles.disabledAction]} onPress={() => onUseItem(entry)} disabled={currentHealth >= maxHealth}><Text style={styles.smallButtonText}>Use</Text></Pressable> : null}
@@ -243,13 +290,42 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 export function itemMatchesCategory(item: ItemDefinition, category: PlayerInventoryTab) {
+  if (category === "All") return true;
   if (category === "Weapons") return item.type === "weapon";
-  if (category === "Armor") return item.type === "armor";
+  if (category === "Armor Sets") return item.type === "armor" && Boolean(item.armor_set_key || item.armor_set_name);
+  if (category === "Armor Pieces") return item.type === "armor";
   if (category === "Wearables") return item.type === "wearable";
   if (category === "Consumables") return ["potion", "revive potion", "consumable", "food", "scroll"].includes(item.type);
   if (category === "Materials") return item.type === "material";
   if (category === "Special") return item.type === "special";
   return item.type === "misc";
+}
+
+function sortInventoryItems(items: InventoryItem[], sortMode: InventorySort) {
+  const rarityRank: Record<string, number> = { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 };
+  return [...items].sort((a, b) => {
+    if (sortMode === "equipped") {
+      return Number(Boolean(b.equippedSlot)) - Number(Boolean(a.equippedSlot)) || a.item.name.localeCompare(b.item.name);
+    }
+    if (sortMode === "rarity") {
+      return (rarityRank[b.item.rarity ?? "common"] ?? 0) - (rarityRank[a.item.rarity ?? "common"] ?? 0) || a.item.name.localeCompare(b.item.name);
+    }
+    if (sortMode === "set") {
+      return (a.item.armor_set_name ?? a.item.armor_set_key ?? "zzz").localeCompare(b.item.armor_set_name ?? b.item.armor_set_key ?? "zzz") || a.item.name.localeCompare(b.item.name);
+    }
+    if (sortMode === "name") {
+      return a.item.name.localeCompare(b.item.name);
+    }
+    return new Date(b.updated_at ?? b.acquired_at).getTime() - new Date(a.updated_at ?? a.acquired_at).getTime();
+  });
+}
+
+function formatSortLabel(mode: InventorySort) {
+  if (mode === "newest") return "Newest";
+  if (mode === "rarity") return "Rarity";
+  if (mode === "equipped") return "Equipped";
+  if (mode === "set") return "Set";
+  return "Name";
 }
 
 function canUseItemOutsideBattle(entry: InventoryItem) {
@@ -338,6 +414,70 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 10,
   },
+  gearPanel: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 4,
+  },
+  gearColumn: {
+    flex: 1,
+    minWidth: 104,
+    gap: 8,
+  },
+  silhouetteBody: {
+    width: 92,
+    minHeight: 250,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  silhouetteHead: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 1,
+    borderColor: "rgba(217,164,65,0.55)",
+    backgroundColor: "rgba(217,164,65,0.08)",
+  },
+  silhouetteTorso: {
+    width: 76,
+    height: 116,
+    borderTopLeftRadius: 34,
+    borderTopRightRadius: 34,
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(217,164,65,0.45)",
+    backgroundColor: "rgba(20,61,86,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  silhouetteText: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  silhouetteLegs: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  silhouetteLeg: {
+    width: 24,
+    height: 58,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(217,164,65,0.35)",
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  gearBottomRow: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 8,
+  },
   setBonusPanel: {
     gap: 5,
     padding: 10,
@@ -348,9 +488,9 @@ const styles = StyleSheet.create({
   },
   slotCard: {
     flexGrow: 1,
-    flexBasis: 120,
-    minWidth: 112,
-    minHeight: 148,
+    flexBasis: 96,
+    minWidth: 96,
+    minHeight: 118,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     borderRadius: 12,
@@ -358,6 +498,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     backgroundColor: "rgba(5,9,10,0.6)",
+  },
+  compactSlotCard: {
+    flexBasis: 92,
+    minWidth: 92,
+    minHeight: 108,
   },
   slotFilled: {
     borderColor: colors.gold,
@@ -370,8 +515,8 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   slotIcon: {
-    width: 54,
-    height: 54,
+    width: 46,
+    height: 46,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.borderSoft,
@@ -380,9 +525,14 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: "rgba(0,0,0,0.32)",
   },
+  compactSlotIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 9,
+  },
   slotImage: {
-    width: 54,
-    height: 54,
+    width: "100%",
+    height: "100%",
   },
   slotInitial: {
     color: colors.muted,
@@ -399,6 +549,37 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
+  },
+  sortBar: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.18)",
+  },
+  sortButton: {
+    minHeight: 34,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activeSortButton: {
+    borderColor: colors.gold,
+    backgroundColor: "rgba(217,164,65,0.12)",
+  },
+  sortText: {
+    color: colors.muted,
+    fontWeight: "900",
+    fontSize: 11,
+  },
+  activeSortText: {
+    color: colors.gold,
   },
   tab: {
     minHeight: 40,
