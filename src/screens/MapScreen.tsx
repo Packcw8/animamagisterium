@@ -1681,6 +1681,54 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     );
   }
 
+  function renderMiniMapContentScopePanel() {
+    if (!isAdmin) {
+      return null;
+    }
+
+    const seasonLabel = getSeasonLabel(mapSeasons, selectedSeason);
+    const chapterLabel = getChapterLabel(mapChapters, selectedSeason, selectedChapter);
+
+    return (
+      <Frame style={styles.panel}>
+        <View style={styles.panelHeader}>
+          <View>
+            <Text style={styles.selectedTitle}>Mini Map Content Scope</Text>
+            <Text style={styles.copy}>Editing {seasonLabel} / {chapterLabel}. Mini-map markers and dialogue saved as This Chapter use this selection.</Text>
+          </View>
+        </View>
+        <Text style={styles.debugLine}>Season</Text>
+        <View style={styles.storyRoutePicker}>
+          {availableSeasons.map((season) => (
+            <Pressable
+              key={season.season_number}
+              style={[styles.routeChip, selectedSeason === season.season_number && styles.routeChipActive]}
+              onPress={() => {
+                setSelectedSeason(season.season_number);
+                setSelectedChapter(1);
+              }}
+            >
+              <Text style={styles.routeChipText}>{season.name}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.debugLine}>Chapter</Text>
+        <View style={styles.storyRoutePicker}>
+          {availableChapters.map((chapter) => (
+            <Pressable
+              key={`${chapter.season_number}-${chapter.chapter_number}`}
+              style={[styles.routeChip, selectedChapter === chapter.chapter_number && styles.routeChipActive]}
+              onPress={() => setSelectedChapter(chapter.chapter_number)}
+            >
+              <Text style={styles.routeChipText}>{chapter.name}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.copy}>Use Universal on permanent markers. Use This Chapter when NPCs, story objects, or dialogue should change by chapter.</Text>
+      </Frame>
+    );
+  }
+
   function toggleAdminPanel(key: string) {
     setOpenAdminPanels((current) => ({ ...current, [key]: current[key] === false }));
   }
@@ -6524,6 +6572,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           </View>
         </View>
         {renderAdminViewTool()}
+        {renderMiniMapContentScopePanel()}
         {!isAdmin && route.mini_map_id === activeMiniMap.id ? renderPlayerMapTravelHeader() : null}
         {isAdmin && route.mini_map_id === activeMiniMap.id ? renderJourneyPanel() : null}
         <Frame style={styles.panel}>
