@@ -1,4 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import {
@@ -50,6 +51,12 @@ export function StoryDeckAdminPanel() {
   const [events, setEvents] = useState<MapEvent[]>([]);
   const [previewDeck, setPreviewDeck] = useState<StoryDeck | null>(null);
   const [previewCards, setPreviewCards] = useState<StoryCard[]>([]);
+  const [openSections, setOpenSections] = useState({
+    decks: true,
+    deckSettings: true,
+    cardEditor: true,
+    savedCards: true,
+  });
 
   const selectedDeck = useMemo(() => decks.find((deck) => deck.id === selectedDeckId) ?? null, [decks, selectedDeckId]);
   const scopedDecks = useMemo(() => [...decks].sort(sortDecks), [decks]);
@@ -216,6 +223,10 @@ export function StoryDeckAdminPanel() {
     setPreviewCards(nextCards);
   }
 
+  function toggleSection(section: keyof typeof openSections) {
+    setOpenSections((current) => ({ ...current, [section]: !current[section] }));
+  }
+
   if (previewDeck) {
     return (
       <StoryDeckViewer
@@ -243,26 +254,37 @@ export function StoryDeckAdminPanel() {
       <Text style={styles.copy}>Create illustrated lore scenes, chapter recaps, tutorials, and dramatic story slides. Decks can be saved to the Journey journal for replay.</Text>
       {message ? <Text style={styles.message}>{message}</Text> : null}
 
-      <View style={styles.deckList}>
-        {loading ? <Text style={styles.copy}>Loading story decks...</Text> : null}
-        {scopedDecks.map((deck) => (
-          <View key={deck.id} style={[styles.deckChip, selectedDeckId === deck.id && styles.deckChipActive]}>
-            <Pressable style={styles.deckChipMain} onPress={() => void selectDeck(deck)}>
-              <Text style={styles.deckChipTitle}>{deck.title}</Text>
-              <Text style={styles.deckChipMeta}>S{deck.season_number} / C{deck.chapter_number} / {formatStoryDeckLabel(deck.trigger_type)}</Text>
-            </Pressable>
-            <Pressable style={styles.rowButton} onPress={async () => {
-              setPreviewDeck(deck);
-              setPreviewCards(await getStoryCards(deck.id));
-            }}>
-              <Text style={styles.rowButtonText}>Preview</Text>
-            </Pressable>
-          </View>
-        ))}
-      </View>
+      <CollapsibleSection
+        title="Story Decks"
+        meta={`${scopedDecks.length} deck${scopedDecks.length === 1 ? "" : "s"}`}
+        open={openSections.decks}
+        onToggle={() => toggleSection("decks")}
+      >
+        <View style={styles.deckList}>
+          {loading ? <Text style={styles.copy}>Loading story decks...</Text> : null}
+          {scopedDecks.map((deck) => (
+            <View key={deck.id} style={[styles.deckChip, selectedDeckId === deck.id && styles.deckChipActive]}>
+              <Pressable style={styles.deckChipMain} onPress={() => void selectDeck(deck)}>
+                <Text style={styles.deckChipTitle}>{deck.title}</Text>
+                <Text style={styles.deckChipMeta}>S{deck.season_number} / C{deck.chapter_number} / {formatStoryDeckLabel(deck.trigger_type)}</Text>
+              </Pressable>
+              <Pressable style={styles.rowButton} onPress={async () => {
+                setPreviewDeck(deck);
+                setPreviewCards(await getStoryCards(deck.id));
+              }}>
+                <Text style={styles.rowButtonText}>Preview</Text>
+              </Pressable>
+            </View>
+          ))}
+        </View>
+      </CollapsibleSection>
 
-      <View style={styles.form}>
-        <Text style={styles.sectionTitle}>{selectedDeck ? "Edit Deck" : "Create Deck"}</Text>
+      <CollapsibleSection
+        title={selectedDeck ? "Edit Deck" : "Create Deck"}
+        meta={selectedDeck ? selectedDeck.title : "New story deck"}
+        open={openSections.deckSettings}
+        onToggle={() => toggleSection("deckSettings")}
+      >
         <TextInput value={deckDraft.title} onChangeText={(value) => setDeckDraft((current) => ({ ...current, title: value }))} placeholder="Deck title" placeholderTextColor={colors.muted} style={styles.input} />
         <TextInput value={deckDraft.description ?? ""} onChangeText={(value) => setDeckDraft((current) => ({ ...current, description: value }))} placeholder="Admin description optional" placeholderTextColor={colors.muted} style={[styles.input, styles.textArea]} multiline />
         <Text style={styles.label}>Deck Type</Text>
@@ -318,10 +340,14 @@ export function StoryDeckAdminPanel() {
             <Text style={styles.smallButtonText}>Preview Deck</Text>
           </Pressable>
         </View>
-      </View>
+      </CollapsibleSection>
 
-      <View style={styles.form}>
-        <Text style={styles.sectionTitle}>Cards</Text>
+      <CollapsibleSection
+        title="Card Editor"
+        meta={cardDraft.id ? "Editing card" : "Add a card"}
+        open={openSections.cardEditor}
+        onToggle={() => toggleSection("cardEditor")}
+      >
         <Text style={styles.copy}>Cards play in sort order. Keep each card short so it feels dramatic on mobile.</Text>
         <TextInput value={cardDraft.title ?? ""} onChangeText={(value) => setCardDraft((current) => ({ ...current, title: value }))} placeholder="Card title optional" placeholderTextColor={colors.muted} style={styles.input} />
         <TextInput value={cardDraft.body} onChangeText={(value) => setCardDraft((current) => ({ ...current, body: value }))} placeholder="Card text" placeholderTextColor={colors.muted} style={[styles.input, styles.cardBody]} multiline />
@@ -351,27 +377,34 @@ export function StoryDeckAdminPanel() {
             </Pressable>
           ) : null}
         </View>
-      </View>
+      </CollapsibleSection>
 
-      <View style={styles.cardList}>
-        {cards.length === 0 ? <Text style={styles.copy}>No cards in this deck yet.</Text> : null}
-        {cards.map((card) => (
-          <View key={card.id} style={styles.cardRow}>
-            {resolveStoryDeckAssetUri(card.image_url) ? <Image source={{ uri: resolveStoryDeckAssetUri(card.image_url)! }} style={styles.cardThumb} /> : null}
-            <View style={styles.cardText}>
-              <Text style={styles.cardTitle}>{card.title || `Card ${card.sort_order + 1}`}</Text>
-              <Text style={styles.cardMeta}>Sort {card.sort_order} / {formatStoryDeckLabel(card.text_position)} / {formatStoryDeckLabel(card.text_style)}</Text>
-              <Text style={styles.cardBodyText} numberOfLines={3}>{card.body}</Text>
+      <CollapsibleSection
+        title="Saved Cards"
+        meta={`${cards.length} card${cards.length === 1 ? "" : "s"}`}
+        open={openSections.savedCards}
+        onToggle={() => toggleSection("savedCards")}
+      >
+        <View style={styles.cardList}>
+          {cards.length === 0 ? <Text style={styles.copy}>No cards in this deck yet.</Text> : null}
+          {cards.map((card) => (
+            <View key={card.id} style={styles.cardRow}>
+              {resolveStoryDeckAssetUri(card.image_url) ? <Image source={{ uri: resolveStoryDeckAssetUri(card.image_url)! }} style={styles.cardThumb} /> : null}
+              <View style={styles.cardText}>
+                <Text style={styles.cardTitle}>{card.title || `Card ${card.sort_order + 1}`}</Text>
+                <Text style={styles.cardMeta}>Sort {card.sort_order} / {formatStoryDeckLabel(card.text_position)} / {formatStoryDeckLabel(card.text_style)}</Text>
+                <Text style={styles.cardBodyText} numberOfLines={3}>{card.body}</Text>
+              </View>
+              <Pressable style={styles.rowButton} onPress={() => editCard(card)}>
+                <Text style={styles.rowButtonText}>Edit</Text>
+              </Pressable>
+              <Pressable style={styles.deleteButton} onPress={() => void removeCard(card.id)}>
+                <Text style={styles.deleteButtonText}>Delete</Text>
+              </Pressable>
             </View>
-            <Pressable style={styles.rowButton} onPress={() => editCard(card)}>
-              <Text style={styles.rowButtonText}>Edit</Text>
-            </Pressable>
-            <Pressable style={styles.deleteButton} onPress={() => void removeCard(card.id)}>
-              <Text style={styles.deleteButtonText}>Delete</Text>
-            </Pressable>
-          </View>
-        ))}
-      </View>
+          ))}
+        </View>
+      </CollapsibleSection>
     </View>
   );
 }
@@ -381,6 +414,33 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
     <Pressable style={[styles.chip, active && styles.activeChip]} onPress={onPress}>
       <Text style={[styles.chipText, active && styles.activeChipText]}>{label}</Text>
     </Pressable>
+  );
+}
+
+function CollapsibleSection({
+  title,
+  meta,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  meta?: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <View style={styles.collapsibleSection}>
+      <Pressable style={styles.collapsibleHeader} onPress={onToggle}>
+        <View style={styles.collapsibleHeaderText}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {meta ? <Text style={styles.deckChipMeta}>{meta}</Text> : null}
+        </View>
+        <Text style={styles.collapseToggle}>{open ? "Hide" : "Show"}</Text>
+      </Pressable>
+      {open ? <View style={styles.collapsibleBody}>{children}</View> : null}
+    </View>
   );
 }
 
@@ -581,6 +641,32 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontFamily: fonts.title,
     fontSize: 12,
+  },
+  collapsibleBody: {
+    gap: 10,
+    padding: 12,
+  },
+  collapsibleHeader: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.28)",
+    flexDirection: "row",
+    gap: 12,
+    justifyContent: "space-between",
+    padding: 12,
+  },
+  collapsibleHeaderText: {
+    flex: 1,
+    gap: 3,
+  },
+  collapsibleSection: {
+    borderColor: colors.borderSoft,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  collapseToggle: {
+    color: colors.blue,
+    fontWeight: "900",
   },
   copy: {
     color: colors.muted,
