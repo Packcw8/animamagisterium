@@ -521,6 +521,7 @@ function MapCanvasLayers({
             style={[
               styles.marker,
               mini && styles.miniMapMarker,
+              marker.type === "Movement" && styles.movementMarker,
               (!marker.is_active || !marker.is_unlocked) && styles.markerHidden,
               displayState === "current" && styles.markerCurrent,
               displayState === "available" && styles.markerAvailable,
@@ -963,6 +964,7 @@ const styles = StyleSheet.create({
   },
   marker: {
     position: "absolute",
+    zIndex: 24,
     width: 34,
     height: 34,
     alignItems: "center",
@@ -987,13 +989,16 @@ const styles = StyleSheet.create({
     width: 25,
     height: 25,
   },
+  movementMarker: {
+    zIndex: 14,
+  },
   markerHidden: {
     opacity: 0.46,
     borderStyle: "dashed",
   },
   playerPin: {
     position: "absolute",
-    zIndex: 20,
+    zIndex: 60,
     width: 28,
     height: 28,
     transform: [{ translateX: -14 }, { translateY: -14 }],

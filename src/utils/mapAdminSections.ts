@@ -1,4 +1,4 @@
-export const editorModes = ["Marker", "Walking Path"] as const;
+export const editorModes = ["Marker", "Movement Grid", "Walking Path"] as const;
 
 export const adminSections = [
   "World Map",

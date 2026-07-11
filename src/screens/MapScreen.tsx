@@ -230,6 +230,9 @@ import {
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Arena", "Point of Interest", "Puzzle", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
 const miniMapMarkerTypes = ["Player Spawn", "Movement", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Arena", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
+const miniMapContentMarkerTypes = miniMapMarkerTypes.filter((type) => type !== "Movement");
+const miniMapMovementMarkerTypes = ["Movement"] as const;
+const walkingPathEditorModes = editorModes.filter((mode) => mode !== "Movement Grid");
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
@@ -430,6 +433,8 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     settings: true,
     rewards: true,
     miniMapPreview: true,
+    miniMapDetails: false,
+    miniMapBehavior: false,
     movementGraph: false,
   });
   const [miniMaps, setMiniMaps] = useState<MiniMap[]>([]);
@@ -844,6 +849,11 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
   const adminWorldMarkers = useMemo(() => worldMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, worldMarkers]);
   const adminMiniMapMarkers = useMemo(() => miniMapMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMapMarkers, selectedChapter, selectedSeason]);
+  const adminMiniMapContentMarkers = useMemo(() => adminMiniMapMarkers.filter((marker) => marker.type !== "Movement"), [adminMiniMapMarkers]);
+  const adminMiniMapMovementMarkers = useMemo(
+    () => adminMiniMapMarkers.filter((marker) => marker.type === "Movement").sort((a, b) => getMovementMarkerStep(a) - getMovementMarkerStep(b) || a.title.localeCompare(b.title)),
+    [adminMiniMapMarkers],
+  );
   const adminStoryMarkers = useMemo(() => chapterScopedMarkers.filter((item) => isStoryQuestMarker(item)), [chapterScopedMarkers]);
   const adminMiniMaps = useMemo(() => sortMiniMaps(miniMaps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter))), [miniMaps, selectedChapter, selectedSeason]);
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
@@ -1160,6 +1170,18 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     () => inventoryItems.find((entry) => entry.id === selectedMapInventoryItemId) ?? null,
     [inventoryItems, selectedMapInventoryItemId],
   );
+
+  useEffect(() => {
+    if (editorMode === "Movement Grid" && draftType !== "Movement") {
+      setDraftType("Movement");
+    }
+    if (editorMode === "Movement Grid" && selectedMarker && selectedMarker.type !== "Movement") {
+      setSelectedMarker(null);
+    }
+    if (editorMode === "Marker" && selectedMarker?.type === "Movement") {
+      setSelectedMarker(null);
+    }
+  }, [draftType, editorMode, selectedMarker]);
 
   useEffect(() => {
     void loadMap().catch((error) => {
@@ -2655,6 +2677,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setSelectedPuzzle(null);
     setSelectedArena(null);
     setArenaBattleSlots([]);
+    if (isAdmin && activeMiniMap && marker.type === "Movement") {
+      setEditorMode("Movement Grid");
+    }
     setDraftType(marker.type || markerTypes[0]);
     setDraftTitle(marker.title);
     setDraftDescription(marker.description ?? "");
@@ -7436,7 +7461,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             playerPortraitUrl={character.portrait_url}
             playerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.player_avatar_scale) || 1))}
             markerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.marker_scale) || 1))}
-            markerDisplayStates={!isAdmin || openAdminPanels.movementGraph ? miniMapMarkerDisplayStates : {}}
+            markerDisplayStates={!isAdmin || openAdminPanels.movementGraph || editorMode === "Movement Grid" ? miniMapMarkerDisplayStates : {}}
             playerPathVisibility={route.mini_map_id === activeMiniMap.id ? playerPathVisibility : "visible"}
             onSelectMarker={(marker) => void selectMarker(marker)}
           />
@@ -7453,8 +7478,12 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             >
             <Text style={styles.copy}>Click this mini map image to capture percentage coordinates, then create or edit markers inside {activeMiniMap.name}.</Text>
             {adminMessage ? <Text style={styles.adminMessage}>{adminMessage}</Text> : null}
-            <View style={styles.storyEditor}>
-              <Text style={styles.selectedTitle}>Mini Map Details</Text>
+            <AdminCollapsibleSection
+              title="Mini Map Details"
+              summary={`${activeMiniMap.name} / ${miniMapType} / ${miniMapEditorWidth} x ${miniMapEditorHeight}`}
+              isOpen={Boolean(openAdminPanels.miniMapDetails)}
+              onToggle={() => setOpenAdminPanels((current) => ({ ...current, miniMapDetails: !current.miniMapDetails }))}
+            >
               <TextInput value={miniMapName} onChangeText={setMiniMapName} placeholder="Mini map name" placeholderTextColor={colors.muted} style={styles.input} />
               <View style={styles.modeRow}>
                 <TextInput value={miniMapAreaName} onChangeText={setMiniMapAreaName} placeholder="Area group, example Hearthland Woods" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
@@ -7474,7 +7503,34 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                 <TextInput value={miniMapEditorWidth} onChangeText={setMiniMapEditorWidth} placeholder="Frame width, example 900" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
                 <TextInput value={miniMapEditorHeight} onChangeText={setMiniMapEditorHeight} placeholder="Frame height, example 650" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
               </View>
-              <Text style={styles.selectedTitle}>Player Behavior</Text>
+              <View style={styles.storyRoutePicker}>
+                {[
+                  { label: "Compact", width: "720", height: "520" },
+                  { label: "Normal", width: "900", height: "650" },
+                  { label: "Large", width: "1200", height: "860" },
+                ].map((option) => (
+                  <Pressable key={option.label} style={[styles.routeChip, miniMapEditorWidth === option.width && miniMapEditorHeight === option.height && styles.routeChipActive]} onPress={() => {
+                    setMiniMapEditorWidth(option.width);
+                    setMiniMapEditorHeight(option.height);
+                  }}>
+                    <Text style={styles.routeChipText}>{option.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <TextInput value={miniMapDescription} onChangeText={setMiniMapDescription} placeholder="Description" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+              <Pressable style={[styles.secondaryButton, miniMapActive && styles.typeSelected]} onPress={() => setMiniMapActive((value) => !value)}>
+                <Text style={styles.secondaryText}>Active: {miniMapActive ? "true" : "false"}</Text>
+              </Pressable>
+              <Pressable style={styles.primaryButton} onPress={() => void saveMiniMapForm()} disabled={!miniMapName.trim()}>
+                <Text style={styles.primaryText}>Update Open Mini Map</Text>
+              </Pressable>
+            </AdminCollapsibleSection>
+            <AdminCollapsibleSection
+              title="Player Behavior"
+              summary={`${miniMapBehaviorMode === "scrollable" ? "Scroll Enabled" : "Centered"} / player ${miniMapPlayerAvatarScale || "1"} / marker ${miniMapMarkerScale || "1"}`}
+              isOpen={Boolean(openAdminPanels.miniMapBehavior)}
+              onToggle={() => setOpenAdminPanels((current) => ({ ...current, miniMapBehavior: !current.miniMapBehavior }))}
+            >
               <Text style={styles.copy}>Choose whether players can manually scroll this mini map. Admin editing always remains scrollable.</Text>
               <View style={styles.storyRoutePicker}>
                 {[
@@ -7498,28 +7554,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
               <TextInput value={miniMapEntryToastMessage} onChangeText={setMiniMapEntryToastMessage} placeholder="Entry toast/message optional" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
               <TextInput value={miniMapEntrySoundUrl} onChangeText={setMiniMapEntrySoundUrl} placeholder="Entry sound URL optional future" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={miniMapEntryVideoUrl} onChangeText={setMiniMapEntryVideoUrl} placeholder="Entry video/cinematic URL optional future" placeholderTextColor={colors.muted} style={styles.input} />
-              <View style={styles.storyRoutePicker}>
-                {[
-                  { label: "Compact", width: "720", height: "520" },
-                  { label: "Normal", width: "900", height: "650" },
-                  { label: "Large", width: "1200", height: "860" },
-                ].map((option) => (
-                  <Pressable key={option.label} style={[styles.routeChip, miniMapEditorWidth === option.width && miniMapEditorHeight === option.height && styles.routeChipActive]} onPress={() => {
-                    setMiniMapEditorWidth(option.width);
-                    setMiniMapEditorHeight(option.height);
-                  }}>
-                    <Text style={styles.routeChipText}>{option.label}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <TextInput value={miniMapDescription} onChangeText={setMiniMapDescription} placeholder="Description" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
-              <Pressable style={[styles.secondaryButton, miniMapActive && styles.typeSelected]} onPress={() => setMiniMapActive((value) => !value)}>
-                <Text style={styles.secondaryText}>Active: {miniMapActive ? "true" : "false"}</Text>
-              </Pressable>
               <Pressable style={styles.primaryButton} onPress={() => void saveMiniMapForm()} disabled={!miniMapName.trim()}>
-                <Text style={styles.primaryText}>Update Open Mini Map</Text>
+                <Text style={styles.primaryText}>Save Player Behavior</Text>
               </Pressable>
-            </View>
+            </AdminCollapsibleSection>
             <AdminCollapsibleSection
               title="Movement Graph"
               summary="Movement markers auto-connect by step number. Manual links are optional special routes."
@@ -7530,16 +7568,16 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                 <Text style={styles.copy}>Movement markers use their Movement Step number. Step 2 connects to any Step 1 or Step 3 marker, but not another Step 2. Use manual links only for one-way gates, shortcuts, loops, or jumps.</Text>
                 <MarkerPicker
                   label="Preview current marker"
-                  markers={adminMiniMapMarkers}
+                  markers={adminMiniMapMovementMarkers}
                   selectedId={adminPreviewMovementMarkerId}
                   onSelect={setAdminPreviewMovementMarkerId}
                 />
                 <View style={styles.modeRow}>
                   <View style={styles.flexInput}>
-                    <MarkerPicker label="Connect from" markers={adminMiniMapMarkers} selectedId={connectionFromMarkerId} onSelect={setConnectionFromMarkerId} />
+                    <MarkerPicker label="Connect from" markers={adminMiniMapMovementMarkers} selectedId={connectionFromMarkerId} onSelect={setConnectionFromMarkerId} />
                   </View>
                   <View style={styles.flexInput}>
-                    <MarkerPicker label="Connect to" markers={adminMiniMapMarkers} selectedId={connectionToMarkerId} onSelect={setConnectionToMarkerId} />
+                    <MarkerPicker label="Connect to" markers={adminMiniMapMovementMarkers} selectedId={connectionToMarkerId} onSelect={setConnectionToMarkerId} />
                   </View>
                 </View>
                 <Pressable style={[styles.secondaryButton, connectionTwoWay && styles.typeSelected]} onPress={() => setConnectionTwoWay((value) => !value)}>
@@ -7550,8 +7588,8 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                 </Pressable>
                 {miniMapMarkerConnections.length === 0 ? <Text style={styles.copy}>No movement connections yet. Create one connection to enable node-style movement in this mini map.</Text> : null}
                 {miniMapMarkerConnections.map((connection) => {
-                  const from = adminMiniMapMarkers.find((marker) => marker.id === connection.from_marker_id);
-                  const to = adminMiniMapMarkers.find((marker) => marker.id === connection.to_marker_id);
+                  const from = adminMiniMapMovementMarkers.find((marker) => marker.id === connection.from_marker_id);
+                  const to = adminMiniMapMovementMarkers.find((marker) => marker.id === connection.to_marker_id);
                   return (
                     <View key={connection.id} style={styles.storyCard}>
                       <Text style={styles.markerName}>{from?.title ?? "Unknown Marker"} {connection.is_two_way ? "<->" : "->"} {to?.title ?? "Unknown Marker"}</Text>
@@ -7566,18 +7604,19 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             </AdminCollapsibleSection>
             <AdminCoordinatePanel clickedPercent={clickedPercent} tapLabel="Tap the mini map" onCopy={() => void copyCoordinates()} />
             <View style={styles.routeList}>
-              <Text style={styles.selectedTitle}>Mini Map Markers</Text>
-              {adminMiniMapMarkers.length === 0 ? <Text style={styles.copy}>No markers created in this mini map yet.</Text> : null}
-              {adminMiniMapMarkers.map((marker) => (
+              <Text style={styles.selectedTitle}>{editorMode === "Movement Grid" ? "Movement Nodes" : "Mini Map Markers"}</Text>
+              {editorMode === "Movement Grid" ? <Text style={styles.copy}>Build clickable movement scenes with step numbers. Same-step nodes do not connect to each other.</Text> : null}
+              {(editorMode === "Movement Grid" ? adminMiniMapMovementMarkers : adminMiniMapContentMarkers).length === 0 ? <Text style={styles.copy}>{editorMode === "Movement Grid" ? "No movement nodes created in this mini map yet." : "No content markers created in this mini map yet."}</Text> : null}
+              {(editorMode === "Movement Grid" ? adminMiniMapMovementMarkers : adminMiniMapContentMarkers).map((marker) => (
                 <View key={marker.id} style={styles.markerTableRow}>
                   <View style={styles.markerTableInfo}>
                     <Text style={styles.markerName}>{marker.title}</Text>
-                    <Text style={styles.copy}>{marker.type} / X {Number(marker.x_percent).toFixed(2)}% / Y {Number(marker.y_percent).toFixed(2)}%</Text>
+                    <Text style={styles.copy}>{marker.type}{marker.type === "Movement" ? ` / Step ${getMovementMarkerStep(marker) || "-"}` : ""} / X {Number(marker.x_percent).toFixed(2)}% / Y {Number(marker.y_percent).toFixed(2)}%</Text>
                     <Text style={styles.debugLine}>{marker.content_scope === "universal" ? "Universal marker" : `Season ${marker.season_number} / Chapter ${marker.chapter_number}`}</Text>
                     {marker.linked_route_id ? <Text style={styles.debugLine}>Linked path: {getRouteName(routes, marker.linked_route_id)} / Starts on accept: {marker.starts_route_on_accept ? "Yes" : "No"}</Text> : null}
                   </View>
                   <View style={styles.markerTableActions}>
-                    <Pressable style={styles.secondaryButtonFlex} onPress={() => { setAdminSection("Mini Maps"); setEditorMode("Marker"); void selectMarker(marker); }}>
+                    <Pressable style={styles.secondaryButtonFlex} onPress={() => { setAdminSection("Mini Maps"); setEditorMode(marker.type === "Movement" ? "Movement Grid" : "Marker"); void selectMarker(marker); }}>
                       <Text style={styles.secondaryText}>Edit</Text>
                     </Pressable>
                     <Pressable style={styles.secondaryButtonFlex} onPress={() => void previewMarker(marker)}>
@@ -7594,7 +7633,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
               ))}
             </View>
             <WalkingPathAdminPanel
-              title="Mini Map Walking Paths"
+              title="Mini Map Tools"
               emptyText="No walking paths created in this mini map yet."
               routes={adminMiniMapRoutes}
               selectedRouteId={route.id}
@@ -7611,7 +7650,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             />
             {editorMode === "Marker" ? renderReuseStoryMarkerPanel() : null}
             {editorMode === "Marker" ? <MiniMapMarkerAdminForm
-              activeSectionMarkerTypes={miniMapMarkerTypes}
+              activeSectionMarkerTypes={miniMapContentMarkerTypes}
               legendItems={adminLegendItems}
               onApplyLegendStyle={applyLegendStyleToMarker}
               markerScopeEditor={renderMarkerChapterScopeEditor()}
@@ -7773,7 +7812,175 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
               onRemoveArenaBattleSlot={removeSelectedArenaBattleSlot}
               onMessage={setAdminMessage}
               renderMarkerDialogueEditor={(marker) => renderBranchingDialogueEditor(marker)}
-            /> : (
+            /> : editorMode === "Movement Grid" ? (
+              <MiniMapMarkerAdminForm
+                activeSectionMarkerTypes={miniMapMovementMarkerTypes}
+                legendItems={adminLegendItems}
+                onApplyLegendStyle={applyLegendStyleToMarker}
+                markerScopeEditor={renderMarkerChapterScopeEditor()}
+                draftType={draftType === "Movement" ? draftType : "Movement"}
+                setDraftType={() => setDraftType("Movement")}
+                draftTitle={draftTitle}
+                setDraftTitle={setDraftTitle}
+                draftDescription={draftDescription}
+                setDraftDescription={setDraftDescription}
+                markerSceneBackground={markerSceneBackground}
+                setMarkerSceneBackground={setMarkerSceneBackground}
+                markerNpcImage={markerNpcImage}
+                setMarkerNpcImage={setMarkerNpcImage}
+                markerJournalTitle={markerJournalTitle}
+                setMarkerJournalTitle={setMarkerJournalTitle}
+                markerJournalBody={markerJournalBody}
+                setMarkerJournalBody={setMarkerJournalBody}
+                markerJournalImageUrl={markerJournalImageUrl}
+                setMarkerJournalImageUrl={setMarkerJournalImageUrl}
+                markerJournalSortOrder={markerJournalSortOrder}
+                setMarkerJournalSortOrder={setMarkerJournalSortOrder}
+                markerStoryDeckId={markerStoryDeckId}
+                setMarkerStoryDeckId={setMarkerStoryDeckId}
+                storyDecks={storyDecks}
+                selectedSeason={selectedSeason}
+                selectedChapter={selectedChapter}
+                markerIconLabel={markerIconLabel}
+                setMarkerIconLabel={setMarkerIconLabel}
+                markerIconImage={markerIconImage}
+                setMarkerIconImage={setMarkerIconImage}
+                markerIconColor={markerIconColor}
+                setMarkerIconColor={setMarkerIconColor}
+                markerSize={markerSize}
+                setMarkerSize={setMarkerSize}
+                markerShopImage={markerShopImage}
+                setMarkerShopImage={setMarkerShopImage}
+                markerShopBackground={markerShopBackground}
+                setMarkerShopBackground={setMarkerShopBackground}
+                markerInteractionRadius={markerInteractionRadius}
+                setMarkerInteractionRadius={setMarkerInteractionRadius}
+                markerInteractable={markerInteractable}
+                setMarkerInteractable={setMarkerInteractable}
+                markerInitiallyUnlocked={markerInitiallyUnlocked}
+                setMarkerInitiallyUnlocked={setMarkerInitiallyUnlocked}
+                markerLockType={markerLockType}
+                setMarkerLockType={setMarkerLockType}
+                markerLockMessage={markerLockMessage}
+                setMarkerLockMessage={setMarkerLockMessage}
+                markerAccessRule={markerAccessRule}
+                setMarkerAccessRule={setMarkerAccessRule}
+                markerRequiredItemId={markerRequiredItemId}
+                setMarkerRequiredItemId={setMarkerRequiredItemId}
+                markerRequiredItemQuantity={markerRequiredItemQuantity}
+                setMarkerRequiredItemQuantity={setMarkerRequiredItemQuantity}
+                markerAccessHint={markerAccessHint}
+                setMarkerAccessHint={setMarkerAccessHint}
+                markerQuestTitle={markerQuestTitle}
+                setMarkerQuestTitle={setMarkerQuestTitle}
+                markerQuestDialogue={markerQuestDialogue}
+                setMarkerQuestDialogue={setMarkerQuestDialogue}
+                markerQuestImage={markerQuestImage}
+                setMarkerQuestImage={setMarkerQuestImage}
+                markerRewardXp={markerRewardXp}
+                setMarkerRewardXp={setMarkerRewardXp}
+                markerRewardGold={markerRewardGold}
+                setMarkerRewardGold={setMarkerRewardGold}
+                markerRewardItemId={markerRewardItemId}
+                setMarkerRewardItemId={setMarkerRewardItemId}
+                markerRewardQuantity={markerRewardQuantity}
+                setMarkerRewardQuantity={setMarkerRewardQuantity}
+                markerRewardFullHeal={markerRewardFullHeal}
+                setMarkerRewardFullHeal={setMarkerRewardFullHeal}
+                markerRewardTiming={markerRewardTiming}
+                setMarkerRewardTiming={setMarkerRewardTiming}
+                markerRepeatable={markerRepeatable}
+                setMarkerRepeatable={setMarkerRepeatable}
+                markerRewardOnce={markerRewardOnce}
+                setMarkerRewardOnce={setMarkerRewardOnce}
+                markerLinkedRouteId={markerLinkedRouteId}
+                setMarkerLinkedRouteId={setMarkerLinkedRouteId}
+                markerLinkedRouteStartDirection={markerLinkedRouteStartDirection}
+                setMarkerLinkedRouteStartDirection={setMarkerLinkedRouteStartDirection}
+                markerStartsRouteOnAccept={markerStartsRouteOnAccept}
+                setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
+                markerVisibleStoryFlagKey={markerVisibleStoryFlagKey}
+                setMarkerVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
+                markerVisibleStoryFlagValue={markerVisibleStoryFlagValue}
+                setMarkerVisibleStoryFlagValue={setMarkerVisibleStoryFlagValue}
+                knownStoryFlagKeys={knownStoryFlagKeys}
+                markerStoryOrder={markerStoryOrder}
+                setMarkerStoryOrder={setMarkerStoryOrder}
+                markerUnlockAfterId={markerUnlockAfterId}
+                setMarkerUnlockAfterId={setMarkerUnlockAfterId}
+                markerHideWhenCompleted={markerHideWhenCompleted}
+                setMarkerHideWhenCompleted={setMarkerHideWhenCompleted}
+                markerRequireAllLinkedRoutes={markerRequireAllLinkedRoutes}
+                setMarkerRequireAllLinkedRoutes={setMarkerRequireAllLinkedRoutes}
+                markerRouteCompletionCondition={markerRouteCompletionCondition}
+                setMarkerRouteCompletionCondition={setMarkerRouteCompletionCondition}
+                markerDialogueEventId={markerDialogueEventId}
+                setMarkerDialogueEventId={setMarkerDialogueEventId}
+                markerBattleEventId={markerBattleEventId}
+                setMarkerBattleEventId={setMarkerBattleEventId}
+                markerEnemyId={markerEnemyId}
+                setMarkerEnemyId={setMarkerEnemyId}
+                markerNpcId={markerNpcId}
+                setMarkerNpcId={setMarkerNpcId}
+                reusableMapEvents={reusableMapEvents}
+                enemyDefinitions={enemyDefinitions}
+                npcDefinitions={npcDefinitions}
+                routes={activeRouteScopeRoutes}
+                continuationRoutes={markerContinuationRoutes}
+                storyRoutes={adminRoutes}
+                allMarkers={markers}
+                selectedMarkerRouteIds={selectedMarkerRouteIds}
+                selectedMarkerRouteDirections={selectedMarkerRouteDirections}
+                toggleSignPostRoute={toggleSignPostRoute}
+                setSignPostRouteDirection={setSignPostRouteDirection}
+                worldMarkers={adminWorldMarkers}
+                storyScopeMarkers={adminStoryMarkers}
+                miniMaps={adminMiniMaps}
+                markerExitTargetType={markerExitTargetType}
+                setMarkerExitTargetType={setMarkerExitTargetType}
+                markerExitTargetMarkerId={markerExitTargetMarkerId}
+                setMarkerExitTargetMarkerId={setMarkerExitTargetMarkerId}
+                markerExitTargetMiniMapId={markerExitTargetMiniMapId}
+                setMarkerExitTargetMiniMapId={setMarkerExitTargetMiniMapId}
+                markerExitTargetSpawnMarkerId={markerExitTargetSpawnMarkerId}
+                setMarkerExitTargetSpawnMarkerId={setMarkerExitTargetSpawnMarkerId}
+                itemDefinitions={itemDefinitions}
+                markerMarketItems={[]}
+                marketItemId={marketItemId}
+                setMarketItemId={setMarketItemId}
+                marketBuyPrice={marketBuyPrice}
+                setMarketBuyPrice={setMarketBuyPrice}
+                marketSellPrice={marketSellPrice}
+                setMarketSellPrice={setMarketSellPrice}
+                marketStock={marketStock}
+                setMarketStock={setMarketStock}
+                marketUnlimited={marketUnlimited}
+                setMarketUnlimited={setMarketUnlimited}
+                marketListingMode={marketListingMode}
+                setMarketListingMode={setMarketListingMode}
+                selectedMarker={selectedMarker?.type === "Movement" ? selectedMarker : null}
+                clickedPercent={clickedPercent}
+                onAddMarker={() => {
+                  setDraftType("Movement");
+                  void addMarker();
+                }}
+                onSaveSelectedMarker={() => void saveSelectedMarkerSettings()}
+                onSaveMarketItem={() => undefined}
+                onRemoveMarketItem={() => undefined}
+                selectedDialogueMarkerId={selectedDialogueMarkerId}
+                onLoadMarkerDialogue={() => undefined}
+                onEditBattleEvent={editMapEvent}
+                battlefieldCombatants={[]}
+                onSaveMarkerBattlefieldCombatant={saveMarkerBattlefieldCombatant}
+                onRemoveMarkerBattlefieldCombatant={removeMarkerBattlefieldCombatant}
+                selectedArena={null}
+                arenaBattleSlots={[]}
+                onSaveArenaBattleSlot={saveSelectedArenaBattleSlot}
+                onRemoveArenaBattleSlot={removeSelectedArenaBattleSlot}
+                onMessage={setAdminMessage}
+                renderMarkerDialogueEditor={() => null}
+              />
+            ) : (
               <View style={styles.pathEditor}>
                 <Text style={styles.selectedTitle}>Create / Edit Mini Map Walking Path</Text>
                 <Text style={styles.copy}>Click the mini map image above to add percentage path points. These trails can be linked to Sign Post markers in this mini map.</Text>
@@ -8195,7 +8402,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
               emptyText="No walking paths created yet."
               routes={adminWorldRoutes}
               selectedRouteId={route.id}
-              modes={editorModes}
+              modes={walkingPathEditorModes}
               activeMode={editorMode}
               onSelectMode={setEditorMode}
               onSelectRoute={(item) => void selectRoute(item, true)}

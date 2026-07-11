@@ -13,13 +13,14 @@ export function MarkerIcon({ marker, compact = false, mini = false }: { marker: 
   const iconUri = resolveMapImageUri(marker.icon_image_url);
   const iconText = (marker.icon_label?.trim() || getDefaultMarkerIconLabel(marker.type)).slice(0, 3).toUpperCase();
   const iconColor = marker.icon_color?.trim() || getDefaultMarkerIconColor(marker.type);
-  const iconStyle = mini ? styles.miniMapMarkerIcon : compact ? styles.legendIcon : styles.markerIcon;
+  const isMovement = marker.type === "Movement";
+  const iconStyle = isMovement ? styles.movementMarkerIcon : mini ? styles.miniMapMarkerIcon : compact ? styles.legendIcon : styles.markerIcon;
   const imageStyle = mini ? styles.miniMapMarkerIconImage : compact ? styles.legendIconImage : styles.markerIconImage;
-  const textStyle = mini ? styles.miniMapMarkerIconText : compact ? styles.legendIconText : styles.markerIconText;
+  const textStyle = isMovement ? styles.movementMarkerIconText : mini ? styles.miniMapMarkerIconText : compact ? styles.legendIconText : styles.markerIconText;
   const sizeScale = compact ? 1 : Math.max(0.5, Math.min(2.2, Number(marker.marker_size ?? 100) / 100 || 1));
-  const baseIconSize = mini ? 18 : compact ? 34 : 25;
+  const baseIconSize = isMovement ? 14 : mini ? 18 : compact ? 34 : 25;
   const iconSize = Math.round(baseIconSize * sizeScale);
-  const baseFontSize = mini ? 6 : compact ? 11 : 8;
+  const baseFontSize = isMovement ? 5 : mini ? 6 : compact ? 11 : 8;
 
   return (
     <View style={[iconStyle, { borderColor: iconColor, width: iconSize, height: iconSize, borderRadius: iconSize / 2 } as object]}>
@@ -124,6 +125,23 @@ const styles = StyleSheet.create({
   },
   miniMapMarkerIconText: {
     fontSize: 6,
+    fontWeight: "900",
+  },
+  movementMarkerIcon: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    backgroundColor: "rgba(54, 184, 242, 0.28)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    shadowColor: colors.blue,
+    shadowOpacity: 0.65,
+    shadowRadius: 7,
+  },
+  movementMarkerIconText: {
+    fontSize: 5,
     fontWeight: "900",
   },
   legendIcon: {
