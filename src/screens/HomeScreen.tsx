@@ -243,7 +243,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   });
   const currentHealth = getCurrentHealth(character, resources);
   const isAdmin = role === "admin";
-  const visibleHomeTabs = isAdmin ? homeTabs : homeTabs.filter((tab) => tab !== "Abilities" && tab !== "Inventory");
+  const visibleHomeTabs = isAdmin ? homeTabs : [];
   const playerAbilityCounts = useMemo(() => getAbilityTypeCounts(unlockedAbilities), [unlockedAbilities]);
   const filteredPlayerAbilities = useMemo(() => unlockedAbilities.filter((ability) => getPlayerAbilityType(ability) === playerAbilityTab), [unlockedAbilities, playerAbilityTab]);
   const selectedInventoryItem = useMemo(() => inventoryItems.find((entry) => entry.id === selectedInventoryItemId) ?? null, [inventoryItems, selectedInventoryItemId]);
@@ -305,6 +305,12 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   useEffect(() => {
     setDistanceWalkedMeters(Number(character.total_distance_walked_meters ?? 0));
   }, [character.total_distance_walked_meters]);
+
+  useEffect(() => {
+    if (!isAdmin && (activeTab === "Abilities" || activeTab === "Inventory")) {
+      setActiveTab("Overview");
+    }
+  }, [activeTab, isAdmin]);
 
   async function loadProgressionSettings() {
     try {
@@ -953,20 +959,22 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
         <ResourceBar label="Mana" value={resources.maxMagicka} max={resources.maxMagicka} color={colors.blue} icon="◉" />
       </Frame>
 
-      <View style={styles.tabs}>
-        {visibleHomeTabs.map((tab) => (
-          <Pressable key={tab} style={[styles.tab, activeTab === tab && styles.activeTab]} onPress={() => setActiveTab(tab)}>
-            <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
-          </Pressable>
-        ))}
-      </View>
+      {visibleHomeTabs.length > 0 ? (
+        <View style={styles.tabs}>
+          {visibleHomeTabs.map((tab) => (
+            <Pressable key={tab} style={[styles.tab, activeTab === tab && styles.activeTab]} onPress={() => setActiveTab(tab)}>
+              <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{tab}</Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
 
       <Frame style={styles.card}>
         {activeTab === "Overview" ? (
           <View style={styles.dashboardSection}>
             <View style={styles.quickGrid}>
-              <QuickTile icon="▣" label="Inventory" selected onPress={() => setActiveSheet("inventory")} />
-              <QuickTile icon="⚔" label="Abilities" onPress={() => setActiveSheet("abilities")} />
+              <QuickTile icon="▣" label="Inventory" selected={activeSheet === "inventory"} onPress={() => setActiveSheet("inventory")} />
+              <QuickTile icon="⚔" label="Abilities" selected={activeSheet === "abilities"} onPress={() => setActiveSheet("abilities")} />
               <QuickTile icon="☷" label="Attributes" onPress={() => setActiveTab("Attributes")} />
               <QuickTile icon="✎" label="Battle Stats" onPress={() => setActiveTab("Battle Stats")} />
             </View>
@@ -1060,24 +1068,26 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
           </>
         ) : activeTab === "Abilities" ? (
           <View style={styles.section}>
-            <PlayerAbilitiesPanel
-              abilities={unlockedAbilities}
-              equippedAbilities={equippedAbilities}
-              selectedAbility={selectedPlayerAbility}
-              selectedAbilityKey={selectedAbilityKey}
-              activeTab={playerAbilityTab}
-              currentHealth={currentHealth}
-              maxHealth={resources.maxHp}
-              message={abilityMessage}
-              onSelectTab={setPlayerAbilityTab}
-              onSelectAbility={(ability) => {
-                setSelectedPlayerAbility(ability);
-                setSelectedAbilityKey(ability?.key ?? null);
-              }}
-              onEquipAbility={(slot) => void equipSelectedAbility(slot)}
-              onClearSlot={(slot) => void clearSlot(slot)}
-              onUseHeal={(ability) => void useOutsideBattleAbility(ability)}
-            />
+            {!isAdmin ? (
+              <PlayerAbilitiesPanel
+                abilities={unlockedAbilities}
+                equippedAbilities={equippedAbilities}
+                selectedAbility={selectedPlayerAbility}
+                selectedAbilityKey={selectedAbilityKey}
+                activeTab={playerAbilityTab}
+                currentHealth={currentHealth}
+                maxHealth={resources.maxHp}
+                message={abilityMessage}
+                onSelectTab={setPlayerAbilityTab}
+                onSelectAbility={(ability) => {
+                  setSelectedPlayerAbility(ability);
+                  setSelectedAbilityKey(ability?.key ?? null);
+                }}
+                onEquipAbility={(slot) => void equipSelectedAbility(slot)}
+                onClearSlot={(slot) => void clearSlot(slot)}
+                onUseHeal={(ability) => void useOutsideBattleAbility(ability)}
+              />
+            ) : null}
             {isAdmin ? (
               <View style={styles.adminBuilder}>
                 <AdminContentScopeBar
@@ -1516,24 +1526,26 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
           </View>
         ) : activeTab === "Inventory" ? (
           <View style={styles.section}>
-            <PlayerInventoryPanel
-              items={inventoryItems}
-              equippedItems={equippedItems}
-              selectedItem={selectedInventoryItem}
-              activeTab={inventoryCategory}
-              totalWeight={totalInventoryWeight}
-              carryCapacity={carryCapacity}
-              currentHealth={currentHealth}
-              maxHealth={resources.maxHp}
-              message={inventoryMessage}
-              onSelectTab={setInventoryCategory}
-              onSelectItem={setSelectedInventoryItemId}
-              onEquipItem={(entry, slot) => void equipItem(entry, slot)}
-              onUnequipSlot={(slot) => void unequipSlot(slot)}
-              onUseItem={(entry) => void useOutsideBattleItem(entry)}
-              onUseScroll={(entry) => void useAbilityScroll(entry)}
-              onDropItem={(entry) => void dropItem(entry)}
-            />
+            {!isAdmin ? (
+              <PlayerInventoryPanel
+                items={inventoryItems}
+                equippedItems={equippedItems}
+                selectedItem={selectedInventoryItem}
+                activeTab={inventoryCategory}
+                totalWeight={totalInventoryWeight}
+                carryCapacity={carryCapacity}
+                currentHealth={currentHealth}
+                maxHealth={resources.maxHp}
+                message={inventoryMessage}
+                onSelectTab={setInventoryCategory}
+                onSelectItem={setSelectedInventoryItemId}
+                onEquipItem={(entry, slot) => void equipItem(entry, slot)}
+                onUnequipSlot={(slot) => void unequipSlot(slot)}
+                onUseItem={(entry) => void useOutsideBattleItem(entry)}
+                onUseScroll={(entry) => void useAbilityScroll(entry)}
+                onDropItem={(entry) => void dropItem(entry)}
+              />
+            ) : null}
             {isAdmin ? (
               <View style={styles.adminBuilder}>
                 <AdminContentScopeBar
