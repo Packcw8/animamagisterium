@@ -2173,7 +2173,7 @@ export async function deleteDialogueNode(nodeId: string) {
   }
 }
 
-export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at" | "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "restore_health" | "restore_stamina" | "restore_mana" | "choice_group_key" | "choice_group_lock_message" | "hide_when_group_locked" | "set_story_flag_key" | "set_story_flag_value" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message"> & Partial<Pick<StoryDialogueChoice, "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "restore_health" | "restore_stamina" | "restore_mana" | "choice_group_key" | "choice_group_lock_message" | "hide_when_group_locked" | "set_story_flag_key" | "set_story_flag_value" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message">>) {
+export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id" | "created_at" | "updated_at" | "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "restore_health" | "restore_stamina" | "restore_mana" | "choice_group_key" | "choice_group_lock_message" | "hide_when_group_locked" | "set_story_flag_key" | "set_story_flag_value" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message" | "travel_target_type" | "travel_target_marker_id" | "travel_target_mini_map_id" | "travel_target_spawn_marker_id"> & Partial<Pick<StoryDialogueChoice, "unlock_marker_id" | "update_notification_title" | "update_notification_body" | "restore_health" | "restore_stamina" | "restore_mana" | "choice_group_key" | "choice_group_lock_message" | "hide_when_group_locked" | "set_story_flag_key" | "set_story_flag_value" | "repeatable" | "hide_after_selected" | "disable_after_selected" | "selected_message" | "travel_target_type" | "travel_target_marker_id" | "travel_target_mini_map_id" | "travel_target_spawn_marker_id">>) {
   const values = {
     ...input,
     consume_gold: input.consume_gold ?? 0,
@@ -2189,6 +2189,10 @@ export async function createDialogueChoice(input: Omit<StoryDialogueChoice, "id"
     hide_after_selected: input.hide_after_selected ?? false,
     disable_after_selected: input.disable_after_selected ?? false,
     selected_message: input.selected_message ?? null,
+    travel_target_type: input.travel_target_type ?? null,
+    travel_target_marker_id: input.travel_target_marker_id ?? null,
+    travel_target_mini_map_id: input.travel_target_mini_map_id ?? null,
+    travel_target_spawn_marker_id: input.travel_target_spawn_marker_id ?? null,
   };
   const { data, error } = await supabase.from("story_dialogue_choices").insert(values).select().single();
 

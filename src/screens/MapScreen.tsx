@@ -628,6 +628,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [choiceRewardItemId, setChoiceRewardItemId] = useState<string | null>(null);
   const [choiceRewardItemQuantity, setChoiceRewardItemQuantity] = useState("1");
   const [choiceUnlockMarkerId, setChoiceUnlockMarkerId] = useState<string | null>(null);
+  const [choiceTravelTargetType, setChoiceTravelTargetType] = useState<MapMarker["exit_target_type"]>("world_marker");
+  const [choiceTravelTargetMarkerId, setChoiceTravelTargetMarkerId] = useState<string | null>(null);
+  const [choiceTravelTargetMiniMapId, setChoiceTravelTargetMiniMapId] = useState<string | null>(null);
+  const [choiceTravelTargetSpawnMarkerId, setChoiceTravelTargetSpawnMarkerId] = useState<string | null>(null);
   const [choiceUpdateTitle, setChoiceUpdateTitle] = useState("");
   const [choiceUpdateBody, setChoiceUpdateBody] = useState("");
   const [choiceRestoreHealth, setChoiceRestoreHealth] = useState(false);
@@ -4011,26 +4015,72 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   }
 
   async function openExitMarker(marker: MapMarker) {
-    if (marker.exit_target_type === "mini_map" && marker.linked_mini_map_id) {
-      const nextMiniMap = miniMaps.find((item) => item.id === marker.linked_mini_map_id);
-      if (nextMiniMap) {
-        openMiniMap(nextMiniMap, { spawnPosition: getExitTargetMiniMapSpawnPosition(marker, nextMiniMap.id) });
-        await maybeStartMarkerContinuationRoute(marker);
-        return;
-      }
-    }
-
-    if (marker.exit_target_type === "world_marker" && marker.exit_target_marker_id) {
-      const worldMarker = markers.find((item) => item.id === marker.exit_target_marker_id);
-      if (worldMarker) {
-        await leaveMiniMap({ x: Number(worldMarker.x_percent), y: Number(worldMarker.y_percent) });
-        await maybeStartMarkerContinuationRoute(marker);
-        return;
-      }
-    }
-
-    await leaveMiniMap(undefined, { forceExit: true });
+    const didTravel = await travelToConfiguredTarget({
+      targetType: marker.exit_target_type,
+      targetMarkerId: marker.exit_target_marker_id,
+      targetMiniMapId: marker.linked_mini_map_id,
+      targetSpawnMarkerId: marker.exit_target_spawn_marker_id,
+      fallbackToWorldExit: true,
+    });
     await maybeStartMarkerContinuationRoute(marker);
+
+    if (!didTravel) {
+      await leaveMiniMap(undefined, { forceExit: true });
+    }
+  }
+
+  async function travelToConfiguredTarget({
+    targetType,
+    targetMarkerId,
+    targetMiniMapId,
+    targetSpawnMarkerId,
+    fallbackToWorldExit = false,
+  }: {
+    targetType?: MapMarker["exit_target_type"] | null;
+    targetMarkerId?: string | null;
+    targetMiniMapId?: string | null;
+    targetSpawnMarkerId?: string | null;
+    fallbackToWorldExit?: boolean;
+  }) {
+    if (targetType === "mini_map" && targetMiniMapId) {
+      const nextMiniMap = miniMaps.find((item) => item.id === targetMiniMapId);
+      if (nextMiniMap) {
+        const spawnMarker = targetSpawnMarkerId
+          ? markers.find((item) => item.id === targetSpawnMarkerId && item.mini_map_id === nextMiniMap.id && item.type === "Player Spawn")
+          : null;
+        openMiniMap(nextMiniMap, {
+          spawnPosition: spawnMarker
+            ? { x: Number(spawnMarker.x_percent), y: Number(spawnMarker.y_percent) }
+            : getMiniMapSpawnPosition(nextMiniMap.id),
+        });
+        return true;
+      }
+    }
+
+    if (targetType === "world_marker" && targetMarkerId) {
+      const worldMarker = markers.find((item) => item.id === targetMarkerId);
+      if (worldMarker) {
+        const nextPosition = { x: Number(worldMarker.x_percent), y: Number(worldMarker.y_percent) };
+        if (activeMiniMap) {
+          await leaveMiniMap(nextPosition);
+        } else {
+          setSavedPlayerPosition(nextPosition);
+          await savePlayerMapState({
+            active_mini_map_id: null,
+            current_x_percent: nextPosition.x,
+            current_y_percent: nextPosition.y,
+          });
+        }
+        return true;
+      }
+    }
+
+    if (fallbackToWorldExit && activeMiniMap) {
+      await leaveMiniMap(undefined, { forceExit: true });
+      return true;
+    }
+
+    return false;
   }
 
   async function enterAreaMarker(marker: MapMarker) {
@@ -5076,6 +5126,31 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       return;
     }
 
+    if (choice.action === "travel_to_marker") {
+      await recordThisChoice();
+
+      if (adminPreviewMode) {
+        setDialogueLog((current) => ["Admin preview: would move the player to the configured travel target.", ...current].slice(0, 4));
+        return;
+      }
+
+      const didTravel = await travelToConfiguredTarget({
+        targetType: choice.travel_target_type,
+        targetMarkerId: choice.travel_target_marker_id,
+        targetMiniMapId: choice.travel_target_mini_map_id,
+        targetSpawnMarkerId: choice.travel_target_spawn_marker_id,
+      });
+
+      if (!didTravel) {
+        setDialogueLog((current) => ["This choice has no valid travel target yet.", ...current].slice(0, 4));
+        return;
+      }
+
+      setActiveEvent(null);
+      setActiveMarkerEventId(null);
+      return;
+    }
+
     if (adminPreviewMode) {
       closeAdminPreview();
       return;
@@ -5793,6 +5868,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setChoiceAction(choice.action);
     setChoiceNextNodeId(choice.next_node_id);
     setChoiceBattleEventId(choice.battle_event_id);
+    setChoiceTravelTargetType(choice.travel_target_type ?? "world_marker");
+    setChoiceTravelTargetMarkerId(choice.travel_target_marker_id ?? null);
+    setChoiceTravelTargetMiniMapId(choice.travel_target_mini_map_id ?? null);
+    setChoiceTravelTargetSpawnMarkerId(choice.travel_target_spawn_marker_id ?? null);
     setChoiceRewardXp(String(choice.reward_xp));
     setChoiceRewardGold(String(choice.reward_gold ?? 0));
     setChoiceRewardItem(choice.reward_item ?? "");
@@ -5845,6 +5924,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setChoiceAction("go_to_node");
     setChoiceNextNodeId(null);
     setChoiceBattleEventId(null);
+    setChoiceTravelTargetType("world_marker");
+    setChoiceTravelTargetMarkerId(null);
+    setChoiceTravelTargetMiniMapId(null);
+    setChoiceTravelTargetSpawnMarkerId(null);
     setChoiceBattleTitle("");
     setEventBackgroundImage("");
     setChoiceRewardXp("0");
@@ -5920,6 +6003,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         action: choiceAction,
         next_node_id: choiceAction === "go_to_node" || choiceAction === "give_reward" ? choiceNextNodeId : null,
         battle_event_id: choiceAction === "start_battle" ? choiceBattleEventId : null,
+        travel_target_type: choiceAction === "travel_to_marker" ? choiceTravelTargetType : null,
+        travel_target_marker_id: choiceAction === "travel_to_marker" && choiceTravelTargetType === "world_marker" ? choiceTravelTargetMarkerId : null,
+        travel_target_mini_map_id: choiceAction === "travel_to_marker" && choiceTravelTargetType === "mini_map" ? choiceTravelTargetMiniMapId : null,
+        travel_target_spawn_marker_id: choiceAction === "travel_to_marker" && choiceTravelTargetType === "mini_map" ? choiceTravelTargetSpawnMarkerId : null,
         reward_xp: Number(choiceRewardXp) || 0,
         reward_gold: Number(choiceRewardGold) || 0,
         reward_item: choiceRewardItem.trim() || null,
@@ -6423,6 +6510,11 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                   storyFlagKey={choiceStoryFlagKey}
                   storyFlagValue={choiceStoryFlagValue}
                   storyFlagKeys={knownStoryFlagKeys}
+                  travelTargetType={choiceTravelTargetType}
+                  travelTargetMarkerId={choiceTravelTargetMarkerId}
+                  travelTargetMiniMapId={choiceTravelTargetMiniMapId}
+                  travelTargetSpawnMarkerId={choiceTravelTargetSpawnMarkerId}
+                  miniMaps={miniMaps}
                   linkedBattleBuilder={choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
                   onChangeRewardXp={setChoiceRewardXp}
                   onChangeRewardGold={setChoiceRewardGold}
@@ -6437,6 +6529,13 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                   onToggleRestoreMana={() => setChoiceRestoreMana((value) => !value)}
                   onChangeStoryFlagKey={setChoiceStoryFlagKey}
                   onToggleStoryFlagValue={() => setChoiceStoryFlagValue((value) => !value)}
+                  onChangeTravelTargetType={setChoiceTravelTargetType}
+                  onChangeTravelTargetMarkerId={setChoiceTravelTargetMarkerId}
+                  onChangeTravelTargetMiniMapId={(miniMapId) => {
+                    setChoiceTravelTargetMiniMapId(miniMapId);
+                    setChoiceTravelTargetSpawnMarkerId(null);
+                  }}
+                  onChangeTravelTargetSpawnMarkerId={setChoiceTravelTargetSpawnMarkerId}
                 />
                 <StoryDeckPicker
                   decks={storyDecks}
@@ -8236,7 +8335,12 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                     <Text style={styles.primaryText}>Save Selected Marker Settings</Text>
                   </Pressable>
                   {clickedPercent ? (
-                    <Text style={styles.debugLine}>Save will also move this marker to X {clickedPercent.x}% / Y {clickedPercent.y}%.</Text>
+                    <>
+                      <Pressable style={styles.secondaryButton} onPress={() => void saveSelectedMarkerSettings()}>
+                        <Text style={styles.secondaryText}>Move Marker To Clicked Spot</Text>
+                      </Pressable>
+                      <Text style={styles.debugLine}>Clicked spot: X {clickedPercent.x}% / Y {clickedPercent.y}%. This also saves settings above.</Text>
+                    </>
                   ) : (
                     <Text style={styles.copy}>Edits above will save to the selected marker. Tap the map only if you want to move it.</Text>
                   )}
@@ -9451,7 +9555,12 @@ function MiniMapMarkerAdminForm({
               <Text style={styles.primaryText}>Save Marker Details</Text>
             </Pressable>
             {clickedPercent ? (
-              <Text style={styles.debugLine}>Save will also move this marker to X {clickedPercent.x}% / Y {clickedPercent.y}%.</Text>
+              <>
+                <Pressable style={styles.secondaryButton} onPress={onSaveSelectedMarker}>
+                  <Text style={styles.secondaryText}>Move Marker To Clicked Spot</Text>
+                </Pressable>
+                <Text style={styles.debugLine}>Clicked spot: X {clickedPercent.x}% / Y {clickedPercent.y}%. This also saves details from the sections above.</Text>
+              </>
             ) : (
               <Text style={styles.copy}>Edits above will save to the selected marker. Tap the mini map only if you want to move it.</Text>
             )}

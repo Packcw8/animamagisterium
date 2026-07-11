@@ -48,7 +48,7 @@ type Props = {
   onDeleteChoice: (choiceId: string) => void;
 };
 
-const choiceActions: StoryDialogueChoice["action"][] = ["go_to_node", "start_battle", "start_quest", "complete_event", "unlock_next_event", "give_reward", "end_conversation", "return_to_map"];
+const choiceActions: StoryDialogueChoice["action"][] = ["go_to_node", "start_battle", "start_quest", "complete_event", "unlock_next_event", "give_reward", "travel_to_marker", "end_conversation", "return_to_map"];
 
 export function DialogueChoiceEditor({
   nodes,

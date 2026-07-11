@@ -745,10 +745,14 @@ export type Tables = {
     node_id: string;
     button_text: string;
     player_dialogue_text: string | null;
-    action: "go_to_node" | "start_battle" | "start_quest" | "complete_event" | "unlock_next_event" | "give_reward" | "end_conversation" | "return_to_map";
+    action: "go_to_node" | "start_battle" | "start_quest" | "complete_event" | "unlock_next_event" | "give_reward" | "end_conversation" | "return_to_map" | "travel_to_marker";
     next_node_id: string | null;
     battle_event_id: string | null;
     story_deck_id?: string | null;
+    travel_target_type?: "world_marker" | "mini_map" | null;
+    travel_target_marker_id?: string | null;
+    travel_target_mini_map_id?: string | null;
+    travel_target_spawn_marker_id?: string | null;
     reward_xp: number;
     reward_gold: number;
     reward_item: string | null;

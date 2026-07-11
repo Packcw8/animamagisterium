@@ -1,10 +1,10 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { ReactNode } from "react";
 import { Text, TextInput, View } from "react-native";
-import { ItemPicker } from "../map/MarkerEditorControls";
+import { ExitTargetEditor, ItemPicker } from "../map/MarkerEditorControls";
 import { colors } from "../theme";
 import type { ItemDefinition } from "../../services/inventoryService";
-import type { MapMarker } from "../../services/mapService";
+import type { MapMarker, MiniMap } from "../../services/mapService";
 import { dialogueAdminStyles as styles } from "./dialogueAdminStyles";
 import { StoryFlagPicker } from "./StoryFlagPicker";
 
@@ -26,6 +26,11 @@ type Props = {
   storyFlagKey: string;
   storyFlagValue: boolean;
   storyFlagKeys: string[];
+  travelTargetType: MapMarker["exit_target_type"];
+  travelTargetMarkerId: string | null;
+  travelTargetMiniMapId: string | null;
+  travelTargetSpawnMarkerId: string | null;
+  miniMaps: MiniMap[];
   linkedBattleBuilder: ReactNode;
   onChangeRewardXp: (value: string) => void;
   onChangeRewardGold: (value: string) => void;
@@ -40,6 +45,10 @@ type Props = {
   onToggleRestoreMana: () => void;
   onChangeStoryFlagKey: (value: string) => void;
   onToggleStoryFlagValue: () => void;
+  onChangeTravelTargetType: (value: MapMarker["exit_target_type"]) => void;
+  onChangeTravelTargetMarkerId: (value: string | null) => void;
+  onChangeTravelTargetMiniMapId: (value: string | null) => void;
+  onChangeTravelTargetSpawnMarkerId: (value: string | null) => void;
 };
 
 export function DialogueChoiceEffectEditor({
@@ -60,6 +69,11 @@ export function DialogueChoiceEffectEditor({
   storyFlagKey,
   storyFlagValue,
   storyFlagKeys,
+  travelTargetType,
+  travelTargetMarkerId,
+  travelTargetMiniMapId,
+  travelTargetSpawnMarkerId,
+  miniMaps,
   linkedBattleBuilder,
   onChangeRewardXp,
   onChangeRewardGold,
@@ -74,8 +88,46 @@ export function DialogueChoiceEffectEditor({
   onToggleRestoreMana,
   onChangeStoryFlagKey,
   onToggleStoryFlagValue,
+  onChangeTravelTargetType,
+  onChangeTravelTargetMarkerId,
+  onChangeTravelTargetMiniMapId,
+  onChangeTravelTargetSpawnMarkerId,
 }: Props) {
   const storyFlagEditor = <StoryFlagEffectEditor storyFlagKey={storyFlagKey} storyFlagValue={storyFlagValue} storyFlagKeys={storyFlagKeys} onChangeStoryFlagKey={onChangeStoryFlagKey} onToggleStoryFlagValue={onToggleStoryFlagValue} />;
+
+  if (action === "travel_to_marker") {
+    return (
+      <>
+        <View style={styles.storyEditor}>
+          <Text style={styles.selectedTitle}>Travel Target</Text>
+          <Text style={styles.copy}>Move the player after this choice. Use this for Point of Interest doors, secret passages, shrines, and area transitions.</Text>
+          <ExitTargetEditor
+            targetType={travelTargetType}
+            setTargetType={onChangeTravelTargetType}
+            targetMarkerId={travelTargetMarkerId}
+            setTargetMarkerId={onChangeTravelTargetMarkerId}
+            targetMiniMapId={travelTargetMiniMapId}
+            setTargetMiniMapId={onChangeTravelTargetMiniMapId}
+            targetSpawnMarkerId={travelTargetSpawnMarkerId}
+            setTargetSpawnMarkerId={onChangeTravelTargetSpawnMarkerId}
+            worldMarkers={markers.filter((marker) => !marker.mini_map_id)}
+            miniMaps={miniMaps}
+            spawnMarkers={markers}
+          />
+        </View>
+        <MarkerUnlockEditor
+          markers={markers}
+          selectedId={unlockMarkerId}
+          updateTitle={updateTitle}
+          updateBody={updateBody}
+          onSelect={onChangeUnlockMarkerId}
+          onChangeUpdateTitle={onChangeUpdateTitle}
+          onChangeUpdateBody={onChangeUpdateBody}
+        />
+        {storyFlagEditor}
+      </>
+    );
+  }
 
   if (action === "start_battle") {
     return (

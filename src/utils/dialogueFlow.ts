@@ -114,6 +114,10 @@ export function choiceActionLabel(action: StoryDialogueChoice["action"]) {
     return "End conversation";
   }
 
+  if (action === "travel_to_marker") {
+    return "Travel / move player";
+  }
+
   return "Return to map";
 }
 
@@ -163,6 +167,18 @@ export function getChoiceTargetSummary(choice: StoryDialogueChoice, nodes: Story
 
   if (choice.action === "end_conversation") {
     return { label: "Then end conversation", isBroken: false };
+  }
+
+  if (choice.action === "travel_to_marker") {
+    if (choice.travel_target_type === "mini_map" && choice.travel_target_mini_map_id) {
+      return { label: "Then move player into a mini map", isBroken: false };
+    }
+
+    if (choice.travel_target_type === "world_marker" && choice.travel_target_marker_id) {
+      return { label: "Then move player to a world marker", isBroken: false };
+    }
+
+    return { label: "Broken link: choose a travel target", isBroken: true };
   }
 
   return { label: "Then return to map", isBroken: false };
