@@ -197,6 +197,28 @@ export async function getCompletedStoryDeckViews() {
   return (data ?? []) as PlayerStoryDeckView[];
 }
 
+export async function getStoryDeckView(deckId: string) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+  if (userError || !user) return null;
+
+  const { data, error } = await supabase
+    .from("player_story_deck_views")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("story_deck_id", deckId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[story-decks] view unavailable", error.message);
+    return null;
+  }
+
+  return data as PlayerStoryDeckView | null;
+}
+
 export async function markStoryDeckViewed(deckId: string, characterId?: string | null, completed = true) {
   const {
     data: { user },

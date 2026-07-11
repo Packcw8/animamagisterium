@@ -36,6 +36,7 @@ import { JourneyRecoveryAction } from "../components/map/JourneyRecoveryAction";
 import { PlayerMapTravelHeader } from "../components/map/PlayerMapTravelHeader";
 import { PuzzleAdminPanel } from "../components/map/PuzzleAdminPanel";
 import { PuzzleSceneScreen, type PuzzleTapResult } from "../components/map/PuzzleSceneScreen";
+import { StoryDeckPicker } from "../components/map/StoryDeckPicker";
 import { WorldMapSettingsPanel } from "../components/map/WorldMapSettingsPanel";
 import {
   EnemyPicker,
@@ -60,6 +61,7 @@ import { WalkingPathAdminPanel } from "../components/map/WalkingPathAdminPanel";
 import { ProgressBar } from "../components/ProgressBar";
 import { CharacterAbilitiesSheet } from "../components/player/CharacterAbilitiesSheet";
 import { CharacterInventorySheet } from "../components/player/CharacterInventorySheet";
+import { StoryDeckViewer } from "../components/story/StoryDeckViewer";
 import type { PlayerAbilityTab } from "../components/home/PlayerAbilitiesPanel";
 import type { PlayerInventoryTab } from "../components/home/PlayerInventoryPanel";
 import { Screen } from "../components/Screen";
@@ -74,6 +76,7 @@ import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission } from "../services/pushNotificationService";
 import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAssetUri, type GameToastDefinition, type GameToastTriggerType } from "../services/gameToastService";
+import { getStoryCards, getStoryDeckView, getStoryDecks, markStoryDeckViewed, type StoryCard, type StoryDeck, type StoryDeckTriggerType } from "../services/storyDeckService";
 import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
 import { recoverPlayerMapPosition } from "../services/mapRecoveryService";
 import { claimOpenArena, completeArenaChallenge, getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
@@ -297,6 +300,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [mapEvents, setMapEvents] = useState<MapEvent[]>([]);
   const [allMapEvents, setAllMapEvents] = useState<MapEvent[]>([]);
   const [authoredToasts, setAuthoredToasts] = useState<GameToastDefinition[]>([]);
+  const [storyDecks, setStoryDecks] = useState<StoryDeck[]>([]);
+  const [activeStoryDeck, setActiveStoryDeck] = useState<StoryDeck | null>(null);
+  const [activeStoryCards, setActiveStoryCards] = useState<StoryCard[]>([]);
   const [markerDialogueIds, setMarkerDialogueIds] = useState<Set<string>>(new Set());
   const [completedEventIds, setCompletedEventIds] = useState<Set<string>>(new Set());
   const [completedStoryMarkerIds, setCompletedStoryMarkerIds] = useState<Set<string>>(new Set());
@@ -470,6 +476,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [markerJournalBody, setMarkerJournalBody] = useState("");
   const [markerJournalImageUrl, setMarkerJournalImageUrl] = useState("");
   const [markerJournalSortOrder, setMarkerJournalSortOrder] = useState("0");
+  const [markerStoryDeckId, setMarkerStoryDeckId] = useState<string | null>(null);
   const [markerIconLabel, setMarkerIconLabel] = useState("");
   const [markerIconImage, setMarkerIconImage] = useState("");
   const [markerIconColor, setMarkerIconColor] = useState("");
@@ -545,6 +552,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [routeJournalBody, setRouteJournalBody] = useState("");
   const [routeJournalImageUrl, setRouteJournalImageUrl] = useState("");
   const [routeJournalSortOrder, setRouteJournalSortOrder] = useState("0");
+  const [routeStoryDeckId, setRouteStoryDeckId] = useState<string | null>(null);
   const [routeLockType, setRouteLockType] = useState<MapRoute["lock_type"]>("public");
   const [routeLockMessage, setRouteLockMessage] = useState("");
   const [editingEvent, setEditingEvent] = useState<MapEvent | null>(null);
@@ -565,6 +573,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [enemyAttack, setEnemyAttack] = useState("5");
   const [eventEnemyId, setEventEnemyId] = useState<string | null>(null);
   const [eventNpcId, setEventNpcId] = useState<string | null>(null);
+  const [eventStoryDeckId, setEventStoryDeckId] = useState<string | null>(null);
   const [battleIntro, setBattleIntro] = useState("");
   const [victoryText, setVictoryText] = useState("");
   const [defeatText, setDefeatText] = useState("");
@@ -633,6 +642,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [choiceHideAfterSelected, setChoiceHideAfterSelected] = useState(false);
   const [choiceDisableAfterSelected, setChoiceDisableAfterSelected] = useState(false);
   const [choiceSelectedMessage, setChoiceSelectedMessage] = useState("");
+  const [choiceStoryDeckId, setChoiceStoryDeckId] = useState<string | null>(null);
   const [choiceRequirementType, setChoiceRequirementType] = useState<StoryDialogueChoice["requirement_type"]>("none");
   const [choiceRequirementValue, setChoiceRequirementValue] = useState("");
   const [choiceRequirementQuantity, setChoiceRequirementQuantity] = useState("1");
@@ -1092,6 +1102,61 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
   }
 
+  function findTriggeredStoryDeck(
+    triggerType: StoryDeckTriggerType,
+    options?: { triggerKey?: string | null; seasonNumber?: number | null; chapterNumber?: number | null },
+  ) {
+    const season = Number(options?.seasonNumber ?? selectedSeason) || 1;
+    const chapter = Number(options?.chapterNumber ?? selectedChapter) || 1;
+    const triggerKey = options?.triggerKey?.trim() || null;
+    const candidates = storyDecks
+      .filter((deck) => deck.is_active && deck.is_published && deck.trigger_type === triggerType)
+      .filter((deck) => Number(deck.season_number ?? 1) === season && Number(deck.chapter_number ?? 1) === chapter)
+      .filter((deck) => !deck.trigger_key || (triggerKey && deck.trigger_key === triggerKey))
+      .sort((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0) || left.title.localeCompare(right.title));
+
+    return candidates.find((deck) => Boolean(deck.trigger_key) && triggerKey && deck.trigger_key === triggerKey) ?? candidates.find((deck) => !deck.trigger_key) ?? null;
+  }
+
+  async function openStoryDeck(deck: StoryDeck | null | undefined) {
+    if (!deck || !deck.is_active || !deck.is_published) {
+      return;
+    }
+
+    const existingView = deck.play_once ? await getStoryDeckView(deck.id) : null;
+    if (deck.play_once && existingView?.completed_at) {
+      return;
+    }
+
+    const cards = await getStoryCards(deck.id);
+    if (cards.length === 0) {
+      return;
+    }
+
+    setActiveStoryDeck(deck);
+    setActiveStoryCards(cards);
+  }
+
+  async function playStoryDeckById(deckId?: string | null) {
+    if (!deckId) {
+      return;
+    }
+
+    await openStoryDeck(storyDecks.find((deck) => deck.id === deckId) ?? null);
+  }
+
+  async function playTriggeredStoryDeck(
+    triggerType: StoryDeckTriggerType,
+    options?: { triggerKey?: string | null; seasonNumber?: number | null; chapterNumber?: number | null },
+  ) {
+    await openStoryDeck(findTriggeredStoryDeck(triggerType, options));
+  }
+
+  function closeStoryDeckViewer() {
+    setActiveStoryDeck(null);
+    setActiveStoryCards([]);
+  }
+
   function getNextStoryMarkerAfter(marker: MapMarker | null) {
     if (!marker || !isStoryQuestMarker(marker)) {
       return null;
@@ -1467,6 +1532,11 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         chapterNumber: route.chapter_number,
       });
     }
+    void playTriggeredStoryDeck("completing_path", {
+      triggerKey: route.id,
+      seasonNumber: route.season_number,
+      chapterNumber: route.chapter_number,
+    });
     void grantPathCompletionMarkerReward(route.id);
   }, [allMarkerRouteLinks, authoredToasts, completedEventIds, completedRouteId, currentRouteProgress?.source_marker_id, mapEvents, markers, progressPercent, route, routeDirection, selectedChapter, selectedSeason, storyFlags]);
 
@@ -1493,6 +1563,8 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     if (!nextEvent) {
       return;
     }
+
+    void playStoryDeckById(nextEvent.story_deck_id);
 
     if (nextEvent.event_type === "battle") {
         void startBattle(nextEvent);
@@ -1523,7 +1595,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
 
   async function loadMap() {
     setMapReady(false);
-    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks, loadedToasts] = await Promise.all([
+    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks, loadedToasts, loadedStoryDecks] = await Promise.all([
       getMapRoutes(),
       getMapMarkers(),
       getMiniMaps(),
@@ -1536,6 +1608,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       getMapEvents(),
       getAllMarkerRouteLinks(),
       getGameToasts(),
+      getStoryDecks(),
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const [progressRows, playerMapState, markerUnlocks] = await Promise.all([
@@ -1578,6 +1651,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setAllMapEvents(loadedEvents);
     setAllMarkerRouteLinks(loadedMarkerRouteLinks);
     setAuthoredToasts(loadedToasts);
+    setStoryDecks(loadedStoryDecks);
     const currentMiniMap = currentRoute?.mini_map_id ? loadedMiniMaps.find((item) => item.id === currentRoute.mini_map_id) ?? null : null;
     const worldSpawnPosition = getWorldSpawnPosition(loadedMarkers);
     const savedMiniMap = !currentRoute && playerMapState?.active_mini_map_id ? loadedMiniMaps.find((item) => item.id === playerMapState.active_mini_map_id) ?? null : null;
@@ -1619,6 +1693,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setRouteJournalBody(firstRoute.journal_body ?? "");
     setRouteJournalImageUrl(firstRoute.journal_image_url ?? "");
     setRouteJournalSortOrder(String(firstRoute.journal_sort_order ?? firstRoute.sort_order ?? 0));
+    setRouteStoryDeckId(firstRoute.story_deck_id ?? null);
     setRouteLockType(firstRoute.lock_type ?? "public");
       setRouteLockMessage(firstRoute.lock_message ?? "");
       setPathDraft([]);
@@ -1802,6 +1877,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setRouteJournalBody(nextRoute.journal_body ?? "");
     setRouteJournalImageUrl(nextRoute.journal_image_url ?? "");
     setRouteJournalSortOrder(String(nextRoute.journal_sort_order ?? nextRoute.sort_order ?? 0));
+    setRouteStoryDeckId(nextRoute.story_deck_id ?? null);
     setRouteLockType(nextRoute.lock_type ?? "public");
     setRouteLockMessage(nextRoute.lock_message ?? "");
     setPathDraft([]);
@@ -2209,6 +2285,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       setMarkerJournalBody("");
       setMarkerJournalImageUrl("");
       setMarkerJournalSortOrder("0");
+      setMarkerStoryDeckId(null);
       setMarkerContentScope("chapter");
       setClickedPercent(null);
       setAdminMessage("Marker created.");
@@ -2264,6 +2341,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       markerJournalBody,
       markerJournalImageUrl,
       markerJournalSortOrder,
+      markerStoryDeckId,
       markerInteractionRadius,
       markerInitiallyUnlocked,
       markerRewardXp,
@@ -2309,6 +2387,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setMarkerJournalBody(marker.journal_body ?? "");
     setMarkerJournalImageUrl(marker.journal_image_url ?? "");
     setMarkerJournalSortOrder(String(marker.journal_sort_order ?? marker.story_order ?? 0));
+    setMarkerStoryDeckId(marker.story_deck_id ?? null);
     setMarkerIconLabel(marker.icon_label ?? "");
     setMarkerIconImage(marker.icon_image_url ?? "");
     setMarkerIconColor(marker.icon_color ?? "");
@@ -2350,6 +2429,17 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setMarkerExitTargetSpawnMarkerId((marker.exit_target_type === "mini_map" || marker.type === "Area/Town Entrance") ? marker.exit_target_spawn_marker_id ?? null : null);
     setSelectedMiniMapId(marker.linked_mini_map_id ?? marker.mini_map_id ?? selectedMiniMapId);
     setMarkerPanelMessage(null);
+    if (!isAdmin) {
+      if (marker.story_deck_id) {
+        void playStoryDeckById(marker.story_deck_id);
+      } else {
+        void playTriggeredStoryDeck("marker_interaction", {
+          triggerKey: marker.id,
+          seasonNumber: marker.season_number,
+          chapterNumber: marker.chapter_number,
+        });
+      }
+    }
 
     try {
       const [links, markerNodes, arena] = await Promise.all([
@@ -2410,6 +2500,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setMarkerJournalBody(marker.journal_body ?? "");
     setMarkerJournalImageUrl(marker.journal_image_url ?? "");
     setMarkerJournalSortOrder(String(marker.journal_sort_order ?? marker.story_order ?? 0));
+    setMarkerStoryDeckId(marker.story_deck_id ?? null);
     setMarkerIconLabel(marker.icon_label ?? "");
     setMarkerIconImage(marker.icon_image_url ?? "");
     setMarkerIconColor(marker.icon_color ?? "");
@@ -3207,6 +3298,11 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           chapterNumber: completedRoute.chapter_number,
         });
       }
+      void playTriggeredStoryDeck("completing_path", {
+        triggerKey: routeId,
+        seasonNumber: completedRoute.season_number,
+        chapterNumber: completedRoute.chapter_number,
+      });
       await refreshRewardState();
     } catch (error) {
       setGpsMessage(getErrorMessage(error, "Path completed, but the linked quest reward could not be granted."));
@@ -3316,6 +3412,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
     await selectRoute(nextRoute, true);
     setGpsMessage(`${nextRoute.name} is now your active walking path.`);
+    if (nextRoute.story_deck_id) {
+      void playStoryDeckById(nextRoute.story_deck_id);
+    } else {
+      void playTriggeredStoryDeck("starting_path", {
+        triggerKey: nextRoute.id,
+        seasonNumber: nextRoute.season_number,
+        chapterNumber: nextRoute.chapter_number,
+      });
+    }
   }
 
   async function recoverJourneyPosition() {
@@ -3784,6 +3889,11 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         chapterNumber: miniMap.chapter_number,
         requireAuthored: !hasLegacyEntryToast,
       });
+      void playTriggeredStoryDeck("entering_area", {
+        triggerKey: miniMap.id,
+        seasonNumber: miniMap.season_number,
+        chapterNumber: miniMap.chapter_number,
+      });
     }
     if (route.mini_map_id !== miniMap.id) {
       setSavedMiniMapPosition(nextFreeRoamPosition);
@@ -4042,6 +4152,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         journal_body: routeJournalBody.trim() || null,
         journal_image_url: routeJournalImageUrl.trim() || null,
         journal_sort_order: Number(routeJournalSortOrder) || Number(routeOrder) || 0,
+        story_deck_id: routeStoryDeckId,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
         mini_map_id: activeMiniMap?.id ?? route.mini_map_id ?? null,
@@ -4079,6 +4190,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         journal_body: routeJournalBody.trim() || null,
         journal_image_url: routeJournalImageUrl.trim() || null,
         journal_sort_order: Number(routeJournalSortOrder) || Number(routeOrder) || getNextRouteOrder(activeRouteScopeRoutes.length > 0 ? activeRouteScopeRoutes : routes),
+        story_deck_id: routeStoryDeckId,
         is_active: true,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
@@ -4878,6 +4990,18 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       setDialogueLog((current) => [`Admin preview: would reveal ${unlockedMarker?.title ?? "a map marker"}.`, ...current].slice(0, 4));
     }
 
+    if (!adminPreviewMode) {
+      if (choice.story_deck_id) {
+        void playStoryDeckById(choice.story_deck_id);
+      } else {
+        void playTriggeredStoryDeck("dialogue_choice", {
+          triggerKey: choice.id,
+          seasonNumber: activeEvent.season_number,
+          chapterNumber: activeEvent.chapter_number,
+        });
+      }
+    }
+
     if (choice.action === "go_to_node") {
       await recordThisChoice();
       if (choice.next_node_id && dialogueNodes.some((node) => node.id === choice.next_node_id)) {
@@ -5001,6 +5125,11 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           rewards: buildRewardToastItems({ xp: rewardResult.xp, gold: rewardResult.gold }, itemRewards),
           actionLabel: "OK",
         }, {
+          triggerKey: choice.id,
+          seasonNumber: activeEvent?.season_number ?? selectedSeason,
+          chapterNumber: activeEvent?.chapter_number ?? selectedChapter,
+        });
+        void playTriggeredStoryDeck("receiving_reward", {
           triggerKey: choice.id,
           seasonNumber: activeEvent?.season_number ?? selectedSeason,
           chapterNumber: activeEvent?.chapter_number ?? selectedChapter,
@@ -5142,6 +5271,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setRewardItem(event.reward_item ?? "");
     setRewardItemId(event.reward_item_id ?? null);
     setRewardItemQuantity(String(event.reward_item_quantity ?? 1));
+    setEventStoryDeckId(event.story_deck_id ?? null);
     if (event.event_type === "battle") {
       void loadBattlefieldCombatants(event.id);
     } else {
@@ -5335,6 +5465,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setRewardItem("");
     setRewardItemId(null);
     setRewardItemQuantity("1");
+    setEventStoryDeckId(null);
     setBattlefieldCombatants([]);
     setReuseEventId(null);
   }
@@ -5373,6 +5504,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       reward_item: rewardItem.trim() || null,
       reward_item_id: rewardItemId,
       reward_item_quantity: Math.max(1, Number(rewardItemQuantity) || 1),
+      story_deck_id: eventStoryDeckId,
       season_number: selectedSeason,
       chapter_number: selectedChapter,
       is_active: true,
@@ -5435,6 +5567,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         reward_item: source.reward_item,
         reward_item_id: source.reward_item_id,
         reward_item_quantity: source.reward_item_quantity,
+        story_deck_id: source.story_deck_id,
         trigger_mode: source.trigger_mode ?? "fixed",
         random_chance_percent: source.trigger_mode === "random" ? source.random_chance_percent : 0,
         linked_only: source.linked_only ?? false,
@@ -5505,6 +5638,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         reward_item: choice.reward_item,
         reward_item_id: choice.reward_item_id,
         reward_item_quantity: choice.reward_item_quantity,
+        story_deck_id: choice.story_deck_id,
         consume_gold: choice.consume_gold ?? 0,
         requirement_type: choice.requirement_type ?? "none",
         requirement_value: choice.requirement_value,
@@ -5693,6 +5827,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setChoiceHideAfterSelected(choice.hide_after_selected ?? false);
     setChoiceDisableAfterSelected(choice.disable_after_selected ?? false);
     setChoiceSelectedMessage(choice.selected_message ?? "");
+    setChoiceStoryDeckId(choice.story_deck_id ?? null);
     setChoiceSortOrder(String(choice.sort_order));
   }
 
@@ -5746,6 +5881,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setChoiceHideAfterSelected(false);
     setChoiceDisableAfterSelected(false);
     setChoiceSelectedMessage("");
+    setChoiceStoryDeckId(null);
     setChoiceSortOrder(String(choiceNodeId ? getNextChoiceOrder(dialogueChoices, choiceNodeId) : 0));
   }
 
@@ -5819,6 +5955,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         hide_after_selected: !choiceRepeatable && choiceHideAfterSelected,
         disable_after_selected: !choiceRepeatable && choiceDisableAfterSelected,
         selected_message: choiceSelectedMessage.trim() || null,
+        story_deck_id: choiceStoryDeckId,
         sort_order: Number(choiceSortOrder) || 0,
       };
       const saved = editingChoice ? await updateDialogueChoice(editingChoice.id, input) : await createDialogueChoice({ ...input, node_id: choiceNodeId });
@@ -5938,6 +6075,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setRouteJournalBody("");
     setRouteJournalImageUrl("");
     setRouteJournalSortOrder(String(getNextRouteOrder(routeSource)));
+    setRouteStoryDeckId(null);
     setRouteLockType("public");
     setRouteLockMessage("");
     setPathDraft([]);
@@ -5950,6 +6088,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     await selectRoute(nextRoute, true);
     setPathDraft(nextRoute.path_points);
     setPathSegmentDraft(normalizePathSegments(nextRoute.path_segments ?? [], nextRoute.path_points.length));
+    setRouteStoryDeckId(nextRoute.story_deck_id ?? null);
     setAdminMessage(`Editing ${nextRoute.name}. Change the fields below, then Save Walking Path.`);
   }
 
@@ -6265,39 +6404,50 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             hideWhenGroupLocked={choiceHideWhenGroupLocked}
             itemDefinitions={itemDefinitions}
             effectEditor={
-              <DialogueChoiceEffectEditor
-                action={choiceAction}
-                rewardXp={choiceRewardXp}
-                rewardGold={choiceRewardGold}
-                rewardItemId={choiceRewardItemId}
-                rewardItemQuantity={choiceRewardItemQuantity}
-                legacyRewardItem={choiceRewardItem}
-                itemDefinitions={itemDefinitions}
-                markers={effectiveMarkers.filter((marker) => isInSelectedChapter(marker, selectedSeason, selectedChapter))}
-                unlockMarkerId={choiceUnlockMarkerId}
-                updateTitle={choiceUpdateTitle}
-                updateBody={choiceUpdateBody}
-                restoreHealth={choiceRestoreHealth}
-                restoreStamina={choiceRestoreStamina}
-                restoreMana={choiceRestoreMana}
-                storyFlagKey={choiceStoryFlagKey}
-                storyFlagValue={choiceStoryFlagValue}
-                storyFlagKeys={knownStoryFlagKeys}
-                linkedBattleBuilder={choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
-                onChangeRewardXp={setChoiceRewardXp}
-                onChangeRewardGold={setChoiceRewardGold}
-                onChangeRewardItemId={setChoiceRewardItemId}
-                onChangeRewardItemQuantity={setChoiceRewardItemQuantity}
-                onChangeLegacyRewardItem={setChoiceRewardItem}
-                onChangeUnlockMarkerId={setChoiceUnlockMarkerId}
-                onChangeUpdateTitle={setChoiceUpdateTitle}
-                onChangeUpdateBody={setChoiceUpdateBody}
-                onToggleRestoreHealth={() => setChoiceRestoreHealth((value) => !value)}
-                onToggleRestoreStamina={() => setChoiceRestoreStamina((value) => !value)}
-                onToggleRestoreMana={() => setChoiceRestoreMana((value) => !value)}
-                onChangeStoryFlagKey={setChoiceStoryFlagKey}
-                onToggleStoryFlagValue={() => setChoiceStoryFlagValue((value) => !value)}
-              />
+              <>
+                <DialogueChoiceEffectEditor
+                  action={choiceAction}
+                  rewardXp={choiceRewardXp}
+                  rewardGold={choiceRewardGold}
+                  rewardItemId={choiceRewardItemId}
+                  rewardItemQuantity={choiceRewardItemQuantity}
+                  legacyRewardItem={choiceRewardItem}
+                  itemDefinitions={itemDefinitions}
+                  markers={effectiveMarkers.filter((marker) => isInSelectedChapter(marker, selectedSeason, selectedChapter))}
+                  unlockMarkerId={choiceUnlockMarkerId}
+                  updateTitle={choiceUpdateTitle}
+                  updateBody={choiceUpdateBody}
+                  restoreHealth={choiceRestoreHealth}
+                  restoreStamina={choiceRestoreStamina}
+                  restoreMana={choiceRestoreMana}
+                  storyFlagKey={choiceStoryFlagKey}
+                  storyFlagValue={choiceStoryFlagValue}
+                  storyFlagKeys={knownStoryFlagKeys}
+                  linkedBattleBuilder={choiceAction === "start_battle" ? renderLinkedBattleBuilder() : null}
+                  onChangeRewardXp={setChoiceRewardXp}
+                  onChangeRewardGold={setChoiceRewardGold}
+                  onChangeRewardItemId={setChoiceRewardItemId}
+                  onChangeRewardItemQuantity={setChoiceRewardItemQuantity}
+                  onChangeLegacyRewardItem={setChoiceRewardItem}
+                  onChangeUnlockMarkerId={setChoiceUnlockMarkerId}
+                  onChangeUpdateTitle={setChoiceUpdateTitle}
+                  onChangeUpdateBody={setChoiceUpdateBody}
+                  onToggleRestoreHealth={() => setChoiceRestoreHealth((value) => !value)}
+                  onToggleRestoreStamina={() => setChoiceRestoreStamina((value) => !value)}
+                  onToggleRestoreMana={() => setChoiceRestoreMana((value) => !value)}
+                  onChangeStoryFlagKey={setChoiceStoryFlagKey}
+                  onToggleStoryFlagValue={() => setChoiceStoryFlagValue((value) => !value)}
+                />
+                <StoryDeckPicker
+                  decks={storyDecks}
+                  selectedId={choiceStoryDeckId}
+                  onSelect={setChoiceStoryDeckId}
+                  label="Story Deck After This Choice"
+                  helper="Optional. Plays after this choice succeeds."
+                  seasonNumber={selectedSeason}
+                  chapterNumber={selectedChapter}
+                />
+              </>
             }
             requirementEditor={renderDialogueChoiceRequirementEditor()}
             checkEditor={renderDialogueAttributeCheckEditor()}
@@ -6322,6 +6472,20 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         }
       />
       </>
+    );
+  }
+
+  if (activeStoryDeck) {
+    return (
+      <StoryDeckViewer
+        deck={activeStoryDeck}
+        cards={activeStoryCards}
+        onClose={closeStoryDeckViewer}
+        onComplete={() => {
+          void markStoryDeckViewed(activeStoryDeck.id, character.id, true);
+          closeStoryDeckViewer();
+        }}
+      />
     );
   }
 
@@ -7001,6 +7165,11 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
               setMarkerJournalImageUrl={setMarkerJournalImageUrl}
               markerJournalSortOrder={markerJournalSortOrder}
               setMarkerJournalSortOrder={setMarkerJournalSortOrder}
+              markerStoryDeckId={markerStoryDeckId}
+              setMarkerStoryDeckId={setMarkerStoryDeckId}
+              storyDecks={storyDecks}
+              selectedSeason={selectedSeason}
+              selectedChapter={selectedChapter}
               markerIconLabel={markerIconLabel}
               setMarkerIconLabel={setMarkerIconLabel}
               markerIconImage={markerIconImage}
@@ -7157,6 +7326,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                   onChangeImageUrl={setRouteJournalImageUrl}
                   onChangeSortOrder={setRouteJournalSortOrder}
                 />
+                <StoryDeckPicker
+                  decks={storyDecks}
+                  selectedId={routeStoryDeckId}
+                  onSelect={setRouteStoryDeckId}
+                  label="Story Deck On Path Start"
+                  helper="Optional. Plays when this walking path starts. Use trigger type Completing Path for end-of-path cards."
+                  seasonNumber={selectedSeason}
+                  chapterNumber={selectedChapter}
+                />
                 <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
                 {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
                 <Info label="Path Points" value={String(pathDraft.length)} />
@@ -7280,6 +7458,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                       />
                     </>
                   )}
+                  <StoryDeckPicker
+                    decks={storyDecks}
+                    selectedId={eventStoryDeckId}
+                    onSelect={setEventStoryDeckId}
+                    label="Story Deck On Event"
+                    helper="Optional. Plays when this event is reached."
+                    seasonNumber={selectedSeason}
+                    chapterNumber={selectedChapter}
+                  />
                   <Text style={styles.selectedTitle}>Event Rewards</Text>
                   <TextInput value={rewardXp} onChangeText={setRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
                   <TextInput value={rewardGold} onChangeText={setRewardGold} placeholder="Reward gold" placeholderTextColor={colors.muted} style={styles.input} />
@@ -7652,6 +7839,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                 onChangeBody={setMarkerJournalBody}
                 onChangeImageUrl={setMarkerJournalImageUrl}
                 onChangeSortOrder={setMarkerJournalSortOrder}
+              />
+              <StoryDeckPicker
+                decks={storyDecks}
+                selectedId={markerStoryDeckId}
+                onSelect={setMarkerStoryDeckId}
+                label="Story Deck On Marker Interaction"
+                helper="Optional. Plays when the player opens this marker."
+                seasonNumber={selectedSeason}
+                chapterNumber={selectedChapter}
               />
               <MarkerAccessRulesPanel
                 markerType={draftType}
@@ -8032,6 +8228,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                 onChangeImageUrl={setRouteJournalImageUrl}
                 onChangeSortOrder={setRouteJournalSortOrder}
               />
+              <StoryDeckPicker
+                decks={storyDecks}
+                selectedId={routeStoryDeckId}
+                onSelect={setRouteStoryDeckId}
+                label="Story Deck On Path Start"
+                helper="Optional. Plays when this walking path starts. Use trigger type Completing Path for end-of-path cards."
+                seasonNumber={selectedSeason}
+                chapterNumber={selectedChapter}
+              />
               <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
               {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
               <Info label="Path Points" value={String(pathDraft.length)} />
@@ -8188,6 +8393,15 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
               </>
             )}
             <View style={styles.storyEditor}>
+              <StoryDeckPicker
+                decks={storyDecks}
+                selectedId={eventStoryDeckId}
+                onSelect={setEventStoryDeckId}
+                label="Story Deck On Event"
+                helper="Optional. Plays when this event is reached."
+                seasonNumber={selectedSeason}
+                chapterNumber={selectedChapter}
+              />
               <Text style={styles.selectedTitle}>Event Rewards</Text>
               <TextInput value={rewardXp} onChangeText={setRewardXp} placeholder="Reward XP" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={rewardGold} onChangeText={setRewardGold} placeholder="Reward gold" placeholderTextColor={colors.muted} style={styles.input} />
@@ -8469,6 +8683,11 @@ function MiniMapMarkerAdminForm({
   setMarkerJournalImageUrl,
   markerJournalSortOrder,
   setMarkerJournalSortOrder,
+  markerStoryDeckId,
+  setMarkerStoryDeckId,
+  storyDecks,
+  selectedSeason,
+  selectedChapter,
   markerIconLabel,
   setMarkerIconLabel,
   markerIconImage,
@@ -8627,6 +8846,11 @@ function MiniMapMarkerAdminForm({
   setMarkerJournalImageUrl: (value: string) => void;
   markerJournalSortOrder: string;
   setMarkerJournalSortOrder: (value: string) => void;
+  markerStoryDeckId: string | null;
+  setMarkerStoryDeckId: (value: string | null) => void;
+  storyDecks: StoryDeck[];
+  selectedSeason: number;
+  selectedChapter: number;
   markerIconLabel: string;
   setMarkerIconLabel: (value: string) => void;
   markerIconImage: string;
@@ -8803,6 +9027,15 @@ function MiniMapMarkerAdminForm({
         onChangeBody={setMarkerJournalBody}
         onChangeImageUrl={setMarkerJournalImageUrl}
         onChangeSortOrder={setMarkerJournalSortOrder}
+      />
+      <StoryDeckPicker
+        decks={storyDecks}
+        selectedId={markerStoryDeckId}
+        onSelect={setMarkerStoryDeckId}
+        label="Story Deck On Marker Interaction"
+        helper="Optional. Plays when the player opens this mini-map marker."
+        seasonNumber={selectedSeason}
+        chapterNumber={selectedChapter}
       />
       <MarkerAccessRulesPanel
         markerType={draftType}

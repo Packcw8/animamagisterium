@@ -46,6 +46,7 @@ export type MarkerPayloadState = {
   markerJournalBody: string;
   markerJournalImageUrl: string;
   markerJournalSortOrder: string;
+  markerStoryDeckId: string | null;
   markerInteractionRadius: string;
   markerInitiallyUnlocked: boolean;
   markerRewardXp: string;
@@ -81,6 +82,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     journal_body: state.markerJournalBody.trim() || null,
     journal_image_url: state.markerJournalImageUrl.trim() || null,
     journal_sort_order: Number(state.markerJournalSortOrder) || Number(state.markerStoryOrder) || 0,
+    story_deck_id: state.markerStoryDeckId,
     icon_label: state.markerIconLabel.trim() || null,
     icon_image_url: state.markerIconImage.trim() || null,
     icon_color: state.markerIconColor.trim() || null,
@@ -171,6 +173,7 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     journal_body: settings.journal_body,
     journal_image_url: settings.journal_image_url,
     journal_sort_order: settings.journal_sort_order,
+    story_deck_id: settings.story_deck_id,
     content_scope: settings.content_scope,
     season_number: settings.season_number,
     chapter_number: settings.chapter_number,
