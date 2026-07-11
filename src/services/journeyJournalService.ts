@@ -4,10 +4,14 @@ type MapMarker = Tables["map_markers"];
 type MapRoute = Tables["map_routes"];
 type RouteProgress = Tables["route_progress"];
 type StoryMarkerCompletion = Tables["story_marker_completions"];
+type StoryDeck = Tables["story_decks"];
+type StoryCard = Tables["story_cards"];
+type PlayerStoryDeckView = Tables["player_story_deck_views"];
 
 export type JourneyJournalEntry = {
   id: string;
-  sourceType: "marker" | "route";
+  sourceType: "marker" | "route" | "story_deck";
+  storyDeckId?: string | null;
   title: string;
   body: string | null;
   imageUrl: string | null;
@@ -27,12 +31,13 @@ export async function getJourneyJournalEntries() {
     return [];
   }
 
-  const [markerEntries, routeEntries] = await Promise.all([
+  const [markerEntries, routeEntries, storyDeckEntries] = await Promise.all([
     getCompletedMarkerEntries(user.id),
     getCompletedRouteEntries(user.id),
+    getCompletedStoryDeckEntries(user.id),
   ]);
 
-  return [...markerEntries, ...routeEntries].sort((a, b) => {
+  return [...markerEntries, ...routeEntries, ...storyDeckEntries].sort((a, b) => {
     const seasonDiff = a.seasonNumber - b.seasonNumber;
     if (seasonDiff !== 0) return seasonDiff;
     const chapterDiff = a.chapterNumber - b.chapterNumber;
@@ -41,6 +46,63 @@ export async function getJourneyJournalEntries() {
     if (orderDiff !== 0) return orderDiff;
     return String(a.completedAt ?? "").localeCompare(String(b.completedAt ?? ""));
   });
+}
+
+async function getCompletedStoryDeckEntries(userId: string): Promise<JourneyJournalEntry[]> {
+  const { data: views, error: viewError } = await supabase
+    .from("player_story_deck_views")
+    .select("*")
+    .eq("user_id", userId)
+    .not("completed_at", "is", null);
+
+  if (viewError || !views?.length) {
+    if (viewError) console.warn("[journal] story deck views unavailable", viewError.message);
+    return [];
+  }
+
+  const deckIds = Array.from(new Set(views.map((view) => view.story_deck_id).filter(Boolean)));
+  if (deckIds.length === 0) return [];
+
+  const [{ data: decks, error: deckError }, { data: cards, error: cardError }] = await Promise.all([
+    supabase.from("story_decks").select("*").in("id", deckIds),
+    supabase.from("story_cards").select("*").in("deck_id", deckIds),
+  ]);
+
+  if (deckError || !decks?.length) {
+    if (deckError) console.warn("[journal] story decks unavailable", deckError.message);
+    return [];
+  }
+  if (cardError) {
+    console.warn("[journal] story deck cards unavailable", cardError.message);
+  }
+
+  const viewByDeck = new Map((views as PlayerStoryDeckView[]).map((view) => [view.story_deck_id, view]));
+  const cardsByDeck = new Map<string, StoryCard[]>();
+  (cards as StoryCard[] | null ?? []).forEach((card) => {
+    const list = cardsByDeck.get(card.deck_id) ?? [];
+    list.push(card);
+    cardsByDeck.set(card.deck_id, list);
+  });
+
+  return (decks as StoryDeck[])
+    .filter((deck) => deck.save_to_journal && deck.replayable && deck.is_active)
+    .map((deck) => {
+      const firstCard = [...(cardsByDeck.get(deck.id) ?? [])].sort((a, b) => Number(a.sort_order) - Number(b.sort_order))[0] ?? null;
+      const view = viewByDeck.get(deck.id);
+
+      return {
+        id: `story-deck-${deck.id}`,
+        sourceType: "story_deck" as const,
+        storyDeckId: deck.id,
+        title: deck.title,
+        body: deck.description || firstCard?.body || null,
+        imageUrl: firstCard?.image_url ?? null,
+        seasonNumber: Number(deck.season_number ?? 1),
+        chapterNumber: Number(deck.chapter_number ?? 1),
+        sortOrder: Number(deck.sort_order ?? 0),
+        completedAt: view?.completed_at ?? view?.last_viewed_at ?? null,
+      };
+    });
 }
 
 async function getCompletedMarkerEntries(userId: string): Promise<JourneyJournalEntry[]> {

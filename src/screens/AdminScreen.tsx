@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { AdminHubCard } from "../components/admin/AdminHubCard";
 import { AdminHubSection } from "../components/admin/AdminHubSection";
 import { GameToastAdminPanel } from "../components/admin/GameToastAdminPanel";
+import { StoryDeckAdminPanel } from "../components/admin/StoryDeckAdminPanel";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { Screen } from "../components/Screen";
@@ -137,6 +138,7 @@ export function AdminScreen({
           actionLabel="Open Legend"
           onPress={() => onOpenMapAdmin("Legend")}
         />
+        <StoryDeckAdminPanel />
         <AdminHubCard
           eyebrow="Achievements"
           title="Badges & Player Goals"

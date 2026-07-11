@@ -390,6 +390,7 @@ export type Tables = {
     journal_body: string | null;
     journal_image_url: string | null;
     journal_sort_order: number;
+    story_deck_id?: string | null;
     mini_map_id: string | null;
     parent_marker_id: string | null;
     lock_type: "public" | "story_locked" | "quest_locked";
@@ -472,6 +473,7 @@ export type Tables = {
     trigger_mode: "fixed" | "random";
     random_chance_percent: number;
     linked_only: boolean;
+    story_deck_id?: string | null;
     season_number: number;
     chapter_number: number;
     is_active: boolean;
@@ -746,6 +748,7 @@ export type Tables = {
     action: "go_to_node" | "start_battle" | "start_quest" | "complete_event" | "unlock_next_event" | "give_reward" | "end_conversation" | "return_to_map";
     next_node_id: string | null;
     battle_event_id: string | null;
+    story_deck_id?: string | null;
     reward_xp: number;
     reward_gold: number;
     reward_item: string | null;
@@ -910,6 +913,7 @@ export type Tables = {
     journal_body: string | null;
     journal_image_url: string | null;
     journal_sort_order: number;
+    story_deck_id?: string | null;
     content_scope: "chapter" | "universal";
     season_number: number;
     chapter_number: number;
@@ -933,6 +937,49 @@ export type Tables = {
     event_id: string | null;
     marker_id: string | null;
     selected_at: string;
+  };
+  story_decks: {
+    id: string;
+    title: string;
+    description: string | null;
+    deck_type: "lore" | "chapter_summary" | "cutscene" | "recap" | "tutorial" | "area_intro";
+    trigger_type: "manual" | "opening_game" | "entering_area" | "leaving_area" | "starting_path" | "completing_path" | "marker_interaction" | "dialogue_choice" | "puzzle_complete" | "completing_chapter" | "receiving_reward";
+    trigger_key: string | null;
+    season_number: number;
+    chapter_number: number;
+    play_once: boolean;
+    save_to_journal: boolean;
+    replayable: boolean;
+    is_published: boolean;
+    is_active: boolean;
+    sort_order: number;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  story_cards: {
+    id: string;
+    deck_id: string;
+    title: string | null;
+    body: string;
+    image_url: string | null;
+    text_position: "top" | "center" | "bottom";
+    text_style: "dark" | "light" | "gold";
+    button_text: string;
+    sound_url: string | null;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+  };
+  player_story_deck_views: {
+    id: string;
+    user_id: string;
+    character_id: string | null;
+    story_deck_id: string;
+    first_viewed_at: string;
+    last_viewed_at: string;
+    view_count: number;
+    completed_at: string | null;
   };
   marker_legend_items: {
     id: string;

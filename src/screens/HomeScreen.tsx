@@ -12,6 +12,7 @@ import { CharacterAbilitiesSheet } from "../components/player/CharacterAbilities
 import { CharacterInventorySheet } from "../components/player/CharacterInventorySheet";
 import { ProgressBar } from "../components/ProgressBar";
 import { Screen } from "../components/Screen";
+import { StoryDeckViewer } from "../components/story/StoryDeckViewer";
 import { colors, fonts } from "../components/theme";
 import { pickAndUploadAdminImage } from "../services/adminImageService";
 import { CharacterWithDetails, updateCharacterHealth } from "../services/characterService";
@@ -95,6 +96,7 @@ import { getLeaderboardProfileForCharacter } from "../services/leaderboardServic
 import { getInboxUnreadCount } from "../services/inboxService";
 import { getJourneyJournalEntries, type JourneyJournalEntry } from "../services/journeyJournalService";
 import { defaultProgressionSettings, GameProgressionSettings, getCharacterXpProgress, getProgressionSettings } from "../services/progressionService";
+import { getStoryCards, getStoryDeck, markStoryDeckViewed, type StoryCard, type StoryDeck } from "../services/storyDeckService";
 
 type HomeScreenProps = {
   character: CharacterWithDetails;
@@ -228,6 +230,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
   const [journalEntries, setJournalEntries] = useState<JourneyJournalEntry[]>([]);
   const [journalMessage, setJournalMessage] = useState<string | null>(null);
+  const [activeStoryDeck, setActiveStoryDeck] = useState<StoryDeck | null>(null);
+  const [activeStoryCards, setActiveStoryCards] = useState<StoryCard[]>([]);
   const [progressionSettings, setProgressionSettings] = useState<GameProgressionSettings>(defaultProgressionSettings);
   const knownAbilityKeysRef = useRef<Set<string> | null>(null);
   const knownInventoryRef = useRef<Map<string, number> | null>(null);
@@ -334,6 +338,21 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     } catch (error) {
       setJournalEntries([]);
       setJournalMessage(error instanceof Error ? error.message : "Unable to load journey journal.");
+    }
+  }
+
+  async function replayStoryDeck(deckId: string) {
+    try {
+      const [deck, cards] = await Promise.all([getStoryDeck(deckId), getStoryCards(deckId)]);
+      if (!deck) {
+        setJournalMessage("Story deck could not be found.");
+        return;
+      }
+      setActiveStoryDeck(deck);
+      setActiveStoryCards(cards);
+      setJournalMessage(null);
+    } catch (error) {
+      setJournalMessage(error instanceof Error ? error.message : "Unable to open story deck.");
     }
   }
 
@@ -1018,7 +1037,27 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
             </View>
           </View>
         ) : activeTab === "Journal" ? (
-          <JourneyJournalPage entries={journalEntries} message={journalMessage} onRefresh={() => void loadJourneyJournal()} />
+          <>
+            {activeStoryDeck ? (
+              <StoryDeckViewer
+                deck={activeStoryDeck}
+                cards={activeStoryCards}
+                onClose={() => {
+                  setActiveStoryDeck(null);
+                  setActiveStoryCards([]);
+                }}
+                onComplete={() => {
+                  void markStoryDeckViewed(activeStoryDeck.id, character.id, true).then(() => loadJourneyJournal());
+                }}
+              />
+            ) : null}
+            <JourneyJournalPage
+              entries={journalEntries}
+              message={journalMessage}
+              onRefresh={() => void loadJourneyJournal()}
+              onReplayStoryDeck={(deckId) => void replayStoryDeck(deckId)}
+            />
+          </>
         ) : activeTab === "Abilities" ? (
           <View style={styles.section}>
             <PlayerAbilitiesPanel

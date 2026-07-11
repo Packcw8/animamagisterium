@@ -7,9 +7,10 @@ type JourneyJournalPageProps = {
   entries: JourneyJournalEntry[];
   message?: string | null;
   onRefresh: () => void;
+  onReplayStoryDeck?: (deckId: string) => void;
 };
 
-export function JourneyJournalPage({ entries, message, onRefresh }: JourneyJournalPageProps) {
+export function JourneyJournalPage({ entries, message, onRefresh, onReplayStoryDeck }: JourneyJournalPageProps) {
   return (
     <View style={styles.container}>
       <View style={styles.headerRow}>
@@ -36,17 +37,28 @@ export function JourneyJournalPage({ entries, message, onRefresh }: JourneyJourn
                 <Text style={styles.entryNumber}>{String(index + 1).padStart(2, "0")}</Text>
                 <View style={styles.entryTitleWrap}>
                   <Text style={styles.entryTitle}>{entry.title}</Text>
-                  <Text style={styles.entryMeta}>Season {entry.seasonNumber} / Chapter {entry.chapterNumber} / {entry.sourceType === "route" ? "Path" : "Story"}</Text>
+                  <Text style={styles.entryMeta}>Season {entry.seasonNumber} / Chapter {entry.chapterNumber} / {getEntryTypeLabel(entry)}</Text>
                 </View>
               </View>
               {resolveJournalImageUri(entry.imageUrl) ? <Image source={{ uri: resolveJournalImageUri(entry.imageUrl)! }} style={styles.entryImage} /> : null}
               {entry.body ? <Text style={styles.entryBody}>{entry.body}</Text> : null}
+              {entry.sourceType === "story_deck" && entry.storyDeckId && onReplayStoryDeck ? (
+                <Pressable style={styles.replayButton} onPress={() => onReplayStoryDeck(entry.storyDeckId!)}>
+                  <Text style={styles.replayButtonText}>Replay Story Cards</Text>
+                </Pressable>
+              ) : null}
             </View>
           ))}
         </View>
       )}
     </View>
   );
+}
+
+function getEntryTypeLabel(entry: JourneyJournalEntry) {
+  if (entry.sourceType === "route") return "Path";
+  if (entry.sourceType === "story_deck") return "Story Deck";
+  return "Story";
 }
 
 function resolveJournalImageUri(imagePath?: string | null) {
@@ -149,6 +161,19 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   refreshText: {
+    color: colors.blue,
+    fontWeight: "900",
+  },
+  replayButton: {
+    alignItems: "center",
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    borderWidth: 1,
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 12,
+  },
+  replayButtonText: {
     color: colors.blue,
     fontWeight: "900",
   },
