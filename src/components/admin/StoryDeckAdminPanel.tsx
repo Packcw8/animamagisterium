@@ -2,6 +2,16 @@ import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useEffect, useMemo, useState } from "react";
 import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import {
+  getMapEvents,
+  getMapMarkers,
+  getMapRoutes,
+  getMiniMaps,
+  type MapEvent,
+  type MapMarker,
+  type MapRoute,
+  type MiniMap,
+} from "../../services/mapService";
+import {
   blankStoryCard,
   blankStoryDeck,
   deleteStoryCard,
@@ -19,6 +29,7 @@ import {
   type StoryCard,
   type StoryDeck,
 } from "../../services/storyDeckService";
+import { StoryDeckViewer } from "../story/StoryDeckViewer";
 import { AdminImageUploadButton } from "./AdminImageUploadButton";
 import { colors, fonts } from "../theme";
 
@@ -33,13 +44,28 @@ export function StoryDeckAdminPanel() {
   const [cardDraft, setCardDraft] = useState<StoryCardDraft>(blankStoryCard());
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [markers, setMarkers] = useState<MapMarker[]>([]);
+  const [routes, setRoutes] = useState<MapRoute[]>([]);
+  const [miniMaps, setMiniMaps] = useState<MiniMap[]>([]);
+  const [events, setEvents] = useState<MapEvent[]>([]);
+  const [previewDeck, setPreviewDeck] = useState<StoryDeck | null>(null);
+  const [previewCards, setPreviewCards] = useState<StoryCard[]>([]);
 
   const selectedDeck = useMemo(() => decks.find((deck) => deck.id === selectedDeckId) ?? null, [decks, selectedDeckId]);
   const scopedDecks = useMemo(() => [...decks].sort(sortDecks), [decks]);
   const previewImage = resolveStoryDeckAssetUri(cardDraft.image_url);
+  const triggerTargets = useMemo(() => getTriggerTargets(deckDraft.trigger_type, {
+    markers,
+    routes,
+    miniMaps,
+    events,
+    seasonNumber: Number(deckDraft.season_number) || 1,
+    chapterNumber: Number(deckDraft.chapter_number) || 1,
+  }), [deckDraft.chapter_number, deckDraft.season_number, deckDraft.trigger_type, events, markers, miniMaps, routes]);
 
   useEffect(() => {
     void loadDecks();
+    void loadTriggerTargets();
   }, []);
 
   async function loadDecks() {
@@ -54,6 +80,23 @@ export function StoryDeckAdminPanel() {
       setMessage(error instanceof Error ? error.message : "Unable to load story decks.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadTriggerTargets() {
+    try {
+      const [loadedMarkers, loadedRoutes, loadedMiniMaps, loadedEvents] = await Promise.all([
+        getMapMarkers(),
+        getMapRoutes(),
+        getMiniMaps(),
+        getMapEvents(),
+      ]);
+      setMarkers(loadedMarkers);
+      setRoutes(loadedRoutes);
+      setMiniMaps(loadedMiniMaps);
+      setEvents(loadedEvents);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load world link targets.");
     }
   }
 
@@ -164,6 +207,28 @@ export function StoryDeckAdminPanel() {
     }
   }
 
+  function previewCurrentDeck() {
+    const deck = selectedDeck ?? toPreviewStoryDeck(deckDraft);
+    const savedCards = [...cards].sort(sortCards);
+    const draftCard = cardDraft.body.trim() ? toPreviewStoryCard(cardDraft, deck.id) : null;
+    const nextCards = savedCards.length > 0 ? savedCards : draftCard ? [draftCard] : [];
+    setPreviewDeck(deck);
+    setPreviewCards(nextCards);
+  }
+
+  if (previewDeck) {
+    return (
+      <StoryDeckViewer
+        deck={previewDeck}
+        cards={previewCards}
+        onClose={() => {
+          setPreviewDeck(null);
+          setPreviewCards([]);
+        }}
+      />
+    );
+  }
+
   return (
     <View style={styles.panel}>
       <View style={styles.header}>
@@ -181,10 +246,18 @@ export function StoryDeckAdminPanel() {
       <View style={styles.deckList}>
         {loading ? <Text style={styles.copy}>Loading story decks...</Text> : null}
         {scopedDecks.map((deck) => (
-          <Pressable key={deck.id} style={[styles.deckChip, selectedDeckId === deck.id && styles.deckChipActive]} onPress={() => void selectDeck(deck)}>
-            <Text style={styles.deckChipTitle}>{deck.title}</Text>
-            <Text style={styles.deckChipMeta}>S{deck.season_number} / C{deck.chapter_number} / {formatStoryDeckLabel(deck.trigger_type)}</Text>
-          </Pressable>
+          <View key={deck.id} style={[styles.deckChip, selectedDeckId === deck.id && styles.deckChipActive]}>
+            <Pressable style={styles.deckChipMain} onPress={() => void selectDeck(deck)}>
+              <Text style={styles.deckChipTitle}>{deck.title}</Text>
+              <Text style={styles.deckChipMeta}>S{deck.season_number} / C{deck.chapter_number} / {formatStoryDeckLabel(deck.trigger_type)}</Text>
+            </Pressable>
+            <Pressable style={styles.rowButton} onPress={async () => {
+              setPreviewDeck(deck);
+              setPreviewCards(await getStoryCards(deck.id));
+            }}>
+              <Text style={styles.rowButtonText}>Preview</Text>
+            </Pressable>
+          </View>
         ))}
       </View>
 
@@ -200,7 +273,26 @@ export function StoryDeckAdminPanel() {
         <View style={styles.chips}>
           {storyDeckTriggerTypes.map((trigger) => <Chip key={trigger} label={formatStoryDeckLabel(trigger)} active={deckDraft.trigger_type === trigger} onPress={() => setDeckDraft((current) => ({ ...current, trigger_type: trigger }))} />)}
         </View>
-        <TextInput value={deckDraft.trigger_key ?? ""} onChangeText={(value) => setDeckDraft((current) => ({ ...current, trigger_key: value }))} placeholder="Trigger key optional, like marker id, chapter_1_complete, raven_rest" placeholderTextColor={colors.muted} style={styles.input} />
+        <Text style={styles.label}>World Link Target</Text>
+        <Text style={styles.copy}>{getTriggerTargetHelp(deckDraft.trigger_type)}</Text>
+        {triggerTargets.length > 0 ? (
+          <View style={styles.targetList}>
+            <Chip label="No specific target" active={!deckDraft.trigger_key} onPress={() => setDeckDraft((current) => ({ ...current, trigger_key: null }))} />
+            {triggerTargets.map((target) => (
+              <Pressable
+                key={target.id}
+                style={[styles.targetChip, deckDraft.trigger_key === target.id && styles.activeChip]}
+                onPress={() => setDeckDraft((current) => ({ ...current, trigger_key: target.id }))}
+              >
+                <Text style={[styles.targetTitle, deckDraft.trigger_key === target.id && styles.activeChipText]}>{target.label}</Text>
+                <Text style={styles.targetMeta}>{target.meta}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : (
+          <Text style={styles.copy}>No clickable targets for this trigger type yet. You can still type a custom trigger key below.</Text>
+        )}
+        <TextInput value={deckDraft.trigger_key ?? ""} onChangeText={(value) => setDeckDraft((current) => ({ ...current, trigger_key: value }))} placeholder="Optional trigger key, or select a target above" placeholderTextColor={colors.muted} style={styles.input} />
         <View style={styles.grid}>
           <TextInput value={String(deckDraft.season_number)} onChangeText={(value) => setDeckDraft((current) => ({ ...current, season_number: Number(value) || 1 }))} placeholder="Season" placeholderTextColor={colors.muted} style={styles.input} />
           <TextInput value={String(deckDraft.chapter_number)} onChangeText={(value) => setDeckDraft((current) => ({ ...current, chapter_number: Number(value) || 1 }))} placeholder="Chapter" placeholderTextColor={colors.muted} style={styles.input} />
@@ -222,6 +314,9 @@ export function StoryDeckAdminPanel() {
               <Text style={styles.deleteButtonText}>Delete</Text>
             </Pressable>
           ) : null}
+          <Pressable style={styles.smallButton} onPress={previewCurrentDeck}>
+            <Text style={styles.smallButtonText}>Preview Deck</Text>
+          </Pressable>
         </View>
       </View>
 
@@ -300,6 +395,127 @@ function sortCards(a: StoryCard, b: StoryCard) {
   return Number(a.sort_order) - Number(b.sort_order) || a.created_at.localeCompare(b.created_at);
 }
 
+type TriggerTarget = {
+  id: string;
+  label: string;
+  meta: string;
+};
+
+function getTriggerTargets(
+  triggerType: StoryDeck["trigger_type"],
+  data: {
+    markers: MapMarker[];
+    routes: MapRoute[];
+    miniMaps: MiniMap[];
+    events: MapEvent[];
+    seasonNumber: number;
+    chapterNumber: number;
+  },
+): TriggerTarget[] {
+  const inScope = (record: { season_number?: number | null; chapter_number?: number | null }) =>
+    Number(record.season_number ?? 1) === data.seasonNumber && Number(record.chapter_number ?? 1) === data.chapterNumber;
+
+  if (triggerType === "marker_interaction") {
+    return data.markers
+      .filter(inScope)
+      .sort((left, right) => left.title.localeCompare(right.title))
+      .map((marker) => ({
+        id: marker.id,
+        label: marker.title,
+        meta: `${marker.type} / ${marker.mini_map_id ? "Mini Map" : "World"}`,
+      }));
+  }
+
+  if (triggerType === "starting_path" || triggerType === "completing_path") {
+    return data.routes
+      .filter(inScope)
+      .sort((left, right) => Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0) || left.name.localeCompare(right.name))
+      .map((route) => ({
+        id: route.id,
+        label: route.name,
+        meta: `${route.mini_map_id ? "Mini Map Trail" : "World Trail"} / ${route.terrain || "No terrain"}`,
+      }));
+  }
+
+  if (triggerType === "entering_area" || triggerType === "leaving_area") {
+    return data.miniMaps
+      .filter(inScope)
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map((miniMap) => ({
+        id: miniMap.id,
+        label: miniMap.name,
+        meta: `${miniMap.type} / ${miniMap.area_name || "No area group"}`,
+      }));
+  }
+
+  if (triggerType === "receiving_reward") {
+    return data.events
+      .filter(inScope)
+      .sort((left, right) => left.title.localeCompare(right.title))
+      .map((event) => ({
+        id: event.id,
+        label: event.title,
+        meta: `${formatStoryDeckLabel(event.event_type)} Event / ${event.route_id ? "Trail" : "World"}`,
+      }));
+  }
+
+  return [];
+}
+
+function getTriggerTargetHelp(triggerType: StoryDeck["trigger_type"]) {
+  if (triggerType === "marker_interaction") return "Choose the world or mini-map marker that should play this deck when interacted with.";
+  if (triggerType === "starting_path") return "Choose the walking path that should play this deck when it starts.";
+  if (triggerType === "completing_path") return "Choose the walking path that should play this deck when it completes.";
+  if (triggerType === "entering_area") return "Choose the mini map that should play this deck when entered.";
+  if (triggerType === "leaving_area") return "Choose the mini map or custom key that should play this deck when leaving an area.";
+  if (triggerType === "receiving_reward") return "Choose a map event or type a dialogue choice id for reward-specific decks.";
+  if (triggerType === "dialogue_choice") return "Dialogue choices use choice ids. A choice picker can be added later; for now, paste only when needed.";
+  if (triggerType === "puzzle_complete") return "Puzzle decks can use a puzzle marker id as the trigger key.";
+  if (triggerType === "completing_chapter") return "Chapter decks usually use a key like chapter_1_complete.";
+  return "Leave blank for a general deck, or type a custom trigger key.";
+}
+
+function toPreviewStoryDeck(draft: StoryDeckDraft): StoryDeck {
+  const now = new Date().toISOString();
+  return {
+    id: draft.id ?? "preview-story-deck",
+    title: draft.title || "Story Deck Preview",
+    description: draft.description ?? null,
+    deck_type: draft.deck_type,
+    trigger_type: draft.trigger_type,
+    trigger_key: draft.trigger_key ?? null,
+    season_number: Number(draft.season_number) || 1,
+    chapter_number: Number(draft.chapter_number) || 1,
+    play_once: draft.play_once,
+    save_to_journal: draft.save_to_journal,
+    replayable: draft.replayable,
+    is_published: draft.is_published,
+    is_active: draft.is_active,
+    sort_order: Number(draft.sort_order) || 0,
+    created_by: null,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
+function toPreviewStoryCard(draft: StoryCardDraft, deckId: string): StoryCard {
+  const now = new Date().toISOString();
+  return {
+    id: draft.id ?? "preview-story-card",
+    deck_id: draft.deck_id || deckId,
+    title: draft.title ?? null,
+    body: draft.body || "No preview text yet.",
+    image_url: draft.image_url ?? null,
+    text_position: draft.text_position,
+    text_style: draft.text_style,
+    button_text: draft.button_text || "Continue",
+    sound_url: draft.sound_url ?? null,
+    sort_order: Number(draft.sort_order) || 0,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
 const styles = StyleSheet.create({
   activeChip: {
     backgroundColor: "rgba(0, 174, 255, 0.18)",
@@ -374,8 +590,14 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSoft,
     borderRadius: 10,
     borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
     gap: 3,
     padding: 10,
+  },
+  deckChipMain: {
+    flex: 1,
+    gap: 3,
   },
   deckChipActive: {
     backgroundColor: "rgba(212, 175, 55, 0.12)",
@@ -514,6 +736,28 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 78,
     textAlignVertical: "top",
+  },
+  targetChip: {
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 3,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  targetList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  targetMeta: {
+    color: colors.muted,
+    fontSize: 11,
+  },
+  targetTitle: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 12,
   },
   title: {
     color: colors.gold,
