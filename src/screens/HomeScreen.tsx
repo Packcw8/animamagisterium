@@ -977,6 +977,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
               <QuickTile icon="⚔" label="Abilities" selected={activeSheet === "abilities"} onPress={() => setActiveSheet("abilities")} />
               <QuickTile icon="☷" label="Attributes" onPress={() => setActiveTab("Attributes")} />
               <QuickTile icon="✎" label="Battle Stats" onPress={() => setActiveTab("Battle Stats")} />
+              <QuickTile icon="▤" label="Journey" onPress={() => setActiveTab("Journal")} />
             </View>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>Equipped</Text>
@@ -1010,16 +1011,20 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
             <Info label="Origin" value={character.origin ?? "Not set"} />
           </View>
         ) : activeTab === "Attributes" ? (
-          <View style={styles.attributeGrid}>
-            {attributeKeys.map((key) => (
-              <View key={key} style={styles.attribute}>
-                <Text style={styles.attributeName}>{key}</Text>
-                <Text style={styles.attributeValue}>{character.attributes?.[key] ?? 0}</Text>
-              </View>
-            ))}
+          <View style={styles.section}>
+            {!isAdmin ? <BackToOverviewButton onPress={() => setActiveTab("Overview")} /> : null}
+            <View style={styles.attributeGrid}>
+              {attributeKeys.map((key) => (
+                <View key={key} style={styles.attribute}>
+                  <Text style={styles.attributeName}>{key}</Text>
+                  <Text style={styles.attributeValue}>{character.attributes?.[key] ?? 0}</Text>
+                </View>
+              ))}
+            </View>
           </View>
         ) : activeTab === "Battle Stats" ? (
           <View style={styles.section}>
+            {!isAdmin ? <BackToOverviewButton onPress={() => setActiveTab("Overview")} /> : null}
             <Text style={styles.sectionTitle}>Battle Stats</Text>
             <Text style={styles.muted}>These are derived from attributes and equipped gear. Training will keep feeding these numbers as the combat system grows.</Text>
             <View style={styles.combatStatGrid}>
@@ -1045,7 +1050,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
             </View>
           </View>
         ) : activeTab === "Journal" ? (
-          <>
+          <View style={styles.section}>
+            {!isAdmin ? <BackToOverviewButton onPress={() => setActiveTab("Overview")} /> : null}
             {activeStoryDeck ? (
               <StoryDeckViewer
                 deck={activeStoryDeck}
@@ -1065,7 +1071,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
               onRefresh={() => void loadJourneyJournal()}
               onReplayStoryDeck={(deckId) => void replayStoryDeck(deckId)}
             />
-          </>
+          </View>
         ) : activeTab === "Abilities" ? (
           <View style={styles.section}>
             {!isAdmin ? (
@@ -1778,6 +1784,14 @@ function QuickTile({ icon, label, selected, onPress }: { icon: string; label: st
       <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.74} style={styles.quickLabel}>
         {label}
       </Text>
+    </Pressable>
+  );
+}
+
+function BackToOverviewButton({ onPress }: { onPress: () => void }) {
+  return (
+    <Pressable style={styles.backToOverviewButton} onPress={onPress}>
+      <Text style={styles.backToOverviewText}>Back to Home</Text>
     </Pressable>
   );
 }
@@ -2593,6 +2607,21 @@ const styles = StyleSheet.create({
     fontFamily: fonts.title,
     fontSize: 18,
     textTransform: "uppercase",
+  },
+  backToOverviewButton: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  backToOverviewText: {
+    color: colors.blue,
+    fontWeight: "900",
   },
   sectionHeaderRow: {
     flexDirection: "row",
