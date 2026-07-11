@@ -665,7 +665,17 @@ function MarketItemDetail({
         {item?.weight ? <Text style={styles.statPill}>{Number(item.weight).toFixed(1)} wt</Text> : null}
       </View>
       <View style={styles.marketDetailActions}>
-        <Pressable style={selected.mode === "Buy" ? styles.marketActionButton : styles.marketSellButton} onPress={selected.mode === "Buy" ? onBuy : onSell}>
+        <Pressable
+          style={selected.mode === "Buy" ? styles.marketActionButton : styles.marketSellButton}
+          onPress={() => {
+            if (selected.mode === "Sell") {
+              onClose();
+              onSell();
+              return;
+            }
+            onBuy();
+          }}
+        >
           <Text style={selected.mode === "Buy" ? styles.marketActionText : styles.secondaryText}>{selected.mode === "Buy" ? "Buy Item" : "Sell 1 Item"}</Text>
         </Pressable>
         <Pressable style={styles.marketCloseButton} onPress={onClose}>

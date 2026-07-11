@@ -1,6 +1,6 @@
 import { supabase, Tables } from "../lib/supabase";
 import { updateCharacterHealth, type CharacterWithDetails } from "./characterService";
-import { consumeInventoryItem, grantItemToCharacter, type InventoryItem } from "./inventoryService";
+import { addCharacterGold, consumeInventoryItem, grantItemToCharacter, type InventoryItem } from "./inventoryService";
 import { recordSocialContribution } from "./partyGuildService";
 import { applyCharacterXpGold } from "./progressionService";
 import { getDefaultChapterRuleFields, normalizeChapterRules } from "../utils/mapProgress";
@@ -1888,6 +1888,9 @@ export async function sellMarketInventoryItem(character: CharacterWithDetails, i
   if (!inventoryItem.item.sellable) {
     throw new Error("This item cannot be sold.");
   }
+  if (inventoryItem.equippedSlot) {
+    throw new Error("Unequip this item before selling it.");
+  }
 
   const {
     data: { user },
@@ -1898,29 +1901,8 @@ export async function sellMarketInventoryItem(character: CharacterWithDetails, i
     throw userError ?? new Error("You must be signed in to sell items.");
   }
 
-  const { data: currentCharacter, error: characterError } = await supabase
-    .from("characters")
-    .select("gold")
-    .eq("id", character.id)
-    .eq("user_id", user.id)
-    .single();
-
-  if (characterError) {
-    throw characterError;
-  }
-
   await consumeInventoryItem(inventoryItem, 1);
-  const { error } = await supabase
-    .from("characters")
-    .update({ gold: Number(currentCharacter.gold) + Math.max(0, Number(sellPrice) || 0) })
-    .eq("id", character.id)
-    .eq("user_id", user.id);
-
-  if (error) {
-    throw error;
-  }
-
-  return { gold: Number(currentCharacter.gold) + Math.max(0, Number(sellPrice) || 0) };
+  return addCharacterGold(character, sellPrice);
 }
 
 export function canMarketItemBeBought(marketItem: MarkerMarketItem) {

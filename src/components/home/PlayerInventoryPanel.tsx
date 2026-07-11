@@ -59,7 +59,7 @@ export function PlayerInventoryPanel({
 }: PlayerInventoryPanelProps) {
   const [sortMode, setSortMode] = useState<InventorySort>("equipped");
   const [selectedSlot, setSelectedSlot] = useState<EquipmentSlot | null>(null);
-  const visibleEquipmentSlots = equipmentSlots.filter((slot) => slot !== "weapon" && slot !== "armor");
+  const visibleEquipmentSlots = equipmentSlots.filter((slot) => slot !== "armor");
   const slotItems = useMemo(() => {
     if (!selectedSlot) return [];
     return sortInventoryItems(

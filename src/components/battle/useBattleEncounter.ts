@@ -1715,6 +1715,11 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const restoreFromPercent = item.restore_percent ? Math.ceil((target === "health" ? combatResources.maxHp : target === "stamina" ? combatResources.maxStamina : combatResources.maxMagicka) * (item.restore_percent / 100)) : 0;
     const amount = Math.max(item.restore_amount, restoreFromPercent, defeated ? Math.ceil(combatResources.maxHp * 0.5) : 0);
 
+    if (!context.previewMode) {
+      await consumeInventoryItem(entry, 1);
+      await context.loadInventory();
+    }
+
     if (target === "health") {
       await savePlayerHealth(Math.min(combatResources.maxHp, battlePlayerHp + amount), context.previewMode);
       pushCombatIndicator("player", `+${amount}`, "#42d77d");
@@ -1731,10 +1736,6 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       pushCombatIndicator("player", `+${amount}`, "#7fdcff");
     }
 
-    if (!context.previewMode) {
-      await consumeInventoryItem(entry, 1);
-      await context.loadInventory();
-    }
     setBattleInventoryOpen(false);
     setBattleLog((current) => [`Used ${item.name}. Restored ${amount} ${target}.`, ...current].slice(0, 8));
   }

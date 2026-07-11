@@ -3531,8 +3531,8 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       const restoreFromPercent = item.restore_percent ? Math.ceil(combatResources.maxHp * (item.restore_percent / 100)) : 0;
       const amount = Math.max(Number(item.restore_amount ?? 0), restoreFromPercent, 1);
       const nextHealth = clampHealth(currentHealth + amount, combatResources.maxHp);
-      await savePlayerHealth(nextHealth);
       await consumeInventoryItem(entry, 1);
+      await savePlayerHealth(nextHealth);
       await loadInventory();
       setMapItemMessage(`Used ${item.name}. Health ${nextHealth} / ${combatResources.maxHp}.`);
     } catch (error) {
@@ -3540,10 +3540,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
   }
 
-  async function equipMapItem(entry: InventoryItem) {
+  async function equipMapItem(entry: InventoryItem, slot?: EquipmentSlot) {
     try {
-      await equipInventoryItem(character.id, entry.item);
-      setMapItemMessage(`${entry.item.name} equipped.`);
+      await equipInventoryItem(character.id, entry.item, slot);
+      setMapItemMessage(`${entry.item.name} equipped${slot ? ` to ${slot.replaceAll("_", " ")}` : ""}.`);
       await loadInventory();
       await loadCombatLoadout();
     } catch (error) {
@@ -6583,7 +6583,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         onClose={() => setActiveMapSheet(null)}
         onSelectTab={setMapInventoryTab}
         onSelectItem={setSelectedMapInventoryItemId}
-        onEquipItem={(entry) => void equipMapItem(entry)}
+        onEquipItem={(entry, slot) => void equipMapItem(entry, slot)}
         onUnequipSlot={(slot) => void unequipMapSlot(slot)}
         onUseItem={(entry) => void useMapInventoryItem(entry)}
         onUseScroll={(entry) => void useMapInventoryItem(entry)}

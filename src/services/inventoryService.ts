@@ -29,7 +29,7 @@ export type CarrySettings = {
 };
 
 export const itemTypes: ItemDefinition["type"][] = ["weapon", "armor", "wearable", "potion", "revive potion", "consumable", "food", "scroll", "special", "material", "misc"];
-export const weaponEquipmentSlots: WeaponEquipmentSlot[] = ["main_hand", "off_hand"];
+export const weaponEquipmentSlots: WeaponEquipmentSlot[] = ["main_hand", "off_hand", "weapon"];
 export const armorPieceSlots: ArmorPieceSlot[] = ["helmet", "chest", "gloves", "legs", "boots"];
 export const equipmentSlots: EquipmentSlot[] = ["main_hand", "off_hand", ...armorPieceSlots, "armor", "weapon", "necklace", "ring", "charm", "relic"];
 export const rarityOptions = ["common", "uncommon", "rare", "epic", "legendary"];
@@ -329,6 +329,7 @@ export async function equipInventoryItem(characterId: string, item: ItemDefiniti
 
   await ensureEquipmentSlots(characterId);
   await assertCanEquipItemInAdditionalSlot(characterId, item, targetSlot);
+  await clearConflictingWeaponSlots(characterId, targetSlot);
   const { error } = await supabase.from("equipped_items").upsert(
     {
       user_id: user.id,
@@ -347,7 +348,16 @@ export async function equipInventoryItem(characterId: string, item: ItemDefiniti
 
 export function getCompatibleEquipmentSlots(item: ItemDefinition): EquipmentSlot[] {
   if (item.type === "weapon") {
-    return weaponEquipmentSlots;
+    if (item.equipment_slot === "main_hand") {
+      return ["main_hand"];
+    }
+    if (item.equipment_slot === "off_hand") {
+      return ["off_hand"];
+    }
+    if (item.equipment_slot === "weapon") {
+      return ["weapon"];
+    }
+    return ["main_hand"];
   }
 
   if (item.type === "armor") {
@@ -369,7 +379,7 @@ export function formatEquipmentSlotLabel(slot: EquipmentSlot | string) {
   const labels: Record<string, string> = {
     main_hand: "Main Hand",
     off_hand: "Off Hand",
-    weapon: "Legacy Weapon",
+    weapon: "Two-Handed",
     helmet: "Helmet",
     chest: "Chest",
     gloves: "Gloves",
@@ -389,7 +399,37 @@ function isItemCompatibleWithSlot(item: ItemDefinition, slot: EquipmentSlot) {
 }
 
 function normalizeWeaponSlot(slot: ItemDefinition["equipment_slot"]): EquipmentSlot {
-  return slot === "off_hand" ? "off_hand" : "main_hand";
+  if (slot === "off_hand" || slot === "weapon") {
+    return slot;
+  }
+  return "main_hand";
+}
+
+async function clearConflictingWeaponSlots(characterId: string, targetSlot: EquipmentSlot) {
+  if (targetSlot === "weapon") {
+    const { error } = await supabase
+      .from("equipped_items")
+      .update({ item_id: null, updated_at: new Date().toISOString() })
+      .eq("character_id", characterId)
+      .in("slot", ["main_hand", "off_hand"]);
+
+    if (error) {
+      throw error;
+    }
+    return;
+  }
+
+  if (targetSlot === "main_hand" || targetSlot === "off_hand") {
+    const { error } = await supabase
+      .from("equipped_items")
+      .update({ item_id: null, updated_at: new Date().toISOString() })
+      .eq("character_id", characterId)
+      .eq("slot", "weapon");
+
+    if (error) {
+      throw error;
+    }
+  }
 }
 
 async function assertCanEquipItemInAdditionalSlot(characterId: string, item: ItemDefinition, targetSlot: EquipmentSlot) {
@@ -410,7 +450,15 @@ async function assertCanEquipItemInAdditionalSlot(characterId: string, item: Ite
   const equippedInOtherSlots = (equippedResult.data ?? []).filter((row) => row.slot !== targetSlot).length;
 
   if (ownedQuantity > 0 && equippedInOtherSlots >= ownedQuantity) {
-    throw new Error(`You need another ${item.name} to equip it in another slot.`);
+    const { error } = await supabase
+      .from("equipped_items")
+      .update({ item_id: null, updated_at: new Date().toISOString() })
+      .eq("character_id", characterId)
+      .eq("item_id", item.id);
+
+    if (error) {
+      throw error;
+    }
   }
 }
 
@@ -426,35 +474,122 @@ export async function sellInventoryItem(character: CharacterWithDetails, invento
   if (!inventoryItem.item.sellable) {
     throw new Error("This item cannot be sold.");
   }
+  if (inventoryItem.equippedSlot) {
+    throw new Error("Unequip this item before selling it.");
+  }
 
   await consumeInventoryItem(inventoryItem, 1);
+  return addCharacterGold(character, inventoryItem.item.gold_value);
+}
+
+export async function consumeInventoryItem(inventoryItem: InventoryItem, amount = 1) {
+  const safeAmount = Math.max(1, Math.floor(Number(amount) || 1));
+  const { data: currentRow, error: currentError } = await supabase
+    .from("player_inventory")
+    .select("*")
+    .eq("id", inventoryItem.id)
+    .maybeSingle();
+
+  if (currentError) {
+    throw currentError;
+  }
+
+  if (!currentRow) {
+    throw new Error("This item is no longer in your inventory.");
+  }
+
+  const currentQuantity = Math.max(0, Number(currentRow.quantity) || 0);
+  if (currentQuantity < safeAmount) {
+    throw new Error("Not enough items remaining.");
+  }
+
+  const nextQuantity = currentQuantity - safeAmount;
+
+  if (nextQuantity > 0) {
+    const { data, error } = await supabase
+      .from("player_inventory")
+      .update({ quantity: nextQuantity, updated_at: new Date().toISOString() })
+      .eq("id", inventoryItem.id)
+      .eq("quantity", currentQuantity)
+      .select("id")
+      .maybeSingle();
+    if (error) {
+      throw error;
+    }
+    if (!data) {
+      throw new Error("Inventory changed. Try again.");
+    }
+    return;
+  }
+
+  await clearEquippedItemReferences(currentRow.character_id, currentRow.item_id);
+  const { data, error } = await supabase
+    .from("player_inventory")
+    .delete()
+    .eq("id", inventoryItem.id)
+    .eq("quantity", currentQuantity)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+  if (!data) {
+    throw new Error("Inventory changed. Try again.");
+  }
+}
+
+async function clearEquippedItemReferences(characterId: string, itemId: string) {
   const { error } = await supabase
-    .from("characters")
-    .update({ gold: character.gold + inventoryItem.item.gold_value })
-    .eq("id", character.id)
-    .eq("user_id", character.user_id);
+    .from("equipped_items")
+    .update({ item_id: null, updated_at: new Date().toISOString() })
+    .eq("character_id", characterId)
+    .eq("item_id", itemId);
 
   if (error) {
     throw error;
   }
 }
 
-export async function consumeInventoryItem(inventoryItem: InventoryItem, amount = 1) {
-  const nextQuantity = inventoryItem.quantity - amount;
+export async function addCharacterGold(character: CharacterWithDetails, goldAmount: number) {
+  const safeGold = Math.max(0, Math.floor(Number(goldAmount) || 0));
+  const { data: rpcCharacter, error: rpcError } = await supabase.rpc("apply_character_xp_gold_atomic", {
+    p_character_id: character.id,
+    p_xp: 0,
+    p_gold: safeGold,
+  });
 
-  if (nextQuantity > 0) {
-    const { error } = await supabase.from("player_inventory").update({ quantity: nextQuantity, updated_at: new Date().toISOString() }).eq("id", inventoryItem.id);
-    if (error) {
-      throw error;
-    }
-    return;
+  if (!rpcError) {
+    return { gold: Number((rpcCharacter as CharacterWithDetails | null)?.gold ?? Number(character.gold) + safeGold) };
   }
 
-  const { error } = await supabase.from("player_inventory").delete().eq("id", inventoryItem.id);
+  if (!isMissingRpcError(rpcError)) {
+    throw rpcError;
+  }
+
+  const { data: currentCharacter, error: characterError } = await supabase
+    .from("characters")
+    .select("gold")
+    .eq("id", character.id)
+    .eq("user_id", character.user_id)
+    .single();
+
+  if (characterError) {
+    throw characterError;
+  }
+
+  const nextGold = Number(currentCharacter.gold) + safeGold;
+  const { error } = await supabase
+    .from("characters")
+    .update({ gold: nextGold })
+    .eq("id", character.id)
+    .eq("user_id", character.user_id);
 
   if (error) {
     throw error;
   }
+
+  return { gold: nextGold };
 }
 
 export function getInventoryResourceBonuses(equipped: Record<EquipmentSlot, ItemDefinition | null>) {

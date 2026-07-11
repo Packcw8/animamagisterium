@@ -807,8 +807,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
     try {
       const amount = getItemRestoreAmount(entry.item, resources.maxHp);
-      const nextHealth = await saveHealth(currentHealth + amount);
       await consumeInventoryItem(entry, 1);
+      const nextHealth = await saveHealth(currentHealth + amount);
       await loadInventory();
       setInventoryMessage(`Used ${entry.item.name}. Health is now ${nextHealth} / ${resources.maxHp}.`);
     } catch (error) {
@@ -858,7 +858,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
           onClose={() => setActiveSheet(null)}
           onSelectTab={setInventoryCategory}
           onSelectItem={setSelectedInventoryItemId}
-          onEquipItem={(entry) => void equipItem(entry)}
+          onEquipItem={(entry, slot) => void equipItem(entry, slot)}
           onUnequipSlot={(slot) => void unequipSlot(slot)}
           onUseItem={(entry) => void useOutsideBattleItem(entry)}
           onUseScroll={(entry) => void useAbilityScroll(entry)}
