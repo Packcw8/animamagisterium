@@ -68,6 +68,7 @@ type SharedCanvasProps = {
   playerScale?: number;
   markerScale?: number;
   markerDisplayStates?: Record<string, MiniMapMarkerDisplayState>;
+  allowMarkerStateClicks?: boolean;
 };
 
 export function OverworldMapCanvas({
@@ -446,6 +447,7 @@ function MapCanvasLayers({
   playerScale = 1,
   markerScale = 1,
   markerDisplayStates = {},
+  allowMarkerStateClicks = false,
 }: SharedCanvasProps & { markerSize: number; mini?: boolean }) {
   const safePlayerScale = Math.max(0.35, Math.min(2, Number(playerScale) || 1));
   const safeMarkerScale = Math.max(0.35, Math.min(2, Number(markerScale) || 1));
@@ -513,7 +515,7 @@ function MapCanvasLayers({
           return null;
         }
 
-        const disabled = displayState === "current" || displayState === "visited";
+        const disabled = !allowMarkerStateClicks && (displayState === "current" || displayState === "visited");
         return (
           <Pressable
             key={marker.id}
@@ -521,12 +523,12 @@ function MapCanvasLayers({
             style={[
               styles.marker,
               mini && styles.miniMapMarker,
-              marker.type === "Movement" && styles.movementMarker,
               (!marker.is_active || !marker.is_unlocked) && styles.markerHidden,
               displayState === "current" && styles.markerCurrent,
               displayState === "available" && styles.markerAvailable,
               displayState === "visited" && styles.markerVisited,
               getMarkerRenderStyle(marker, playerPosition, scaledMarkerSize),
+              marker.type === "Movement" && styles.movementMarker,
             ]}
             onPress={(event) => {
               event.stopPropagation?.();
@@ -991,7 +993,18 @@ const styles = StyleSheet.create({
   },
   movementMarker: {
     zIndex: 14,
-  },
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+    ...(Platform.OS === "web"
+      ? {
+          boxShadow: "none",
+          outlineStyle: "none",
+        }
+      : null),
+  } as object,
   markerHidden: {
     opacity: 0.46,
     borderStyle: "dashed",

@@ -7462,6 +7462,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             playerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.player_avatar_scale) || 1))}
             markerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.marker_scale) || 1))}
             markerDisplayStates={!isAdmin || openAdminPanels.movementGraph || editorMode === "Movement Grid" ? miniMapMarkerDisplayStates : {}}
+            allowMarkerStateClicks={isAdmin}
             playerPathVisibility={route.mini_map_id === activeMiniMap.id ? playerPathVisibility : "visible"}
             onSelectMarker={(marker) => void selectMarker(marker)}
           />
