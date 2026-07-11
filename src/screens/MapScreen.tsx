@@ -7808,48 +7808,70 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           ) : null}
           {editorMode === "Marker" && ["World Markers", "Area/Town Markers"].includes(adminSection) ? (
             <>
-              <MarkerTypeSelector types={activeSectionMarkerTypes} selectedType={draftType} onSelectType={setDraftType} />
-              <LegendStylePicker items={adminLegendItems} onApply={applyLegendStyleToMarker} />
-              {renderMarkerChapterScopeEditor()}
-              <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
-              <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
-              <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
-              <AdminImageUploadButton folder="marker-backgrounds" onUploaded={setMarkerSceneBackground} onMessage={setAdminMessage} />
-              <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
-              <AdminImageUploadButton folder="marker-npcs" onUploaded={setMarkerNpcImage} onMessage={setAdminMessage} />
-              <MarkerStyleEditor
-                iconLabel={markerIconLabel}
-                iconImage={markerIconImage}
-                iconColor={markerIconColor}
-                markerSize={markerSize}
-                uploadFolder="marker-icons"
-                onChangeIconLabel={setMarkerIconLabel}
-                onChangeIconImage={setMarkerIconImage}
-                onChangeIconColor={setMarkerIconColor}
-                onChangeMarkerSize={setMarkerSize}
-                onUploadMessage={setAdminMessage}
-              />
-              <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
-              <JourneyJournalAdminFields
-                title={markerJournalTitle}
-                body={markerJournalBody}
-                imageUrl={markerJournalImageUrl}
-                sortOrder={markerJournalSortOrder}
-                onChangeTitle={setMarkerJournalTitle}
-                onChangeBody={setMarkerJournalBody}
-                onChangeImageUrl={setMarkerJournalImageUrl}
-                onChangeSortOrder={setMarkerJournalSortOrder}
-              />
-              <StoryDeckPicker
-                decks={storyDecks}
-                selectedId={markerStoryDeckId}
-                onSelect={setMarkerStoryDeckId}
-                label="Story Deck On Marker Interaction"
-                helper="Optional. Plays when the player opens this marker."
-                seasonNumber={selectedSeason}
-                chapterNumber={selectedChapter}
-              />
-              <MarkerAccessRulesPanel
+              <AdminCollapsibleSection
+                title="Marker Details"
+                summary={`${draftType} / ${draftTitle.trim() || "Untitled marker"}`}
+                isOpen={isAdminPanelOpen("world-marker-details")}
+                onToggle={() => toggleAdminPanel("world-marker-details")}
+              >
+                <MarkerTypeSelector types={activeSectionMarkerTypes} selectedType={draftType} onSelectType={setDraftType} />
+                <LegendStylePicker items={adminLegendItems} onApply={applyLegendStyleToMarker} />
+                {renderMarkerChapterScopeEditor()}
+                <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
+                <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+                <AdminImageUploadButton folder="marker-backgrounds" onUploaded={setMarkerSceneBackground} onMessage={setAdminMessage} />
+                <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+                <AdminImageUploadButton folder="marker-npcs" onUploaded={setMarkerNpcImage} onMessage={setAdminMessage} />
+                <MarkerStyleEditor
+                  iconLabel={markerIconLabel}
+                  iconImage={markerIconImage}
+                  iconColor={markerIconColor}
+                  markerSize={markerSize}
+                  uploadFolder="marker-icons"
+                  onChangeIconLabel={setMarkerIconLabel}
+                  onChangeIconImage={setMarkerIconImage}
+                  onChangeIconColor={setMarkerIconColor}
+                  onChangeMarkerSize={setMarkerSize}
+                  onUploadMessage={setAdminMessage}
+                />
+                <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
+              </AdminCollapsibleSection>
+
+              <AdminCollapsibleSection
+                title="Journey Panel Entry"
+                summary={markerJournalTitle.trim() || markerStoryDeckId ? "Journal/story card configured" : "Optional"}
+                isOpen={isAdminPanelOpen("world-marker-journey")}
+                onToggle={() => toggleAdminPanel("world-marker-journey")}
+              >
+                <JourneyJournalAdminFields
+                  title={markerJournalTitle}
+                  body={markerJournalBody}
+                  imageUrl={markerJournalImageUrl}
+                  sortOrder={markerJournalSortOrder}
+                  onChangeTitle={setMarkerJournalTitle}
+                  onChangeBody={setMarkerJournalBody}
+                  onChangeImageUrl={setMarkerJournalImageUrl}
+                  onChangeSortOrder={setMarkerJournalSortOrder}
+                />
+                <StoryDeckPicker
+                  decks={storyDecks}
+                  selectedId={markerStoryDeckId}
+                  onSelect={setMarkerStoryDeckId}
+                  label="Story Deck On Marker Interaction"
+                  helper="Optional. Plays when the player opens this marker."
+                  seasonNumber={selectedSeason}
+                  chapterNumber={selectedChapter}
+                />
+              </AdminCollapsibleSection>
+
+              <AdminCollapsibleSection
+                title="Access Rules"
+                summary={`${String(markerAccessRule ?? "always").replaceAll("_", " ")} / ${markerInteractable ? "usable" : "not usable"}`}
+                isOpen={isAdminPanelOpen("world-marker-access")}
+                onToggle={() => toggleAdminPanel("world-marker-access")}
+              >
+                <MarkerAccessRulesPanel
                 markerType={draftType}
                 storyFlagKeys={knownStoryFlagKeys}
                 visibleStoryFlagKey={markerVisibleStoryFlagKey}
@@ -7887,87 +7909,97 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                 onToggleInitiallyUnlocked={() => setMarkerInitiallyUnlocked((value) => !value)}
                 onToggleRoute={toggleSignPostRoute}
                 onSelectCompletionCondition={setMarkerRouteCompletionCondition}
-              />
-              <LinkedMarkerPathNotice
-                markerType={draftType}
-                selectedRouteIds={selectedMarkerRouteIds}
-                routes={activeRouteScopeRoutes}
-                startsRouteOnAccept={markerStartsRouteOnAccept}
-                requireAllLinkedRoutes={markerRequireAllLinkedRoutes}
-              />
-              {draftType === "Area/Town Entrance" ? (
-                <View style={styles.storyEditor}>
-                  <MiniMapPicker
-                    miniMaps={adminMiniMaps}
-                    selectedId={selectedMiniMapId}
-                    onSelect={(miniMapId) => {
-                      setSelectedMiniMapId(miniMapId);
-                      setMarkerExitTargetSpawnMarkerId(null);
-                    }}
-                  />
-                  {selectedMiniMapId ? (
-                    <MarkerPicker
-                      label="Target spawn in mini map"
-                      markers={markers.filter((marker) => marker.mini_map_id === selectedMiniMapId && marker.type === "Player Spawn")}
-                      selectedId={markerExitTargetSpawnMarkerId}
-                      onSelect={setMarkerExitTargetSpawnMarkerId}
+                />
+                <LinkedMarkerPathNotice
+                  markerType={draftType}
+                  selectedRouteIds={selectedMarkerRouteIds}
+                  routes={activeRouteScopeRoutes}
+                  startsRouteOnAccept={markerStartsRouteOnAccept}
+                  requireAllLinkedRoutes={markerRequireAllLinkedRoutes}
+                />
+              </AdminCollapsibleSection>
+              {(draftType === "Area/Town Entrance" || isExitMarkerType(draftType) || draftType === "Sign Post") ? (
+                <AdminCollapsibleSection
+                  title="Target And Continue Trail"
+                  summary={draftType === "Sign Post" ? `${selectedMarkerRouteIds.length} linked path${selectedMarkerRouteIds.length === 1 ? "" : "s"}` : isExitMarkerType(draftType) ? "Exit destination and optional next path" : "Mini map target and optional next path"}
+                  isOpen={isAdminPanelOpen("world-marker-target")}
+                  onToggle={() => toggleAdminPanel("world-marker-target")}
+                >
+                  {draftType === "Area/Town Entrance" ? (
+                    <View style={styles.storyEditor}>
+                      <MiniMapPicker
+                        miniMaps={adminMiniMaps}
+                        selectedId={selectedMiniMapId}
+                        onSelect={(miniMapId) => {
+                          setSelectedMiniMapId(miniMapId);
+                          setMarkerExitTargetSpawnMarkerId(null);
+                        }}
+                      />
+                      {selectedMiniMapId ? (
+                        <MarkerPicker
+                          label="Target spawn in mini map"
+                          markers={markers.filter((marker) => marker.mini_map_id === selectedMiniMapId && marker.type === "Player Spawn")}
+                          selectedId={markerExitTargetSpawnMarkerId}
+                          onSelect={setMarkerExitTargetSpawnMarkerId}
+                        />
+                      ) : null}
+                      {selectedMiniMapId && !markers.some((marker) => marker.mini_map_id === selectedMiniMapId && marker.type === "Player Spawn") ? (
+                        <Text style={styles.debugLine}>No Player Spawn marker exists in this mini map yet. The entrance will fall back to the center of the mini map.</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+                  {isExitMarkerType(draftType) ? (
+                    <ExitTargetEditor
+                      targetType={markerExitTargetType}
+                      setTargetType={setMarkerExitTargetType}
+                      targetMarkerId={markerExitTargetMarkerId}
+                      setTargetMarkerId={setMarkerExitTargetMarkerId}
+                      targetMiniMapId={markerExitTargetMiniMapId}
+                      setTargetMiniMapId={setMarkerExitTargetMiniMapId}
+                      targetSpawnMarkerId={markerExitTargetSpawnMarkerId}
+                      setTargetSpawnMarkerId={setMarkerExitTargetSpawnMarkerId}
+                      worldMarkers={adminWorldMarkers}
+                      miniMaps={adminMiniMaps}
+                      spawnMarkers={markers}
                     />
                   ) : null}
-                  {selectedMiniMapId && !markers.some((marker) => marker.mini_map_id === selectedMiniMapId && marker.type === "Player Spawn") ? (
-                    <Text style={styles.debugLine}>No Player Spawn marker exists in this mini map yet. The entrance will fall back to the center of the mini map.</Text>
+                  {(draftType === "Area/Town Entrance" || isExitMarkerType(draftType)) ? (
+                    <MarkerContinuationRouteEditor
+                      markerType={draftType}
+                      routes={markerContinuationRoutes}
+                      selectedRouteId={markerLinkedRouteId}
+                      startDirection={markerLinkedRouteStartDirection}
+                      startsRouteOnAccept={markerStartsRouteOnAccept}
+                      onSelectRoute={setMarkerLinkedRouteId}
+                      onSelectStartDirection={setMarkerLinkedRouteStartDirection}
+                      onToggleStartsRoute={() => setMarkerStartsRouteOnAccept((value) => !value)}
+                    />
                   ) : null}
-                </View>
-              ) : null}
-              {isExitMarkerType(draftType) ? (
-                <ExitTargetEditor
-                  targetType={markerExitTargetType}
-                  setTargetType={setMarkerExitTargetType}
-                  targetMarkerId={markerExitTargetMarkerId}
-                  setTargetMarkerId={setMarkerExitTargetMarkerId}
-                  targetMiniMapId={markerExitTargetMiniMapId}
-                  setTargetMiniMapId={setMarkerExitTargetMiniMapId}
-                  targetSpawnMarkerId={markerExitTargetSpawnMarkerId}
-                  setTargetSpawnMarkerId={setMarkerExitTargetSpawnMarkerId}
-                  worldMarkers={adminWorldMarkers}
-                  miniMaps={adminMiniMaps}
-                  spawnMarkers={markers}
-                />
-              ) : null}
-              {(draftType === "Area/Town Entrance" || isExitMarkerType(draftType)) ? (
-                <MarkerContinuationRouteEditor
-                  markerType={draftType}
-                  routes={markerContinuationRoutes}
-                  selectedRouteId={markerLinkedRouteId}
-                  startDirection={markerLinkedRouteStartDirection}
-                  startsRouteOnAccept={markerStartsRouteOnAccept}
-                  onSelectRoute={setMarkerLinkedRouteId}
-                  onSelectStartDirection={setMarkerLinkedRouteStartDirection}
-                  onToggleStartsRoute={() => setMarkerStartsRouteOnAccept((value) => !value)}
-                />
-              ) : null}
-              {draftType === "Sign Post" ? (
-                <View style={styles.storyEditor}>
-                  <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
-                  <Text style={styles.copy}>Players choose from these paths when they interact with this Sign Post.</Text>
-                  <View style={styles.storyRoutePicker}>
-                    {adminWorldRoutes.map((item) => (
-                      <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
-                        <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                  <SignPostRouteDirectionEditor
-                    routes={adminWorldRoutes}
-                    selectedRouteIds={selectedMarkerRouteIds}
-                    routeDirections={selectedMarkerRouteDirections}
-                    onSelectDirection={setSignPostRouteDirection}
-                  />
-                  {selectedMarker ? (
-                    <Text style={styles.debugLine}>Save Selected Marker Settings after changing linked paths.</Text>
-                  ) : (
-                    <Text style={styles.debugLine}>Selected paths will be linked when the Sign Post marker is created.</Text>
-                  )}
-                </View>
+                  {draftType === "Sign Post" ? (
+                    <View style={styles.storyEditor}>
+                      <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
+                      <Text style={styles.copy}>Players choose from these paths when they interact with this Sign Post.</Text>
+                      <View style={styles.storyRoutePicker}>
+                        {adminWorldRoutes.map((item) => (
+                          <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
+                            <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      <SignPostRouteDirectionEditor
+                        routes={adminWorldRoutes}
+                        selectedRouteIds={selectedMarkerRouteIds}
+                        routeDirections={selectedMarkerRouteDirections}
+                        onSelectDirection={setSignPostRouteDirection}
+                      />
+                      {selectedMarker ? (
+                        <Text style={styles.debugLine}>Save Selected Marker Settings after changing linked paths.</Text>
+                      ) : (
+                        <Text style={styles.debugLine}>Selected paths will be linked when the Sign Post marker is created.</Text>
+                      )}
+                    </View>
+                  ) : null}
+                </AdminCollapsibleSection>
               ) : null}
               {draftType === "NPC" ? (
                 <View style={styles.storyEditor}>
@@ -8992,98 +9024,200 @@ function MiniMapMarkerAdminForm({
   const supportsExit = isExitMarkerType(draftType);
   const supportsSignPost = draftType === "Sign Post";
   const supportsBattle = isBattleMarkerType(draftType);
+  const [openMarkerSections, setOpenMarkerSections] = useState<Record<string, boolean>>({
+    details: true,
+    access: false,
+    target: supportsExit || draftType === "Area/Town Entrance",
+    content: false,
+    special: false,
+    rewards: false,
+    save: true,
+  });
+
+  function isMarkerSectionOpen(key: string) {
+    return openMarkerSections[key] !== false;
+  }
+
+  function toggleMarkerSection(key: string) {
+    setOpenMarkerSections((current) => ({ ...current, [key]: current[key] === false }));
+  }
 
   return (
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Create / Edit Mini Map Marker</Text>
-      <MarkerTypeSelector types={activeSectionMarkerTypes} selectedType={draftType} onSelectType={setDraftType} />
-      <LegendStylePicker items={legendItems} onApply={onApplyLegendStyle} />
-      {markerScopeEditor}
-      <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
-      <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
-      <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
-      <AdminImageUploadButton folder="mini-marker-backgrounds" onUploaded={setMarkerSceneBackground} onMessage={() => undefined} />
-      <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
-      <AdminImageUploadButton folder="mini-marker-npcs" onUploaded={setMarkerNpcImage} onMessage={() => undefined} />
-      <MarkerStyleEditor
-        iconLabel={markerIconLabel}
-        iconImage={markerIconImage}
-        iconColor={markerIconColor}
-        markerSize={markerSize}
-        uploadFolder="mini-marker-icons"
-        onChangeIconLabel={setMarkerIconLabel}
-        onChangeIconImage={setMarkerIconImage}
-        onChangeIconColor={setMarkerIconColor}
-        onChangeMarkerSize={setMarkerSize}
-        onUploadMessage={onMessage}
-      />
-      <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
-      <JourneyJournalAdminFields
-        title={markerJournalTitle}
-        body={markerJournalBody}
-        imageUrl={markerJournalImageUrl}
-        sortOrder={markerJournalSortOrder}
-        onChangeTitle={setMarkerJournalTitle}
-        onChangeBody={setMarkerJournalBody}
-        onChangeImageUrl={setMarkerJournalImageUrl}
-        onChangeSortOrder={setMarkerJournalSortOrder}
-      />
-      <StoryDeckPicker
-        decks={storyDecks}
-        selectedId={markerStoryDeckId}
-        onSelect={setMarkerStoryDeckId}
-        label="Story Deck On Marker Interaction"
-        helper="Optional. Plays when the player opens this mini-map marker."
-        seasonNumber={selectedSeason}
-        chapterNumber={selectedChapter}
-      />
-      <MarkerAccessRulesPanel
-        markerType={draftType}
-        storyFlagKeys={knownStoryFlagKeys}
-        visibleStoryFlagKey={markerVisibleStoryFlagKey}
-        visibleStoryFlagValue={markerVisibleStoryFlagValue}
-        markerLockType={markerLockType}
-        markerLockMessage={markerLockMessage}
-        markerAccessRule={markerAccessRule}
-        markerRequiredItemId={markerRequiredItemId}
-        markerRequiredItemQuantity={markerRequiredItemQuantity}
-        markerAccessHint={markerAccessHint}
-        markerInteractable={markerInteractable}
-        markerInitiallyUnlocked={markerInitiallyUnlocked}
-        itemDefinitions={itemDefinitions}
-        showPathRequirements={!supportsSignPost && !supportsQuest && !supportsBattle}
-        pathRequirementDescription={draftType === "Area/Town Entrance"
-          ? "Players can enter after completing any one linked path that leads to this entrance. Use the unlock point below to choose whether the entrance opens at the path end, path start after reverse travel, or either side."
-          : "Players must complete linked paths before this marker becomes interactable. Use the unlock point below for endpoint-style exits, gates, clues, and area transitions."}
-        routes={routes}
-        selectedRouteIds={selectedMarkerRouteIds}
-        completionCondition={markerRouteCompletionCondition}
-        emptyPathText="No walking paths exist in this mini map yet."
-        saveHint={selectedMarker ? "Save Marker Details after changing linked paths or the unlock point." : "Selected paths will be linked when this marker is created."}
-        onChangeVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
-        onToggleVisibleStoryFlagValue={() => setMarkerVisibleStoryFlagValue((value) => !value)}
-        onClearVisibleStoryFlag={() => {
-          setMarkerVisibleStoryFlagKey("");
-          setMarkerVisibleStoryFlagValue(true);
-        }}
-        onChangeMarkerLockType={setMarkerLockType}
-        onChangeMarkerLockMessage={setMarkerLockMessage}
-        onChangeMarkerAccessRule={setMarkerAccessRule}
-        onChangeRequiredItemId={setMarkerRequiredItemId}
-        onChangeRequiredItemQuantity={setMarkerRequiredItemQuantity}
-        onChangeAccessHint={setMarkerAccessHint}
-        onToggleInteractable={() => setMarkerInteractable((value) => !value)}
-        onToggleInitiallyUnlocked={() => setMarkerInitiallyUnlocked((value) => !value)}
-        onToggleRoute={toggleSignPostRoute}
-        onSelectCompletionCondition={setMarkerRouteCompletionCondition}
-      />
-      <LinkedMarkerPathNotice
-        markerType={draftType}
-        selectedRouteIds={selectedMarkerRouteIds}
-        routes={routes}
-        startsRouteOnAccept={markerStartsRouteOnAccept}
-        requireAllLinkedRoutes={markerRequireAllLinkedRoutes}
-      />
+      <AdminCollapsibleSection
+        title="Marker Details"
+        summary={`${draftType} / ${draftTitle.trim() || "Untitled marker"}`}
+        isOpen={isMarkerSectionOpen("details")}
+        onToggle={() => toggleMarkerSection("details")}
+      >
+        <MarkerTypeSelector types={activeSectionMarkerTypes} selectedType={draftType} onSelectType={setDraftType} />
+        <LegendStylePicker items={legendItems} onApply={onApplyLegendStyle} />
+        {markerScopeEditor}
+        <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+        <AdminImageUploadButton folder="mini-marker-backgrounds" onUploaded={setMarkerSceneBackground} onMessage={() => undefined} />
+        <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+        <AdminImageUploadButton folder="mini-marker-npcs" onUploaded={setMarkerNpcImage} onMessage={() => undefined} />
+        <MarkerStyleEditor
+          iconLabel={markerIconLabel}
+          iconImage={markerIconImage}
+          iconColor={markerIconColor}
+          markerSize={markerSize}
+          uploadFolder="mini-marker-icons"
+          onChangeIconLabel={setMarkerIconLabel}
+          onChangeIconImage={setMarkerIconImage}
+          onChangeIconColor={setMarkerIconColor}
+          onChangeMarkerSize={setMarkerSize}
+          onUploadMessage={onMessage}
+        />
+        <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
+      </AdminCollapsibleSection>
+
+      <AdminCollapsibleSection
+        title="Journey Panel Entry"
+        summary={markerJournalTitle.trim() || markerStoryDeckId ? "Journal/story card configured" : "Optional"}
+        isOpen={isMarkerSectionOpen("journey")}
+        onToggle={() => toggleMarkerSection("journey")}
+      >
+        <JourneyJournalAdminFields
+          title={markerJournalTitle}
+          body={markerJournalBody}
+          imageUrl={markerJournalImageUrl}
+          sortOrder={markerJournalSortOrder}
+          onChangeTitle={setMarkerJournalTitle}
+          onChangeBody={setMarkerJournalBody}
+          onChangeImageUrl={setMarkerJournalImageUrl}
+          onChangeSortOrder={setMarkerJournalSortOrder}
+        />
+        <StoryDeckPicker
+          decks={storyDecks}
+          selectedId={markerStoryDeckId}
+          onSelect={setMarkerStoryDeckId}
+          label="Story Deck On Marker Interaction"
+          helper="Optional. Plays when the player opens this mini-map marker."
+          seasonNumber={selectedSeason}
+          chapterNumber={selectedChapter}
+        />
+      </AdminCollapsibleSection>
+
+      <AdminCollapsibleSection
+        title="Access Rules"
+        summary={`${String(markerAccessRule ?? "always").replaceAll("_", " ")} / ${markerInteractable ? "usable" : "not usable"}`}
+        isOpen={isMarkerSectionOpen("access")}
+        onToggle={() => toggleMarkerSection("access")}
+      >
+        <MarkerAccessRulesPanel
+          markerType={draftType}
+          storyFlagKeys={knownStoryFlagKeys}
+          visibleStoryFlagKey={markerVisibleStoryFlagKey}
+          visibleStoryFlagValue={markerVisibleStoryFlagValue}
+          markerLockType={markerLockType}
+          markerLockMessage={markerLockMessage}
+          markerAccessRule={markerAccessRule}
+          markerRequiredItemId={markerRequiredItemId}
+          markerRequiredItemQuantity={markerRequiredItemQuantity}
+          markerAccessHint={markerAccessHint}
+          markerInteractable={markerInteractable}
+          markerInitiallyUnlocked={markerInitiallyUnlocked}
+          itemDefinitions={itemDefinitions}
+          showPathRequirements={!supportsSignPost && !supportsQuest && !supportsBattle}
+          pathRequirementDescription={draftType === "Area/Town Entrance"
+            ? "Players can enter after completing any one linked path that leads to this entrance. Use the unlock point below to choose whether the entrance opens at the path end, path start after reverse travel, or either side."
+            : "Players must complete linked paths before this marker becomes interactable. Use the unlock point below for endpoint-style exits, gates, clues, and area transitions."}
+          routes={routes}
+          selectedRouteIds={selectedMarkerRouteIds}
+          completionCondition={markerRouteCompletionCondition}
+          emptyPathText="No walking paths exist in this mini map yet."
+          saveHint={selectedMarker ? "Save Marker Details after changing linked paths or the unlock point." : "Selected paths will be linked when this marker is created."}
+          onChangeVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
+          onToggleVisibleStoryFlagValue={() => setMarkerVisibleStoryFlagValue((value) => !value)}
+          onClearVisibleStoryFlag={() => {
+            setMarkerVisibleStoryFlagKey("");
+            setMarkerVisibleStoryFlagValue(true);
+          }}
+          onChangeMarkerLockType={setMarkerLockType}
+          onChangeMarkerLockMessage={setMarkerLockMessage}
+          onChangeMarkerAccessRule={setMarkerAccessRule}
+          onChangeRequiredItemId={setMarkerRequiredItemId}
+          onChangeRequiredItemQuantity={setMarkerRequiredItemQuantity}
+          onChangeAccessHint={setMarkerAccessHint}
+          onToggleInteractable={() => setMarkerInteractable((value) => !value)}
+          onToggleInitiallyUnlocked={() => setMarkerInitiallyUnlocked((value) => !value)}
+          onToggleRoute={toggleSignPostRoute}
+          onSelectCompletionCondition={setMarkerRouteCompletionCondition}
+        />
+        <LinkedMarkerPathNotice
+          markerType={draftType}
+          selectedRouteIds={selectedMarkerRouteIds}
+          routes={routes}
+          startsRouteOnAccept={markerStartsRouteOnAccept}
+          requireAllLinkedRoutes={markerRequireAllLinkedRoutes}
+        />
+      </AdminCollapsibleSection>
+      {(draftType === "Area/Town Entrance" || supportsExit || supportsSignPost) ? (
+        <AdminCollapsibleSection
+          title="Target And Continue Trail"
+          summary={supportsExit ? "Exit destination and optional next path" : supportsSignPost ? `${selectedMarkerRouteIds.length} linked path${selectedMarkerRouteIds.length === 1 ? "" : "s"}` : "Area target and optional next path"}
+          isOpen={isMarkerSectionOpen("target")}
+          onToggle={() => toggleMarkerSection("target")}
+        >
+          {supportsSignPost ? (
+            <View style={styles.storyEditor}>
+              <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
+              <Text style={styles.copy}>Players choose from these existing paths when they interact with this Sign Post inside the mini map.</Text>
+              <View style={styles.storyRoutePicker}>
+                {routes.map((item) => (
+                  <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
+                    <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              <SignPostRouteDirectionEditor
+                routes={routes}
+                selectedRouteIds={selectedMarkerRouteIds}
+                routeDirections={selectedMarkerRouteDirections}
+                onSelectDirection={setSignPostRouteDirection}
+              />
+              {routes.length === 0 ? <Text style={styles.copy}>No walking paths exist in this season/chapter yet.</Text> : null}
+              {selectedMarker ? (
+                <Text style={styles.debugLine}>Save Marker Details after changing linked paths.</Text>
+              ) : (
+                <Text style={styles.debugLine}>Selected paths will be linked when the Sign Post marker is created.</Text>
+              )}
+            </View>
+          ) : null}
+          {supportsExit ? (
+            <ExitTargetEditor
+              targetType={markerExitTargetType}
+              setTargetType={setMarkerExitTargetType}
+              targetMarkerId={markerExitTargetMarkerId}
+              setTargetMarkerId={setMarkerExitTargetMarkerId}
+              targetMiniMapId={markerExitTargetMiniMapId}
+              setTargetMiniMapId={setMarkerExitTargetMiniMapId}
+              targetSpawnMarkerId={markerExitTargetSpawnMarkerId}
+              setTargetSpawnMarkerId={setMarkerExitTargetSpawnMarkerId}
+              worldMarkers={worldMarkers}
+              miniMaps={miniMaps}
+              spawnMarkers={allMarkers}
+            />
+          ) : null}
+          {(draftType === "Area/Town Entrance" || supportsExit) ? (
+            <MarkerContinuationRouteEditor
+              markerType={draftType}
+              routes={continuationRoutes}
+              selectedRouteId={markerLinkedRouteId}
+              startDirection={markerLinkedRouteStartDirection}
+              startsRouteOnAccept={markerStartsRouteOnAccept}
+              onSelectRoute={setMarkerLinkedRouteId}
+              onSelectStartDirection={setMarkerLinkedRouteStartDirection}
+              onToggleStartsRoute={() => setMarkerStartsRouteOnAccept((value) => !value)}
+            />
+          ) : null}
+        </AdminCollapsibleSection>
+      ) : null}
+
       {draftType === "NPC" ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>NPC Character</Text>
@@ -9201,58 +9335,6 @@ function MiniMapMarkerAdminForm({
           />
         </View>
       ) : null}
-      {supportsSignPost ? (
-        <View style={styles.storyEditor}>
-          <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
-          <Text style={styles.copy}>Players choose from these existing paths when they interact with this Sign Post inside the mini map.</Text>
-          <View style={styles.storyRoutePicker}>
-            {routes.map((item) => (
-              <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
-                <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <SignPostRouteDirectionEditor
-            routes={routes}
-            selectedRouteIds={selectedMarkerRouteIds}
-            routeDirections={selectedMarkerRouteDirections}
-            onSelectDirection={setSignPostRouteDirection}
-          />
-          {routes.length === 0 ? <Text style={styles.copy}>No walking paths exist in this season/chapter yet.</Text> : null}
-          {selectedMarker ? (
-            <Text style={styles.debugLine}>Save Marker Details after changing linked paths.</Text>
-          ) : (
-            <Text style={styles.debugLine}>Selected paths will be linked when the Sign Post marker is created.</Text>
-          )}
-        </View>
-      ) : null}
-      {supportsExit ? (
-        <ExitTargetEditor
-          targetType={markerExitTargetType}
-          setTargetType={setMarkerExitTargetType}
-          targetMarkerId={markerExitTargetMarkerId}
-          setTargetMarkerId={setMarkerExitTargetMarkerId}
-          targetMiniMapId={markerExitTargetMiniMapId}
-          setTargetMiniMapId={setMarkerExitTargetMiniMapId}
-          targetSpawnMarkerId={markerExitTargetSpawnMarkerId}
-          setTargetSpawnMarkerId={setMarkerExitTargetSpawnMarkerId}
-          worldMarkers={worldMarkers}
-          miniMaps={miniMaps}
-          spawnMarkers={allMarkers}
-        />
-      ) : null}
-      {(draftType === "Area/Town Entrance" || supportsExit) ? (
-        <MarkerContinuationRouteEditor
-          markerType={draftType}
-          routes={continuationRoutes}
-          selectedRouteId={markerLinkedRouteId}
-          startDirection={markerLinkedRouteStartDirection}
-          startsRouteOnAccept={markerStartsRouteOnAccept}
-          onSelectRoute={setMarkerLinkedRouteId}
-          onSelectStartDirection={setMarkerLinkedRouteStartDirection}
-          onToggleStartsRoute={() => setMarkerStartsRouteOnAccept((value) => !value)}
-        />
-      ) : null}
       {supportsQuest ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>Quest / Path Link</Text>
@@ -9313,11 +9395,23 @@ function MiniMapMarkerAdminForm({
           </View>
         </View>
       ) : null}
-      {selectedMarker ? (
-        <Pressable style={styles.secondaryButton} onPress={onSaveSelectedMarker}>
-          <Text style={styles.secondaryText}>Save Marker Details</Text>
+      <AdminCollapsibleSection
+        title="Save / Create"
+        summary={selectedMarker ? "Save edits or create a new marker at the clicked spot" : "Create marker at clicked spot"}
+        isOpen={isMarkerSectionOpen("save")}
+        onToggle={() => toggleMarkerSection("save")}
+      >
+        {selectedMarker ? (
+          <Pressable style={styles.secondaryButton} onPress={onSaveSelectedMarker}>
+            <Text style={styles.secondaryText}>Save Marker Details</Text>
+          </Pressable>
+        ) : null}
+        {!clickedPercent ? <Text style={styles.lockText}>Tap the mini map image first to choose this marker's position.</Text> : null}
+        {!draftTitle.trim() ? <Text style={styles.lockText}>Add a marker title before creating it.</Text> : null}
+        <Pressable style={[styles.primaryButton, (!clickedPercent || !draftTitle.trim()) && styles.disabledAction]} onPress={onAddMarker}>
+          <Text style={styles.primaryText}>{selectedMarker ? "Create New Marker At Clicked Spot" : "Create Mini Map Marker"}</Text>
         </Pressable>
-      ) : null}
+      </AdminCollapsibleSection>
       {supportsMarket ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>Market / Shop Settings</Text>
@@ -9352,11 +9446,6 @@ function MiniMapMarkerAdminForm({
           ))}
         </View>
       ) : null}
-      {!clickedPercent ? <Text style={styles.lockText}>Tap the mini map image first to choose this marker's position.</Text> : null}
-      {!draftTitle.trim() ? <Text style={styles.lockText}>Add a marker title before creating it.</Text> : null}
-      <Pressable style={[styles.primaryButton, (!clickedPercent || !draftTitle.trim()) && styles.disabledAction]} onPress={onAddMarker}>
-        <Text style={styles.primaryText}>{selectedMarker ? "Create New Marker At Clicked Spot" : "Create Mini Map Marker"}</Text>
-      </Pressable>
     </View>
   );
 }

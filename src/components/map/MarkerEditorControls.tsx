@@ -117,10 +117,26 @@ export function ExitTargetEditor({
   const safeType = targetType ?? "world_marker";
   const worldTargets = worldMarkers.filter((marker) => !marker.mini_map_id);
   const targetSpawns = spawnMarkers.filter((marker) => marker.mini_map_id === targetMiniMapId && marker.type === "Player Spawn");
+  const selectedWorldTarget = worldTargets.find((marker) => marker.id === targetMarkerId) ?? null;
+  const selectedMiniMap = miniMaps.find((miniMap) => miniMap.id === targetMiniMapId) ?? null;
+  const selectedSpawn = targetSpawns.find((marker) => marker.id === targetSpawnMarkerId) ?? null;
 
   return (
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Exit Target</Text>
+      <Text style={styles.copy}>Choose exactly where this exit sends the player. Save Marker Details after changing this section.</Text>
+      <View style={styles.summaryBox}>
+        <Text style={styles.summaryLabel}>Current Exit</Text>
+        <Text style={styles.summaryValue}>
+          {safeType === "world_marker"
+            ? selectedWorldTarget
+              ? `World: ${selectedWorldTarget.title}`
+              : "World: no return marker selected"
+            : selectedMiniMap
+              ? `Mini Map: ${selectedMiniMap.name}${selectedSpawn ? ` / Spawn: ${selectedSpawn.title}` : " / center fallback"}`
+              : "Mini Map: no target selected"}
+        </Text>
+      </View>
       <View style={styles.storyRoutePicker}>
         {exitTargetTypes.map((type) => (
           <Pressable
@@ -141,19 +157,70 @@ export function ExitTargetEditor({
         ))}
       </View>
       {safeType === "world_marker" ? (
-        <MarkerPicker label="World return marker" markers={worldTargets} selectedId={targetMarkerId} onSelect={setTargetMarkerId} />
+        <View style={styles.pickerPanel}>
+          <Text style={styles.selectedTitle}>World Return Marker</Text>
+          <Text style={styles.copy}>Pick the overworld marker/location this exit returns to.</Text>
+          <View style={styles.pickerGrid}>
+            <Pressable style={[styles.targetCard, targetMarkerId === null && styles.routeChipActive]} onPress={() => setTargetMarkerId(null)}>
+              <Text style={styles.targetCardTitle}>None</Text>
+              <Text style={styles.targetCardMeta}>No saved world return</Text>
+            </Pressable>
+            {worldTargets.map((marker) => (
+              <Pressable key={marker.id} style={[styles.targetCard, targetMarkerId === marker.id && styles.routeChipActive]} onPress={() => setTargetMarkerId(marker.id)}>
+                <Text style={styles.targetCardTitle}>{marker.title}</Text>
+                <Text style={styles.targetCardMeta}>{marker.type} / X {Number(marker.x_percent).toFixed(1)} / Y {Number(marker.y_percent).toFixed(1)}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
       ) : (
         <>
-          <MiniMapPicker
-            miniMaps={miniMaps}
-            selectedId={targetMiniMapId}
-            onSelect={(miniMapId) => {
-              setTargetMiniMapId(miniMapId);
-              setTargetSpawnMarkerId(null);
-            }}
-          />
+          <View style={styles.pickerPanel}>
+            <Text style={styles.selectedTitle}>Linked Mini Map</Text>
+            <Text style={styles.copy}>Pick the mini map this exit opens.</Text>
+            <View style={styles.pickerGrid}>
+              <Pressable
+                style={[styles.targetCard, targetMiniMapId === null && styles.routeChipActive]}
+                onPress={() => {
+                  setTargetMiniMapId(null);
+                  setTargetSpawnMarkerId(null);
+                }}
+              >
+                <Text style={styles.targetCardTitle}>None</Text>
+                <Text style={styles.targetCardMeta}>No mini map target</Text>
+              </Pressable>
+              {miniMaps.map((miniMap) => (
+                <Pressable
+                  key={miniMap.id}
+                  style={[styles.targetCard, targetMiniMapId === miniMap.id && styles.routeChipActive]}
+                  onPress={() => {
+                    setTargetMiniMapId(miniMap.id);
+                    setTargetSpawnMarkerId(null);
+                  }}
+                >
+                  <Text style={styles.targetCardTitle}>{miniMap.name}</Text>
+                  <Text style={styles.targetCardMeta}>{miniMap.type}{miniMap.area_name ? ` / ${miniMap.area_name}` : ""}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
           {targetMiniMapId ? (
-            <MarkerPicker label="Target spawn in mini map" markers={targetSpawns} selectedId={targetSpawnMarkerId} onSelect={setTargetSpawnMarkerId} />
+            <View style={styles.pickerPanel}>
+              <Text style={styles.selectedTitle}>Target Spawn In Mini Map</Text>
+              <Text style={styles.copy}>Use a Player Spawn marker to control exactly where the player appears.</Text>
+              <View style={styles.pickerGrid}>
+                <Pressable style={[styles.targetCard, targetSpawnMarkerId === null && styles.routeChipActive]} onPress={() => setTargetSpawnMarkerId(null)}>
+                  <Text style={styles.targetCardTitle}>None</Text>
+                  <Text style={styles.targetCardMeta}>Use center fallback</Text>
+                </Pressable>
+                {targetSpawns.map((marker) => (
+                  <Pressable key={marker.id} style={[styles.targetCard, targetSpawnMarkerId === marker.id && styles.routeChipActive]} onPress={() => setTargetSpawnMarkerId(marker.id)}>
+                    <Text style={styles.targetCardTitle}>{marker.title}</Text>
+                    <Text style={styles.targetCardMeta}>X {Number(marker.x_percent).toFixed(1)} / Y {Number(marker.y_percent).toFixed(1)}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
           ) : null}
           {safeType === "mini_map" && targetMiniMapId && targetSpawns.length === 0 ? (
             <Text style={styles.debugLine}>No Player Spawn marker exists in this mini map yet. The exit will fall back to the center of the mini map.</Text>
@@ -353,6 +420,56 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 10,
     padding: 10,
+  },
+  pickerGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  pickerPanel: {
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 8,
+    padding: 10,
+  },
+  summaryBox: {
+    backgroundColor: "rgba(30, 168, 236, 0.12)",
+    borderColor: colors.blue,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 3,
+    padding: 10,
+  },
+  summaryLabel: {
+    color: colors.blue,
+    fontFamily: fonts.title,
+    fontSize: 12,
+    textTransform: "uppercase",
+  },
+  summaryValue: {
+    color: colors.text,
+    fontWeight: "800",
+  },
+  targetCard: {
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexBasis: "48%",
+    flexGrow: 1,
+    gap: 4,
+    minWidth: 160,
+    padding: 10,
+  },
+  targetCardMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  targetCardTitle: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 13,
   },
   storyRoutePicker: {
     flexDirection: "row",
