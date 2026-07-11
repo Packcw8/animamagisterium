@@ -454,27 +454,6 @@ function MapCanvasLayers({
   const playerPinOffset = mini ? 18 : 14;
   const scaledMarkerSize = Math.max(12, Math.round(markerSize * safeMarkerScale));
 
-  function selectCanvasMarker(marker: MapMarker, event?: unknown) {
-    const candidate = event as {
-      stopPropagation?: () => void;
-      preventDefault?: () => void;
-      nativeEvent?: {
-        stopPropagation?: () => void;
-        preventDefault?: () => void;
-      };
-    };
-    candidate?.stopPropagation?.();
-    candidate?.preventDefault?.();
-    candidate?.nativeEvent?.stopPropagation?.();
-    candidate?.nativeEvent?.preventDefault?.();
-    onSelectMarker(marker);
-  }
-
-  function stopMarkerMouseEvent(event: unknown) {
-    const candidate = event as { stopPropagation?: () => void };
-    candidate?.stopPropagation?.();
-  }
-
   return (
     <>
       {routeSegments.map((segment, index) => (
@@ -551,14 +530,11 @@ function MapCanvasLayers({
               getMarkerRenderStyle(marker, playerPosition, scaledMarkerSize),
               marker.type === "Movement" && styles.movementMarker,
             ]}
-            onPress={Platform.OS === "web" ? undefined : (event) => selectCanvasMarker(marker, event)}
-            {...(Platform.OS === "web"
-              ? ({
-                  onClick: (event: unknown) => selectCanvasMarker(marker, event),
-                  onMouseDown: stopMarkerMouseEvent,
-                  onPointerDown: stopMarkerMouseEvent,
-                } as object)
-              : null)}
+            onPress={(event) => {
+              event.stopPropagation?.();
+              event.preventDefault?.();
+              onSelectMarker(marker);
+            }}
             hitSlop={mini ? 18 : 22}
           >
             <MarkerIcon marker={safeMarkerScale === 1 ? marker : { ...marker, marker_size: Math.round(Number(marker.marker_size ?? 100) * safeMarkerScale) }} mini={mini} />
