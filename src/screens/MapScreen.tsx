@@ -429,6 +429,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     editor: true,
     settings: true,
     rewards: true,
+    miniMapPreview: true,
     movementGraph: false,
   });
   const [miniMaps, setMiniMaps] = useState<MiniMap[]>([]);
@@ -820,8 +821,13 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         ids.add(connection.to_marker_id);
       }
     });
+    miniMapMarkers.forEach((marker) => {
+      if (marker.type === "Movement") {
+        ids.add(marker.id);
+      }
+    });
     return ids;
-  }, [miniMapMarkerConnections]);
+  }, [miniMapMarkerConnections, miniMapMarkers]);
   const miniMapMovementMarkers = useMemo(
     () => miniMapMarkers.filter((marker) => marker.type === "Movement" || miniMapMarkerConnectionNodeIds.has(marker.id)),
     [miniMapMarkerConnectionNodeIds, miniMapMarkers],
@@ -843,6 +849,18 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
   const adminMapEvents = useMemo(() => mapEvents.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [mapEvents, selectedChapter, selectedSeason]);
+  useEffect(() => {
+    if (!isAdmin || !activeMiniMap?.id || adminPreviewMovementMarkerId) {
+      return;
+    }
+
+    const firstMovementMarker = adminMiniMapMarkers
+      .filter((marker) => marker.type === "Movement")
+      .sort((a, b) => getMovementMarkerStep(a) - getMovementMarkerStep(b) || a.title.localeCompare(b.title))[0];
+    if (firstMovementMarker) {
+      setAdminPreviewMovementMarkerId(firstMovementMarker.id);
+    }
+  }, [activeMiniMap?.id, adminMiniMapMarkers, adminPreviewMovementMarkerId, isAdmin]);
   const adminRouteEventPins = useMemo<RouteEventPin[]>(() => {
     if (!isAdmin || adminSection !== "Walking Paths") {
       return [];
@@ -960,6 +978,18 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
 
     const connected = new Set<string>();
+    const currentMarker = miniMapMarkers.find((marker) => marker.id === markerId);
+    const currentStep = getMovementMarkerStep(currentMarker);
+
+    if (currentMarker?.type === "Movement" && currentStep > 0) {
+      miniMapMarkers.forEach((marker) => {
+        const markerStep = getMovementMarkerStep(marker);
+        if (marker.id !== markerId && marker.type === "Movement" && markerStep > 0 && Math.abs(markerStep - currentStep) === 1) {
+          connected.add(marker.id);
+        }
+      });
+    }
+
     miniMapMarkerConnections.forEach((connection) => {
       if (!connection.is_active) {
         return;
@@ -974,7 +1004,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       }
     });
     return connected;
-  }, [miniMapMarkerConnections]);
+  }, [miniMapMarkerConnections, miniMapMarkers]);
   const playerDiscoveredMiniMapMarkerIds = useMemo(
     () => new Set(playerMiniMapMarkerDiscoveries.map((item) => item.marker_id)),
     [playerMiniMapMarkerDiscoveries],
@@ -1057,21 +1087,18 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   }, [activeMiniMap?.id, isAdmin]);
 
   useEffect(() => {
-    if (!activeMiniMap?.id || isAdmin || playerMiniMapMarkerState?.current_marker_id || miniMapMarkerConnections.length === 0) {
+    if (!activeMiniMap?.id || isAdmin || playerMiniMapMarkerState?.current_marker_id || miniMapMovementMarkers.length === 0) {
       return;
     }
 
-    const connectionNodeIds = new Set<string>();
-    miniMapMarkerConnections.forEach((connection) => {
-      if (connection.is_active) {
-        connectionNodeIds.add(connection.from_marker_id);
-        connectionNodeIds.add(connection.to_marker_id);
-      }
-    });
-
     const startMarker = miniMapMarkers
-      .filter((marker) => connectionNodeIds.has(marker.id) && marker.type !== "Player Spawn")
+      .filter((marker) => miniMapMarkerConnectionNodeIds.has(marker.id) && marker.type !== "Player Spawn")
       .sort((a, b) => {
+        const aStep = getMovementMarkerStep(a);
+        const bStep = getMovementMarkerStep(b);
+        if (aStep > 0 || bStep > 0) {
+          return (aStep || 999) - (bStep || 999);
+        }
         const aDistance = Math.hypot(Number(a.x_percent) - miniMapSpawnPosition.x, Number(a.y_percent) - miniMapSpawnPosition.y);
         const bDistance = Math.hypot(Number(b.x_percent) - miniMapSpawnPosition.x, Number(b.y_percent) - miniMapSpawnPosition.y);
         return aDistance - bDistance;
@@ -1107,7 +1134,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     return () => {
       cancelled = true;
     };
-  }, [activeMiniMap?.id, isAdmin, miniMapMarkerConnections, miniMapMarkers, miniMapSpawnPosition.x, miniMapSpawnPosition.y, playerMiniMapMarkerState?.current_marker_id]);
+  }, [activeMiniMap?.id, isAdmin, miniMapMarkerConnectionNodeIds, miniMapMarkers, miniMapMovementMarkers.length, miniMapSpawnPosition.x, miniMapSpawnPosition.y, playerMiniMapMarkerState?.current_marker_id]);
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedDialogueMarker = useMemo(() => effectiveMarkers.find((marker) => marker.id === selectedDialogueMarkerId) ?? null, [effectiveMarkers, selectedDialogueMarkerId]);
@@ -7418,7 +7445,12 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         <MarkerLegend items={legendItems} open={legendOpen} onToggle={() => setLegendOpen((value) => !value)} />
         {isAdmin ? (
           <Frame style={styles.panel}>
-            <Text style={styles.sectionTitle}>Mini Map Admin Preview</Text>
+            <AdminCollapsibleSection
+              title="Mini Map Admin Preview"
+              summary={`Marker, movement, walking path, and content tools for ${activeMiniMap.name}.`}
+              isOpen={Boolean(openAdminPanels.miniMapPreview)}
+              onToggle={() => setOpenAdminPanels((current) => ({ ...current, miniMapPreview: !current.miniMapPreview }))}
+            >
             <Text style={styles.copy}>Click this mini map image to capture percentage coordinates, then create or edit markers inside {activeMiniMap.name}.</Text>
             {adminMessage ? <Text style={styles.adminMessage}>{adminMessage}</Text> : null}
             <View style={styles.storyEditor}>
@@ -7490,11 +7522,12 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             </View>
             <AdminCollapsibleSection
               title="Movement Graph"
-              summary="Connect existing mini-map markers into branching node navigation. Player view only reveals current, connected, and visited nodes."
+              summary="Movement markers auto-connect by step number. Manual links are optional special routes."
               isOpen={Boolean(openAdminPanels.movementGraph)}
               onToggle={() => setOpenAdminPanels((current) => ({ ...current, movementGraph: !current.movementGraph }))}
             >
               <View style={styles.storyEditor}>
+                <Text style={styles.copy}>Movement markers use their Movement Step number. Step 2 connects to any Step 1 or Step 3 marker, but not another Step 2. Use manual links only for one-way gates, shortcuts, loops, or jumps.</Text>
                 <MarkerPicker
                   label="Preview current marker"
                   markers={adminMiniMapMarkers}
@@ -7940,6 +7973,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                 <Text style={styles.debugLine}>Select a mini-map walking path above to create or edit its events.</Text>
               )}
             </View>
+            </AdminCollapsibleSection>
           </Frame>
         ) : null}
         <GameToast toast={gameToast} onDismiss={dismissGameToast} />
@@ -9474,6 +9508,7 @@ function MiniMapMarkerAdminForm({
   const supportsExit = isExitMarkerType(draftType);
   const supportsSignPost = draftType === "Sign Post";
   const supportsBattle = isBattleMarkerType(draftType);
+  const supportsMovement = draftType === "Movement";
   const [openMarkerSections, setOpenMarkerSections] = useState<Record<string, boolean>>({
     details: true,
     access: false,
@@ -9506,10 +9541,14 @@ function MiniMapMarkerAdminForm({
         {markerScopeEditor}
         <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
         <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
-        <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
-        <AdminImageUploadButton folder="mini-marker-backgrounds" onUploaded={setMarkerSceneBackground} onMessage={() => undefined} />
-        <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
-        <AdminImageUploadButton folder="mini-marker-npcs" onUploaded={setMarkerNpcImage} onMessage={() => undefined} />
+        {!supportsMovement ? (
+          <>
+            <TextInput value={markerSceneBackground} onChangeText={setMarkerSceneBackground} placeholder="Marker scene background image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+            <AdminImageUploadButton folder="mini-marker-backgrounds" onUploaded={setMarkerSceneBackground} onMessage={() => undefined} />
+            <TextInput value={markerNpcImage} onChangeText={setMarkerNpcImage} placeholder="NPC / character image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
+            <AdminImageUploadButton folder="mini-marker-npcs" onUploaded={setMarkerNpcImage} onMessage={() => undefined} />
+          </>
+        ) : null}
         <MarkerStyleEditor
           iconLabel={markerIconLabel}
           iconImage={markerIconImage}
@@ -9523,8 +9562,16 @@ function MiniMapMarkerAdminForm({
           onUploadMessage={onMessage}
         />
         <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
+        {supportsMovement ? (
+          <>
+            <TextInput value={markerStoryOrder} onChangeText={setMarkerStoryOrder} placeholder="Movement step, example 1" placeholderTextColor={colors.muted} keyboardType="numeric" style={styles.input} />
+            <Text style={styles.debugLine}>Movement markers reveal like a path: Step 2 connects to any Step 1 or Step 3 marker, but not another Step 2.</Text>
+          </>
+        ) : null}
       </AdminCollapsibleSection>
 
+      {!supportsMovement ? (
+        <>
       <AdminCollapsibleSection
         title="Journey Panel Entry"
         summary={markerJournalTitle.trim() || markerStoryDeckId ? "Journal/story card configured" : "Optional"}
@@ -9879,6 +9926,13 @@ function MiniMapMarkerAdminForm({
           ))}
         </View>
       ) : null}
+        </>
+      ) : (
+        <View style={styles.storyEditor}>
+          <Text style={styles.selectedTitle}>Movement Node</Text>
+          <Text style={styles.copy}>This marker only moves the player inside this mini map. It uses the Movement Step above plus optional manual Movement Graph links.</Text>
+        </View>
+      )}
       <AdminCollapsibleSection
         title={selectedMarker ? "Save Marker" : "Create Marker"}
         summary={selectedMarker ? "Save all changes from the sections above" : "Tap the mini map, then create a marker at that spot"}
@@ -9952,6 +10006,10 @@ function isMiniMapBehaviorOptionActive(current: MiniMap["behavior_mode"], option
   }
 
   return current !== "scrollable";
+}
+
+function getMovementMarkerStep(marker: Pick<MapMarker, "story_order"> | null | undefined) {
+  return Math.max(0, Math.round(Number(marker?.story_order ?? 0) || 0));
 }
 
 function getJourneyObjective(marker: MapMarker | null | undefined, route: MapRoute, link?: MarkerRouteLink) {
