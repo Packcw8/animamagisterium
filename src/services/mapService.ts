@@ -16,6 +16,9 @@ export type MapMarker = Tables["map_markers"];
 export type MarkerLegendItem = Tables["marker_legend_items"];
 export type WorldMapSetting = Tables["world_map_settings"];
 export type MarkerRouteLink = Tables["marker_route_links"];
+export type MiniMapMarkerConnection = Tables["mini_map_marker_connections"];
+export type PlayerMiniMapMarkerState = Tables["player_mini_map_marker_state"];
+export type PlayerMiniMapMarkerDiscovery = Tables["player_mini_map_marker_discoveries"];
 export type MiniMap = Tables["mini_maps"];
 export type TutorialStep = Tables["tutorial_steps"];
 export type MarkerMarketItem = Tables["marker_market_items"];
@@ -73,6 +76,7 @@ export const fallbackMarkers: MapMarker[] = [];
 let playerMapStateAvailable: boolean | null = null;
 let playerMarkerUnlocksAvailable: boolean | null = null;
 let playerDialogueChoiceHistoryAvailable: boolean | null = null;
+let miniMapMarkerNavigationAvailable: boolean | null = null;
 
 function normalizeSeasonChapter<T extends { season_number?: number | null; chapter_number?: number | null }>(values: T, fillMissing = true) {
   const next = { ...values };
@@ -122,6 +126,15 @@ function markPlayerMarkerUnlocksUnavailable(error: { code?: string; message?: st
 function markPlayerDialogueChoiceHistoryUnavailable(error: { code?: string; message?: string } | null | undefined) {
   if (isMissingRelationError(error)) {
     playerDialogueChoiceHistoryAvailable = false;
+    return true;
+  }
+
+  return false;
+}
+
+function markMiniMapMarkerNavigationUnavailable(error: { code?: string; message?: string } | null | undefined) {
+  if (isMissingRelationError(error)) {
+    miniMapMarkerNavigationAvailable = false;
     return true;
   }
 
@@ -1025,6 +1038,221 @@ export async function saveMarkerRouteLinks(
   }
 
   return (data ?? []) as MarkerRouteLink[];
+}
+
+export async function getMiniMapMarkerConnections(miniMapId: string) {
+  if (miniMapMarkerNavigationAvailable === false) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("mini_map_marker_connections")
+    .select("*")
+    .eq("mini_map_id", miniMapId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    if (markMiniMapMarkerNavigationUnavailable(error)) {
+      console.warn("[map] mini-map marker navigation tables are unavailable; run the mini map marker navigation migration.");
+      return [];
+    }
+
+    console.warn("[map] mini-map marker connections unavailable", error.message);
+    return [];
+  }
+
+  miniMapMarkerNavigationAvailable = true;
+  return (data ?? []) as MiniMapMarkerConnection[];
+}
+
+export async function saveMiniMapMarkerConnection(input: Pick<MiniMapMarkerConnection, "mini_map_id" | "from_marker_id" | "to_marker_id" | "is_two_way" | "is_active" | "label" | "sort_order" | "season_number" | "chapter_number"> & { id?: string }) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const payload = {
+    mini_map_id: input.mini_map_id,
+    from_marker_id: input.from_marker_id,
+    to_marker_id: input.to_marker_id,
+    is_two_way: input.is_two_way,
+    is_active: input.is_active,
+    label: input.label,
+    sort_order: input.sort_order,
+    season_number: input.season_number,
+    chapter_number: input.chapter_number,
+    created_by: user?.id ?? null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = input.id
+    ? supabase.from("mini_map_marker_connections").update(payload).eq("id", input.id)
+    : supabase.from("mini_map_marker_connections").insert(payload);
+
+  const { data, error } = await query.select().single();
+
+  if (error) {
+    throw error;
+  }
+
+  miniMapMarkerNavigationAvailable = true;
+  return data as MiniMapMarkerConnection;
+}
+
+export async function deleteMiniMapMarkerConnection(connectionId: string) {
+  const { error } = await supabase.from("mini_map_marker_connections").delete().eq("id", connectionId);
+  if (error) {
+    throw error;
+  }
+}
+
+export async function getPlayerMiniMapMarkerState(miniMapId: string) {
+  if (miniMapMarkerNavigationAvailable === false) {
+    return null;
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("player_mini_map_marker_state")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("mini_map_id", miniMapId)
+    .maybeSingle();
+
+  if (error) {
+    if (markMiniMapMarkerNavigationUnavailable(error)) {
+      return null;
+    }
+
+    console.warn("[map] player mini-map marker state unavailable", error.message);
+    return null;
+  }
+
+  miniMapMarkerNavigationAvailable = true;
+  return data as PlayerMiniMapMarkerState | null;
+}
+
+export async function getPlayerMiniMapMarkerDiscoveries(miniMapId: string) {
+  if (miniMapMarkerNavigationAvailable === false) {
+    return [];
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("player_mini_map_marker_discoveries")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("mini_map_id", miniMapId);
+
+  if (error) {
+    if (markMiniMapMarkerNavigationUnavailable(error)) {
+      return [];
+    }
+
+    console.warn("[map] player mini-map marker discoveries unavailable", error.message);
+    return [];
+  }
+
+  miniMapMarkerNavigationAvailable = true;
+  return (data ?? []) as PlayerMiniMapMarkerDiscovery[];
+}
+
+export async function initializePlayerMiniMapMarkerState(miniMapId: string, markerId: string) {
+  if (miniMapMarkerNavigationAvailable === false) {
+    return null;
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    throw userError ?? new Error("You must be signed in to start mini-map marker navigation.");
+  }
+
+  const timestamp = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("player_mini_map_marker_state")
+    .upsert(
+      {
+        user_id: user.id,
+        mini_map_id: miniMapId,
+        current_marker_id: markerId,
+        previous_marker_id: null,
+        updated_at: timestamp,
+      },
+      { onConflict: "user_id,mini_map_id" },
+    )
+    .select()
+    .single();
+
+  if (error) {
+    if (markMiniMapMarkerNavigationUnavailable(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+
+  const { error: discoveryError } = await supabase
+    .from("player_mini_map_marker_discoveries")
+    .upsert(
+      {
+        user_id: user.id,
+        mini_map_id: miniMapId,
+        marker_id: markerId,
+        discovered_at: timestamp,
+      },
+      { onConflict: "user_id,mini_map_id,marker_id" },
+    );
+
+  if (discoveryError) {
+    if (!markMiniMapMarkerNavigationUnavailable(discoveryError)) {
+      console.warn("[map] could not initialize mini-map marker discovery", discoveryError.message);
+    }
+  }
+
+  miniMapMarkerNavigationAvailable = true;
+  return data as PlayerMiniMapMarkerState;
+}
+
+export async function movePlayerMiniMapMarker(miniMapId: string, destinationMarkerId: string) {
+  if (miniMapMarkerNavigationAvailable === false) {
+    return null;
+  }
+
+  const { data, error } = await supabase.rpc("move_player_mini_map_marker", {
+    p_mini_map_id: miniMapId,
+    p_destination_marker_id: destinationMarkerId,
+  });
+
+  if (error) {
+    if (markMiniMapMarkerNavigationUnavailable(error)) {
+      return null;
+    }
+
+    throw error;
+  }
+
+  miniMapMarkerNavigationAvailable = true;
+  return data as PlayerMiniMapMarkerState;
 }
 
 export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key"> & Partial<Pick<MapMarker, "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "exit_target_spawn_marker_id" | "linked_route_id" | "linked_route_start_direction" | "starts_route_on_accept" | "icon_label" | "icon_image_url" | "icon_color" | "marker_size" | "lock_type" | "lock_message" | "access_rule" | "required_item_id" | "required_item_quantity" | "access_hint" | "visible_story_flag_key" | "visible_story_flag_value" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "reward_timing" | "season_number" | "chapter_number" | "dialogue_event_id" | "battle_event_id" | "enemy_id" | "npc_id" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id">>) {

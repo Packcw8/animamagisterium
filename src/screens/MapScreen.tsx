@@ -19,7 +19,7 @@ import { DialogueTreeAdmin } from "../components/dialogue/DialogueTreeAdmin";
 import { Frame } from "../components/Frame";
 import { AdminCoordinatePanel } from "../components/map/AdminCoordinatePanel";
 import { AdminMapEditorHeader } from "../components/map/AdminMapEditorHeader";
-import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef, type PinchZoomPayload, type RouteEventPin } from "../components/map/MapCanvas";
+import { MiniMapCanvas, OverworldMapCanvas, type MapViewportRef, type MiniMapMarkerDisplayState, type PinchZoomPayload, type RouteEventPin } from "../components/map/MapCanvas";
 import { MarkerIcon } from "../components/map/MarkerIcon";
 import { MarkerInteractionPanel } from "../components/map/MarkerInteractionPanel";
 import { MarkerContinuationRouteEditor } from "../components/map/MarkerContinuationRouteEditor";
@@ -157,6 +157,9 @@ import {
   getWorldMapSettings,
   getMarkerLegendItems,
   getMarkerRouteLinks,
+  getMiniMapMarkerConnections,
+  getPlayerMiniMapMarkerDiscoveries,
+  getPlayerMiniMapMarkerState,
   hasClaimedDialogueChoiceEffect,
   getAllMarkerRouteLinks,
   getMiniMaps,
@@ -180,7 +183,10 @@ import {
   MarkerMarketItem,
   MarkerLegendItem,
   MarkerRouteLink,
+  MiniMapMarkerConnection,
   MiniMap,
+  PlayerMiniMapMarkerDiscovery,
+  PlayerMiniMapMarkerState,
   Role,
   RouteProgress,
   WorldMapSetting,
@@ -192,6 +198,7 @@ import {
   saveMarkerMarketItem,
   saveMarkerLegendItem,
   saveMarkerRouteLinks,
+  saveMiniMapMarkerConnection,
   saveMiniMap,
   saveMapChapter,
   saveMapSeason,
@@ -215,11 +222,14 @@ import {
   updateMarkerSettings,
   updateMapRoute,
   unlockPlayerMarker,
+  initializePlayerMiniMapMarkerState,
+  movePlayerMiniMapMarker,
+  deleteMiniMapMarkerConnection,
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
 const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Arena", "Point of Interest", "Puzzle", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
-const miniMapMarkerTypes = ["Player Spawn", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Arena", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
+const miniMapMarkerTypes = ["Player Spawn", "Movement", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Arena", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
 const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
@@ -395,6 +405,14 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   });
   const [routeProgressRows, setRouteProgressRows] = useState<RouteProgress[]>([]);
   const [allMarkerRouteLinks, setAllMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
+  const [miniMapMarkerConnections, setMiniMapMarkerConnections] = useState<MiniMapMarkerConnection[]>([]);
+  const [playerMiniMapMarkerState, setPlayerMiniMapMarkerState] = useState<PlayerMiniMapMarkerState | null>(null);
+  const [playerMiniMapMarkerDiscoveries, setPlayerMiniMapMarkerDiscoveries] = useState<PlayerMiniMapMarkerDiscovery[]>([]);
+  const [miniMapMarkerMoveBusy, setMiniMapMarkerMoveBusy] = useState(false);
+  const [adminPreviewMovementMarkerId, setAdminPreviewMovementMarkerId] = useState<string | null>(null);
+  const [connectionFromMarkerId, setConnectionFromMarkerId] = useState<string | null>(null);
+  const [connectionToMarkerId, setConnectionToMarkerId] = useState<string | null>(null);
+  const [connectionTwoWay, setConnectionTwoWay] = useState(true);
   const [routeDirection, setRouteDirection] = useState<"forward" | "reverse">("forward");
   const [selectedMarker, setSelectedMarker] = useState<MapMarker | null>(null);
   const [selectedPuzzle, setSelectedPuzzle] = useState<PuzzleWithZones | null>(null);
@@ -411,6 +429,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     editor: true,
     settings: true,
     rewards: true,
+    movementGraph: false,
   });
   const [miniMaps, setMiniMaps] = useState<MiniMap[]>([]);
   const [mapSeasons, setMapSeasons] = useState<MapSeason[]>([]);
@@ -793,9 +812,29 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const chapterScopedMarkers = useMemo(() => effectiveMarkers.filter((marker) => isInSelectedChapter(marker, selectedSeason, selectedChapter)), [effectiveMarkers, selectedChapter, selectedSeason]);
   const worldMarkers = useMemo(() => chapterScopedMarkers.filter((marker) => !marker.mini_map_id), [chapterScopedMarkers]);
   const miniMapMarkers = useMemo(() => chapterScopedMarkers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [chapterScopedMarkers, activeMiniMap?.id]);
+  const miniMapMarkerConnectionNodeIds = useMemo(() => {
+    const ids = new Set<string>();
+    miniMapMarkerConnections.forEach((connection) => {
+      if (connection.is_active) {
+        ids.add(connection.from_marker_id);
+        ids.add(connection.to_marker_id);
+      }
+    });
+    return ids;
+  }, [miniMapMarkerConnections]);
+  const miniMapMovementMarkers = useMemo(
+    () => miniMapMarkers.filter((marker) => marker.type === "Movement" || miniMapMarkerConnectionNodeIds.has(marker.id)),
+    [miniMapMarkerConnectionNodeIds, miniMapMarkers],
+  );
   const miniMapSpawnMarker = useMemo(() => miniMapMarkers.find((marker) => marker.type === "Player Spawn") ?? null, [miniMapMarkers]);
   const miniMapSpawnPosition = miniMapSpawnMarker ? { x: Number(miniMapSpawnMarker.x_percent), y: Number(miniMapSpawnMarker.y_percent) } : { x: 50, y: 50 };
-  const miniMapPlayerPosition = route.mini_map_id === activeMiniMap?.id ? playerPosition : savedMiniMapPosition ?? miniMapSpawnPosition;
+  const activeMiniMapMovementMarker = useMemo(
+    () => miniMapMarkers.find((marker) => marker.id === playerMiniMapMarkerState?.current_marker_id) ?? null,
+    [miniMapMarkers, playerMiniMapMarkerState?.current_marker_id],
+  );
+  const miniMapPlayerPosition = activeMiniMapMovementMarker
+    ? { x: Number(activeMiniMapMovementMarker.x_percent), y: Number(activeMiniMapMovementMarker.y_percent) }
+    : route.mini_map_id === activeMiniMap?.id ? playerPosition : savedMiniMapPosition ?? miniMapSpawnPosition;
   const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
   const adminWorldMarkers = useMemo(() => worldMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, worldMarkers]);
   const adminMiniMapMarkers = useMemo(() => miniMapMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMapMarkers, selectedChapter, selectedSeason]);
@@ -915,12 +954,160 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     const expectedValue = marker.visible_story_flag_value ?? true;
     return storyFlags.get(flagKey) === expectedValue;
   }, [storyFlags]);
+  const getConnectedMiniMapMarkerIds = useCallback((markerId: string | null | undefined) => {
+    if (!markerId) {
+      return new Set<string>();
+    }
+
+    const connected = new Set<string>();
+    miniMapMarkerConnections.forEach((connection) => {
+      if (!connection.is_active) {
+        return;
+      }
+
+      if (connection.from_marker_id === markerId) {
+        connected.add(connection.to_marker_id);
+      }
+
+      if (connection.is_two_way && connection.to_marker_id === markerId) {
+        connected.add(connection.from_marker_id);
+      }
+    });
+    return connected;
+  }, [miniMapMarkerConnections]);
+  const playerDiscoveredMiniMapMarkerIds = useMemo(
+    () => new Set(playerMiniMapMarkerDiscoveries.map((item) => item.marker_id)),
+    [playerMiniMapMarkerDiscoveries],
+  );
+  const activeMiniMapCurrentMarkerId = isAdmin ? adminPreviewMovementMarkerId : playerMiniMapMarkerState?.current_marker_id ?? null;
+  const activeMiniMapConnectedMarkerIds = useMemo(
+    () => getConnectedMiniMapMarkerIds(activeMiniMapCurrentMarkerId),
+    [activeMiniMapCurrentMarkerId, getConnectedMiniMapMarkerIds],
+  );
+  const miniMapMarkerDisplayStates = useMemo<Record<string, MiniMapMarkerDisplayState>>(() => {
+    const states: Record<string, MiniMapMarkerDisplayState> = {};
+
+    miniMapMovementMarkers.forEach((marker) => {
+      if (marker.id === activeMiniMapCurrentMarkerId) {
+        states[marker.id] = "current";
+      } else if (activeMiniMapConnectedMarkerIds.has(marker.id)) {
+        states[marker.id] = "available";
+      } else if (isAdmin ? false : playerDiscoveredMiniMapMarkerIds.has(marker.id)) {
+        states[marker.id] = "visited";
+      } else {
+        states[marker.id] = "undiscovered";
+      }
+    });
+
+    return states;
+  }, [activeMiniMapConnectedMarkerIds, activeMiniMapCurrentMarkerId, isAdmin, miniMapMovementMarkers, playerDiscoveredMiniMapMarkerIds]);
   const visibleMarkers = isAdmin
     ? worldMarkers
     : worldMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows, inventoryItems }).visible && canPlayerSeeStoryMarker(marker, chapterScopedMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
   const visibleMiniMapMarkers = isAdmin
     ? adminMiniMapMarkers
-    : miniMapMarkers.filter((marker) => markerStoryFlagIsVisible(marker) && getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows, inventoryItems }).visible && canPlayerSeeStoryMarker(marker, chapterScopedMarkers, completedStoryMarkerIds, startedStoryMarkerIds));
+    : miniMapMarkers.filter((marker) => {
+      if (!markerStoryFlagIsVisible(marker) || !canPlayerSeeStoryMarker(marker, chapterScopedMarkers, completedStoryMarkerIds, startedStoryMarkerIds)) {
+        return false;
+      }
+
+      if (miniMapMarkerConnectionNodeIds.has(marker.id) || marker.type === "Movement") {
+        return marker.is_active && marker.is_unlocked;
+      }
+
+      return getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows, inventoryItems }).visible;
+    });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadMiniMapNavigation() {
+      if (!activeMiniMap?.id) {
+        setMiniMapMarkerConnections([]);
+        setPlayerMiniMapMarkerState(null);
+        setPlayerMiniMapMarkerDiscoveries([]);
+        setAdminPreviewMovementMarkerId(null);
+        return;
+      }
+
+      const [connections, savedState, discoveries] = await Promise.all([
+        getMiniMapMarkerConnections(activeMiniMap.id),
+        isAdmin ? Promise.resolve(null) : getPlayerMiniMapMarkerState(activeMiniMap.id),
+        isAdmin ? Promise.resolve([]) : getPlayerMiniMapMarkerDiscoveries(activeMiniMap.id),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      setMiniMapMarkerConnections(connections);
+      setPlayerMiniMapMarkerState(savedState);
+      setPlayerMiniMapMarkerDiscoveries(discoveries);
+
+      if (isAdmin) {
+        setAdminPreviewMovementMarkerId((current) => current ?? connections[0]?.from_marker_id ?? connections[0]?.to_marker_id ?? null);
+      }
+    }
+
+    void loadMiniMapNavigation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMiniMap?.id, isAdmin]);
+
+  useEffect(() => {
+    if (!activeMiniMap?.id || isAdmin || playerMiniMapMarkerState?.current_marker_id || miniMapMarkerConnections.length === 0) {
+      return;
+    }
+
+    const connectionNodeIds = new Set<string>();
+    miniMapMarkerConnections.forEach((connection) => {
+      if (connection.is_active) {
+        connectionNodeIds.add(connection.from_marker_id);
+        connectionNodeIds.add(connection.to_marker_id);
+      }
+    });
+
+    const startMarker = miniMapMarkers
+      .filter((marker) => connectionNodeIds.has(marker.id) && marker.type !== "Player Spawn")
+      .sort((a, b) => {
+        const aDistance = Math.hypot(Number(a.x_percent) - miniMapSpawnPosition.x, Number(a.y_percent) - miniMapSpawnPosition.y);
+        const bDistance = Math.hypot(Number(b.x_percent) - miniMapSpawnPosition.x, Number(b.y_percent) - miniMapSpawnPosition.y);
+        return aDistance - bDistance;
+      })[0];
+
+    if (!startMarker) {
+      return;
+    }
+
+    let cancelled = false;
+    const miniMapId = activeMiniMap.id;
+    async function initializeNavigationState() {
+      try {
+        const saved = await initializePlayerMiniMapMarkerState(miniMapId, startMarker.id);
+        if (!cancelled && saved) {
+          setPlayerMiniMapMarkerState(saved);
+          setPlayerMiniMapMarkerDiscoveries((current) => current.some((item) => item.marker_id === startMarker.id)
+            ? current
+            : [...current, {
+              user_id: saved.user_id,
+              mini_map_id: miniMapId,
+              marker_id: startMarker.id,
+              discovered_at: new Date().toISOString(),
+            }]);
+        }
+      } catch (error) {
+        console.warn("[map] could not initialize mini-map marker navigation", getErrorMessage(error, "Unknown error"));
+      }
+    }
+
+    void initializeNavigationState();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMiniMap?.id, isAdmin, miniMapMarkerConnections, miniMapMarkers, miniMapSpawnPosition.x, miniMapSpawnPosition.y, playerMiniMapMarkerState?.current_marker_id]);
   const selectedDialogueEvent = useMemo(() => mapEvents.find((event) => event.id === selectedDialogueEventId) ?? null, [mapEvents, selectedDialogueEventId]);
   const selectedChoiceNode = useMemo(() => dialogueNodes.find((node) => node.id === choiceNodeId) ?? null, [choiceNodeId, dialogueNodes]);
   const selectedDialogueMarker = useMemo(() => effectiveMarkers.find((marker) => marker.id === selectedDialogueMarkerId) ?? null, [effectiveMarkers, selectedDialogueMarkerId]);
@@ -2366,7 +2553,71 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     return buildMarkerSettingsPayload(getMarkerPayloadState(), mode);
   }
 
-  async function selectMarker(marker: MapMarker) {
+  function markerHasArrivalContent(marker: MapMarker) {
+    return marker.type !== "Movement"
+      || Boolean(marker.dialogue_event_id || marker.battle_event_id || marker.enemy_id || marker.npc_id || marker.reward_xp || marker.reward_gold || marker.reward_item_id || marker.reward_full_heal || marker.story_deck_id || marker.linked_mini_map_id || marker.linked_route_id);
+  }
+
+  async function handleMiniMapMovementMarker(marker: MapMarker) {
+    if (!activeMiniMap || miniMapMarkerMoveBusy) {
+      return;
+    }
+
+    const displayState = miniMapMarkerDisplayStates[marker.id];
+    if (displayState !== "available") {
+      return;
+    }
+
+    const currentMarkerId = playerMiniMapMarkerState?.current_marker_id;
+    if (!currentMarkerId || !activeMiniMapConnectedMarkerIds.has(marker.id)) {
+      setMarkerPanelMessage("That destination is not connected to your current position.");
+      return;
+    }
+
+    setMiniMapMarkerMoveBusy(true);
+    try {
+      const movedState = await movePlayerMiniMapMarker(activeMiniMap.id, marker.id);
+      if (!movedState) {
+        setMarkerPanelMessage("Mini-map movement is not ready yet. Run the mini-map marker navigation migration.");
+        return;
+      }
+
+      setPlayerMiniMapMarkerState(movedState);
+      setPlayerMiniMapMarkerDiscoveries((current) => current.some((item) => item.marker_id === marker.id)
+        ? current
+        : [...current, {
+          user_id: movedState.user_id,
+          mini_map_id: activeMiniMap.id,
+          marker_id: marker.id,
+          discovered_at: new Date().toISOString(),
+        }]);
+      const nextPosition = { x: Number(marker.x_percent), y: Number(marker.y_percent) };
+      setSavedMiniMapPosition(nextPosition);
+      void savePlayerMapState({
+        active_mini_map_id: activeMiniMap.id,
+        current_x_percent: nextPosition.x,
+        current_y_percent: nextPosition.y,
+      });
+
+      if (markerHasArrivalContent(marker)) {
+        await selectMarker(marker, { skipMovementNavigation: true });
+      } else {
+        setSelectedMarker(null);
+        setPreviewMarkerScene(false);
+      }
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to move to that marker."));
+    } finally {
+      setMiniMapMarkerMoveBusy(false);
+    }
+  }
+
+  async function selectMarker(marker: MapMarker, options?: { skipMovementNavigation?: boolean }) {
+    if (activeMiniMap && !isAdmin && !options?.skipMovementNavigation && miniMapMarkerDisplayStates[marker.id]) {
+      await handleMiniMapMovementMarker(marker);
+      return;
+    }
+
     if (activeMiniMap && !isAdmin && isExitMarker(marker)) {
       void openExitMarker(marker);
       return;
@@ -4106,6 +4357,47 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
 
     await startPathFromSignPost(linkedRoute, { start_direction: marker.linked_route_start_direction ?? "forward" }, { allowMapTransition: true });
+  }
+
+  async function saveMovementMarkerConnection() {
+    if (!activeMiniMap) {
+      setAdminMessage("Open a mini map before connecting movement markers.");
+      return;
+    }
+
+    if (!connectionFromMarkerId || !connectionToMarkerId || connectionFromMarkerId === connectionToMarkerId) {
+      setAdminMessage("Choose two different mini-map markers to connect.");
+      return;
+    }
+
+    try {
+      const saved = await saveMiniMapMarkerConnection({
+        mini_map_id: activeMiniMap.id,
+        from_marker_id: connectionFromMarkerId,
+        to_marker_id: connectionToMarkerId,
+        is_two_way: connectionTwoWay,
+        is_active: true,
+        label: null,
+        sort_order: miniMapMarkerConnections.length + 1,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
+      });
+      setMiniMapMarkerConnections((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+      setAdminPreviewMovementMarkerId(connectionFromMarkerId);
+      setAdminMessage("Movement marker connection saved.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save movement marker connection. Confirm the migration has run."));
+    }
+  }
+
+  async function removeMovementMarkerConnection(connectionId: string) {
+    try {
+      await deleteMiniMapMarkerConnection(connectionId);
+      setMiniMapMarkerConnections((current) => current.filter((item) => item.id !== connectionId));
+      setAdminMessage("Movement marker connection deleted.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to delete movement marker connection."));
+    }
   }
 
   async function saveTutorialForm() {
@@ -7117,6 +7409,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
             playerPortraitUrl={character.portrait_url}
             playerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.player_avatar_scale) || 1))}
             markerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.marker_scale) || 1))}
+            markerDisplayStates={!isAdmin || openAdminPanels.movementGraph ? miniMapMarkerDisplayStates : {}}
             playerPathVisibility={route.mini_map_id === activeMiniMap.id ? playerPathVisibility : "visible"}
             onSelectMarker={(marker) => void selectMarker(marker)}
           />
@@ -7195,6 +7488,49 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                 <Text style={styles.primaryText}>Update Open Mini Map</Text>
               </Pressable>
             </View>
+            <AdminCollapsibleSection
+              title="Movement Graph"
+              summary="Connect existing mini-map markers into branching node navigation. Player view only reveals current, connected, and visited nodes."
+              isOpen={Boolean(openAdminPanels.movementGraph)}
+              onToggle={() => setOpenAdminPanels((current) => ({ ...current, movementGraph: !current.movementGraph }))}
+            >
+              <View style={styles.storyEditor}>
+                <MarkerPicker
+                  label="Preview current marker"
+                  markers={adminMiniMapMarkers}
+                  selectedId={adminPreviewMovementMarkerId}
+                  onSelect={setAdminPreviewMovementMarkerId}
+                />
+                <View style={styles.modeRow}>
+                  <View style={styles.flexInput}>
+                    <MarkerPicker label="Connect from" markers={adminMiniMapMarkers} selectedId={connectionFromMarkerId} onSelect={setConnectionFromMarkerId} />
+                  </View>
+                  <View style={styles.flexInput}>
+                    <MarkerPicker label="Connect to" markers={adminMiniMapMarkers} selectedId={connectionToMarkerId} onSelect={setConnectionToMarkerId} />
+                  </View>
+                </View>
+                <Pressable style={[styles.secondaryButton, connectionTwoWay && styles.typeSelected]} onPress={() => setConnectionTwoWay((value) => !value)}>
+                  <Text style={styles.secondaryText}>Two Way Connection: {connectionTwoWay ? "Yes" : "No"}</Text>
+                </Pressable>
+                <Pressable style={styles.primaryButton} onPress={() => void saveMovementMarkerConnection()}>
+                  <Text style={styles.primaryText}>Save Movement Connection</Text>
+                </Pressable>
+                {miniMapMarkerConnections.length === 0 ? <Text style={styles.copy}>No movement connections yet. Create one connection to enable node-style movement in this mini map.</Text> : null}
+                {miniMapMarkerConnections.map((connection) => {
+                  const from = adminMiniMapMarkers.find((marker) => marker.id === connection.from_marker_id);
+                  const to = adminMiniMapMarkers.find((marker) => marker.id === connection.to_marker_id);
+                  return (
+                    <View key={connection.id} style={styles.storyCard}>
+                      <Text style={styles.markerName}>{from?.title ?? "Unknown Marker"} {connection.is_two_way ? "<->" : "->"} {to?.title ?? "Unknown Marker"}</Text>
+                      <Text style={styles.debugLine}>{connection.is_active ? "Active" : "Inactive"} / Season {connection.season_number} / Chapter {connection.chapter_number}</Text>
+                      <Pressable style={styles.secondaryButton} onPress={() => void removeMovementMarkerConnection(connection.id)}>
+                        <Text style={styles.dangerText}>Delete Connection</Text>
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </View>
+            </AdminCollapsibleSection>
             <AdminCoordinatePanel clickedPercent={clickedPercent} tapLabel="Tap the mini map" onCopy={() => void copyCoordinates()} />
             <View style={styles.routeList}>
               <Text style={styles.selectedTitle}>Mini Map Markers</Text>

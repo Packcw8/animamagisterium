@@ -48,6 +48,8 @@ export type RouteEventPin = PercentPoint & {
   linkedOnly?: boolean;
 };
 
+export type MiniMapMarkerDisplayState = "current" | "available" | "visited" | "undiscovered";
+
 type SharedCanvasProps = {
   routeSegments: RouteSegmentView[];
   draftSegments: RouteSegmentView[];
@@ -65,6 +67,7 @@ type SharedCanvasProps = {
   playerPathVisibility?: "visible" | "hidden" | "cave" | "fog";
   playerScale?: number;
   markerScale?: number;
+  markerDisplayStates?: Record<string, MiniMapMarkerDisplayState>;
 };
 
 export function OverworldMapCanvas({
@@ -442,6 +445,7 @@ function MapCanvasLayers({
   mini = false,
   playerScale = 1,
   markerScale = 1,
+  markerDisplayStates = {},
 }: SharedCanvasProps & { markerSize: number; mini?: boolean }) {
   const safePlayerScale = Math.max(0.35, Math.min(2, Number(playerScale) || 1));
   const safeMarkerScale = Math.max(0.35, Math.min(2, Number(markerScale) || 1));
@@ -503,20 +507,37 @@ function MapCanvasLayers({
           <Text style={styles.tempMarkerText}>New Marker</Text>
         </View>
       ) : null}
-      {markers.map((marker) => (
-        <Pressable
-          key={marker.id}
-          style={[styles.marker, mini && styles.miniMapMarker, (!marker.is_active || !marker.is_unlocked) && styles.markerHidden, getMarkerRenderStyle(marker, playerPosition, scaledMarkerSize)]}
-          onPress={(event) => {
-            event.stopPropagation?.();
-            event.preventDefault?.();
-            onSelectMarker(marker);
-          }}
-          hitSlop={mini ? 18 : 22}
-        >
-          <MarkerIcon marker={safeMarkerScale === 1 ? marker : { ...marker, marker_size: Math.round(Number(marker.marker_size ?? 100) * safeMarkerScale) }} mini={mini} />
-        </Pressable>
-      ))}
+      {markers.map((marker) => {
+        const displayState = markerDisplayStates[marker.id];
+        if (displayState === "undiscovered") {
+          return null;
+        }
+
+        const disabled = displayState === "current" || displayState === "visited";
+        return (
+          <Pressable
+            key={marker.id}
+            disabled={disabled}
+            style={[
+              styles.marker,
+              mini && styles.miniMapMarker,
+              (!marker.is_active || !marker.is_unlocked) && styles.markerHidden,
+              displayState === "current" && styles.markerCurrent,
+              displayState === "available" && styles.markerAvailable,
+              displayState === "visited" && styles.markerVisited,
+              getMarkerRenderStyle(marker, playerPosition, scaledMarkerSize),
+            ]}
+            onPress={(event) => {
+              event.stopPropagation?.();
+              event.preventDefault?.();
+              onSelectMarker(marker);
+            }}
+            hitSlop={mini ? 18 : 22}
+          >
+            <MarkerIcon marker={safeMarkerScale === 1 ? marker : { ...marker, marker_size: Math.round(Number(marker.marker_size ?? 100) * safeMarkerScale) }} mini={mini} />
+          </Pressable>
+        );
+      })}
     </>
   );
 }
@@ -946,6 +967,21 @@ const styles = StyleSheet.create({
     height: 34,
     alignItems: "center",
     justifyContent: "center",
+  },
+  markerCurrent: {
+    opacity: 1,
+    shadowColor: colors.gold,
+    shadowOpacity: 0.85,
+    shadowRadius: 14,
+  },
+  markerAvailable: {
+    opacity: 1,
+    shadowColor: colors.blue,
+    shadowOpacity: 0.72,
+    shadowRadius: 12,
+  },
+  markerVisited: {
+    opacity: 0.42,
   },
   miniMapMarker: {
     width: 25,

@@ -1032,6 +1032,34 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  mini_map_marker_connections: {
+    id: string;
+    mini_map_id: string;
+    from_marker_id: string;
+    to_marker_id: string;
+    is_two_way: boolean;
+    is_active: boolean;
+    label: string | null;
+    sort_order: number;
+    season_number: number;
+    chapter_number: number;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  player_mini_map_marker_state: {
+    user_id: string;
+    mini_map_id: string;
+    current_marker_id: string | null;
+    previous_marker_id: string | null;
+    updated_at: string;
+  };
+  player_mini_map_marker_discoveries: {
+    user_id: string;
+    mini_map_id: string;
+    marker_id: string;
+    discovered_at: string;
+  };
   marker_market_items: {
     id: string;
     marker_id: string;
