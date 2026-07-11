@@ -1,4 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { distance as turfDistance } from "@turf/turf";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Image, Platform, StyleSheet, Text, TextInput, View } from "react-native";
@@ -234,6 +235,7 @@ const miniMapContentMarkerTypes = miniMapMarkerTypes.filter((type) => type !== "
 const miniMapMovementMarkerTypes = ["Movement"] as const;
 const walkingPathEditorModes = editorModes.filter((mode) => mode !== "Movement Grid");
 const legendMarkerTypes = Array.from(new Set([...markerTypes, ...miniMapMarkerTypes, "Custom"]));
+const adminMapWorkspaceStorageKey = "animamagisterium:admin-map-workspace";
 const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
 const eventTriggerModes = ["fixed", "random"] as const;
@@ -715,12 +717,67 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const exitingMiniMapRef = useRef(false);
   const openingToastShownRef = useRef(false);
   const chapterTransitionShownRef = useRef<Set<string>>(new Set());
+  const adminMapWorkspaceLoadedRef = useRef(false);
   const movementStateRef = useRef<PlayerMovementState>("IDLE");
   const movementCandidateRef = useRef<{ state: PlayerMovementState; since: number } | null>(null);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const actualIsAdmin = role === "admin";
   const isAdmin = actualIsAdmin && adminMapViewMode === "admin";
   const isAdminPlayerPreview = actualIsAdmin && adminMapViewMode === "player";
+
+  useEffect(() => {
+    if (!actualIsAdmin) {
+      adminMapWorkspaceLoadedRef.current = false;
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadAdminMapWorkspace() {
+      try {
+        const raw = await AsyncStorage.getItem(adminMapWorkspaceStorageKey);
+        const parsed = raw ? JSON.parse(raw) as { seasonNumber?: unknown; chapterNumber?: unknown } : null;
+        if (cancelled || !parsed) {
+          return;
+        }
+
+        const savedSeason = Number(parsed.seasonNumber);
+        const savedChapter = Number(parsed.chapterNumber);
+        if (Number.isFinite(savedSeason) && savedSeason > 0) {
+          setSelectedSeason(Math.floor(savedSeason));
+        }
+        if (Number.isFinite(savedChapter) && savedChapter > 0) {
+          setSelectedChapter(Math.floor(savedChapter));
+        }
+      } catch {
+        // Local admin workspace persistence is optional. Ignore corrupt or unavailable storage.
+      } finally {
+        if (!cancelled) {
+          adminMapWorkspaceLoadedRef.current = true;
+        }
+      }
+    }
+
+    void loadAdminMapWorkspace();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [actualIsAdmin]);
+
+  useEffect(() => {
+    if (!actualIsAdmin || !adminMapWorkspaceLoadedRef.current) {
+      return;
+    }
+
+    void AsyncStorage.setItem(
+      adminMapWorkspaceStorageKey,
+      JSON.stringify({ seasonNumber: selectedSeason, chapterNumber: selectedChapter }),
+    ).catch(() => {
+      // This is a convenience cache only; failure should never block admin editing.
+    });
+  }, [actualIsAdmin, selectedChapter, selectedSeason]);
+
   const progressPercent = Math.min(100, Math.max(0, (distanceWalked / route.distance_required_meters) * 100));
   const orderedRoutes = useMemo(() => [...routes].sort(compareRoutes), [routes]);
   const adminRoutes = useMemo(() => orderedRoutes.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [orderedRoutes, selectedChapter, selectedSeason]);
