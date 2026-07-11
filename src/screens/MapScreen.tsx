@@ -8230,16 +8230,26 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
                   ))}
                 </View>
               ) : null}
-              {!clickedPercent ? <Text style={styles.lockText}>Tap the map image first to choose this marker's position.</Text> : null}
-              {!draftTitle.trim() ? <Text style={styles.lockText}>Add a marker title before creating it.</Text> : null}
-              <Pressable style={[styles.primaryButton, (!clickedPercent || !draftTitle.trim()) && styles.disabledAction]} onPress={() => void addMarker()}>
-                <Text style={styles.primaryText}>Create Marker</Text>
-              </Pressable>
               {selectedMarker ? (
-                <Pressable style={styles.secondaryButton} onPress={() => void saveSelectedMarkerSettings()}>
-                  <Text style={styles.secondaryText}>Save Selected Marker Settings</Text>
-                </Pressable>
-              ) : null}
+                <>
+                  <Pressable style={styles.primaryButton} onPress={() => void saveSelectedMarkerSettings()}>
+                    <Text style={styles.primaryText}>Save Selected Marker Settings</Text>
+                  </Pressable>
+                  {clickedPercent ? (
+                    <Text style={styles.debugLine}>Save will also move this marker to X {clickedPercent.x}% / Y {clickedPercent.y}%.</Text>
+                  ) : (
+                    <Text style={styles.copy}>Edits above will save to the selected marker. Tap the map only if you want to move it.</Text>
+                  )}
+                </>
+              ) : (
+                <>
+                  {!clickedPercent ? <Text style={styles.lockText}>Tap the map image first to choose this marker's position.</Text> : null}
+                  {!draftTitle.trim() ? <Text style={styles.lockText}>Add a marker title before creating it.</Text> : null}
+                  <Pressable style={[styles.primaryButton, (!clickedPercent || !draftTitle.trim()) && styles.disabledAction]} onPress={() => void addMarker()}>
+                    <Text style={styles.primaryText}>Create Marker</Text>
+                  </Pressable>
+                </>
+              )}
             </>
           ) : adminSection === "Walking Paths" ? (
             <View style={styles.pathEditor}>
@@ -9395,23 +9405,6 @@ function MiniMapMarkerAdminForm({
           </View>
         </View>
       ) : null}
-      <AdminCollapsibleSection
-        title="Save / Create"
-        summary={selectedMarker ? "Save edits or create a new marker at the clicked spot" : "Create marker at clicked spot"}
-        isOpen={isMarkerSectionOpen("save")}
-        onToggle={() => toggleMarkerSection("save")}
-      >
-        {selectedMarker ? (
-          <Pressable style={styles.secondaryButton} onPress={onSaveSelectedMarker}>
-            <Text style={styles.secondaryText}>Save Marker Details</Text>
-          </Pressable>
-        ) : null}
-        {!clickedPercent ? <Text style={styles.lockText}>Tap the mini map image first to choose this marker's position.</Text> : null}
-        {!draftTitle.trim() ? <Text style={styles.lockText}>Add a marker title before creating it.</Text> : null}
-        <Pressable style={[styles.primaryButton, (!clickedPercent || !draftTitle.trim()) && styles.disabledAction]} onPress={onAddMarker}>
-          <Text style={styles.primaryText}>{selectedMarker ? "Create New Marker At Clicked Spot" : "Create Mini Map Marker"}</Text>
-        </Pressable>
-      </AdminCollapsibleSection>
       {supportsMarket ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>Market / Shop Settings</Text>
@@ -9446,6 +9439,33 @@ function MiniMapMarkerAdminForm({
           ))}
         </View>
       ) : null}
+      <AdminCollapsibleSection
+        title={selectedMarker ? "Save Marker" : "Create Marker"}
+        summary={selectedMarker ? "Save all changes from the sections above" : "Tap the mini map, then create a marker at that spot"}
+        isOpen={isMarkerSectionOpen("save")}
+        onToggle={() => toggleMarkerSection("save")}
+      >
+        {selectedMarker ? (
+          <>
+            <Pressable style={styles.primaryButton} onPress={onSaveSelectedMarker}>
+              <Text style={styles.primaryText}>Save Marker Details</Text>
+            </Pressable>
+            {clickedPercent ? (
+              <Text style={styles.debugLine}>Save will also move this marker to X {clickedPercent.x}% / Y {clickedPercent.y}%.</Text>
+            ) : (
+              <Text style={styles.copy}>Edits above will save to the selected marker. Tap the mini map only if you want to move it.</Text>
+            )}
+          </>
+        ) : (
+          <>
+            {!clickedPercent ? <Text style={styles.lockText}>Tap the mini map image first to choose this marker's position.</Text> : null}
+            {!draftTitle.trim() ? <Text style={styles.lockText}>Add a marker title before creating it.</Text> : null}
+            <Pressable style={[styles.primaryButton, (!clickedPercent || !draftTitle.trim()) && styles.disabledAction]} onPress={onAddMarker}>
+              <Text style={styles.primaryText}>Create Mini Map Marker</Text>
+            </Pressable>
+          </>
+        )}
+      </AdminCollapsibleSection>
     </View>
   );
 }
