@@ -29,6 +29,7 @@ export type StoryMarkerCompletion = Tables["story_marker_completions"];
 export type StoryMarkerStart = Tables["story_marker_starts"];
 export type StoryDialogueNode = Tables["story_dialogue_nodes"];
 export type StoryDialogueChoice = Tables["story_dialogue_choices"];
+export type DialoguePack = Tables["dialogue_packs"];
 export type DialogueChoiceReward = Tables["dialogue_choice_rewards"];
 export type DialogueNodeContentScope = StoryDialogueNode["content_scope"];
 export type PlayerStoryFlag = Tables["player_story_flags"];
@@ -1964,9 +1965,16 @@ function formatRewardMessage(xp: number, gold: number, itemQuantity: number, ful
 type DialogueChapterFilter = {
   seasonNumber?: number | null;
   chapterNumber?: number | null;
+  dialoguePackId?: string | null;
 };
 
 function filterDialogueNodesForChapter(nodes: StoryDialogueNode[], filter?: DialogueChapterFilter) {
+  if (filter && Object.prototype.hasOwnProperty.call(filter, "dialoguePackId")) {
+    return nodes
+      .filter((node) => node.dialogue_pack_id === (filter.dialoguePackId ?? null))
+      .sort((a, b) => a.sort_order - b.sort_order || new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  }
+
   const seasonNumber = filter?.seasonNumber;
   const chapterNumber = filter?.chapterNumber;
 
@@ -1991,6 +1999,92 @@ function filterDialogueNodesForChapter(nodes: StoryDialogueNode[], filter?: Dial
     }
     return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
   });
+}
+
+function normalizeDialoguePackPayload<T extends Partial<DialoguePack>>(values: T) {
+  const contentScope = values.content_scope ?? "chapter";
+  return {
+    ...values,
+    name: values.name?.trim() || "Dialogue Pack",
+    description: values.description?.trim() || null,
+    pack_type: values.pack_type ?? "main",
+    content_scope: contentScope,
+    season_number: contentScope === "universal" ? null : Math.max(1, Number(values.season_number) || 1),
+    chapter_number: contentScope === "universal" ? null : Math.max(1, Number(values.chapter_number) || 1),
+    priority: Number(values.priority) || 0,
+    required_story_flag_key: values.required_story_flag_key?.trim() || null,
+    required_story_flag_value: values.required_story_flag_value ?? true,
+    repeatable: values.repeatable ?? true,
+    is_published: values.is_published ?? true,
+    is_active: values.is_active ?? true,
+  };
+}
+
+export async function getDialoguePacksForMarker(markerId: string) {
+  const { data, error } = await supabase
+    .from("dialogue_packs")
+    .select("*")
+    .eq("marker_id", markerId)
+    .order("priority", { ascending: false })
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.warn("[map] dialogue packs unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as DialoguePack[];
+}
+
+export function chooseDialoguePackForMarker(packs: DialoguePack[], filter: DialogueChapterFilter | undefined, storyFlags: Map<string, boolean>) {
+  const seasonNumber = Number(filter?.seasonNumber ?? 1);
+  const chapterNumber = Number(filter?.chapterNumber ?? 1);
+
+  return packs
+    .filter((pack) => pack.is_active && pack.is_published)
+    .filter((pack) => {
+      if (pack.content_scope === "universal") return true;
+      return Number(pack.season_number ?? 1) === seasonNumber && Number(pack.chapter_number ?? 1) === chapterNumber;
+    })
+    .filter((pack) => {
+      const flagKey = pack.required_story_flag_key?.trim();
+      if (!flagKey) return true;
+      return storyFlags.get(flagKey) === (pack.required_story_flag_value ?? true);
+    })
+    .sort((a, b) => Number(b.priority ?? 0) - Number(a.priority ?? 0) || new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0] ?? null;
+}
+
+export async function saveDialoguePack(input: Partial<DialoguePack> & Pick<DialoguePack, "name">) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const normalizedPayload = normalizeDialoguePackPayload({
+    ...input,
+    created_by: input.created_by ?? user?.id ?? null,
+  });
+  const {
+    id: _id,
+    created_at: _createdAt,
+    updated_at: _updatedAt,
+    ...payload
+  } = normalizedPayload;
+  const { data, error } = input.id
+    ? await supabase.from("dialogue_packs").update({ ...payload, updated_at: new Date().toISOString() }).eq("id", input.id).select().single()
+    : await supabase.from("dialogue_packs").insert(payload).select().single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as DialoguePack;
+}
+
+export async function deleteDialoguePack(packId: string) {
+  const { error } = await supabase.from("dialogue_packs").delete().eq("id", packId);
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function getDialogueNodes(eventId: string, filter?: DialogueChapterFilter) {

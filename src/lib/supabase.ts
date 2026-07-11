@@ -699,6 +699,7 @@ export type Tables = {
     id: string;
     event_id: string | null;
     marker_id: string | null;
+    dialogue_pack_id: string | null;
     node_key: string;
     title: string;
     npc_name: string | null;
@@ -714,6 +715,26 @@ export type Tables = {
     season_number: number | null;
     chapter_number: number | null;
     sort_order: number;
+    created_at: string;
+    updated_at: string;
+  };
+  dialogue_packs: {
+    id: string;
+    marker_id: string | null;
+    npc_id: string | null;
+    name: string;
+    description: string | null;
+    pack_type: "main" | "quest" | "ambient" | "repeat" | "fallback";
+    content_scope: "chapter" | "universal";
+    season_number: number | null;
+    chapter_number: number | null;
+    priority: number;
+    required_story_flag_key: string | null;
+    required_story_flag_value: boolean;
+    repeatable: boolean;
+    is_published: boolean;
+    is_active: boolean;
+    created_by: string | null;
     created_at: string;
     updated_at: string;
   };

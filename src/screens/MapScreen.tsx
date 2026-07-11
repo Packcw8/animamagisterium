@@ -123,6 +123,7 @@ import {
   canMarketItemBeSoldTo,
   createDialogueChoice,
   createDialogueNode,
+  chooseDialoguePackForMarker,
   createMapRoute,
   createMapEvent,
   createMapMarker,
@@ -130,6 +131,7 @@ import {
   deleteMiniMap,
   deleteDialogueChoice,
   deleteDialogueNode,
+  deleteDialoguePack,
   deleteMarkerLegendItem,
   deleteMapEvent,
   deleteMapMarker,
@@ -161,6 +163,7 @@ import {
   getClaimedDialogueRewardChoiceIds,
   getDialogueNodes,
   getDialogueNodesForMarker,
+  getDialoguePacksForMarker,
   getEventCompletions,
   getStoryMarkerCompletions,
   getStoryMarkerStarts,
@@ -180,6 +183,7 @@ import {
   WorldMapSetting,
   StoryDialogueChoice,
   DialogueChoiceReward,
+  DialoguePack,
   StoryDialogueNode,
   DialogueNodeContentScope,
   saveMarkerMarketItem,
@@ -188,6 +192,7 @@ import {
   saveMiniMap,
   saveMapChapter,
   saveMapSeason,
+  saveDialoguePack,
   savePlayerMapState,
   saveRouteProgress,
   saveWorldMapSetting,
@@ -269,6 +274,16 @@ function sortMiniMaps(items: MiniMap[]) {
       left.name.localeCompare(right.name)
     );
   });
+}
+
+function compareDialoguePacks(left: DialoguePack, right: DialoguePack) {
+  return (
+    Number(right.priority ?? 0) - Number(left.priority ?? 0) ||
+    (left.content_scope === right.content_scope ? 0 : left.content_scope === "chapter" ? -1 : 1) ||
+    Number(left.season_number ?? 0) - Number(right.season_number ?? 0) ||
+    Number(left.chapter_number ?? 0) - Number(right.chapter_number ?? 0) ||
+    left.name.localeCompare(right.name)
+  );
 }
 
 export function MapScreen({ character, onCharacterUpdated, initialAdminSection }: MapScreenProps) {
@@ -563,6 +578,19 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [reuseEventOpen, setReuseEventOpen] = useState(false);
   const [selectedDialogueEventId, setSelectedDialogueEventId] = useState<string | null>(null);
   const [selectedDialogueMarkerId, setSelectedDialogueMarkerId] = useState<string | null>(null);
+  const [dialoguePacks, setDialoguePacks] = useState<DialoguePack[]>([]);
+  const [selectedDialoguePackId, setSelectedDialoguePackId] = useState<string | null>(null);
+  const [editingDialoguePack, setEditingDialoguePack] = useState<DialoguePack | null>(null);
+  const [dialoguePackName, setDialoguePackName] = useState("");
+  const [dialoguePackDescription, setDialoguePackDescription] = useState("");
+  const [dialoguePackType, setDialoguePackType] = useState<DialoguePack["pack_type"]>("main");
+  const [dialoguePackScope, setDialoguePackScope] = useState<DialoguePack["content_scope"]>("chapter");
+  const [dialoguePackPriority, setDialoguePackPriority] = useState("0");
+  const [dialoguePackFlagKey, setDialoguePackFlagKey] = useState("");
+  const [dialoguePackFlagValue, setDialoguePackFlagValue] = useState(true);
+  const [dialoguePackRepeatable, setDialoguePackRepeatable] = useState(true);
+  const [dialoguePackPublished, setDialoguePackPublished] = useState(true);
+  const [dialoguePackActive, setDialoguePackActive] = useState(true);
   const [editingNode, setEditingNode] = useState<StoryDialogueNode | null>(null);
   const [editingChoice, setEditingChoice] = useState<StoryDialogueChoice | null>(null);
   const [nodeTitle, setNodeTitle] = useState("");
@@ -3030,7 +3058,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
 
     try {
-      const markerNodes = await getDialogueNodesForMarker(selectedMarker.id, { seasonNumber: selectedSeason, chapterNumber: selectedChapter });
+      const markerPacks = await getDialoguePacksForMarker(selectedMarker.id);
+      const selectedPack = chooseDialoguePackForMarker(markerPacks, { seasonNumber: selectedSeason, chapterNumber: selectedChapter }, storyFlags);
+      const markerNodes = await getDialogueNodesForMarker(selectedMarker.id, { seasonNumber: selectedSeason, chapterNumber: selectedChapter, dialoguePackId: selectedPack?.id ?? null });
       const event = markerNodes.length > 0
         ? createMarkerDialogueEvent(selectedMarker)
         : selectedMarker.dialogue_event_id
@@ -4119,7 +4149,9 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
 
   async function loadDialogueForMarker(markerId: string, existingNodes?: StoryDialogueNode[]) {
     try {
-      const nodes = existingNodes ?? await getDialogueNodesForMarker(markerId, { seasonNumber: selectedSeason, chapterNumber: selectedChapter });
+      const packs = await getDialoguePacksForMarker(markerId);
+      const selectedPack = chooseDialoguePackForMarker(packs, { seasonNumber: selectedSeason, chapterNumber: selectedChapter }, storyFlags);
+      const nodes = existingNodes ?? await getDialogueNodesForMarker(markerId, { seasonNumber: selectedSeason, chapterNumber: selectedChapter, dialoguePackId: selectedPack?.id ?? null });
       const choices = await getDialogueChoices(nodes.map((node) => node.id));
       const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
       const [claimedRewardChoices, selectedChoices] = await Promise.all([
@@ -4167,6 +4199,8 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   async function loadDialogueEditor(eventId: string) {
     setSelectedDialogueEventId(eventId);
     setSelectedDialogueMarkerId(null);
+    setSelectedDialoguePackId(null);
+    setDialoguePacks([]);
     const nodes = await getDialogueNodes(eventId, { seasonNumber: selectedSeason, chapterNumber: selectedChapter });
     const choices = await getDialogueChoices(nodes.map((node) => node.id));
     const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
@@ -4180,10 +4214,134 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     clearDialogueChoiceForm();
   }
 
+  function clearDialoguePackForm(marker?: MapMarker | null) {
+    setEditingDialoguePack(null);
+    setDialoguePackName(marker ? `${marker.title} - ${getChapterLabel(mapChapters, selectedSeason, selectedChapter)}` : "");
+    setDialoguePackDescription("");
+    setDialoguePackType("main");
+    setDialoguePackScope("chapter");
+    setDialoguePackPriority("0");
+    setDialoguePackFlagKey("");
+    setDialoguePackFlagValue(true);
+    setDialoguePackRepeatable(true);
+    setDialoguePackPublished(true);
+    setDialoguePackActive(true);
+  }
+
+  function editDialoguePack(pack: DialoguePack) {
+    setEditingDialoguePack(pack);
+    setSelectedDialoguePackId(pack.id);
+    setDialoguePackName(pack.name);
+    setDialoguePackDescription(pack.description ?? "");
+    setDialoguePackType(pack.pack_type ?? "main");
+    setDialoguePackScope(pack.content_scope ?? "chapter");
+    setDialoguePackPriority(String(pack.priority ?? 0));
+    setDialoguePackFlagKey(pack.required_story_flag_key ?? "");
+    setDialoguePackFlagValue(pack.required_story_flag_value ?? true);
+    setDialoguePackRepeatable(pack.repeatable ?? true);
+    setDialoguePackPublished(pack.is_published ?? true);
+    setDialoguePackActive(pack.is_active ?? true);
+  }
+
+  async function selectDialoguePack(pack: DialoguePack | null) {
+    if (!selectedDialogueMarkerId) {
+      return;
+    }
+
+    setSelectedDialoguePackId(pack?.id ?? null);
+    if (pack) {
+      editDialoguePack(pack);
+    } else {
+      clearDialoguePackForm(selectedMarker);
+    }
+
+    const nodes = await getDialogueNodesForMarker(selectedDialogueMarkerId, {
+      seasonNumber: selectedSeason,
+      chapterNumber: selectedChapter,
+      dialoguePackId: pack?.id ?? null,
+    });
+    const choices = await getDialogueChoices(nodes.map((node) => node.id));
+    const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
+    setDialogueNodes(nodes);
+    setDialogueChoices(choices);
+    setDialogueChoiceRewards(rewards);
+    setChoiceNodeId(nodes[0]?.id ?? null);
+    clearDialogueNodeForm();
+    clearDialogueChoiceForm();
+  }
+
+  function packScopeLabel(pack: DialoguePack) {
+    if (pack.content_scope === "universal") {
+      return "Universal";
+    }
+
+    return `Season ${pack.season_number ?? 1} / Chapter ${pack.chapter_number ?? 1}`;
+  }
+
+  async function saveCurrentDialoguePack() {
+    if (!selectedDialogueMarkerId || !dialoguePackName.trim()) {
+      setAdminMessage("Select a marker and name the dialogue pack first.");
+      return;
+    }
+
+    try {
+      const saved = await saveDialoguePack({
+        id: editingDialoguePack?.id,
+        marker_id: selectedDialogueMarkerId,
+        npc_id: selectedMarker?.npc_id ?? null,
+        name: dialoguePackName,
+        description: dialoguePackDescription,
+        pack_type: dialoguePackType,
+        content_scope: dialoguePackScope,
+        season_number: selectedSeason,
+        chapter_number: selectedChapter,
+        priority: Number(dialoguePackPriority) || 0,
+        required_story_flag_key: dialoguePackFlagKey,
+        required_story_flag_value: dialoguePackFlagValue,
+        repeatable: dialoguePackRepeatable,
+        is_published: dialoguePackPublished,
+        is_active: dialoguePackActive,
+      });
+      setDialoguePacks((current) => [saved, ...current.filter((pack) => pack.id !== saved.id)].sort(compareDialoguePacks));
+      setSelectedDialoguePackId(saved.id);
+      setEditingDialoguePack(saved);
+      setAdminMessage(`Dialogue pack saved: ${saved.name}. New dialogue steps will save into this pack.`);
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to save dialogue pack."));
+    }
+  }
+
+  async function removeDialoguePack(packId: string) {
+    try {
+      await deleteDialoguePack(packId);
+      setDialoguePacks((current) => current.filter((pack) => pack.id !== packId));
+      if (selectedDialoguePackId === packId) {
+        setSelectedDialoguePackId(null);
+        setDialogueNodes([]);
+        setDialogueChoices([]);
+        setDialogueChoiceRewards([]);
+      }
+      clearDialoguePackForm(selectedMarker);
+      setAdminMessage("Dialogue pack deleted. Its dialogue steps were detached, not deleted.");
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to delete dialogue pack."));
+    }
+  }
+
   async function loadMarkerDialogueEditor(marker: MapMarker) {
     setSelectedDialogueEventId(null);
     setSelectedDialogueMarkerId(marker.id);
-    const nodes = await getDialogueNodesForMarker(marker.id, { seasonNumber: selectedSeason, chapterNumber: selectedChapter });
+    const packs = await getDialoguePacksForMarker(marker.id);
+    const sortedPacks = packs.sort(compareDialoguePacks);
+    const preferredPack = chooseDialoguePackForMarker(sortedPacks, { seasonNumber: selectedSeason, chapterNumber: selectedChapter }, storyFlags) ?? sortedPacks[0] ?? null;
+    setDialoguePacks(sortedPacks);
+    setSelectedDialoguePackId(preferredPack?.id ?? null);
+    if (preferredPack) {
+      editDialoguePack(preferredPack);
+    } else {
+      clearDialoguePackForm(marker);
+    }
+    const nodes = await getDialogueNodesForMarker(marker.id, { seasonNumber: selectedSeason, chapterNumber: selectedChapter, dialoguePackId: preferredPack?.id ?? null });
     const choices = await getDialogueChoices(nodes.map((node) => node.id));
     const rewards = await getDialogueChoiceRewards(choices.map((choice) => choice.id));
     setDialogueNodes(nodes);
@@ -5309,6 +5467,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       const copiedNode = await createDialogueNode({
         event_id: targetEventId,
         marker_id: null,
+        dialogue_pack_id: null,
         node_key: `${node.node_key}-${Date.now()}`.slice(0, 120),
         title: node.title,
         npc_name: node.npc_name,
@@ -5457,6 +5616,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         content_scope: nodeContentScope,
         season_number: nodeContentScope === "chapter" ? selectedSeason : null,
         chapter_number: nodeContentScope === "chapter" ? selectedChapter : null,
+        dialogue_pack_id: selectedDialogueMarkerId ? selectedDialoguePackId : null,
         sort_order: Number(nodeSortOrder) || 0,
       };
       const saved = editingNode
@@ -5935,12 +6095,96 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     );
   }
 
+  function renderDialoguePackAdmin(markerSource?: MapMarker) {
+    if (!markerSource) {
+      return null;
+    }
+
+    const packTypes: DialoguePack["pack_type"][] = ["main", "quest", "ambient", "repeat", "fallback"];
+
+    return (
+      <View style={styles.storyEditor}>
+        <Text style={styles.selectedTitle}>Dialogue Packs</Text>
+        <Text style={styles.copy}>Use packs to change this marker's dialogue by chapter or story flag. Higher priority packs are chosen first.</Text>
+        <View style={styles.storyRoutePicker}>
+          <Pressable style={[styles.routeChip, !selectedDialoguePackId && styles.routeChipActive]} onPress={() => void selectDialoguePack(null)}>
+            <Text style={styles.routeChipText}>Legacy / No Pack</Text>
+            <Text style={styles.debugLine}>Fallback old dialogue</Text>
+          </Pressable>
+          {dialoguePacks.map((pack) => (
+            <Pressable key={pack.id} style={[styles.routeChip, selectedDialoguePackId === pack.id && styles.routeChipActive]} onPress={() => void selectDialoguePack(pack)}>
+              <Text style={styles.routeChipText}>{pack.name}</Text>
+              <Text style={styles.debugLine}>{packScopeLabel(pack)} / Priority {pack.priority}</Text>
+              {pack.required_story_flag_key ? <Text style={styles.debugLine}>Requires {pack.required_story_flag_key} = {pack.required_story_flag_value ? "true" : "false"}</Text> : null}
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.selectedTitle}>{editingDialoguePack ? "Edit Dialogue Pack" : "Create Dialogue Pack"}</Text>
+        <TextInput value={dialoguePackName} onChangeText={setDialoguePackName} placeholder="Pack name, example Mara - Chapter 1 Intro" placeholderTextColor={colors.muted} style={styles.input} />
+        <TextInput value={dialoguePackDescription} onChangeText={setDialoguePackDescription} placeholder="Admin note optional" placeholderTextColor={colors.muted} style={[styles.input, styles.multiInput]} multiline />
+        <Text style={styles.debugLine}>Pack Type</Text>
+        <View style={styles.storyRoutePicker}>
+          {packTypes.map((type) => (
+            <Pressable key={type} style={[styles.routeChip, dialoguePackType === type && styles.routeChipActive]} onPress={() => setDialoguePackType(type)}>
+              <Text style={styles.routeChipText}>{type}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={styles.debugLine}>Scope</Text>
+        <View style={styles.modeRow}>
+          <Pressable style={[styles.secondaryButtonFlex, dialoguePackScope === "chapter" && styles.typeSelected]} onPress={() => setDialoguePackScope("chapter")}>
+            <Text style={styles.secondaryText}>This Chapter</Text>
+            <Text style={styles.debugLine}>S{selectedSeason} / C{selectedChapter}</Text>
+          </Pressable>
+          <Pressable style={[styles.secondaryButtonFlex, dialoguePackScope === "universal" && styles.typeSelected]} onPress={() => setDialoguePackScope("universal")}>
+            <Text style={styles.secondaryText}>Universal</Text>
+            <Text style={styles.debugLine}>Fallback across chapters</Text>
+          </Pressable>
+        </View>
+        <TextInput value={dialoguePackPriority} onChangeText={setDialoguePackPriority} placeholder="Priority, higher wins" placeholderTextColor={colors.muted} keyboardType="numeric" style={styles.input} />
+        <TextInput value={dialoguePackFlagKey} onChangeText={setDialoguePackFlagKey} placeholder="Required story flag optional, example missing_princess_started" placeholderTextColor={colors.muted} style={styles.input} />
+        <Pressable style={styles.secondaryButtonFlex} onPress={() => setDialoguePackFlagValue((value) => !value)}>
+          <Text style={styles.secondaryText}>Required Flag Value: {dialoguePackFlagValue ? "true" : "false"}</Text>
+        </Pressable>
+        <View style={styles.modeRow}>
+          <Pressable style={[styles.secondaryButtonFlex, dialoguePackRepeatable && styles.typeSelected]} onPress={() => setDialoguePackRepeatable((value) => !value)}>
+            <Text style={styles.secondaryText}>Repeatable: {dialoguePackRepeatable ? "Yes" : "No"}</Text>
+          </Pressable>
+          <Pressable style={[styles.secondaryButtonFlex, dialoguePackPublished && styles.typeSelected]} onPress={() => setDialoguePackPublished((value) => !value)}>
+            <Text style={styles.secondaryText}>Published: {dialoguePackPublished ? "Yes" : "No"}</Text>
+          </Pressable>
+          <Pressable style={[styles.secondaryButtonFlex, dialoguePackActive && styles.typeSelected]} onPress={() => setDialoguePackActive((value) => !value)}>
+            <Text style={styles.secondaryText}>Active: {dialoguePackActive ? "Yes" : "No"}</Text>
+          </Pressable>
+        </View>
+        <View style={styles.modeRow}>
+          <Pressable style={styles.primaryButton} onPress={() => void saveCurrentDialoguePack()}>
+            <Text style={styles.primaryText}>{editingDialoguePack ? "Save Dialogue Pack" : "Create Dialogue Pack"}</Text>
+          </Pressable>
+          {editingDialoguePack ? (
+            <>
+              <Pressable style={styles.secondaryButtonFlex} onPress={() => clearDialoguePackForm(markerSource)}>
+                <Text style={styles.secondaryText}>New Pack</Text>
+              </Pressable>
+              <Pressable style={styles.secondaryButtonFlex} onPress={() => void removeDialoguePack(editingDialoguePack.id)}>
+                <Text style={styles.dangerText}>Delete Pack</Text>
+              </Pressable>
+            </>
+          ) : null}
+        </View>
+        <Text style={styles.copy}>New dialogue steps below will save into: {selectedDialoguePackId ? dialoguePacks.find((pack) => pack.id === selectedDialoguePackId)?.name ?? "selected pack" : "Legacy / No Pack"}.</Text>
+      </View>
+    );
+  }
+
   function renderBranchingDialogueEditor(markerSource?: MapMarker) {
     const markerDialogueEvent = markerSource ? createMarkerDialogueEvent(markerSource) : null;
     const editorSelectedEvent = markerDialogueEvent ?? selectedDialogueEvent;
     const editorSelectedId = markerSource?.id ?? selectedDialogueEventId;
 
     return (
+      <>
+      {renderDialoguePackAdmin(markerSource)}
       <DialogueTreeAdmin
         title={markerSource ? "Marker Dialogue Tree Builder" : "Dialogue Tree Admin"}
         description={markerSource ? "Build this marker's own branching conversation. Use Start Quest to begin linked paths from a player choice." : undefined}
@@ -6077,6 +6321,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           />
         }
       />
+      </>
     );
   }
 
