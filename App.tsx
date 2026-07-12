@@ -39,6 +39,7 @@ function AppShell() {
   const [activeScreen, setActiveScreen] = useState<ScreenKey>("home");
   const [activeUtilityScreen, setActiveUtilityScreen] = useState<"settings" | "inbox" | "admin" | null>(null);
   const [requestedMapAdminSection, setRequestedMapAdminSection] = useState<string | null>(null);
+  const [currentStoryScope, setCurrentStoryScope] = useState({ seasonNumber: 1, chapterNumber: 1 });
   const [isBooting, setIsBooting] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [startupMessage, setStartupMessage] = useState("Starting Anima Magisterium...");
@@ -84,6 +85,15 @@ function AppShell() {
       const [loadedCharacter, loadedAssets] = await Promise.all([characterService.getCharacter(), characterService.getAvatarAssets()]);
       handleCharacterUpdated(loadedCharacter);
       setAvatarAssets(loadedAssets);
+
+      const mapService = loadScreen<{
+        getPlayerMapState: () => Promise<{ active_season_number?: number | null; active_chapter_number?: number | null } | null>;
+      }>("mapServiceForStoryScope", () => require("./src/services/mapService"));
+      const playerMapState = await mapService.getPlayerMapState();
+      setCurrentStoryScope({
+        seasonNumber: Math.max(1, Math.round(Number(playerMapState?.active_season_number ?? 1) || 1)),
+        chapterNumber: Math.max(1, Math.round(Number(playerMapState?.active_chapter_number ?? 1) || 1)),
+      });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Unable to load Animamagisterium.");
     } finally {
@@ -213,11 +223,18 @@ function AppShell() {
               <HomeScreenView
                 character={character}
                 onCharacterUpdated={handleCharacterUpdated}
+                currentStorySeason={currentStoryScope.seasonNumber}
+                currentStoryChapter={currentStoryScope.chapterNumber}
                 onOpenInbox={() => setActiveUtilityScreen("inbox")}
                 onOpenSettings={() => setActiveUtilityScreen("settings")}
               />
             ) : activeScreen === "map" ? (
-              <MapScreenView character={character} onCharacterUpdated={handleCharacterUpdated} initialAdminSection={requestedMapAdminSection} />
+              <MapScreenView
+                character={character}
+                onCharacterUpdated={handleCharacterUpdated}
+                onStoryChapterChanged={(seasonNumber: number, chapterNumber: number) => setCurrentStoryScope({ seasonNumber, chapterNumber })}
+                initialAdminSection={requestedMapAdminSection}
+              />
             ) : activeScreen === "quests" ? (
               <QuestsScreenView character={character} onCharacterUpdated={handleCharacterUpdated} />
             ) : activeScreen === "social" ? (

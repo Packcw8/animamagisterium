@@ -103,6 +103,8 @@ type HomeScreenProps = {
   onCharacterUpdated: (character: CharacterWithDetails) => void;
   onOpenInbox: () => void;
   onOpenSettings: () => void;
+  currentStorySeason?: number;
+  currentStoryChapter?: number;
 };
 
 const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Journal", "Abilities", "Inventory"] as const;
@@ -113,8 +115,6 @@ const adminToolTabs = ["Items", "Abilities", "Enemies", "NPCs"] as const;
 const adminRecordSortModes = ["newest", "name", "type", "chapter"] as const;
 const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
 const enemyBalanceProfiles = ["minion", "standard", "elite", "boss"] as const;
-const currentStorySeason = 1;
-const currentStoryChapter = 1;
 type AbilityCostResource = (typeof abilityCostResources)[number];
 type EnemyBalanceProfile = (typeof enemyBalanceProfiles)[number];
 type AdminRecordSortMode = (typeof adminRecordSortModes)[number];
@@ -169,7 +169,7 @@ function setAbilityCost(current: Partial<CombatAbility>, resource: AbilityCostRe
   };
 }
 
-export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenSettings }: HomeScreenProps) {
+export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenSettings, currentStorySeason = 1, currentStoryChapter = 1 }: HomeScreenProps) {
   const [activeTab, setActiveTab] = useState<(typeof homeTabs)[number]>("Overview");
   const [activeSheet, setActiveSheet] = useState<"inventory" | "abilities" | null>(null);
   const [unlockedAbilities, setUnlockedAbilities] = useState<AbilityDefinition[]>([]);

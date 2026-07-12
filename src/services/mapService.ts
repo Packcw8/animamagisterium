@@ -642,7 +642,7 @@ export async function getPlayerMapState() {
   return data as PlayerMapState | null;
 }
 
-export async function savePlayerMapState(values: Pick<PlayerMapState, "active_mini_map_id" | "current_x_percent" | "current_y_percent">) {
+export async function savePlayerMapState(values: Pick<PlayerMapState, "active_mini_map_id" | "current_x_percent" | "current_y_percent"> & Partial<Pick<PlayerMapState, "active_season_number" | "active_chapter_number">>) {
   if (playerMapStateAvailable === false) {
     return null;
   }
@@ -664,6 +664,8 @@ export async function savePlayerMapState(values: Pick<PlayerMapState, "active_mi
         active_mini_map_id: values.active_mini_map_id,
         current_x_percent: values.current_x_percent,
         current_y_percent: values.current_y_percent,
+        ...(values.active_season_number !== undefined ? { active_season_number: Math.max(1, Math.round(Number(values.active_season_number) || 1)) } : {}),
+        ...(values.active_chapter_number !== undefined ? { active_chapter_number: Math.max(1, Math.round(Number(values.active_chapter_number) || 1)) } : {}),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" },
@@ -682,6 +684,17 @@ export async function savePlayerMapState(values: Pick<PlayerMapState, "active_mi
 
   playerMapStateAvailable = true;
   return data as PlayerMapState;
+}
+
+export async function savePlayerActiveChapter(seasonNumber: number, chapterNumber: number) {
+  const currentState = await getPlayerMapState();
+  return savePlayerMapState({
+    active_mini_map_id: currentState?.active_mini_map_id ?? null,
+    current_x_percent: currentState?.current_x_percent ?? null,
+    current_y_percent: currentState?.current_y_percent ?? null,
+    active_season_number: seasonNumber,
+    active_chapter_number: chapterNumber,
+  });
 }
 
 export async function clearPlayerMapState() {

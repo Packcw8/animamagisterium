@@ -79,6 +79,7 @@ export function OverworldMapCanvas({
   onPinchZoom,
   canCapturePointer,
   lockedToPlayer = false,
+  fullScreen = false,
   ...shared
 }: SharedCanvasProps & {
   viewportRef: MutableRefObject<MapViewportRef | null>;
@@ -88,6 +89,7 @@ export function OverworldMapCanvas({
   onPinchZoom?: (payload: PinchZoomPayload) => void;
   canCapturePointer: boolean;
   lockedToPlayer?: boolean;
+  fullScreen?: boolean;
 }) {
   const pinch = usePinchZoom(onPinchZoom);
   const nativeViewport = useNativeMapViewport(viewportRef);
@@ -136,7 +138,7 @@ export function OverworldMapCanvas({
   if (lockedToPlayer) {
     return (
       <View
-        style={styles.lockedViewport}
+        style={[styles.lockedViewport, fullScreen && styles.fullScreenViewport]}
         onLayout={(event) => {
           setLockedViewportSize({
             width: Math.max(1, event.nativeEvent.layout.width),
@@ -165,7 +167,7 @@ export function OverworldMapCanvas({
     return (
       <ScrollView
         ref={nativeViewport.verticalRef}
-        style={styles.nativeViewport}
+        style={[styles.nativeViewport, fullScreen && styles.fullScreenViewport]}
         contentContainerStyle={{ minHeight: scaledMapSize.height }}
         nestedScrollEnabled
         scrollEventThrottle={16}
@@ -187,7 +189,7 @@ export function OverworldMapCanvas({
   }
 
   return (
-    <View ref={viewportRef as never} style={styles.viewport} {...({ onWheel } as object)}>
+    <View ref={viewportRef as never} style={[styles.viewport, fullScreen && styles.fullScreenViewport]} {...({ onWheel } as object)}>
       {surface}
     </View>
   );
@@ -202,6 +204,7 @@ export function MiniMapCanvas({
   lockedToPlayer = false,
   fixedView = false,
   zoomEnabled = false,
+  fullScreen = false,
   ...shared
 }: SharedCanvasProps & {
   imageUri: string | null;
@@ -212,6 +215,7 @@ export function MiniMapCanvas({
   lockedToPlayer?: boolean;
   fixedView?: boolean;
   zoomEnabled?: boolean;
+  fullScreen?: boolean;
 }) {
   const [imageAspectRatio, setImageAspectRatio] = useState(1.35);
   const [lockedViewportSize, setLockedViewportSize] = useState({ width: 360, height: 420 });
@@ -290,7 +294,7 @@ export function MiniMapCanvas({
     if (lockedToPlayer) {
       return (
         <View
-          style={[styles.lockedMiniMapViewport, { height: Math.min(520, surfaceHeight) }]}
+          style={[styles.lockedMiniMapViewport, { height: Math.min(520, surfaceHeight) }, fullScreen && styles.fullScreenViewport]}
           onLayout={(event) => {
             setLockedViewportSize({
               width: Math.max(1, event.nativeEvent.layout.width),
@@ -318,7 +322,7 @@ export function MiniMapCanvas({
 
     if (fixedView) {
       return (
-        <View style={[styles.fixedMiniMapViewport, { height: Math.min(520, surfaceHeight) }]}>
+        <View style={[styles.fixedMiniMapViewport, { height: Math.min(520, surfaceHeight) }, fullScreen && styles.fullScreenViewport]}>
           {miniMapEdgeFill}
           {miniMapSurface}
         </View>
@@ -326,7 +330,7 @@ export function MiniMapCanvas({
     }
 
     return (
-      <ScrollView style={[styles.nativeMiniMapViewport, { height: surfaceHeight }]} nestedScrollEnabled>
+      <ScrollView style={[styles.nativeMiniMapViewport, { height: surfaceHeight }, fullScreen && styles.fullScreenViewport]} nestedScrollEnabled>
         <ScrollView horizontal nestedScrollEnabled>
           {miniMapSurface}
         </ScrollView>
@@ -337,7 +341,7 @@ export function MiniMapCanvas({
   if (lockedToPlayer) {
     return (
       <View
-        style={[styles.lockedMiniMapViewport, { height: Math.min(520, surfaceHeight) } as object]}
+        style={[styles.lockedMiniMapViewport, { height: Math.min(520, surfaceHeight) } as object, fullScreen && styles.fullScreenViewport]}
         onLayout={(event) => {
           setLockedViewportSize({
             width: Math.max(1, event.nativeEvent.layout.width),
@@ -365,7 +369,7 @@ export function MiniMapCanvas({
 
   if (fixedView) {
     return (
-      <View style={[styles.fixedMiniMapViewport, { height: Math.min(520, surfaceHeight) } as object]}>
+      <View style={[styles.fixedMiniMapViewport, { height: Math.min(520, surfaceHeight) } as object, fullScreen && styles.fullScreenViewport]}>
         {miniMapEdgeFill}
         {miniMapSurface}
       </View>
@@ -373,7 +377,7 @@ export function MiniMapCanvas({
   }
 
   return (
-    <View style={[styles.miniMapViewport, { height: surfaceHeight } as object]}>
+    <View style={[styles.miniMapViewport, { height: surfaceHeight } as object, fullScreen && styles.fullScreenViewport]}>
       {miniMapSurface}
     </View>
   );
@@ -706,6 +710,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.14,
     shadowRadius: 16,
   },
+  fullScreenViewport: {
+    flex: 1,
+    height: "100%",
+    marginHorizontal: 0,
+    borderRadius: 0,
+    borderWidth: 0,
+  } as object,
   lockedSurface: {
     position: "absolute",
     left: 0,

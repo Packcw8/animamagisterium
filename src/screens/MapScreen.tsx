@@ -2,7 +2,7 @@ import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { distance as turfDistance } from "@turf/turf";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Image, Platform, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButton";
 import { AdminCollapsibleSection } from "../components/admin/AdminCollapsibleSection";
 import { ActiveBattleView } from "../components/battle/ActiveBattleView";
@@ -104,6 +104,7 @@ import {
   compareRoutes,
   type ChapterAccessType,
   getAvailableNumbers,
+  getChapterAccessStatus,
   getChapterLabel,
   getNextChoiceOrder,
   getNextDialogueNodeOrder,
@@ -204,6 +205,7 @@ import {
   saveMapChapter,
   saveMapSeason,
   saveDialoguePack,
+  savePlayerActiveChapter,
   savePlayerMapState,
   saveRouteProgress,
   saveWorldMapSetting,
@@ -261,6 +263,7 @@ const movementStateDebounceMs = 5000;
 type MapScreenProps = {
   character: CharacterWithDetails;
   onCharacterUpdated: (character: CharacterWithDetails) => void;
+  onStoryChapterChanged?: (seasonNumber: number, chapterNumber: number) => void;
   initialAdminSection?: string | null;
 };
 
@@ -304,7 +307,7 @@ function compareDialoguePacks(left: DialoguePack, right: DialoguePack) {
   );
 }
 
-export function MapScreen({ character, onCharacterUpdated, initialAdminSection }: MapScreenProps) {
+export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged, initialAdminSection }: MapScreenProps) {
   const [mapReady, setMapReady] = useState(false);
   const [route, setRoute] = useState<MapRoute>(fallbackRoute);
   const [hasActiveRoute, setHasActiveRoute] = useState(false);
@@ -312,6 +315,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   const [markers, setMarkers] = useState<MapMarker[]>([]);
   const [legendItems, setLegendItems] = useState<MarkerLegendItem[]>([]);
   const [legendOpen, setLegendOpen] = useState(false);
+  const [journeyOverlayExpanded, setJourneyOverlayExpanded] = useState(false);
   const [mapEvents, setMapEvents] = useState<MapEvent[]>([]);
   const [allMapEvents, setAllMapEvents] = useState<MapEvent[]>([]);
   const [authoredToasts, setAuthoredToasts] = useState<GameToastDefinition[]>([]);
@@ -964,6 +968,29 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     () => availableChapters.find((chapter) => Number(chapter.season_number) === selectedSeason && Number(chapter.chapter_number) === selectedChapter) ?? null,
     [availableChapters, selectedChapter, selectedSeason],
   );
+  function applyActiveChapter(seasonNumber: number, chapterNumber: number) {
+    const safeSeason = Math.max(1, Math.round(Number(seasonNumber) || 1));
+    const safeChapter = Math.max(1, Math.round(Number(chapterNumber) || 1));
+    setSelectedSeason(safeSeason);
+    setSelectedChapter(safeChapter);
+    onStoryChapterChanged?.(safeSeason, safeChapter);
+  }
+
+  function findChapterUnlockedByFlag(flagKey: string, flagValue: boolean, flagSource = storyFlags) {
+    const nextFlags = new Map(flagSource);
+    nextFlags.set(flagKey, flagValue);
+
+    return mapChapters
+      .filter((chapter) => {
+        const unlockKey = chapter.unlock_story_flag_key?.trim();
+        if (!unlockKey || unlockKey !== flagKey) {
+          return false;
+        }
+        return getChapterAccessStatus(chapter, nextFlags, false).unlocked;
+      })
+      .sort((left, right) => Number(left.season_number) - Number(right.season_number) || Number(left.chapter_number) - Number(right.chapter_number))[0] ?? null;
+  }
+
   useEffect(() => {
     setChapterAccessType(selectedChapterRecord?.access_type ?? "free");
     setChapterUnlockFlagKey(selectedChapterRecord?.unlock_story_flag_key ?? "");
@@ -1949,6 +1976,11 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setAllMarkerRouteLinks(loadedMarkerRouteLinks);
     setAuthoredToasts(loadedToasts);
     setStoryDecks(loadedStoryDecks);
+    const playerActiveSeason = Math.max(1, Math.round(Number(currentRoute?.season_number ?? playerMapState?.active_season_number ?? 1) || 1));
+    const playerActiveChapter = Math.max(1, Math.round(Number(currentRoute?.chapter_number ?? playerMapState?.active_chapter_number ?? 1) || 1));
+    if (loadedRole !== "admin") {
+      applyActiveChapter(playerActiveSeason, playerActiveChapter);
+    }
     const currentMiniMap = currentRoute?.mini_map_id ? loadedMiniMaps.find((item) => item.id === currentRoute.mini_map_id) ?? null : null;
     const worldSpawnPosition = getWorldSpawnPosition(loadedMarkers);
     const savedMiniMap = !currentRoute && playerMapState?.active_mini_map_id ? loadedMiniMaps.find((item) => item.id === playerMapState.active_mini_map_id) ?? null : null;
@@ -1976,7 +2008,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     }
     if (currentRoute) {
       setHasActiveRoute(true);
-      await selectRoute(currentRoute, true);
+      await selectRoute(currentRoute, true, { skipActiveChapterSave: loadedRole === "admin" });
     } else {
       setHasActiveRoute(false);
       setRoute(firstRoute);
@@ -2008,6 +2040,8 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           active_mini_map_id: null,
           current_x_percent: nextWorldPosition.x,
           current_y_percent: nextWorldPosition.y,
+          active_season_number: playerActiveSeason,
+          active_chapter_number: playerActiveChapter,
         });
       }
       setGpsMessage("Choose a marker or path from the world map to begin travel.");
@@ -2157,7 +2191,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     selectAdminSection(initialAdminSection);
   }, [actualIsAdmin, initialAdminSection]);
 
-  async function selectRoute(nextRoute: MapRoute, force = false) {
+  async function selectRoute(nextRoute: MapRoute, force = false, options?: { skipActiveChapterSave?: boolean }) {
     if (!force && !isAdmin && isRouteLocked(nextRoute)) {
       setGpsMessage(getRouteLockMessage(nextRoute));
       return;
@@ -2181,6 +2215,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     setPathSegmentDraft([]);
     setRouteDirection("forward");
     setLastPosition(null);
+    if (!actualIsAdmin && !options?.skipActiveChapterSave) {
+      applyActiveChapter(nextRoute.season_number, nextRoute.chapter_number);
+      void savePlayerActiveChapter(nextRoute.season_number, nextRoute.chapter_number);
+    }
 
     const [progress, events] = await Promise.all([getRouteProgress(nextRoute.id), getMapEvents(nextRoute.id)]);
     setMapEvents(events);
@@ -5318,12 +5356,38 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       }
 
       try {
-        await setPlayerStoryFlag(character.id, flagKey, choice.set_story_flag_value ?? true);
+        const flagValue = choice.set_story_flag_value ?? true;
+        await setPlayerStoryFlag(character.id, flagKey, flagValue);
         setStoryFlags((current) => {
           const next = new Map(current);
-          next.set(flagKey, choice.set_story_flag_value ?? true);
+          next.set(flagKey, flagValue);
           return next;
         });
+
+        const unlockedChapter = flagValue ? findChapterUnlockedByFlag(flagKey, flagValue) : null;
+        if (unlockedChapter && (Number(unlockedChapter.season_number) !== selectedSeason || Number(unlockedChapter.chapter_number) !== selectedChapter)) {
+          try {
+            await savePlayerActiveChapter(unlockedChapter.season_number, unlockedChapter.chapter_number);
+            applyActiveChapter(unlockedChapter.season_number, unlockedChapter.chapter_number);
+            showAuthoredToast("completing_chapter", {
+              title: unlockedChapter.transition_title || `${unlockedChapter.name} Unlocked`,
+              message: unlockedChapter.transition_body || unlockedChapter.unlock_message || "The next chapter is now available.",
+              actionLabel: "OK",
+            }, {
+              triggerKey: flagKey,
+              seasonNumber: unlockedChapter.season_number,
+              chapterNumber: unlockedChapter.chapter_number,
+            });
+            void playTriggeredStoryDeck("completing_chapter", {
+              triggerKey: flagKey,
+              seasonNumber: unlockedChapter.season_number,
+              chapterNumber: unlockedChapter.chapter_number,
+            });
+          } catch (chapterError) {
+            console.warn("[map] unable to save active chapter", chapterError);
+          }
+        }
+
         return true;
       } catch (error) {
         setDialogueLog((current) => [getErrorMessage(error, "Unable to save story decision."), ...current].slice(0, 4));
@@ -7394,6 +7458,160 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     );
   }
 
+  function renderPlayerJourneyOverlay() {
+    const journey = getJourneyViewModel();
+
+    if (!journey) {
+      return null;
+    }
+
+    return (
+      <View style={styles.playerJourneyOverlay}>
+        <Pressable style={styles.playerJourneyOverlayHeader} onPress={() => setJourneyOverlayExpanded((value) => !value)}>
+          <View style={styles.playerJourneyOverlayTitleBlock}>
+            <Text style={styles.playerJourneyOverlayLabel}>{journey.travelTitle}</Text>
+            <Text style={styles.playerJourneyOverlayTitle}>{route.name}</Text>
+          </View>
+          <View style={styles.playerJourneyOverlayMeta}>
+            <Text style={styles.playerJourneyOverlayPercent}>{Math.round(progressPercent)}%</Text>
+            <Text style={styles.playerJourneyOverlayToggle}>{journeyOverlayExpanded ? "Hide" : "Details"}</Text>
+          </View>
+        </Pressable>
+        {journeyOverlayExpanded ? (
+          <ScrollView style={styles.playerJourneyOverlayScroll} contentContainerStyle={styles.playerJourneyOverlayScrollContent} nestedScrollEnabled>
+            {renderJourneyPanel(false)}
+          </ScrollView>
+        ) : (
+          <View style={styles.playerJourneyOverlaySummary}>
+            <Text style={styles.playerJourneyOverlayObjective} numberOfLines={2}>{journey.journeyObjective}</Text>
+            <View style={styles.playerJourneyOverlayProgressRow}>
+              <View style={styles.playerJourneyOverlayProgressTrack}>
+                <ProgressBar value={progressPercent} max={100} color={colors.gold} height={6} />
+              </View>
+              <Text style={styles.playerJourneyOverlayDistance}>{metersToMiles(journey.remainingMeters)} mi</Text>
+            </View>
+            {journey.destinationMarker ? (
+              <View style={styles.playerJourneyOverlayDestination}>
+                <MarkerIcon marker={journey.destinationMarker} compact />
+                <View style={styles.playerJourneyOverlayDestinationCopy}>
+                  <Text style={styles.playerJourneyOverlayDestinationLabel}>Next Marker</Text>
+                  <Text style={styles.playerJourneyOverlayDestinationTitle} numberOfLines={1}>{journey.destinationMarker.title}</Text>
+                </View>
+              </View>
+            ) : null}
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  function renderSelectedMarkerPanel() {
+    if (!selectedMarker || isAdmin) {
+      return null;
+    }
+
+    return (
+      <View style={styles.playerMarkerPanelOverlay}>
+        <MarkerInteractionPanel
+          marker={selectedMarker}
+          message={markerPanelMessage}
+          locked={selectedMarkerLocked}
+          canUse={canUseSelectedMarker}
+          unavailableReason={selectedMarkerAvailability?.reason ?? null}
+          distance={selectedMarkerDistance}
+          radius={selectedMarkerRadius}
+          isTracking={isTracking}
+          routeLinks={markerRouteLinks}
+          routes={routes}
+          routeProgressRows={routeProgressRows}
+          marketItems={markerMarketItems}
+          inventoryItems={inventoryItems}
+          itemDefinitions={itemDefinitions}
+          onClose={() => setSelectedMarker(null)}
+          onStartTracking={startGpsTracking}
+          onStartPath={(nextRoute, routeLink) => void startPathFromSignPost(nextRoute, routeLink)}
+          onEnterArea={() => void enterAreaMarker(selectedMarker)}
+          onStartBattleEvent={() => void startSelectedMarkerBattle()}
+          onBuy={(marketItem) => void buyFromMarker(marketItem)}
+          onSell={(entry) => void sellToMarker(entry)}
+          onClaimReward={() => void claimSelectedMarkerReward()}
+        />
+      </View>
+    );
+  }
+
+  function renderPlayerMapViewport(activePlayerMiniMap: MiniMap | null) {
+    const miniMapImage = activePlayerMiniMap ? resolveMapImageUri(activePlayerMiniMap.background_image_url) : null;
+
+    return (
+      <Screen scroll={false}>
+        <View style={styles.playerMapViewport}>
+          <View style={styles.playerMapCanvasLayer}>
+            {activePlayerMiniMap ? (
+              <MiniMapCanvas
+                imageUri={miniMapImage}
+                width={Math.max(320, Number(activePlayerMiniMap.width) || 900)}
+                height={Math.max(280, Number(activePlayerMiniMap.height) || 650)}
+                canCapturePointer={false}
+                lockedToPlayer={activePlayerMiniMap.behavior_mode !== "scrollable"}
+                fixedView={false}
+                zoomEnabled={Boolean(activePlayerMiniMap.zoom_enabled)}
+                fullScreen
+                onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0], "mini")}
+                routeSegments={miniMapRouteSegments}
+                draftSegments={draftSegments}
+                pathDraft={pathDraft}
+                eventPins={adminRouteEventPins}
+                showDraft={false}
+                clickedPercent={clickedPercent}
+                showTempMarker={false}
+                markers={visibleMiniMapMarkers}
+                playerPosition={miniMapPlayerPosition}
+                playerName={character.name}
+                playerPortraitUrl={character.portrait_url}
+                playerScale={Math.max(0.35, Math.min(2, Number(activePlayerMiniMap.player_avatar_scale) || 1))}
+                markerScale={Math.max(0.35, Math.min(2, Number(activePlayerMiniMap.marker_scale) || 1))}
+                markerDisplayStates={miniMapMarkerDisplayStates}
+                allowMarkerStateClicks={false}
+                playerPathVisibility={route.mini_map_id === activePlayerMiniMap.id ? playerPathVisibility : "visible"}
+                onSelectMarker={(marker) => void selectMarker(marker)}
+              />
+            ) : (
+              <OverworldMapCanvas
+                viewportRef={viewportRef}
+                scaledMapSize={scaledMapSize}
+                imageSource={overworldImageSource}
+                onWheel={handleWheel}
+                onPinchZoom={handlePinchZoom}
+                canCapturePointer={false}
+                lockedToPlayer
+                fullScreen
+                onMapPointer={(event) => handleMapPointer(event as Parameters<typeof handleMapPointer>[0])}
+                routeSegments={routeSegments}
+                draftSegments={draftSegments}
+                pathDraft={pathDraft}
+                eventPins={adminRouteEventPins}
+                showDraft={false}
+                clickedPercent={clickedPercent}
+                showTempMarker={false}
+                markers={visibleMarkers}
+                playerPosition={playerPosition}
+                playerName={character.name}
+                playerPortraitUrl={character.portrait_url}
+                playerPathVisibility={!route.mini_map_id ? playerPathVisibility : "visible"}
+                onSelectMarker={(marker) => void selectMarker(marker)}
+              />
+            )}
+          </View>
+          <View style={styles.playerMapTopOverlay}>{renderPlayerMapTravelHeader()}</View>
+          <View style={styles.playerMapBottomOverlay}>{renderPlayerJourneyOverlay()}</View>
+          {renderSelectedMarkerPanel()}
+          <GameToast toast={gameToast} onDismiss={dismissGameToast} />
+        </View>
+      </Screen>
+    );
+  }
+
   function renderReuseEventPanel() {
     const selectedReusableEvent = reusableMapEvents.find((event) => event.id === reuseEventId) ?? null;
 
@@ -7469,6 +7687,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
   }
 
   if (activeMiniMap) {
+    if (!isAdmin) {
+      return renderPlayerMapViewport(activeMiniMap);
+    }
+
     const miniMapImage = resolveMapImageUri(activeMiniMap.background_image_url);
 
     return (
@@ -8244,6 +8466,10 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
         <GameToast toast={gameToast} onDismiss={dismissGameToast} />
       </Screen>
     );
+  }
+
+  if (!isAdmin) {
+    return renderPlayerMapViewport(null);
   }
 
   return (
@@ -10628,6 +10854,145 @@ const styles = StyleSheet.create({
     shadowColor: colors.blue,
     shadowOpacity: 0.18,
     shadowRadius: 18,
+  },
+  playerMapViewport: {
+    flex: 1,
+    marginHorizontal: -12,
+    backgroundColor: "#020605",
+    overflow: "hidden",
+    position: "relative",
+  },
+  playerMapCanvasLayer: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  playerMapTopOverlay: {
+    position: "absolute",
+    top: 10,
+    left: 10,
+    right: 10,
+    zIndex: 20,
+  },
+  playerMapBottomOverlay: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    bottom: 10,
+    zIndex: 20,
+  },
+  playerJourneyOverlay: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.45)",
+    backgroundColor: "rgba(3, 7, 8, 0.91)",
+    shadowColor: colors.blue,
+    shadowOpacity: 0.2,
+    shadowRadius: 18,
+    overflow: "hidden",
+  },
+  playerJourneyOverlayHeader: {
+    minHeight: 58,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  playerJourneyOverlayTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  playerJourneyOverlayLabel: {
+    color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  playerJourneyOverlayTitle: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 17,
+    marginTop: 2,
+  },
+  playerJourneyOverlayMeta: {
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  playerJourneyOverlayPercent: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 18,
+  },
+  playerJourneyOverlayToggle: {
+    color: colors.blue,
+    fontWeight: "900",
+    fontSize: 11,
+  },
+  playerJourneyOverlaySummary: {
+    borderTopWidth: 1,
+    borderTopColor: "rgba(218, 164, 65, 0.18)",
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    gap: 9,
+  },
+  playerJourneyOverlayObjective: {
+    color: colors.goldSoft,
+    lineHeight: 18,
+    fontSize: 12,
+  },
+  playerJourneyOverlayProgressRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  playerJourneyOverlayProgressTrack: {
+    flex: 1,
+  },
+  playerJourneyOverlayDistance: {
+    color: colors.text,
+    fontWeight: "900",
+    minWidth: 56,
+    textAlign: "right",
+  },
+  playerJourneyOverlayDestination: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+    padding: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(78, 190, 255, 0.22)",
+    backgroundColor: "rgba(5, 23, 30, 0.78)",
+  },
+  playerJourneyOverlayDestinationCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  playerJourneyOverlayDestinationLabel: {
+    color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  playerJourneyOverlayDestinationTitle: {
+    color: colors.text,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+  playerJourneyOverlayScroll: {
+    maxHeight: 430,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(218, 164, 65, 0.18)",
+  },
+  playerJourneyOverlayScrollContent: {
+    paddingBottom: 8,
+  },
+  playerMarkerPanelOverlay: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    top: 92,
+    zIndex: 30,
   },
   journeyActionBar: {
     flexDirection: "row",

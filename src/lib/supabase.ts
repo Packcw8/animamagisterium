@@ -854,6 +854,8 @@ export type Tables = {
     active_mini_map_id: string | null;
     current_x_percent: number | null;
     current_y_percent: number | null;
+    active_season_number: number;
+    active_chapter_number: number;
     updated_at: string;
   };
   map_markers: {
