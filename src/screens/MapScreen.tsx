@@ -316,6 +316,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [legendItems, setLegendItems] = useState<MarkerLegendItem[]>([]);
   const [legendOpen, setLegendOpen] = useState(false);
   const [journeyOverlayExpanded, setJourneyOverlayExpanded] = useState(false);
+  const [walkingOverlayHidden, setWalkingOverlayHidden] = useState(false);
+  const [journeyOverlayHidden, setJourneyOverlayHidden] = useState(false);
   const [mapEvents, setMapEvents] = useState<MapEvent[]>([]);
   const [allMapEvents, setAllMapEvents] = useState<MapEvent[]>([]);
   const [authoredToasts, setAuthoredToasts] = useState<GameToastDefinition[]>([]);
@@ -7316,25 +7318,30 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
 
     return (
-      <PlayerMapTravelHeader
-        statusText={
-          isTracking
-            ? Platform.OS === "web"
-              ? "GPS tracking is active for this path."
-              : "Step tracking is active for this path."
-            : Platform.OS === "web"
-              ? "Start tracking when you are ready to walk."
-              : "Start walking when you are ready to move along the path."
-        }
-        gold={character.gold}
-        primaryLabel={journey.primaryLabel}
-        primaryActive={isTracking || journey.arrived}
-        onPrimary={journey.handlePrimaryJourneyAction}
-        turnLabel={journey.turnLabel}
-        canTurnBack={progressPercent > 0}
-        turnActive={routeDirection === "reverse"}
-        onTurnBack={() => void turnBackOnCurrentPath()}
-      />
+      <View style={styles.playerWalkingOverlayDock}>
+        <PlayerMapTravelHeader
+          statusText={
+            isTracking
+              ? Platform.OS === "web"
+                ? "GPS tracking is active for this path."
+                : "Step tracking is active for this path."
+              : Platform.OS === "web"
+                ? "Start tracking when you are ready to walk."
+                : "Start walking when you are ready to move along the path."
+          }
+          gold={character.gold}
+          primaryLabel={journey.primaryLabel}
+          primaryActive={isTracking || journey.arrived}
+          onPrimary={journey.handlePrimaryJourneyAction}
+          turnLabel={journey.turnLabel}
+          canTurnBack={progressPercent > 0}
+          turnActive={routeDirection === "reverse"}
+          onTurnBack={() => void turnBackOnCurrentPath()}
+        />
+        <Pressable style={styles.playerOverlayHideButton} onPress={() => setWalkingOverlayHidden(true)}>
+          <Text style={styles.playerOverlayHideText}>Hide</Text>
+        </Pressable>
+      </View>
     );
   }
 
@@ -7474,8 +7481,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           </View>
           <View style={styles.playerJourneyOverlayMeta}>
             <Text style={styles.playerJourneyOverlayPercent}>{Math.round(progressPercent)}%</Text>
-            <Text style={styles.playerJourneyOverlayToggle}>{journeyOverlayExpanded ? "Hide" : "Details"}</Text>
+            <Text style={styles.playerJourneyOverlayToggle}>{journeyOverlayExpanded ? "Collapse" : "Details"}</Text>
           </View>
+        </Pressable>
+        <Pressable style={styles.playerJourneyOverlayHideButton} onPress={() => setJourneyOverlayHidden(true)}>
+          <Text style={styles.playerOverlayHideText}>Hide Panel</Text>
         </Pressable>
         {journeyOverlayExpanded ? (
           <ScrollView style={styles.playerJourneyOverlayScroll} contentContainerStyle={styles.playerJourneyOverlayScrollContent} nestedScrollEnabled>
@@ -7502,6 +7512,26 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           </View>
         )}
       </View>
+    );
+  }
+
+  function renderPlayerOverlayHandles() {
+    const journey = getJourneyViewModel();
+
+    return (
+      <>
+        {walkingOverlayHidden && journey ? (
+          <Pressable style={[styles.playerOverlayHandle, styles.playerOverlayTopHandle]} onPress={() => setWalkingOverlayHidden(false)}>
+            <Text style={styles.playerOverlayHandleText}>Walk</Text>
+          </Pressable>
+        ) : null}
+        {journeyOverlayHidden && journey ? (
+          <Pressable style={[styles.playerOverlayHandle, styles.playerOverlayBottomHandle]} onPress={() => setJourneyOverlayHidden(false)}>
+            <Text style={styles.playerOverlayHandleText}>Journey</Text>
+            <Text style={styles.playerOverlayHandleMeta}>{Math.round(progressPercent)}%</Text>
+          </Pressable>
+        ) : null}
+      </>
     );
   }
 
@@ -7603,8 +7633,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               />
             )}
           </View>
-          <View style={styles.playerMapTopOverlay}>{renderPlayerMapTravelHeader()}</View>
-          <View style={styles.playerMapBottomOverlay}>{renderPlayerJourneyOverlay()}</View>
+          {!walkingOverlayHidden ? <View style={styles.playerMapTopOverlay}>{renderPlayerMapTravelHeader()}</View> : null}
+          {!journeyOverlayHidden ? <View style={styles.playerMapBottomOverlay}>{renderPlayerJourneyOverlay()}</View> : null}
+          {renderPlayerOverlayHandles()}
           {renderSelectedMarkerPanel()}
           <GameToast toast={gameToast} onDismiss={dismissGameToast} />
         </View>
@@ -10879,6 +10910,62 @@ const styles = StyleSheet.create({
     bottom: 10,
     zIndex: 20,
   },
+  playerWalkingOverlayDock: {
+    gap: 6,
+  },
+  playerOverlayHideButton: {
+    alignSelf: "flex-end",
+    minHeight: 30,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.42)",
+    backgroundColor: "rgba(3, 7, 8, 0.88)",
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  playerOverlayHideText: {
+    color: colors.blue,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  playerOverlayHandle: {
+    position: "absolute",
+    zIndex: 22,
+    minHeight: 38,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.5)",
+    backgroundColor: "rgba(3, 7, 8, 0.92)",
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.gold,
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+  },
+  playerOverlayTopHandle: {
+    top: 10,
+    right: 10,
+  },
+  playerOverlayBottomHandle: {
+    bottom: 10,
+    right: 10,
+    flexDirection: "row",
+    gap: 8,
+  },
+  playerOverlayHandleText: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 12,
+    textTransform: "uppercase",
+  },
+  playerOverlayHandleMeta: {
+    color: colors.blue,
+    fontWeight: "900",
+    fontSize: 12,
+  },
   playerJourneyOverlay: {
     borderRadius: 14,
     borderWidth: 1,
@@ -10897,6 +10984,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 12,
+  },
+  playerJourneyOverlayHideButton: {
+    position: "absolute",
+    top: 10,
+    right: 74,
+    zIndex: 2,
+    minHeight: 28,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(78, 190, 255, 0.3)",
+    backgroundColor: "rgba(3, 7, 8, 0.86)",
+    paddingHorizontal: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
   playerJourneyOverlayTitleBlock: {
     flex: 1,
