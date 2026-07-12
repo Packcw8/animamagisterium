@@ -61,6 +61,20 @@ export function StoryDeckAdminPanel() {
   const selectedDeck = useMemo(() => decks.find((deck) => deck.id === selectedDeckId) ?? null, [decks, selectedDeckId]);
   const scopedDecks = useMemo(() => [...decks].sort(sortDecks), [decks]);
   const previewImage = resolveStoryDeckAssetUri(cardDraft.image_url);
+  const availableSeasons = useMemo(() => {
+    const seasonNumbers = [decks, markers, routes, miniMaps, events]
+      .flat()
+      .map((item) => Number(item.season_number ?? 1) || 1);
+    return Array.from(new Set([1, ...seasonNumbers])).sort((left, right) => left - right);
+  }, [decks, events, markers, miniMaps, routes]);
+  const availableChapters = useMemo(() => {
+    const seasonNumber = Number(deckDraft.season_number) || 1;
+    const chapterNumbers = [decks, markers, routes, miniMaps, events]
+      .flat()
+      .filter((item) => Number(item.season_number ?? 1) === seasonNumber)
+      .map((item) => Number(item.chapter_number ?? 1) || 1);
+    return Array.from(new Set([1, ...chapterNumbers])).sort((left, right) => left - right);
+  }, [deckDraft.season_number, decks, events, markers, miniMaps, routes]);
   const triggerTargets = useMemo(() => getTriggerTargets(deckDraft.trigger_type, {
     markers,
     routes,
@@ -131,11 +145,38 @@ export function StoryDeckAdminPanel() {
   }
 
   function newDeck() {
+    const latestSeason = availableSeasons[availableSeasons.length - 1] ?? 1;
+    const latestChapter = Math.max(1, ...[decks, markers, routes, miniMaps, events]
+      .flat()
+      .filter((item) => Number(item.season_number ?? 1) === latestSeason)
+      .map((item) => Number(item.chapter_number ?? 1) || 1));
     setSelectedDeckId(null);
-    setDeckDraft(blankStoryDeck());
+    setDeckDraft({ ...blankStoryDeck(), season_number: latestSeason, chapter_number: latestChapter });
     setCards([]);
     setCardDraft(blankStoryCard());
     setMessage(null);
+  }
+
+  function setDeckSeason(seasonNumber: number) {
+    const nextSeason = Math.max(1, Number(seasonNumber) || 1);
+    const nextChapter = Math.max(1, ...[decks, markers, routes, miniMaps, events]
+      .flat()
+      .filter((item) => Number(item.season_number ?? 1) === nextSeason)
+      .map((item) => Number(item.chapter_number ?? 1) || 1));
+    setDeckDraft((current) => ({
+      ...current,
+      season_number: nextSeason,
+      chapter_number: nextChapter,
+      trigger_key: null,
+    }));
+  }
+
+  function setDeckChapter(chapterNumber: number) {
+    setDeckDraft((current) => ({
+      ...current,
+      chapter_number: Math.max(1, Number(chapterNumber) || 1),
+      trigger_key: null,
+    }));
   }
 
   function editCard(card: StoryCard) {
@@ -294,6 +335,18 @@ export function StoryDeckAdminPanel() {
         <Text style={styles.label}>Trigger</Text>
         <View style={styles.chips}>
           {storyDeckTriggerTypes.map((trigger) => <Chip key={trigger} label={formatStoryDeckLabel(trigger)} active={deckDraft.trigger_type === trigger} onPress={() => setDeckDraft((current) => ({ ...current, trigger_type: trigger }))} />)}
+        </View>
+        <Text style={styles.label}>Season / Chapter Targets</Text>
+        <Text style={styles.copy}>Target lists below follow this season and chapter. Switch here before choosing an area, marker, path, or event.</Text>
+        <View style={styles.chips}>
+          {availableSeasons.map((seasonNumber) => (
+            <Chip key={seasonNumber} label={`Season ${seasonNumber}`} active={Number(deckDraft.season_number) === seasonNumber} onPress={() => setDeckSeason(seasonNumber)} />
+          ))}
+        </View>
+        <View style={styles.chips}>
+          {availableChapters.map((chapterNumber) => (
+            <Chip key={chapterNumber} label={`Chapter ${chapterNumber}`} active={Number(deckDraft.chapter_number) === chapterNumber} onPress={() => setDeckChapter(chapterNumber)} />
+          ))}
         </View>
         <Text style={styles.label}>World Link Target</Text>
         <Text style={styles.copy}>{getTriggerTargetHelp(deckDraft.trigger_type)}</Text>
