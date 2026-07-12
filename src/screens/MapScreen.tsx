@@ -1821,7 +1821,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
       showAuthoredToast("completing_path", {
         title: "Trail Complete",
         message: "You reached the end of this path. Open the destination marker or return to a Sign Post to choose another trail.",
-        nextMarker: getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
+        nextMarker: getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null, routeDirection),
         actionLabel: "OK",
       }, {
         triggerKey: route.id,
@@ -5196,7 +5196,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
           itemQuantity: completedMarker?.reward_item_quantity ?? event.reward_item_quantity,
           fullHeal: completedMarker?.reward_full_heal,
         }, dropRewards) : dropRewards,
-        nextMarker: completedMarker ? getNextStoryMarkerAfter(completedMarker) : getJourneyDestinationMarker(routeRef.current, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null),
+        nextMarker: completedMarker ? getNextStoryMarkerAfter(completedMarker) : getJourneyDestinationMarker(routeRef.current, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null, routeDirectionRef.current),
         actionLabel: "OK",
       }, {
         triggerKey: completedMarker?.id ?? event.id,
@@ -7195,7 +7195,7 @@ export function MapScreen({ character, onCharacterUpdated, initialAdminSection }
     const sourceMarker = currentRouteProgress?.source_marker_id ? markers.find((marker) => marker.id === currentRouteProgress.source_marker_id) ?? null : null;
     const sourceRouteLinks = sourceMarker ? getOrderedMarkerRouteLinks(allMarkerRouteLinks.filter((link) => link.marker_id === sourceMarker.id)) : [];
     const sourceRouteIndex = sourceRouteLinks.findIndex((link) => link.route_id === route.id);
-    const destinationMarker = getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, sourceMarker?.id ?? null);
+    const destinationMarker = getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, sourceMarker?.id ?? null, routeDirection);
     const hasStoryContext = Boolean(sourceMarker && isStoryQuestMarker(sourceMarker));
     const journeyMode = hasStoryContext ? (sourceMarker?.type === "Side Quest" || sourceMarker?.type === "Quest" ? "Quest Journey" : "Story Journey") : "Road Sign Travel";
     const journeyTitle = hasStoryContext ? sourceMarker?.quest_title || sourceMarker?.title || route.name : route.name;
@@ -10297,18 +10297,32 @@ function getJourneyObjective(marker: MapMarker | null | undefined, route: MapRou
   return marker.description?.trim() || route.terrain || "Continue the story path.";
 }
 
-function getJourneyDestinationMarker(route: MapRoute, markers: MapMarker[], routeLinks: MarkerRouteLink[], sourceMarkerId: string | null) {
-  const linkedMarkerIds = new Set(
-    routeLinks
-      .filter((link) => link.route_id === route.id && link.marker_id !== sourceMarkerId)
-      .map((link) => link.marker_id),
-  );
+function getJourneyDestinationMarker(route: MapRoute, markers: MapMarker[], routeLinks: MarkerRouteLink[], sourceMarkerId: string | null, routeDirection: "forward" | "reverse" = "forward") {
+  const destinationCondition = routeDirection === "reverse" ? "start" : "end";
+  const routeMiniMapId = route.mini_map_id ?? null;
+  const matchingLinks = routeLinks.filter((link) => {
+    if (link.route_id !== route.id || link.marker_id === sourceMarkerId) {
+      return false;
+    }
 
-  if (linkedMarkerIds.size === 0) {
+    const condition = link.completion_condition ?? "either";
+    return condition === "either" || condition === destinationCondition;
+  });
+
+  if (matchingLinks.length === 0) {
     return null;
   }
 
-  const candidates = markers.filter((marker) => linkedMarkerIds.has(marker.id) && marker.type !== "Player Spawn" && marker.type !== "World Spawn" && marker.type !== "Sign Post" && !isStoryQuestMarker(marker));
+  const linkedMarkerIds = new Set(matchingLinks.map((link) => link.marker_id));
+  const candidates = markers.filter(
+    (marker) =>
+      linkedMarkerIds.has(marker.id) &&
+      (marker.mini_map_id ?? null) === routeMiniMapId &&
+      marker.type !== "Player Spawn" &&
+      marker.type !== "World Spawn" &&
+      marker.type !== "Sign Post" &&
+      !isStoryQuestMarker(marker),
+  );
   const rankedTypes = ["Area/Town Entrance", "Exit", "Exit/Leave", "Market", "Quest", "Side Quest", "Point of Interest", "Training", "Battle", "Battle Zone"];
 
   return candidates.sort((a, b) => {
