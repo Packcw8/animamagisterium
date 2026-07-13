@@ -14,6 +14,7 @@ export type MarkerPayloadState = {
   markerLinkedRouteId: string | null;
   markerLinkedRouteStartDirection: MapMarker["linked_route_start_direction"];
   markerStartsRouteOnAccept: boolean;
+  markerClearActiveRouteOnUse: boolean;
   markerIconLabel: string;
   markerIconImage: string;
   markerIconColor: string;
@@ -123,6 +124,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     linked_route_id: supportsLinkedRoute(state.draftType) ? state.markerLinkedRouteId : null,
     linked_route_start_direction: supportsLinkedRoute(state.draftType) ? state.markerLinkedRouteStartDirection ?? "forward" : "forward",
     starts_route_on_accept: supportsLinkedRoute(state.draftType) && state.markerStartsRouteOnAccept,
+    clear_active_route_on_use: supportsLinkedRoute(state.draftType) && state.markerClearActiveRouteOnUse,
     season_number: state.markerContentScope === "universal" ? 1 : state.selectedSeason,
     chapter_number: state.markerContentScope === "universal" ? 1 : state.selectedChapter,
   };
@@ -149,6 +151,7 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     linked_route_id: settings.linked_route_id,
     linked_route_start_direction: settings.linked_route_start_direction,
     starts_route_on_accept: settings.starts_route_on_accept,
+    clear_active_route_on_use: settings.clear_active_route_on_use,
     icon_label: settings.icon_label,
     icon_image_url: settings.icon_image_url,
     icon_color: settings.icon_color,

@@ -895,6 +895,7 @@ export type Tables = {
     linked_route_id: string | null;
     linked_route_start_direction: "forward" | "reverse";
     starts_route_on_accept: boolean;
+    clear_active_route_on_use: boolean;
     icon_label: string | null;
     icon_image_url: string | null;
     icon_color: string | null;

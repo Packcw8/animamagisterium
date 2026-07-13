@@ -529,6 +529,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [markerLinkedRouteId, setMarkerLinkedRouteId] = useState<string | null>(null);
   const [markerLinkedRouteStartDirection, setMarkerLinkedRouteStartDirection] = useState<MapMarker["linked_route_start_direction"]>("forward");
   const [markerStartsRouteOnAccept, setMarkerStartsRouteOnAccept] = useState(false);
+  const [markerClearActiveRouteOnUse, setMarkerClearActiveRouteOnUse] = useState(false);
   const [markerExitTargetType, setMarkerExitTargetType] = useState<MapMarker["exit_target_type"]>("world_marker");
   const [markerExitTargetMarkerId, setMarkerExitTargetMarkerId] = useState<string | null>(null);
   const [markerExitTargetMiniMapId, setMarkerExitTargetMiniMapId] = useState<string | null>(null);
@@ -2646,6 +2647,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       markerLinkedRouteId,
       markerLinkedRouteStartDirection,
       markerStartsRouteOnAccept,
+      markerClearActiveRouteOnUse,
       markerIconLabel,
       markerIconImage,
       markerIconColor,
@@ -2827,6 +2829,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
     setMarkerLinkedRouteStartDirection(marker.linked_route_start_direction ?? "forward");
     setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
+    setMarkerClearActiveRouteOnUse(Boolean(marker.clear_active_route_on_use));
     setMarkerExitTargetType(marker.exit_target_type ?? "world_marker");
     setMarkerExitTargetMarkerId(marker.exit_target_marker_id ?? null);
     setMarkerExitTargetMiniMapId(marker.exit_target_type === "mini_map" ? marker.linked_mini_map_id : null);
@@ -2935,6 +2938,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
     setMarkerLinkedRouteStartDirection(marker.linked_route_start_direction ?? "forward");
     setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
+    setMarkerClearActiveRouteOnUse(Boolean(marker.clear_active_route_on_use));
 
     try {
       const links = await getMarkerRouteLinks(marker.id);
@@ -4422,6 +4426,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       targetSpawnMarkerId: marker.exit_target_spawn_marker_id,
       fallbackToWorldExit: true,
     });
+    await maybeClearActiveRouteForMarker(marker);
     await maybeStartMarkerContinuationRoute(marker);
 
     if (!didTravel) {
@@ -4491,7 +4496,18 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
 
     openMiniMap(miniMap, { spawnPosition: getExitTargetMiniMapSpawnPosition(marker, miniMap.id) });
+    await maybeClearActiveRouteForMarker(marker);
     await maybeStartMarkerContinuationRoute(marker);
+  }
+
+  async function maybeClearActiveRouteForMarker(marker: MapMarker) {
+    if (!marker.clear_active_route_on_use) {
+      return;
+    }
+
+    await clearCurrentRoute();
+    setHasActiveRoute(false);
+    setRouteProgressRows((current) => current.map((row) => ({ ...row, is_current: false })));
   }
 
   async function maybeStartMarkerContinuationRoute(marker: MapMarker) {
@@ -8046,6 +8062,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               setMarkerLinkedRouteStartDirection={setMarkerLinkedRouteStartDirection}
               markerStartsRouteOnAccept={markerStartsRouteOnAccept}
               setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
+              markerClearActiveRouteOnUse={markerClearActiveRouteOnUse}
+              setMarkerClearActiveRouteOnUse={setMarkerClearActiveRouteOnUse}
               markerVisibleStoryFlagKey={markerVisibleStoryFlagKey}
               setMarkerVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
               markerVisibleStoryFlagValue={markerVisibleStoryFlagValue}
@@ -8210,6 +8228,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 setMarkerLinkedRouteStartDirection={setMarkerLinkedRouteStartDirection}
                 markerStartsRouteOnAccept={markerStartsRouteOnAccept}
                 setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
+                markerClearActiveRouteOnUse={markerClearActiveRouteOnUse}
+                setMarkerClearActiveRouteOnUse={setMarkerClearActiveRouteOnUse}
                 markerVisibleStoryFlagKey={markerVisibleStoryFlagKey}
                 setMarkerVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
                 markerVisibleStoryFlagValue={markerVisibleStoryFlagValue}
@@ -8965,6 +8985,15 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                       onSelectStartDirection={setMarkerLinkedRouteStartDirection}
                       onToggleStartsRoute={() => setMarkerStartsRouteOnAccept((value) => !value)}
                     />
+                  ) : null}
+                  {(draftType === "Area/Town Entrance" || isExitMarkerType(draftType)) ? (
+                    <View style={styles.storyEditor}>
+                      <Text style={styles.selectedTitle}>Route State After Travel</Text>
+                      <Text style={styles.copy}>Use this when entering a town, portal, or stable area should save the player to map state instead of restoring the last walking path on refresh.</Text>
+                      <Pressable style={[styles.secondaryButton, markerClearActiveRouteOnUse && styles.typeSelected]} onPress={() => setMarkerClearActiveRouteOnUse((value) => !value)}>
+                        <Text style={styles.secondaryText}>Clear Active Walking Path On Use: {markerClearActiveRouteOnUse ? "Yes" : "No"}</Text>
+                      </Pressable>
+                    </View>
                   ) : null}
                   {draftType === "Sign Post" ? (
                     <View style={styles.storyEditor}>
@@ -9784,6 +9813,8 @@ function MiniMapMarkerAdminForm({
   setMarkerLinkedRouteStartDirection,
   markerStartsRouteOnAccept,
   setMarkerStartsRouteOnAccept,
+  markerClearActiveRouteOnUse,
+  setMarkerClearActiveRouteOnUse,
   markerVisibleStoryFlagKey,
   setMarkerVisibleStoryFlagKey,
   markerVisibleStoryFlagValue,
@@ -9947,6 +9978,8 @@ function MiniMapMarkerAdminForm({
   setMarkerLinkedRouteStartDirection: (value: MapMarker["linked_route_start_direction"]) => void;
   markerStartsRouteOnAccept: boolean;
   setMarkerStartsRouteOnAccept: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerClearActiveRouteOnUse: boolean;
+  setMarkerClearActiveRouteOnUse: (value: boolean | ((current: boolean) => boolean)) => void;
   markerVisibleStoryFlagKey: string;
   setMarkerVisibleStoryFlagKey: (value: string) => void;
   markerVisibleStoryFlagValue: boolean;
@@ -10233,6 +10266,15 @@ function MiniMapMarkerAdminForm({
               onSelectStartDirection={setMarkerLinkedRouteStartDirection}
               onToggleStartsRoute={() => setMarkerStartsRouteOnAccept((value) => !value)}
             />
+          ) : null}
+          {(draftType === "Area/Town Entrance" || supportsExit) ? (
+            <View style={styles.storyEditor}>
+              <Text style={styles.selectedTitle}>Route State After Travel</Text>
+              <Text style={styles.copy}>Use this when entering a town, portal, or stable area should save the player to map state instead of restoring the last walking path on refresh.</Text>
+              <Pressable style={[styles.secondaryButton, markerClearActiveRouteOnUse && styles.typeSelected]} onPress={() => setMarkerClearActiveRouteOnUse((value) => !value)}>
+                <Text style={styles.secondaryText}>Clear Active Walking Path On Use: {markerClearActiveRouteOnUse ? "Yes" : "No"}</Text>
+              </Pressable>
+            </View>
           ) : null}
         </AdminCollapsibleSection>
       ) : null}
