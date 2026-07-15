@@ -536,7 +536,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [markerLinkedRouteId, setMarkerLinkedRouteId] = useState<string | null>(null);
   const [markerLinkedRouteStartDirection, setMarkerLinkedRouteStartDirection] = useState<MapMarker["linked_route_start_direction"]>("forward");
   const [markerStartsRouteOnAccept, setMarkerStartsRouteOnAccept] = useState(false);
-  const [markerClearActiveRouteOnUse, setMarkerClearActiveRouteOnUse] = useState(false);
+  const [markerClearActiveRouteOnUse, setMarkerClearActiveRouteOnUse] = useState(true);
   const [markerExitTargetType, setMarkerExitTargetType] = useState<MapMarker["exit_target_type"]>("world_marker");
   const [markerExitTargetMarkerId, setMarkerExitTargetMarkerId] = useState<string | null>(null);
   const [markerExitTargetMiniMapId, setMarkerExitTargetMiniMapId] = useState<string | null>(null);
@@ -2724,7 +2724,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerLinkedRouteId(null);
     setMarkerLinkedRouteStartDirection("forward");
     setMarkerStartsRouteOnAccept(false);
-    setMarkerClearActiveRouteOnUse(false);
+    setMarkerClearActiveRouteOnUse(true);
     setMarkerExitTargetType("world_marker");
     setMarkerExitTargetMarkerId(null);
     setMarkerExitTargetMiniMapId(null);
@@ -9244,6 +9244,22 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   ) : null}
                 </AdminCollapsibleSection>
               ) : null}
+              {(!["Area/Town Entrance", "Sign Post"].includes(draftType) && !isExitMarkerType(draftType)) ? (
+                <AdminCollapsibleSection
+                  title="Route State After Interaction"
+                  summary={markerClearActiveRouteOnUse ? "Stops active walking path on use" : "Keeps active walking path"}
+                  isOpen={isAdminPanelOpen("world-marker-route-state")}
+                  onToggle={() => toggleAdminPanel("world-marker-route-state")}
+                >
+                  <View style={styles.storyEditor}>
+                    <Text style={styles.selectedTitle}>Route State After Interaction</Text>
+                    <Text style={styles.copy}>Use this when a rest point, point of interest, NPC, or chapter transition should save the player to map state instead of restoring the last walking path on refresh.</Text>
+                    <Pressable style={[styles.secondaryButton, markerClearActiveRouteOnUse && styles.typeSelected]} onPress={() => setMarkerClearActiveRouteOnUse((value) => !value)}>
+                      <Text style={styles.secondaryText}>Clear Active Walking Path On Use: {markerClearActiveRouteOnUse ? "Yes" : "No"}</Text>
+                    </Pressable>
+                  </View>
+                </AdminCollapsibleSection>
+              ) : null}
               {draftType === "NPC" ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>NPC Character</Text>
@@ -10606,6 +10622,22 @@ function MiniMapMarkerAdminForm({
               </Pressable>
             </View>
           ) : null}
+        </AdminCollapsibleSection>
+      ) : null}
+      {(!supportsMovement && draftType !== "Area/Town Entrance" && !supportsExit) ? (
+        <AdminCollapsibleSection
+          title="Route State After Interaction"
+          summary={markerClearActiveRouteOnUse ? "Stops active walking path on use" : "Keeps active walking path"}
+          isOpen={isMarkerSectionOpen("route-state")}
+          onToggle={() => toggleMarkerSection("route-state")}
+        >
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Route State After Interaction</Text>
+            <Text style={styles.copy}>Use this when a rest point, point of interest, NPC, or chapter transition should save the player to map state instead of restoring the last walking path on refresh.</Text>
+            <Pressable style={[styles.secondaryButton, markerClearActiveRouteOnUse && styles.typeSelected]} onPress={() => setMarkerClearActiveRouteOnUse((value) => !value)}>
+              <Text style={styles.secondaryText}>Clear Active Walking Path On Use: {markerClearActiveRouteOnUse ? "Yes" : "No"}</Text>
+            </Pressable>
+          </View>
         </AdminCollapsibleSection>
       ) : null}
 

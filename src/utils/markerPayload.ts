@@ -124,7 +124,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     linked_route_id: supportsLinkedRoute(state.draftType) ? state.markerLinkedRouteId : null,
     linked_route_start_direction: supportsLinkedRoute(state.draftType) ? state.markerLinkedRouteStartDirection ?? "forward" : "forward",
     starts_route_on_accept: supportsLinkedRoute(state.draftType) && state.markerStartsRouteOnAccept,
-    clear_active_route_on_use: supportsLinkedRoute(state.draftType) && state.markerClearActiveRouteOnUse,
+    clear_active_route_on_use: state.markerClearActiveRouteOnUse,
     season_number: state.markerContentScope === "universal" ? 1 : state.selectedSeason,
     chapter_number: state.markerContentScope === "universal" ? 1 : state.selectedChapter,
   };
