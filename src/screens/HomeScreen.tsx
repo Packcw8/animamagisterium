@@ -114,6 +114,7 @@ const inventoryCategoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
 const adminToolTabs = ["Items", "Mounts", "Abilities", "Enemies", "NPCs"] as const;
 const adminRecordSortModes = ["newest", "name", "type", "chapter"] as const;
+const mountMultiplierPresets = ["1", "1.05", "1.10", "1.20", "1.35", "1.50", "1.70"] as const;
 const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
 const enemyBalanceProfiles = ["minion", "standard", "elite", "boss"] as const;
 type AbilityCostResource = (typeof abilityCostResources)[number];
@@ -227,6 +228,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [mountDefinitions, setMountDefinitions] = useState<MountDefinition[]>([]);
   const [mountForm, setMountForm] = useState<Partial<MountDefinition>>(blankMountDefinition());
+  const [mountMultiplierInput, setMountMultiplierInput] = useState(String(blankMountDefinition().progress_multiplier ?? 1));
   const [editingMountId, setEditingMountId] = useState<string | null>(null);
   const [inventoryMessage, setInventoryMessage] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("player");
@@ -741,14 +743,17 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
 
   async function saveMount() {
     try {
+      const progressMultiplier = normalizeMountMultiplier(mountMultiplierInput);
       const saved = await saveMountDefinition({
         ...mountForm,
         id: editingMountId ?? undefined,
+        progress_multiplier: progressMultiplier,
         season_number: adminContentSeason,
         chapter_number: adminContentChapter,
       });
       setInventoryMessage(`${saved.name} saved.`);
       setMountForm({ ...blankMountDefinition(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+      setMountMultiplierInput(String(blankMountDefinition().progress_multiplier ?? 1));
       setEditingMountId(null);
       await loadMounts();
     } catch (error) {
@@ -761,6 +766,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     setAdminContentChapter(Number(mount.chapter_number ?? 1));
     setEditingMountId(mount.id);
     setMountForm(mount);
+    setMountMultiplierInput(String(mount.progress_multiplier ?? 1));
   }
 
   async function deleteMount(mountId: string) {
@@ -770,6 +776,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
       if (editingMountId === mountId) {
         setEditingMountId(null);
         setMountForm(blankMountDefinition());
+        setMountMultiplierInput(String(blankMountDefinition().progress_multiplier ?? 1));
       }
       await loadMounts();
     } catch (error) {
@@ -1753,6 +1760,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                       <Pressable style={styles.smallButton} onPress={() => {
                         setEditingMountId(null);
                         setMountForm({ ...blankMountDefinition(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+                        setMountMultiplierInput(String(blankMountDefinition().progress_multiplier ?? 1));
                       }}>
                         <Text style={styles.smallButtonText}>New Mount</Text>
                       </Pressable>
@@ -1776,15 +1784,33 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     <AssetPreview label="Mount image preview" uri={resolveMountImageUri(mountForm.image_url)} />
                     <ItemText
                       label="Trail progress multiplier, max 1.7"
-                      value={String(mountForm.progress_multiplier ?? 1)}
-                      onChange={(value) => setMountForm((current) => ({ ...current, progress_multiplier: normalizeMountMultiplier(value) }))}
+                      value={mountMultiplierInput}
+                      onChange={setMountMultiplierInput}
+                    />
+                    <ChoiceRow
+                      label="Quick multiplier"
+                      options={mountMultiplierPresets}
+                      value={mountMultiplierInput}
+                      labels={{
+                        "1": "No bonus",
+                        "1.05": "5%",
+                        "1.10": "10%",
+                        "1.20": "20%",
+                        "1.35": "35%",
+                        "1.50": "50%",
+                        "1.70": "70%",
+                      }}
+                      onSelect={(value) => {
+                        setMountMultiplierInput(value);
+                        setMountForm((current) => ({ ...current, progress_multiplier: normalizeMountMultiplier(value) }));
+                      }}
                     />
                     <ToggleRow label="Active" value={mountForm.is_active ?? true} onPress={() => setMountForm((current) => ({ ...current, is_active: !(current.is_active ?? true) }))} />
                     <Pressable style={styles.primaryAdminButton} onPress={() => void saveMount()}>
                       <Text style={styles.primaryAdminText}>{editingMountId ? "Update Mount" : "Add Mount"}</Text>
                     </Pressable>
                     {editingMountId ? (
-                      <Pressable style={styles.smallButton} onPress={() => { setEditingMountId(null); setMountForm(blankMountDefinition()); }}>
+                      <Pressable style={styles.smallButton} onPress={() => { setEditingMountId(null); setMountForm(blankMountDefinition()); setMountMultiplierInput(String(blankMountDefinition().progress_multiplier ?? 1)); }}>
                         <Text style={styles.smallButtonText}>Cancel Edit</Text>
                       </Pressable>
                     ) : null}
