@@ -5697,12 +5697,6 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     if (!adminPreviewMode) {
       if (choice.story_deck_id) {
         void playStoryDeckById(choice.story_deck_id);
-      } else {
-        void playTriggeredStoryDeck("dialogue_choice", {
-          triggerKey: choice.id,
-          seasonNumber: activeEvent.season_number,
-          chapterNumber: activeEvent.chapter_number,
-        });
       }
     }
 

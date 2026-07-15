@@ -1,6 +1,6 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useMemo, useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { resolveStoryDeckAssetUri, type StoryCard, type StoryDeck } from "../../services/storyDeckService";
 import { colors, fonts } from "../theme";
 
@@ -12,6 +12,7 @@ type StoryDeckViewerProps = {
 };
 
 export function StoryDeckViewer({ deck, cards, onClose, onComplete }: StoryDeckViewerProps) {
+  const { height } = useWindowDimensions();
   const [index, setIndex] = useState(0);
   const orderedCards = useMemo(() => [...cards].sort((a, b) => Number(a.sort_order) - Number(b.sort_order)), [cards]);
   const activeCard = orderedCards[index] ?? null;
@@ -30,7 +31,7 @@ export function StoryDeckViewer({ deck, cards, onClose, onComplete }: StoryDeckV
 
   if (!activeCard) {
     return (
-      <View style={styles.shell}>
+      <View style={[styles.shell, { minHeight: height }]}>
         <View style={styles.panel}>
           <Text style={styles.kicker}>Story Deck</Text>
           <Text style={styles.title}>{deck.title}</Text>
@@ -44,7 +45,7 @@ export function StoryDeckViewer({ deck, cards, onClose, onComplete }: StoryDeckV
   }
 
   return (
-    <View style={styles.shell}>
+    <View style={[styles.shell, { minHeight: height }]}>
       <View style={styles.panel}>
         <View style={styles.header}>
           <View style={styles.headerText}>
@@ -57,7 +58,7 @@ export function StoryDeckViewer({ deck, cards, onClose, onComplete }: StoryDeckV
         </View>
 
         <View style={styles.stage}>
-          {imageUri ? <Image source={{ uri: imageUri }} style={styles.image} /> : <View style={styles.emptyImage} />}
+          {imageUri ? <Image source={{ uri: imageUri }} resizeMode="cover" style={styles.image} /> : <View style={styles.emptyImage} />}
           <View style={[styles.textBox, getTextPositionStyle(activeCard.text_position), getTextStyle(activeCard.text_style)]}>
             {activeCard.title ? <Text style={styles.cardTitle}>{activeCard.title}</Text> : null}
             <Text style={styles.body}>{activeCard.body}</Text>
@@ -126,7 +127,7 @@ const styles = StyleSheet.create({
   },
   emptyImage: {
     backgroundColor: "rgba(0,0,0,0.45)",
-    minHeight: 320,
+    ...StyleSheet.absoluteFillObject,
   },
   footer: {
     alignItems: "center",
@@ -146,7 +147,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   image: {
-    minHeight: 320,
+    ...StyleSheet.absoluteFillObject,
+    height: "100%",
     width: "100%",
   },
   kicker: {
@@ -160,9 +162,7 @@ const styles = StyleSheet.create({
   },
   panel: {
     backgroundColor: "rgba(3, 5, 5, 0.96)",
-    borderColor: colors.border,
-    borderRadius: 18,
-    borderWidth: 1,
+    flex: 1,
     gap: 14,
     padding: 14,
   },
@@ -198,14 +198,16 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   shell: {
-    marginHorizontal: 12,
-    marginVertical: 10,
+    backgroundColor: "#010505",
+    flex: 1,
+    width: "100%",
   },
   stage: {
     borderColor: colors.border,
     borderRadius: 16,
     borderWidth: 1,
-    minHeight: 360,
+    flex: 1,
+    minHeight: 0,
     overflow: "hidden",
     position: "relative",
   },
