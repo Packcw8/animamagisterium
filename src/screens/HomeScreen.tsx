@@ -220,6 +220,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [adminContentChapter, setAdminContentChapter] = useState(1);
   const [adminRecordSearch, setAdminRecordSearch] = useState("");
   const [adminRecordSort, setAdminRecordSort] = useState<AdminRecordSortMode>("newest");
+  const [adminItemTypeFilter, setAdminItemTypeFilter] = useState<"all" | ItemDefinition["type"]>("all");
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
   const [totalInventoryWeight, setTotalInventoryWeight] = useState(0);
   const [carryCapacity, setCarryCapacity] = useState(50);
@@ -266,9 +267,9 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const scopedEnemies = useMemo(() => enemies.filter((enemy) => isInAdminContentScope(enemy, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, enemies]);
   const scopedNpcs = useMemo(() => npcs.filter((npc) => isInAdminContentScope(npc, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, npcs]);
   const filteredAdminItems = useMemo(() => sortAdminRecords(
-    scopedAdminItems.filter((item) => itemMatchesCategory(item, inventoryCategory) && adminRecordMatchesSearch(item, adminRecordSearch)),
+    scopedAdminItems.filter((item) => (adminItemTypeFilter === "all" || item.type === adminItemTypeFilter) && adminRecordMatchesSearch(item, adminRecordSearch)),
     adminRecordSort,
-  ), [adminRecordSearch, adminRecordSort, scopedAdminItems, inventoryCategory]);
+  ), [adminItemTypeFilter, adminRecordSearch, adminRecordSort, scopedAdminItems]);
   const filteredAdminMounts = useMemo(() => sortAdminRecords(
     scopedAdminMounts.filter((mount) => adminRecordMatchesSearch(mount, adminRecordSearch)),
     adminRecordSort,
@@ -1713,6 +1714,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                   onSearch={setAdminRecordSearch}
                   onSort={setAdminRecordSort}
                 />
+                <ChoiceRow label="Filter by item type" options={["all", ...itemTypes]} value={adminItemTypeFilter} onSelect={(value) => setAdminItemTypeFilter(value as "all" | ItemDefinition["type"])} />
                 <Text style={styles.subTitle}>Carry Balance</Text>
                 <View style={styles.slotActions}>
                   <ItemText label="Base Carry Weight" value={baseCarryWeight} onChange={setBaseCarryWeight} />
@@ -1723,7 +1725,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 </Pressable>
                 <Text style={styles.subTitle}>Item Builder</Text>
                 <ItemText label="Name" value={itemForm.name ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, name: value }))} />
-                <ChoiceRow label="Type" options={itemTypes} value={itemForm.type ?? "misc"} onSelect={(value) => setItemForm((current) => ({ ...current, type: value, equipment_slot: defaultSlotForType(value) }))} />
+                <ChoiceRow label="Type" options={itemTypes} value={itemForm.type ?? "misc"} onSelect={(value) => setItemForm((current) => ({ ...current, type: value, equipment_slot: defaultSlotForType(value), potion_target: isRestorativeItemType(value) ? current.potion_target ?? "health" : current.potion_target }))} />
                 <ChoiceRow label="Rarity" options={rarityOptions} value={itemForm.rarity ?? "common"} onSelect={(value) => setItemForm((current) => ({ ...current, rarity: value }))} />
                 <ItemText label="Description" value={itemForm.description ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, description: value }))} />
                 <ItemText label="Image path" value={itemForm.image_path ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, image_path: value }))} />
@@ -1775,9 +1777,9 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     ) : null}
                   </>
                 ) : null}
-                {(itemForm.type === "potion" || itemForm.type === "revive potion") ? (
+                {isRestorativeItemType(itemForm.type) ? (
                   <>
-                    <ChoiceRow label="Potion target" options={potionTargets} value={itemForm.potion_target ?? "health"} onSelect={(value) => setItemForm((current) => ({ ...current, potion_target: value }))} />
+                    <ChoiceRow label="Restore target" options={potionTargets} value={itemForm.potion_target ?? "health"} onSelect={(value) => setItemForm((current) => ({ ...current, potion_target: value }))} />
                     <ItemText label="Restore amount" value={String(itemForm.restore_amount ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, restore_amount: Number(value) || 0 }))} />
                     <ItemText label="Restore percent" value={String(itemForm.restore_percent ?? "")} onChange={(value) => setItemForm((current) => ({ ...current, restore_percent: value ? Number(value) || null : null }))} />
                   </>
@@ -2456,6 +2458,10 @@ function itemMatchesCategory(item: ItemDefinition, category: (typeof inventoryCa
   if (category === "Materials") return item.type === "material";
   if (category === "Special") return item.type === "special";
   return item.type === "misc";
+}
+
+function isRestorativeItemType(type: ItemDefinition["type"] | undefined) {
+  return type === "potion" || type === "revive potion" || type === "consumable" || type === "food";
 }
 
 function toInventoryCategory(type: ItemDefinition["type"]): (typeof inventoryCategoryTabs)[number] {
