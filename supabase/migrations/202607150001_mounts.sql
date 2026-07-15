@@ -73,32 +73,32 @@ drop policy if exists "mount_definitions_read" on public.mount_definitions;
 create policy "mount_definitions_read"
   on public.mount_definitions
   for select
-  using (is_active = true or public.is_map_admin(auth.uid()));
+  using (is_active = true or public.is_map_admin());
 
 drop policy if exists "mount_definitions_admin_insert" on public.mount_definitions;
 create policy "mount_definitions_admin_insert"
   on public.mount_definitions
   for insert
-  with check (public.is_map_admin(auth.uid()));
+  with check (public.is_map_admin());
 
 drop policy if exists "mount_definitions_admin_update" on public.mount_definitions;
 create policy "mount_definitions_admin_update"
   on public.mount_definitions
   for update
-  using (public.is_map_admin(auth.uid()))
-  with check (public.is_map_admin(auth.uid()));
+  using (public.is_map_admin())
+  with check (public.is_map_admin());
 
 drop policy if exists "mount_definitions_admin_delete" on public.mount_definitions;
 create policy "mount_definitions_admin_delete"
   on public.mount_definitions
   for delete
-  using (public.is_map_admin(auth.uid()));
+  using (public.is_map_admin());
 
 drop policy if exists "player_mounts_owner_read" on public.player_mounts;
 create policy "player_mounts_owner_read"
   on public.player_mounts
   for select
-  using (auth.uid() = user_id or public.is_map_admin(auth.uid()));
+  using (auth.uid() = user_id or public.is_map_admin());
 
 drop policy if exists "player_mounts_owner_insert" on public.player_mounts;
 create policy "player_mounts_owner_insert"
