@@ -944,6 +944,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   );
   const adminStoryMarkers = useMemo(() => chapterScopedMarkers.filter((item) => isStoryQuestMarker(item)), [chapterScopedMarkers]);
   const adminMiniMaps = useMemo(() => sortMiniMaps(miniMaps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter))), [miniMaps, selectedChapter, selectedSeason]);
+  const adminTargetMiniMaps = useMemo(() => sortMiniMaps(miniMaps), [miniMaps]);
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
   const adminMapEvents = useMemo(() => mapEvents.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [mapEvents, selectedChapter, selectedSeason]);
@@ -8292,7 +8293,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               setSignPostRouteTravelMode={setSignPostRouteTravelMode}
               worldMarkers={adminWorldMarkers}
               storyScopeMarkers={adminStoryMarkers}
-              miniMaps={adminMiniMaps}
+              miniMaps={adminTargetMiniMaps}
               markerExitTargetType={markerExitTargetType}
               setMarkerExitTargetType={setMarkerExitTargetType}
               markerExitTargetMarkerId={markerExitTargetMarkerId}
@@ -8467,7 +8468,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 setSignPostRouteTravelMode={setSignPostRouteTravelMode}
                 worldMarkers={adminWorldMarkers}
                 storyScopeMarkers={adminStoryMarkers}
-                miniMaps={adminMiniMaps}
+                miniMaps={adminTargetMiniMaps}
                 markerExitTargetType={markerExitTargetType}
                 setMarkerExitTargetType={setMarkerExitTargetType}
                 markerExitTargetMarkerId={markerExitTargetMarkerId}
@@ -9153,8 +9154,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   {draftType === "Area/Town Entrance" ? (
                     <View style={styles.storyEditor}>
                       <MiniMapPicker
-                        miniMaps={adminMiniMaps}
+                        miniMaps={adminTargetMiniMaps}
                         selectedId={selectedMiniMapId}
+                        selectedSeason={selectedSeason}
+                        selectedChapter={selectedChapter}
+                        helper="Area entrances can target mini maps from any chapter. Use the filter to narrow the list."
                         onSelect={(miniMapId) => {
                           setSelectedMiniMapId(miniMapId);
                           setMarkerExitTargetSpawnMarkerId(null);
@@ -9184,8 +9188,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                       targetSpawnMarkerId={markerExitTargetSpawnMarkerId}
                       setTargetSpawnMarkerId={setMarkerExitTargetSpawnMarkerId}
                       worldMarkers={adminWorldMarkers}
-                      miniMaps={adminMiniMaps}
+                      miniMaps={adminTargetMiniMaps}
                       spawnMarkers={markers}
+                      selectedSeason={selectedSeason}
+                      selectedChapter={selectedChapter}
                     />
                   ) : null}
                   {(draftType === "Area/Town Entrance" || isExitMarkerType(draftType)) ? (
@@ -10575,6 +10581,8 @@ function MiniMapMarkerAdminForm({
               worldMarkers={worldMarkers}
               miniMaps={miniMaps}
               spawnMarkers={allMarkers}
+              selectedSeason={selectedSeason}
+              selectedChapter={selectedChapter}
             />
           ) : null}
           {(draftType === "Area/Town Entrance" || supportsExit) ? (

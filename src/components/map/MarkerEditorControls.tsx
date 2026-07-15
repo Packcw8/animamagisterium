@@ -1,4 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { EnemyDefinition, NpcDefinition } from "../../services/combatAdminService";
 import type { ItemDefinition } from "../../services/inventoryService";
@@ -17,6 +18,52 @@ const rewardTimingLabels: Record<(typeof rewardTimings)[number], string> = {
   on_interact: "When Interacted",
   on_path_complete: "After Linked Path Completion",
 };
+
+type MiniMapChapterFilter = "all" | "current";
+
+function formatMiniMapChapter(miniMap: MiniMap) {
+  return `S${Number(miniMap.season_number ?? 1)} / C${Number(miniMap.chapter_number ?? 1)}`;
+}
+
+function useMiniMapChapterFilter(miniMaps: MiniMap[], selectedSeason?: number, selectedChapter?: number) {
+  const [filter, setFilter] = useState<MiniMapChapterFilter>("all");
+  const filteredMiniMaps = useMemo(() => {
+    if (filter !== "current" || !selectedSeason || !selectedChapter) {
+      return miniMaps;
+    }
+
+    return miniMaps.filter((miniMap) => Number(miniMap.season_number ?? 1) === selectedSeason && Number(miniMap.chapter_number ?? 1) === selectedChapter);
+  }, [filter, miniMaps, selectedChapter, selectedSeason]);
+
+  return { filter, setFilter, filteredMiniMaps };
+}
+
+function MiniMapChapterFilterBar({
+  filter,
+  setFilter,
+  selectedSeason,
+  selectedChapter,
+}: {
+  filter: MiniMapChapterFilter;
+  setFilter: (value: MiniMapChapterFilter) => void;
+  selectedSeason?: number;
+  selectedChapter?: number;
+}) {
+  if (!selectedSeason || !selectedChapter) {
+    return null;
+  }
+
+  return (
+    <View style={styles.storyRoutePicker}>
+      <Pressable style={[styles.routeChip, filter === "all" && styles.routeChipActive]} onPress={() => setFilter("all")}>
+        <Text style={styles.routeChipText}>All Mini Maps</Text>
+      </Pressable>
+      <Pressable style={[styles.routeChip, filter === "current" && styles.routeChipActive]} onPress={() => setFilter("current")}>
+        <Text style={styles.routeChipText}>Current S{selectedSeason} / C{selectedChapter}</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export function ItemPicker({ label, items, selectedId, onSelect }: { label: string; items: ItemDefinition[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
   return (
@@ -101,6 +148,8 @@ export function ExitTargetEditor({
   worldMarkers,
   miniMaps,
   spawnMarkers,
+  selectedSeason,
+  selectedChapter,
 }: {
   targetType: MapMarker["exit_target_type"];
   setTargetType: (value: MapMarker["exit_target_type"]) => void;
@@ -113,8 +162,11 @@ export function ExitTargetEditor({
   worldMarkers: MapMarker[];
   miniMaps: MiniMap[];
   spawnMarkers: MapMarker[];
+  selectedSeason?: number;
+  selectedChapter?: number;
 }) {
   const safeType = targetType ?? "world_marker";
+  const { filter: miniMapFilter, setFilter: setMiniMapFilter, filteredMiniMaps } = useMiniMapChapterFilter(miniMaps, selectedSeason, selectedChapter);
   const worldTargets = worldMarkers.filter((marker) => !marker.mini_map_id);
   const targetSpawns = spawnMarkers.filter((marker) => marker.mini_map_id === targetMiniMapId && marker.type === "Player Spawn");
   const selectedWorldTarget = worldTargets.find((marker) => marker.id === targetMarkerId) ?? null;
@@ -177,7 +229,8 @@ export function ExitTargetEditor({
         <>
           <View style={styles.pickerPanel}>
             <Text style={styles.selectedTitle}>Linked Mini Map</Text>
-            <Text style={styles.copy}>Pick the mini map this exit opens.</Text>
+            <Text style={styles.copy}>Pick the mini map this exit opens. Targets can cross chapters; use the filter only to shorten the list.</Text>
+            <MiniMapChapterFilterBar filter={miniMapFilter} setFilter={setMiniMapFilter} selectedSeason={selectedSeason} selectedChapter={selectedChapter} />
             <View style={styles.pickerGrid}>
               <Pressable
                 style={[styles.targetCard, targetMiniMapId === null && styles.routeChipActive]}
@@ -189,7 +242,7 @@ export function ExitTargetEditor({
                 <Text style={styles.targetCardTitle}>None</Text>
                 <Text style={styles.targetCardMeta}>No mini map target</Text>
               </Pressable>
-              {miniMaps.map((miniMap) => (
+              {filteredMiniMaps.map((miniMap) => (
                 <Pressable
                   key={miniMap.id}
                   style={[styles.targetCard, targetMiniMapId === miniMap.id && styles.routeChipActive]}
@@ -199,10 +252,11 @@ export function ExitTargetEditor({
                   }}
                 >
                   <Text style={styles.targetCardTitle}>{miniMap.name}</Text>
-                  <Text style={styles.targetCardMeta}>{miniMap.type}{miniMap.area_name ? ` / ${miniMap.area_name}` : ""}</Text>
+                  <Text style={styles.targetCardMeta}>{formatMiniMapChapter(miniMap)} / {miniMap.type}{miniMap.area_name ? ` / ${miniMap.area_name}` : ""}</Text>
                 </Pressable>
               ))}
             </View>
+            {filteredMiniMaps.length === 0 ? <Text style={styles.debugLine}>No mini maps match this filter.</Text> : null}
           </View>
           {targetMiniMapId ? (
             <View style={styles.pickerPanel}>
@@ -321,20 +375,38 @@ export function NpcPicker({ label, npcs, selectedId, onSelect, battleOnly = fals
   );
 }
 
-export function MiniMapPicker({ miniMaps, selectedId, onSelect }: { miniMaps: MiniMap[]; selectedId: string | null; onSelect: (id: string | null) => void }) {
+export function MiniMapPicker({
+  miniMaps,
+  selectedId,
+  onSelect,
+  selectedSeason,
+  selectedChapter,
+  helper,
+}: {
+  miniMaps: MiniMap[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  selectedSeason?: number;
+  selectedChapter?: number;
+  helper?: string;
+}) {
+  const { filter, setFilter, filteredMiniMaps } = useMiniMapChapterFilter(miniMaps, selectedSeason, selectedChapter);
   return (
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Linked Mini Map</Text>
+      {helper ? <Text style={styles.copy}>{helper}</Text> : null}
+      <MiniMapChapterFilterBar filter={filter} setFilter={setFilter} selectedSeason={selectedSeason} selectedChapter={selectedChapter} />
       <View style={styles.storyRoutePicker}>
         <Pressable style={[styles.routeChip, selectedId === null && styles.routeChipActive]} onPress={() => onSelect(null)}>
           <Text style={styles.routeChipText}>None</Text>
         </Pressable>
-        {miniMaps.map((miniMap) => (
+        {filteredMiniMaps.map((miniMap) => (
           <Pressable key={miniMap.id} style={[styles.routeChip, selectedId === miniMap.id && styles.routeChipActive]} onPress={() => onSelect(miniMap.id)}>
-            <Text style={styles.routeChipText}>{miniMap.name}</Text>
+            <Text style={styles.routeChipText}>{miniMap.name} ({formatMiniMapChapter(miniMap)})</Text>
           </Pressable>
         ))}
       </View>
+      {filteredMiniMaps.length === 0 ? <Text style={styles.debugLine}>No mini maps match this filter.</Text> : null}
     </View>
   );
 }
