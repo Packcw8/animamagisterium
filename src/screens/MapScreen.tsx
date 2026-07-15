@@ -5213,6 +5213,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
       if (activeMarkerEventId && event.event_type === "battle") {
         const marker = markers.find((item) => item.id === activeMarkerEventId) ?? null;
+        const markerBattleWon = battleFinished === "victory";
         const rewardResult = await applyRewards(character, {
           xp: (marker?.reward_xp ?? 0) + (activeEnemy?.xp_reward ?? 0),
           gold: (marker?.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
@@ -5254,6 +5255,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         } catch (killError) {
           console.warn("[battle] unable to record marker enemy kill", killError);
           killMessage = " Kill tracking could not be saved.";
+        }
+        if (marker && markerBattleWon) {
+          await completeStoryMarker(marker.id);
+          setCompletedStoryMarkerIds((current) => new Set([...current, marker.id]));
         }
         setActiveEvent(null);
         setActiveMarkerEventId(null);
