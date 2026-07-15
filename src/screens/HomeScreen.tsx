@@ -92,6 +92,7 @@ import {
   ItemDefinition,
 } from "../services/inventoryService";
 import { getCurrentRole, Role } from "../services/mapService";
+import { blankMountDefinition, deleteMountDefinition, getMountDefinitions, normalizeMountMultiplier, resolveMountImageUri, saveMountDefinition, type MountDefinition } from "../services/mountService";
 import { getLeaderboardProfileForCharacter } from "../services/leaderboardService";
 import { getInboxUnreadCount } from "../services/inboxService";
 import { getJourneyJournalEntries, type JourneyJournalEntry } from "../services/journeyJournalService";
@@ -111,7 +112,7 @@ const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Journal
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 const inventoryCategoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
-const adminToolTabs = ["Items", "Abilities", "Enemies", "NPCs"] as const;
+const adminToolTabs = ["Items", "Mounts", "Abilities", "Enemies", "NPCs"] as const;
 const adminRecordSortModes = ["newest", "name", "type", "chapter"] as const;
 const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
 const enemyBalanceProfiles = ["minion", "standard", "elite", "boss"] as const;
@@ -224,6 +225,9 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [carryWeightPerStrength, setCarryWeightPerStrength] = useState("10");
   const [itemForm, setItemForm] = useState<Partial<ItemDefinition>>(blankItemDefinition());
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [mountDefinitions, setMountDefinitions] = useState<MountDefinition[]>([]);
+  const [mountForm, setMountForm] = useState<Partial<MountDefinition>>(blankMountDefinition());
+  const [editingMountId, setEditingMountId] = useState<string | null>(null);
   const [inventoryMessage, setInventoryMessage] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("player");
   const [distanceWalkedMeters, setDistanceWalkedMeters] = useState(0);
@@ -249,6 +253,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const selectedInventoryItem = useMemo(() => inventoryItems.find((entry) => entry.id === selectedInventoryItemId) ?? null, [inventoryItems, selectedInventoryItemId]);
   const filteredInventoryItems = useMemo(() => inventoryItems.filter((entry) => itemMatchesCategory(entry.item, inventoryCategory)), [inventoryItems, inventoryCategory]);
   const scopedAdminItems = useMemo(() => itemDefinitions.filter((item) => isInAdminContentScope(item, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, itemDefinitions]);
+  const scopedAdminMounts = useMemo(() => mountDefinitions.filter((mount) => isInAdminContentScope(mount, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, mountDefinitions]);
   const scopedAdminAbilities = useMemo(() => adminAbilities.filter((ability) => isInAdminContentScope(ability, adminContentSeason, adminContentChapter)), [adminAbilities, adminContentChapter, adminContentSeason]);
   const scopedEnemies = useMemo(() => enemies.filter((enemy) => isInAdminContentScope(enemy, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, enemies]);
   const scopedNpcs = useMemo(() => npcs.filter((npc) => isInAdminContentScope(npc, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, npcs]);
@@ -256,6 +261,10 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     scopedAdminItems.filter((item) => itemMatchesCategory(item, inventoryCategory) && adminRecordMatchesSearch(item, adminRecordSearch)),
     adminRecordSort,
   ), [adminRecordSearch, adminRecordSort, scopedAdminItems, inventoryCategory]);
+  const filteredAdminMounts = useMemo(() => sortAdminRecords(
+    scopedAdminMounts.filter((mount) => adminRecordMatchesSearch(mount, adminRecordSearch)),
+    adminRecordSort,
+  ), [adminRecordSearch, adminRecordSort, scopedAdminMounts]);
   const filteredAdminAbilities = useMemo(() => sortAdminRecords(
     scopedAdminAbilities.filter((ability) => ability.type === abilityTypeTab.toLowerCase() && adminRecordMatchesSearch(ability, adminRecordSearch)),
     adminRecordSort,
@@ -294,6 +303,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   useEffect(() => {
     void loadAbilities();
     void loadInventory();
+    void loadMounts();
     void loadAdminCombat();
     void loadTravelProgress();
     void loadInboxCount();
@@ -729,6 +739,44 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     }
   }
 
+  async function saveMount() {
+    try {
+      const saved = await saveMountDefinition({
+        ...mountForm,
+        id: editingMountId ?? undefined,
+        season_number: adminContentSeason,
+        chapter_number: adminContentChapter,
+      });
+      setInventoryMessage(`${saved.name} saved.`);
+      setMountForm({ ...blankMountDefinition(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+      setEditingMountId(null);
+      await loadMounts();
+    } catch (error) {
+      setInventoryMessage(error instanceof Error ? error.message : "Unable to save mount.");
+    }
+  }
+
+  function editMount(mount: MountDefinition) {
+    setAdminContentSeason(Number(mount.season_number ?? 1));
+    setAdminContentChapter(Number(mount.chapter_number ?? 1));
+    setEditingMountId(mount.id);
+    setMountForm(mount);
+  }
+
+  async function deleteMount(mountId: string) {
+    try {
+      await deleteMountDefinition(mountId);
+      setInventoryMessage("Mount deleted.");
+      if (editingMountId === mountId) {
+        setEditingMountId(null);
+        setMountForm(blankMountDefinition());
+      }
+      await loadMounts();
+    } catch (error) {
+      setInventoryMessage(error instanceof Error ? error.message : "Unable to delete mount.");
+    }
+  }
+
   async function grantItem(itemId: string) {
     try {
       await grantItemToCharacter(character.id, itemId, 1);
@@ -770,6 +818,14 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
       await loadAbilities();
     } catch (error) {
       setInventoryMessage(error instanceof Error ? error.message : "Unable to drop item.");
+    }
+  }
+
+  async function loadMounts() {
+    try {
+      setMountDefinitions(await getMountDefinitions());
+    } catch (error) {
+      setInventoryMessage(error instanceof Error ? error.message : "Unable to load mounts.");
     }
   }
 
@@ -1687,6 +1743,66 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     </View>
                   </View>
                 ))}
+                  </>
+                ) : null}
+                {adminToolTab === "Mounts" ? (
+                  <>
+                    <Text style={styles.sectionTitle}>Mount Admin</Text>
+                    <Text style={styles.muted}>Create mounts that markets can sell. Equipped mounts only multiply walking path progress, not real distance totals.</Text>
+                    <View style={styles.adminQuickActions}>
+                      <Pressable style={styles.smallButton} onPress={() => {
+                        setEditingMountId(null);
+                        setMountForm({ ...blankMountDefinition(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+                      }}>
+                        <Text style={styles.smallButtonText}>New Mount</Text>
+                      </Pressable>
+                    </View>
+                    <AdminRecordControls
+                      search={adminRecordSearch}
+                      sort={adminRecordSort}
+                      count={filteredAdminMounts.length}
+                      total={scopedAdminMounts.length}
+                      noun="mounts"
+                      onSearch={setAdminRecordSearch}
+                      onSort={setAdminRecordSort}
+                    />
+                    <Text style={styles.subTitle}>Mount Builder</Text>
+                    <ItemText label="Name" value={mountForm.name ?? ""} onChange={(value) => setMountForm((current) => ({ ...current, name: value }))} />
+                    <ItemText label="Breed / type" value={mountForm.breed ?? ""} onChange={(value) => setMountForm((current) => ({ ...current, breed: value }))} />
+                    <ChoiceRow label="Rarity" options={rarityOptions} value={mountForm.rarity ?? "common"} onSelect={(value) => setMountForm((current) => ({ ...current, rarity: value }))} />
+                    <ItemText label="Description" value={mountForm.description ?? ""} onChange={(value) => setMountForm((current) => ({ ...current, description: value }))} />
+                    <ItemText label="Image URL / asset path" value={mountForm.image_url ?? ""} onChange={(value) => setMountForm((current) => ({ ...current, image_url: value }))} />
+                    <AdminImageUploadButton folder="mounts" onUploaded={(url) => setMountForm((current) => ({ ...current, image_url: url }))} onMessage={setInventoryMessage} />
+                    <AssetPreview label="Mount image preview" uri={resolveMountImageUri(mountForm.image_url)} />
+                    <ItemText
+                      label="Trail progress multiplier, max 1.7"
+                      value={String(mountForm.progress_multiplier ?? 1)}
+                      onChange={(value) => setMountForm((current) => ({ ...current, progress_multiplier: normalizeMountMultiplier(value) }))}
+                    />
+                    <ToggleRow label="Active" value={mountForm.is_active ?? true} onPress={() => setMountForm((current) => ({ ...current, is_active: !(current.is_active ?? true) }))} />
+                    <Pressable style={styles.primaryAdminButton} onPress={() => void saveMount()}>
+                      <Text style={styles.primaryAdminText}>{editingMountId ? "Update Mount" : "Add Mount"}</Text>
+                    </Pressable>
+                    {editingMountId ? (
+                      <Pressable style={styles.smallButton} onPress={() => { setEditingMountId(null); setMountForm(blankMountDefinition()); }}>
+                        <Text style={styles.smallButtonText}>Cancel Edit</Text>
+                      </Pressable>
+                    ) : null}
+                    {filteredAdminMounts.map((mount) => (
+                      <View key={mount.id} style={styles.itemCard}>
+                        {resolveMountImageUri(mount.image_url) ? <Image source={{ uri: resolveMountImageUri(mount.image_url) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
+                        <View style={styles.itemBody}>
+                          <Text style={styles.abilityName}>{mount.name}</Text>
+                          <Text style={styles.muted}>Season {mount.season_number ?? 1} / Chapter {mount.chapter_number ?? 1}</Text>
+                          <Text style={styles.muted}>{mount.breed || "Mount"} / {mount.rarity} / Trail x{normalizeMountMultiplier(mount.progress_multiplier).toFixed(2)}</Text>
+                          <Text style={styles.muted}>{mount.is_active ? "Active" : "Inactive"}</Text>
+                          <View style={styles.slotActions}>
+                            <Pressable style={styles.smallButton} onPress={() => editMount(mount)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
+                            <Pressable style={styles.smallButton} onPress={() => void deleteMount(mount.id)}><Text style={styles.smallButtonText}>Delete</Text></Pressable>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
                   </>
                 ) : null}
                 {adminToolTab === "Abilities" ? <Text style={styles.muted}>Open the Abilities tab to manage ability records by type.</Text> : null}
