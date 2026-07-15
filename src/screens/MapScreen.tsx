@@ -2666,6 +2666,72 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
   }
 
+  function startNewMarkerDraft() {
+    setSelectedMarker(null);
+    setPreviewMarkerScene(false);
+    setSelectedPuzzle(null);
+    setSelectedArena(null);
+    setArenaBattleSlots([]);
+    setBattlefieldCombatants([]);
+    setMarkerRouteLinks([]);
+    setSelectedMarkerRouteIds([]);
+    setSelectedMarkerRouteDirections({});
+    setSelectedMarkerRouteTravelModes({});
+    setMarkerRouteCompletionCondition("either");
+    setDraftTitle("");
+    setDraftDescription("");
+    setMarkerQuestTitle("");
+    setMarkerQuestDialogue("");
+    setMarkerQuestImage("");
+    setMarkerShopImage("");
+    setMarkerShopBackground("");
+    setMarkerSceneBackground("");
+    setMarkerNpcImage("");
+    setMarkerJournalTitle("");
+    setMarkerJournalBody("");
+    setMarkerJournalImageUrl("");
+    setMarkerJournalSortOrder("0");
+    setMarkerStoryDeckId(null);
+    setMarkerLockType("public");
+    setMarkerLockMessage("");
+    setMarkerAccessRule("always");
+    setMarkerRequiredItemId(null);
+    setMarkerRequiredItemQuantity("1");
+    setMarkerAccessHint("");
+    setMarkerVisibleStoryFlagKey("");
+    setMarkerVisibleStoryFlagValue(true);
+    setMarkerStoryOrder("0");
+    setMarkerUnlockAfterId(null);
+    setMarkerHideWhenCompleted(true);
+    setMarkerRequireAllLinkedRoutes(true);
+    setMarkerDialogueEventId(null);
+    setMarkerBattleEventId(null);
+    setMarkerEnemyId(null);
+    setMarkerNpcId(null);
+    setMarkerInteractionRadius("4");
+    setMarkerInteractable(true);
+    setMarkerInitiallyUnlocked(true);
+    setMarkerRewardXp("0");
+    setMarkerRewardGold("0");
+    setMarkerRewardItemId(null);
+    setMarkerRewardQuantity("1");
+    setMarkerRewardFullHeal(false);
+    setMarkerRewardTiming("on_interact");
+    setMarkerRepeatable(false);
+    setMarkerRewardOnce(true);
+    setMarkerContentScope("chapter");
+    setMarkerLinkedRouteId(null);
+    setMarkerLinkedRouteStartDirection("forward");
+    setMarkerStartsRouteOnAccept(false);
+    setMarkerClearActiveRouteOnUse(false);
+    setMarkerExitTargetType("world_marker");
+    setMarkerExitTargetMarkerId(null);
+    setMarkerExitTargetMiniMapId(null);
+    setMarkerExitTargetSpawnMarkerId(null);
+    setClickedPercent(null);
+    setAdminMessage("Ready for a new marker. Tap the mini map to choose its position.");
+  }
+
   function getMarkerPayloadState(activeMiniMapId = activeMiniMap?.id ?? null): MarkerPayloadState {
     return {
       draftType,
@@ -8258,6 +8324,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               clickedPercent={clickedPercent}
               onAddMarker={() => void addMarker()}
               onSaveSelectedMarker={() => void saveSelectedMarkerSettings()}
+              onStartNewMarker={startNewMarkerDraft}
               onSaveMarketItem={() => void saveMarketItem()}
               onRemoveMarketItem={(marketItemId) => void removeMarketItem(marketItemId)}
               selectedDialogueMarkerId={selectedDialogueMarkerId}
@@ -8435,6 +8502,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   void addMarker();
                 }}
                 onSaveSelectedMarker={() => void saveSelectedMarkerSettings()}
+                onStartNewMarker={startNewMarkerDraft}
                 onSaveMarketItem={() => undefined}
                 onRemoveMarketItem={() => undefined}
                 selectedDialogueMarkerId={selectedDialogueMarkerId}
@@ -10119,6 +10187,7 @@ function MiniMapMarkerAdminForm({
   clickedPercent,
   onAddMarker,
   onSaveSelectedMarker,
+  onStartNewMarker,
   onSaveMarketItem,
   onRemoveMarketItem,
   selectedDialogueMarkerId,
@@ -10292,6 +10361,7 @@ function MiniMapMarkerAdminForm({
   clickedPercent: { x: number; y: number } | null;
   onAddMarker: () => void;
   onSaveSelectedMarker: () => void;
+  onStartNewMarker: () => void;
   onSaveMarketItem: () => void;
   onRemoveMarketItem: (marketItemId: string) => void;
   selectedDialogueMarkerId: string | null;
@@ -10787,8 +10857,12 @@ function MiniMapMarkerAdminForm({
       >
         {selectedMarker ? (
           <>
+            <Text style={styles.copy}>Editing: {selectedMarker.title}. Save changes here, then start a new marker before tapping the next location.</Text>
             <Pressable style={styles.primaryButton} onPress={onSaveSelectedMarker}>
               <Text style={styles.primaryText}>Save Marker Details</Text>
+            </Pressable>
+            <Pressable style={styles.secondaryButton} onPress={onStartNewMarker}>
+              <Text style={styles.secondaryText}>Done - Create Another Marker</Text>
             </Pressable>
             {clickedPercent ? (
               <>
@@ -10803,6 +10877,7 @@ function MiniMapMarkerAdminForm({
           </>
         ) : (
           <>
+            <Text style={styles.copy}>Creating new marker. Tap the mini map, add details, then create it at the captured spot.</Text>
             {!clickedPercent ? <Text style={styles.lockText}>Tap the mini map image first to choose this marker's position.</Text> : null}
             {!draftTitle.trim() ? <Text style={styles.lockText}>Add a marker title before creating it.</Text> : null}
             <Pressable style={[styles.primaryButton, (!clickedPercent || !draftTitle.trim()) && styles.disabledAction]} onPress={onAddMarker}>
