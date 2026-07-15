@@ -93,6 +93,7 @@ import {
 } from "../services/inventoryService";
 import { getCurrentRole, Role } from "../services/mapService";
 import { blankMountDefinition, deleteMountDefinition, getMountDefinitions, normalizeMountMultiplier, resolveMountImageUri, saveMountDefinition, type MountDefinition } from "../services/mountService";
+import { blankTravelMode, deleteTravelMode, getTravelModes, normalizeTravelModeMultiplier, resolveTravelModeImageUri, saveTravelMode, type TravelMode } from "../services/travelModeService";
 import { getLeaderboardProfileForCharacter } from "../services/leaderboardService";
 import { getInboxUnreadCount } from "../services/inboxService";
 import { getJourneyJournalEntries, type JourneyJournalEntry } from "../services/journeyJournalService";
@@ -112,7 +113,7 @@ const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Journal
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 const inventoryCategoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
-const adminToolTabs = ["Items", "Mounts", "Abilities", "Enemies", "NPCs"] as const;
+const adminToolTabs = ["Items", "Mounts", "Travel Modes", "Abilities", "Enemies", "NPCs"] as const;
 const adminRecordSortModes = ["newest", "name", "type", "chapter"] as const;
 const mountMultiplierPresets = ["1", "1.05", "1.10", "1.20", "1.35", "1.50", "1.70"] as const;
 const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
@@ -230,6 +231,10 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [mountForm, setMountForm] = useState<Partial<MountDefinition>>(blankMountDefinition());
   const [mountMultiplierInput, setMountMultiplierInput] = useState(String(blankMountDefinition().progress_multiplier ?? 1));
   const [editingMountId, setEditingMountId] = useState<string | null>(null);
+  const [travelModes, setTravelModes] = useState<TravelMode[]>([]);
+  const [travelModeForm, setTravelModeForm] = useState<Partial<TravelMode>>(blankTravelMode());
+  const [travelModeMultiplierInput, setTravelModeMultiplierInput] = useState(String(blankTravelMode().progress_multiplier ?? 1));
+  const [editingTravelModeId, setEditingTravelModeId] = useState<string | null>(null);
   const [inventoryMessage, setInventoryMessage] = useState<string | null>(null);
   const [role, setRole] = useState<Role>("player");
   const [distanceWalkedMeters, setDistanceWalkedMeters] = useState(0);
@@ -256,6 +261,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const filteredInventoryItems = useMemo(() => inventoryItems.filter((entry) => itemMatchesCategory(entry.item, inventoryCategory)), [inventoryItems, inventoryCategory]);
   const scopedAdminItems = useMemo(() => itemDefinitions.filter((item) => isInAdminContentScope(item, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, itemDefinitions]);
   const scopedAdminMounts = useMemo(() => mountDefinitions.filter((mount) => isInAdminContentScope(mount, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, mountDefinitions]);
+  const scopedAdminTravelModes = useMemo(() => travelModes.filter((mode) => isInAdminContentScope(mode, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, travelModes]);
   const scopedAdminAbilities = useMemo(() => adminAbilities.filter((ability) => isInAdminContentScope(ability, adminContentSeason, adminContentChapter)), [adminAbilities, adminContentChapter, adminContentSeason]);
   const scopedEnemies = useMemo(() => enemies.filter((enemy) => isInAdminContentScope(enemy, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, enemies]);
   const scopedNpcs = useMemo(() => npcs.filter((npc) => isInAdminContentScope(npc, adminContentSeason, adminContentChapter)), [adminContentChapter, adminContentSeason, npcs]);
@@ -267,6 +273,10 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     scopedAdminMounts.filter((mount) => adminRecordMatchesSearch(mount, adminRecordSearch)),
     adminRecordSort,
   ), [adminRecordSearch, adminRecordSort, scopedAdminMounts]);
+  const filteredAdminTravelModes = useMemo(() => sortAdminRecords(
+    scopedAdminTravelModes.filter((mode) => adminRecordMatchesSearch(mode, adminRecordSearch)),
+    adminRecordSort,
+  ), [adminRecordSearch, adminRecordSort, scopedAdminTravelModes]);
   const filteredAdminAbilities = useMemo(() => sortAdminRecords(
     scopedAdminAbilities.filter((ability) => ability.type === abilityTypeTab.toLowerCase() && adminRecordMatchesSearch(ability, adminRecordSearch)),
     adminRecordSort,
@@ -306,6 +316,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     void loadAbilities();
     void loadInventory();
     void loadMounts();
+    void loadTravelModes();
     void loadAdminCombat();
     void loadTravelProgress();
     void loadInboxCount();
@@ -784,6 +795,49 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     }
   }
 
+  async function saveTravelModeForm() {
+    try {
+      const progressMultiplier = normalizeTravelModeMultiplier(travelModeMultiplierInput);
+      const saved = await saveTravelMode({
+        ...travelModeForm,
+        id: editingTravelModeId ?? undefined,
+        progress_multiplier: progressMultiplier,
+        season_number: adminContentSeason,
+        chapter_number: adminContentChapter,
+      });
+      setInventoryMessage(`${saved.name} saved.`);
+      setTravelModeForm({ ...blankTravelMode(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+      setTravelModeMultiplierInput(String(blankTravelMode().progress_multiplier ?? 1));
+      setEditingTravelModeId(null);
+      await loadTravelModes();
+    } catch (error) {
+      setInventoryMessage(error instanceof Error ? error.message : "Unable to save travel mode.");
+    }
+  }
+
+  function editTravelMode(mode: TravelMode) {
+    setAdminContentSeason(Number(mode.season_number ?? 1));
+    setAdminContentChapter(Number(mode.chapter_number ?? 1));
+    setEditingTravelModeId(mode.id);
+    setTravelModeForm(mode);
+    setTravelModeMultiplierInput(String(mode.progress_multiplier ?? 1));
+  }
+
+  async function deleteTravelModeForm(modeId: string) {
+    try {
+      await deleteTravelMode(modeId);
+      setInventoryMessage("Travel mode deleted.");
+      if (editingTravelModeId === modeId) {
+        setEditingTravelModeId(null);
+        setTravelModeForm(blankTravelMode());
+        setTravelModeMultiplierInput(String(blankTravelMode().progress_multiplier ?? 1));
+      }
+      await loadTravelModes();
+    } catch (error) {
+      setInventoryMessage(error instanceof Error ? error.message : "Unable to delete travel mode.");
+    }
+  }
+
   async function grantItem(itemId: string) {
     try {
       await grantItemToCharacter(character.id, itemId, 1);
@@ -833,6 +887,14 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
       setMountDefinitions(await getMountDefinitions());
     } catch (error) {
       setInventoryMessage(error instanceof Error ? error.message : "Unable to load mounts.");
+    }
+  }
+
+  async function loadTravelModes() {
+    try {
+      setTravelModes(await getTravelModes());
+    } catch (error) {
+      setInventoryMessage(error instanceof Error ? error.message : "Unable to load travel modes.");
     }
   }
 
@@ -1825,6 +1887,84 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                           <View style={styles.slotActions}>
                             <Pressable style={styles.smallButton} onPress={() => editMount(mount)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
                             <Pressable style={styles.smallButton} onPress={() => void deleteMount(mount.id)}><Text style={styles.smallButtonText}>Delete</Text></Pressable>
+                          </View>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                ) : null}
+                {adminToolTab === "Travel Modes" ? (
+                  <>
+                    <Text style={styles.sectionTitle}>Travel Mode Admin</Text>
+                    <Text style={styles.muted}>Create story transport such as royal carriages, ferries, wagons, or mine carts. These are route effects, not owned inventory.</Text>
+                    <View style={styles.adminQuickActions}>
+                      <Pressable style={styles.smallButton} onPress={() => {
+                        setEditingTravelModeId(null);
+                        setTravelModeForm({ ...blankTravelMode(), season_number: adminContentSeason, chapter_number: adminContentChapter });
+                        setTravelModeMultiplierInput(String(blankTravelMode().progress_multiplier ?? 1));
+                      }}>
+                        <Text style={styles.smallButtonText}>New Travel Mode</Text>
+                      </Pressable>
+                    </View>
+                    <AdminRecordControls
+                      search={adminRecordSearch}
+                      sort={adminRecordSort}
+                      count={filteredAdminTravelModes.length}
+                      total={scopedAdminTravelModes.length}
+                      noun="travel modes"
+                      onSearch={setAdminRecordSearch}
+                      onSort={setAdminRecordSort}
+                    />
+                    <Text style={styles.subTitle}>Travel Mode Builder</Text>
+                    <ItemText label="Name" value={travelModeForm.name ?? ""} onChange={(value) => setTravelModeForm((current) => ({ ...current, name: value }))} />
+                    <ItemText label="Mode type" value={travelModeForm.mode_type ?? ""} onChange={(value) => setTravelModeForm((current) => ({ ...current, mode_type: value }))} />
+                    <ItemText label="Description" value={travelModeForm.description ?? ""} onChange={(value) => setTravelModeForm((current) => ({ ...current, description: value }))} />
+                    <ItemText label="Image URL / asset path" value={travelModeForm.image_url ?? ""} onChange={(value) => setTravelModeForm((current) => ({ ...current, image_url: value }))} />
+                    <AdminImageUploadButton folder="travel-modes" onUploaded={(url) => setTravelModeForm((current) => ({ ...current, image_url: url }))} onMessage={setInventoryMessage} />
+                    <AssetPreview label="Travel mode image preview" uri={resolveTravelModeImageUri(travelModeForm.image_url)} />
+                    <ItemText
+                      label="Trail progress multiplier, max 1.7"
+                      value={travelModeMultiplierInput}
+                      onChange={setTravelModeMultiplierInput}
+                    />
+                    <ChoiceRow
+                      label="Quick multiplier"
+                      options={mountMultiplierPresets}
+                      value={travelModeMultiplierInput}
+                      labels={{
+                        "1": "No bonus",
+                        "1.05": "5%",
+                        "1.10": "10%",
+                        "1.20": "20%",
+                        "1.35": "35%",
+                        "1.50": "50%",
+                        "1.70": "70%",
+                      }}
+                      onSelect={(value) => {
+                        setTravelModeMultiplierInput(value);
+                        setTravelModeForm((current) => ({ ...current, progress_multiplier: normalizeTravelModeMultiplier(value) }));
+                      }}
+                    />
+                    <ToggleRow label="Active" value={travelModeForm.is_active ?? true} onPress={() => setTravelModeForm((current) => ({ ...current, is_active: !(current.is_active ?? true) }))} />
+                    <Pressable style={styles.primaryAdminButton} onPress={() => void saveTravelModeForm()}>
+                      <Text style={styles.primaryAdminText}>{editingTravelModeId ? "Update Travel Mode" : "Add Travel Mode"}</Text>
+                    </Pressable>
+                    {editingTravelModeId ? (
+                      <Pressable style={styles.smallButton} onPress={() => { setEditingTravelModeId(null); setTravelModeForm(blankTravelMode()); setTravelModeMultiplierInput(String(blankTravelMode().progress_multiplier ?? 1)); }}>
+                        <Text style={styles.smallButtonText}>Cancel Edit</Text>
+                      </Pressable>
+                    ) : null}
+                    {filteredAdminTravelModes.map((mode) => (
+                      <View key={mode.id} style={styles.itemCard}>
+                        {resolveTravelModeImageUri(mode.image_url) ? <Image source={{ uri: resolveTravelModeImageUri(mode.image_url) ?? "" }} style={styles.itemImage} /> : <View style={styles.itemImagePlaceholder} />}
+                        <View style={styles.itemBody}>
+                          <Text style={styles.abilityName}>{mode.name}</Text>
+                          <Text style={styles.muted}>Season {mode.season_number ?? 1} / Chapter {mode.chapter_number ?? 1}</Text>
+                          <Text style={styles.muted}>{mode.mode_type || "Travel"} / Trail x{normalizeTravelModeMultiplier(mode.progress_multiplier).toFixed(2)}</Text>
+                          <Text style={styles.muted}>{mode.is_active ? "Active" : "Inactive"}</Text>
+                          <View style={styles.slotActions}>
+                            <Pressable style={styles.smallButton} onPress={() => editTravelMode(mode)}><Text style={styles.smallButtonText}>Edit</Text></Pressable>
+                            <Pressable style={styles.smallButton} onPress={() => void deleteTravelModeForm(mode.id)}><Text style={styles.smallButtonText}>Delete</Text></Pressable>
                           </View>
                         </View>
                       </View>

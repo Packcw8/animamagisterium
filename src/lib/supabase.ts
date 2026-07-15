@@ -391,6 +391,7 @@ export type Tables = {
     journal_image_url: string | null;
     journal_sort_order: number;
     story_deck_id?: string | null;
+    travel_mode_id?: string | null;
     mini_map_id: string | null;
     parent_marker_id: string | null;
     lock_type: "public" | "story_locked" | "quest_locked";
@@ -847,6 +848,7 @@ export type Tables = {
     travel_direction: "forward" | "reverse";
     is_current: boolean;
     source_marker_id: string | null;
+    active_travel_mode_id?: string | null;
     updated_at: string;
   };
   player_map_state: {
@@ -1028,7 +1030,22 @@ export type Tables = {
     destination_label: string | null;
     starts_on_select: boolean;
     start_direction: "forward" | "reverse";
+    travel_mode_id?: string | null;
     completion_condition: "start" | "end" | "either";
+    season_number: number;
+    chapter_number: number;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  travel_modes: {
+    id: string;
+    name: string;
+    mode_type: string | null;
+    description: string | null;
+    image_url: string | null;
+    progress_multiplier: number;
+    is_active: boolean;
     season_number: number;
     chapter_number: number;
     created_by: string | null;

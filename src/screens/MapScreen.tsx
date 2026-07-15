@@ -74,6 +74,7 @@ import { EnemyDefinition, getEnemies, getNpcs, NpcDefinition, type EnemyWithLoad
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
 import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, unequipInventorySlot } from "../services/inventoryService";
 import { equipMount, getActiveMountMultiplier, getMountDefinitions, getPlayerMounts, resolveMountImageUri, unmountCharacter, type MountDefinition, type PlayerMountWithDefinition } from "../services/mountService";
+import { getTravelModes, normalizeTravelModeMultiplier, resolveTravelModeImageUri, type TravelMode } from "../services/travelModeService";
 import { isNativePedometerAvailable, requestPedometerPermission, startPedometerDistancePolling, type PedometerSubscription } from "../services/nativePedometerService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
@@ -391,6 +392,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [mountDefinitions, setMountDefinitions] = useState<MountDefinition[]>([]);
   const [playerMounts, setPlayerMounts] = useState<PlayerMountWithDefinition[]>([]);
   const [activeMount, setActiveMount] = useState<PlayerMountWithDefinition | null>(null);
+  const [travelModes, setTravelModes] = useState<TravelMode[]>([]);
   const [knownAbilities, setKnownAbilities] = useState<AbilityDefinition[]>([]);
   const [totalInventoryWeight, setTotalInventoryWeight] = useState(0);
   const [carryCapacity, setCarryCapacity] = useState(50);
@@ -561,6 +563,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [markerRouteLinks, setMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [selectedMarkerRouteIds, setSelectedMarkerRouteIds] = useState<string[]>([]);
   const [selectedMarkerRouteDirections, setSelectedMarkerRouteDirections] = useState<Record<string, MarkerRouteLink["start_direction"]>>({});
+  const [selectedMarkerRouteTravelModes, setSelectedMarkerRouteTravelModes] = useState<Record<string, string | null>>({});
   const [marketItemId, setMarketItemId] = useState<string | null>(null);
   const [marketPurchaseType, setMarketPurchaseType] = useState<MarkerMarketItem["purchase_type"]>("item");
   const [marketMountId, setMarketMountId] = useState<string | null>(null);
@@ -594,6 +597,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [routeJournalImageUrl, setRouteJournalImageUrl] = useState("");
   const [routeJournalSortOrder, setRouteJournalSortOrder] = useState("0");
   const [routeStoryDeckId, setRouteStoryDeckId] = useState<string | null>(null);
+  const [routeTravelModeId, setRouteTravelModeId] = useState<string | null>(null);
   const [routeLockType, setRouteLockType] = useState<MapRoute["lock_type"]>("public");
   const [routeLockMessage, setRouteLockMessage] = useState("");
   const [editingEvent, setEditingEvent] = useState<MapEvent | null>(null);
@@ -740,11 +744,17 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const isAdmin = actualIsAdmin && adminMapViewMode === "admin";
   const isAdminPlayerPreview = actualIsAdmin && adminMapViewMode === "player";
   const activeMountMultiplier = getActiveMountMultiplier(activeMount);
-  const activeMountImageUri = resolveMountImageUri(activeMount?.mount?.image_url);
+  const activeProgressTravelModeId = routeProgressRows.find((row) => row.route_id === route.id && row.is_current)?.active_travel_mode_id ?? null;
+  const activeTravelMode = hasActiveRoute
+    ? travelModes.find((mode) => mode.id === (activeProgressTravelModeId ?? route.travel_mode_id ?? null)) ?? null
+    : null;
+  const activeTravelMultiplier = activeTravelMode ? normalizeTravelModeMultiplier(activeTravelMode.progress_multiplier) : 1;
+  const activeJourneyMultiplier = activeTravelMode ? activeTravelMultiplier : activeMountMultiplier;
+  const activeJourneyImageUri = activeTravelMode ? resolveTravelModeImageUri(activeTravelMode.image_url) : resolveMountImageUri(activeMount?.mount?.image_url);
 
   useEffect(() => {
-    activeMountMultiplierRef.current = activeMountMultiplier;
-  }, [activeMountMultiplier]);
+    activeMountMultiplierRef.current = activeJourneyMultiplier;
+  }, [activeJourneyMultiplier]);
 
   useEffect(() => {
     if (!actualIsAdmin) {
@@ -1647,6 +1657,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       last_lng: telemetry?.last_lng ?? null,
       travel_direction: direction,
       is_current: true,
+      active_travel_mode_id: activeProgressTravelModeId ?? activeRoute.travel_mode_id ?? null,
     });
     const nextTotal = await incrementCharacterDistanceWalked(character.id, cleanMeters);
     if (nextTotal !== null) {
@@ -1669,7 +1680,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         current_y_percent: nextMapPosition.y,
       });
     }
-    const mountNote = activeMountMultiplierRef.current > 1 ? ` Mount x${activeMountMultiplierRef.current.toFixed(2)} applied.` : "";
+    const mountNote = activeMountMultiplierRef.current > 1 ? ` Travel x${activeMountMultiplierRef.current.toFixed(2)} applied.` : "";
     setGpsMessage(direction === "reverse" && nextDistance <= 0
       ? "You returned to the starting sign post."
       : `${Platform.OS === "web" ? "GPS" : "Pedometer"} counted ${Math.round(cleanMeters)}m.${mountNote} Route progress is saved.`);
@@ -1940,7 +1951,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
   async function loadMap() {
     setMapReady(false);
-    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks, loadedToasts, loadedStoryDecks] = await Promise.all([
+    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks, loadedToasts, loadedStoryDecks, loadedTravelModes] = await Promise.all([
       getMapRoutes(),
       getMapMarkers(),
       getMiniMaps(),
@@ -1954,6 +1965,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       getAllMarkerRouteLinks(),
       getGameToasts(),
       getStoryDecks(),
+      getTravelModes(),
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const [progressRows, playerMapState, markerUnlocks] = await Promise.all([
@@ -1983,6 +1995,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setCompletedEventIds(new Set(allEventCompletions.map((completion) => completion.event_id)));
     setPlayerUnlockedMarkerIds(new Set(markerUnlocks.map((unlock) => unlock.marker_id)));
     setRoutes(nextRoutes);
+    setTravelModes(loadedTravelModes);
     setPathDraft([]);
     setPathSegmentDraft([]);
     setMarkers(loadedMarkers);
@@ -2044,6 +2057,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setRouteJournalImageUrl(firstRoute.journal_image_url ?? "");
     setRouteJournalSortOrder(String(firstRoute.journal_sort_order ?? firstRoute.sort_order ?? 0));
     setRouteStoryDeckId(firstRoute.story_deck_id ?? null);
+    setRouteTravelModeId(firstRoute.travel_mode_id ?? null);
     setRouteLockType(firstRoute.lock_type ?? "public");
       setRouteLockMessage(firstRoute.lock_message ?? "");
       setPathDraft([]);
@@ -2230,6 +2244,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setRouteJournalImageUrl(nextRoute.journal_image_url ?? "");
     setRouteJournalSortOrder(String(nextRoute.journal_sort_order ?? nextRoute.sort_order ?? 0));
     setRouteStoryDeckId(nextRoute.story_deck_id ?? null);
+    setRouteTravelModeId(nextRoute.travel_mode_id ?? null);
     setRouteLockType(nextRoute.lock_type ?? "public");
     setRouteLockMessage(nextRoute.lock_message ?? "");
     setPathDraft([]);
@@ -2356,6 +2371,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               last_lng: next.longitude,
               travel_direction: routeDirectionRef.current,
               is_current: true,
+              active_travel_mode_id: activeProgressTravelModeId ?? activeRoute.travel_mode_id ?? null,
             });
             setMovementStatus({
               label: movementStateRef.current,
@@ -2630,7 +2646,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       if (activeMiniMapId && configured.mini_map_id !== activeMiniMapId) {
         throw new Error("Mini-map marker was saved without the open mini map id. Try again after reopening the mini map.");
       }
-      const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections);
+      const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections, selectedMarkerRouteTravelModes);
       setMarkerRouteLinks(links);
       setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== configured.id), ...links]);
       setMarkers((current) => [...current, configured]);
@@ -2888,6 +2904,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setMarkerRouteLinks(links);
       setSelectedMarkerRouteIds(links.map((link) => link.route_id));
       setSelectedMarkerRouteDirections(Object.fromEntries(links.map((link) => [link.route_id, link.start_direction ?? "forward"])));
+      setSelectedMarkerRouteTravelModes(Object.fromEntries(links.map((link) => [link.route_id, link.travel_mode_id ?? null])));
       setMarkerRouteCompletionCondition(links[0]?.completion_condition ?? "either");
       setMarkerDialogueIds((current) => {
         const next = new Set(current);
@@ -2963,6 +2980,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setMarkerRouteLinks(links);
       setSelectedMarkerRouteIds(links.map((link) => link.route_id));
       setSelectedMarkerRouteDirections(Object.fromEntries(links.map((link) => [link.route_id, link.start_direction ?? "forward"])));
+      setSelectedMarkerRouteTravelModes(Object.fromEntries(links.map((link) => [link.route_id, link.travel_mode_id ?? null])));
       setMarkerRouteCompletionCondition(links[0]?.completion_condition ?? "either");
       setAdminMessage(clickedPercent ? `Loaded ${marker.title}. Save it to place a copy in ${activeMiniMap.name}.` : `Loaded ${marker.title}. Tap the mini map to choose its new position, then save.`);
     } catch (error) {
@@ -3120,7 +3138,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         : selectedMarker;
       const updated = await updateMarkerSettings(moved.id, getMarkerSettingsPayload());
       await syncArenaMarker(updated);
-      const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections);
+      const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections, selectedMarkerRouteTravelModes);
       setMarkerRouteLinks(links);
       setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== updated.id), ...links]);
       setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
@@ -3523,6 +3541,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
     const routeId = firstIncompleteLink?.route_id ?? marker.linked_route_id;
     const linkedRoute = routes.find((item) => item.id === routeId);
+    const activeTravelModeId = firstIncompleteLink?.travel_mode_id ?? linkedRoute?.travel_mode_id ?? null;
 
     if (!linkedRoute) {
       setMarkerPanelMessage("This quest is linked to a walking path that could not be found.");
@@ -3553,12 +3572,14 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         last_lat: null,
         last_lng: null,
         source_marker_id: marker.id,
+        active_travel_mode_id: activeTravelModeId,
       });
       setRouteProgressRows((current) => {
         const rows = upsertRouteProgressRow(current, linkedRoute.id, 0).map((row) => ({
           ...row,
           is_current: row.route_id === linkedRoute.id,
           ...(row.route_id === linkedRoute.id ? { source_marker_id: marker.id, travel_direction: "forward" as const } : {}),
+          ...(row.route_id === linkedRoute.id ? { active_travel_mode_id: activeTravelModeId } : {}),
         }));
         return savedProgress ? rows.map((row) => (row.route_id === linkedRoute.id ? savedProgress : row)) : rows;
       });
@@ -3749,10 +3770,16 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           delete next[routeId];
           return next;
         });
+        setSelectedMarkerRouteTravelModes((modes) => {
+          const next = { ...modes };
+          delete next[routeId];
+          return next;
+        });
         return current.filter((id) => id !== routeId);
       }
 
       setSelectedMarkerRouteDirections((directions) => ({ ...directions, [routeId]: directions[routeId] ?? "forward" }));
+      setSelectedMarkerRouteTravelModes((modes) => ({ ...modes, [routeId]: modes[routeId] ?? null }));
       return [...current, routeId];
     });
   }
@@ -3761,9 +3788,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setSelectedMarkerRouteDirections((current) => ({ ...current, [routeId]: direction }));
   }
 
+  function setSignPostRouteTravelMode(routeId: string, travelModeId: string | null) {
+    setSelectedMarkerRouteTravelModes((current) => ({ ...current, [routeId]: travelModeId }));
+  }
+
   async function startPathFromSignPost(
     nextRoute: MapRoute,
-    routeLink?: Pick<MarkerRouteLink, "start_direction">,
+    routeLink?: Pick<MarkerRouteLink, "start_direction" | "travel_mode_id">,
     options?: { allowMapTransition?: boolean },
   ) {
     if (!isAdmin && isRouteLocked(nextRoute)) {
@@ -3781,6 +3812,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     const progress = await getRouteProgress(nextRoute.id);
     const hasExplicitStartDirection = Boolean(routeLink?.start_direction);
     const selectedDirection = routeLink?.start_direction ?? "forward";
+    const activeTravelModeId = routeLink?.travel_mode_id ?? nextRoute.travel_mode_id ?? null;
     const savedProgress = hasExplicitStartDirection
       ? selectedDirection === "reverse" ? 100 : 0
       : Number(progress?.progress_percent ?? 0);
@@ -3814,6 +3846,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               current_x_percent: nextPoint.x,
               current_y_percent: nextPoint.y,
               travel_direction: selectedDirection,
+              active_travel_mode_id: activeTravelModeId,
               is_current: true,
             }
           : { ...row, is_current: false }
@@ -3829,6 +3862,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       travel_direction: selectedDirection,
       is_current: true,
       source_marker_id: isCompletedNonStoryRoute ? null : progress?.source_marker_id ?? null,
+      active_travel_mode_id: activeTravelModeId,
     });
     if (isCompletedNonStoryRoute) {
       setCompletedRouteId(null);
@@ -3927,6 +3961,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       last_lng: null,
       travel_direction: nextDirection,
       is_current: true,
+      active_travel_mode_id: activeProgressTravelModeId ?? route.travel_mode_id ?? null,
     });
     setGpsMessage(
       nextDirection === "reverse"
@@ -4127,6 +4162,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       last_lng: null,
       travel_direction: routeDirectionRef.current,
       is_current: true,
+      active_travel_mode_id: activeProgressTravelModeId ?? targetRoute.travel_mode_id ?? null,
     });
     if (targetRoute.mini_map_id) {
       void savePlayerMapState({
@@ -4720,6 +4756,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         journal_image_url: routeJournalImageUrl.trim() || null,
         journal_sort_order: Number(routeJournalSortOrder) || Number(routeOrder) || 0,
         story_deck_id: routeStoryDeckId,
+        travel_mode_id: routeTravelModeId,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
         mini_map_id: activeMiniMap?.id ?? route.mini_map_id ?? null,
@@ -4758,6 +4795,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         journal_image_url: routeJournalImageUrl.trim() || null,
         journal_sort_order: Number(routeJournalSortOrder) || Number(routeOrder) || getNextRouteOrder(activeRouteScopeRoutes.length > 0 ? activeRouteScopeRoutes : routes),
         story_deck_id: routeStoryDeckId,
+        travel_mode_id: routeTravelModeId,
         is_active: true,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
@@ -5114,6 +5152,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       last_lng: null,
       travel_direction: routeDirectionRef.current,
       is_current: true,
+      active_travel_mode_id: activeProgressTravelModeId ?? targetRoute.travel_mode_id ?? null,
     });
 
     if (targetRoute.mini_map_id) {
@@ -6706,6 +6745,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setRouteJournalImageUrl("");
     setRouteJournalSortOrder(String(getNextRouteOrder(routeSource)));
     setRouteStoryDeckId(null);
+    setRouteTravelModeId(null);
     setRouteLockType("public");
     setRouteLockMessage("");
     setPathDraft([]);
@@ -6719,6 +6759,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setPathDraft(nextRoute.path_points);
     setPathSegmentDraft(normalizePathSegments(nextRoute.path_segments ?? [], nextRoute.path_points.length));
     setRouteStoryDeckId(nextRoute.story_deck_id ?? null);
+    setRouteTravelModeId(nextRoute.travel_mode_id ?? null);
     setAdminMessage(`Editing ${nextRoute.name}. Change the fields below, then Save Walking Path.`);
   }
 
@@ -7543,7 +7584,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             <Text style={styles.journeySecondaryText}>Abilities</Text>
           </Pressable>
           <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("mounts")}>
-            <Text style={styles.journeySecondaryText}>{activeMount ? `Mount x${activeMountMultiplier.toFixed(2)}` : "Mounts"}</Text>
+            <Text style={styles.journeySecondaryText}>{activeTravelMode ? `${activeTravelMode.name} x${activeTravelMultiplier.toFixed(2)}` : activeMount ? `Mount x${activeMountMultiplier.toFixed(2)}` : "Mounts"}</Text>
           </Pressable>
           <JourneyRecoveryAction disabled={isRecoveringPosition} onRecover={() => void recoverJourneyPosition()} />
         </View>
@@ -7691,7 +7732,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 markers={visibleMiniMapMarkers}
                 playerPosition={miniMapPlayerPosition}
                 playerName={character.name}
-                playerPortraitUrl={activeMountImageUri ?? character.portrait_url}
+                playerPortraitUrl={activeJourneyImageUri ?? character.portrait_url}
                 playerScale={Math.max(0.35, Math.min(2, Number(activePlayerMiniMap.player_avatar_scale) || 1))}
                 markerScale={Math.max(0.35, Math.min(2, Number(activePlayerMiniMap.marker_scale) || 1))}
                 markerDisplayStates={miniMapMarkerDisplayStates}
@@ -7720,7 +7761,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 markers={visibleMarkers}
                 playerPosition={playerPosition}
                 playerName={character.name}
-                playerPortraitUrl={activeMountImageUri ?? character.portrait_url}
+                playerPortraitUrl={activeJourneyImageUri ?? character.portrait_url}
                 playerPathVisibility={!route.mini_map_id ? playerPathVisibility : "visible"}
                 onSelectMarker={(marker) => void selectMarker(marker)}
               />
@@ -7861,7 +7902,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             markers={visibleMiniMapMarkers}
             playerPosition={miniMapPlayerPosition}
             playerName={character.name}
-            playerPortraitUrl={!isAdmin ? activeMountImageUri ?? character.portrait_url : character.portrait_url}
+            playerPortraitUrl={!isAdmin ? activeJourneyImageUri ?? character.portrait_url : character.portrait_url}
             playerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.player_avatar_scale) || 1))}
             markerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.marker_scale) || 1))}
             markerDisplayStates={!isAdmin || openAdminPanels.movementGraph || editorMode === "Movement Grid" ? miniMapMarkerDisplayStates : {}}
@@ -8168,13 +8209,16 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               enemyDefinitions={enemyDefinitions}
               npcDefinitions={npcDefinitions}
               routes={activeRouteScopeRoutes}
+              travelModes={travelModes}
               continuationRoutes={markerContinuationRoutes}
               storyRoutes={adminRoutes}
               allMarkers={markers}
               selectedMarkerRouteIds={selectedMarkerRouteIds}
               selectedMarkerRouteDirections={selectedMarkerRouteDirections}
+              selectedMarkerRouteTravelModes={selectedMarkerRouteTravelModes}
               toggleSignPostRoute={toggleSignPostRoute}
               setSignPostRouteDirection={setSignPostRouteDirection}
+              setSignPostRouteTravelMode={setSignPostRouteTravelMode}
               worldMarkers={adminWorldMarkers}
               storyScopeMarkers={adminStoryMarkers}
               miniMaps={adminMiniMaps}
@@ -8339,13 +8383,16 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 enemyDefinitions={enemyDefinitions}
                 npcDefinitions={npcDefinitions}
                 routes={activeRouteScopeRoutes}
+                travelModes={travelModes}
                 continuationRoutes={markerContinuationRoutes}
                 storyRoutes={adminRoutes}
                 allMarkers={markers}
                 selectedMarkerRouteIds={selectedMarkerRouteIds}
                 selectedMarkerRouteDirections={selectedMarkerRouteDirections}
+                selectedMarkerRouteTravelModes={selectedMarkerRouteTravelModes}
                 toggleSignPostRoute={toggleSignPostRoute}
                 setSignPostRouteDirection={setSignPostRouteDirection}
+                setSignPostRouteTravelMode={setSignPostRouteTravelMode}
                 worldMarkers={adminWorldMarkers}
                 storyScopeMarkers={adminStoryMarkers}
                 miniMaps={adminMiniMaps}
@@ -8427,6 +8474,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   helper="Optional. Plays when this walking path starts. Use trigger type Completing Path for end-of-path cards."
                   seasonNumber={selectedSeason}
                   chapterNumber={selectedChapter}
+                />
+                <TravelModePicker
+                  label="Route Travel Mode"
+                  helper="Optional. Changes the player map portrait and trail progress multiplier while this route is active."
+                  travelModes={travelModes}
+                  selectedId={routeTravelModeId}
+                  onSelect={setRouteTravelModeId}
                 />
                 <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
                 {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
@@ -8654,7 +8708,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         markers={visibleMarkers}
         playerPosition={playerPosition}
         playerName={character.name}
-        playerPortraitUrl={!isAdmin ? activeMountImageUri ?? character.portrait_url : character.portrait_url}
+        playerPortraitUrl={!isAdmin ? activeJourneyImageUri ?? character.portrait_url : character.portrait_url}
         playerPathVisibility={!route.mini_map_id ? playerPathVisibility : "visible"}
         onSelectMarker={(marker) => void selectMarker(marker)}
       />
@@ -9095,9 +9149,12 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                       </View>
                       <SignPostRouteDirectionEditor
                         routes={adminWorldRoutes}
+                        travelModes={travelModes}
                         selectedRouteIds={selectedMarkerRouteIds}
                         routeDirections={selectedMarkerRouteDirections}
+                        routeTravelModes={selectedMarkerRouteTravelModes}
                         onSelectDirection={setSignPostRouteDirection}
+                        onSelectTravelMode={setSignPostRouteTravelMode}
                       />
                       {selectedMarker ? (
                         <Text style={styles.debugLine}>Save Selected Marker Settings after changing linked paths.</Text>
@@ -9420,6 +9477,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 helper="Optional. Plays when this walking path starts. Use trigger type Completing Path for end-of-path cards."
                 seasonNumber={selectedSeason}
                 chapterNumber={selectedChapter}
+              />
+              <TravelModePicker
+                label="Route Travel Mode"
+                helper="Optional. Changes the player map portrait and trail progress multiplier while this route is active."
+                travelModes={travelModes}
+                selectedId={routeTravelModeId}
+                onSelect={setRouteTravelModeId}
               />
               <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
               {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
@@ -9803,14 +9867,20 @@ function LinkedMarkerPathNotice({
 
 function SignPostRouteDirectionEditor({
   routes,
+  travelModes,
   selectedRouteIds,
   routeDirections,
+  routeTravelModes,
   onSelectDirection,
+  onSelectTravelMode,
 }: {
   routes: MapRoute[];
+  travelModes: TravelMode[];
   selectedRouteIds: string[];
   routeDirections: Record<string, MarkerRouteLink["start_direction"]>;
+  routeTravelModes: Record<string, string | null>;
   onSelectDirection: (routeId: string, direction: MarkerRouteLink["start_direction"]) => void;
+  onSelectTravelMode: (routeId: string, travelModeId: string | null) => void;
 }) {
   const selectedRoutes = selectedRouteIds
     .map((routeId) => routes.find((route) => route.id === routeId))
@@ -9837,9 +9907,50 @@ function SignPostRouteDirectionEditor({
                 <Text style={styles.secondaryText}>Reverse 100% to 0%</Text>
               </Pressable>
             </View>
+            <TravelModePicker
+              label="Travel Mode Override"
+              helper="Optional. Overrides the route default only when this marker starts the path."
+              travelModes={travelModes}
+              selectedId={routeTravelModes[selectedRoute.id] ?? selectedRoute.travel_mode_id ?? null}
+              onSelect={(travelModeId) => onSelectTravelMode(selectedRoute.id, travelModeId)}
+            />
           </View>
         );
       })}
+    </View>
+  );
+}
+
+function TravelModePicker({
+  label,
+  helper,
+  travelModes,
+  selectedId,
+  onSelect,
+}: {
+  label: string;
+  helper?: string;
+  travelModes: TravelMode[];
+  selectedId: string | null;
+  onSelect: (travelModeId: string | null) => void;
+}) {
+  const activeTravelModes = travelModes.filter((mode) => mode.is_active);
+
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>{label}</Text>
+      {helper ? <Text style={styles.copy}>{helper}</Text> : null}
+      <View style={styles.storyRoutePicker}>
+        <Pressable style={[styles.routeChip, !selectedId && styles.routeChipActive]} onPress={() => onSelect(null)}>
+          <Text style={styles.routeChipText}>On foot / default</Text>
+        </Pressable>
+        {activeTravelModes.map((mode) => (
+          <Pressable key={mode.id} style={[styles.routeChip, selectedId === mode.id && styles.routeChipActive]} onPress={() => onSelect(mode.id)}>
+            <Text style={styles.routeChipText}>{mode.name} x{normalizeTravelModeMultiplier(mode.progress_multiplier).toFixed(2)}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {activeTravelModes.length === 0 ? <Text style={styles.debugLine}>No travel modes yet. Create one in Home / Inventory / Admin / Travel Modes.</Text> : null}
     </View>
   );
 }
@@ -9959,13 +10070,16 @@ function MiniMapMarkerAdminForm({
   enemyDefinitions,
   npcDefinitions,
   routes,
+  travelModes,
   continuationRoutes,
   storyRoutes,
   allMarkers,
   selectedMarkerRouteIds,
   selectedMarkerRouteDirections,
+  selectedMarkerRouteTravelModes,
   toggleSignPostRoute,
   setSignPostRouteDirection,
+  setSignPostRouteTravelMode,
   worldMarkers,
   storyScopeMarkers,
   miniMaps,
@@ -10129,13 +10243,16 @@ function MiniMapMarkerAdminForm({
   enemyDefinitions: EnemyDefinition[];
   npcDefinitions: NpcDefinition[];
   routes: MapRoute[];
+  travelModes: TravelMode[];
   continuationRoutes: MapRoute[];
   storyRoutes: MapRoute[];
   allMarkers: MapMarker[];
   selectedMarkerRouteIds: string[];
   selectedMarkerRouteDirections: Record<string, MarkerRouteLink["start_direction"]>;
+  selectedMarkerRouteTravelModes: Record<string, string | null>;
   toggleSignPostRoute: (routeId: string) => void;
   setSignPostRouteDirection: (routeId: string, direction: MarkerRouteLink["start_direction"]) => void;
+  setSignPostRouteTravelMode: (routeId: string, travelModeId: string | null) => void;
   worldMarkers: MapMarker[];
   storyScopeMarkers: MapMarker[];
   miniMaps: MiniMap[];
@@ -10355,9 +10472,12 @@ function MiniMapMarkerAdminForm({
               </View>
               <SignPostRouteDirectionEditor
                 routes={routes}
+                travelModes={travelModes}
                 selectedRouteIds={selectedMarkerRouteIds}
                 routeDirections={selectedMarkerRouteDirections}
+                routeTravelModes={selectedMarkerRouteTravelModes}
                 onSelectDirection={setSignPostRouteDirection}
+                onSelectTravelMode={setSignPostRouteTravelMode}
               />
               {routes.length === 0 ? <Text style={styles.copy}>No walking paths exist in this season/chapter yet.</Text> : null}
               {selectedMarker ? (

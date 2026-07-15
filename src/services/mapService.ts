@@ -925,7 +925,7 @@ export async function clearCurrentRoute() {
   }
 }
 
-export async function saveRouteProgress(routeId: string, values: Pick<RouteProgress, "distance_walked_meters" | "progress_percent" | "current_x_percent" | "current_y_percent" | "last_lat" | "last_lng"> & Partial<Pick<RouteProgress, "travel_direction" | "is_current" | "source_marker_id">>) {
+export async function saveRouteProgress(routeId: string, values: Pick<RouteProgress, "distance_walked_meters" | "progress_percent" | "current_x_percent" | "current_y_percent" | "last_lat" | "last_lng"> & Partial<Pick<RouteProgress, "travel_direction" | "is_current" | "source_marker_id" | "active_travel_mode_id">>) {
   const {
     data: { user },
     error: userError,
@@ -954,6 +954,7 @@ export async function saveRouteProgress(routeId: string, values: Pick<RouteProgr
         travel_direction: values.travel_direction ?? "forward",
         is_current: values.is_current ?? true,
         ...(values.source_marker_id !== undefined ? { source_marker_id: values.source_marker_id } : {}),
+        ...(values.active_travel_mode_id !== undefined ? { active_travel_mode_id: values.active_travel_mode_id } : {}),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id,route_id" },
@@ -1020,6 +1021,7 @@ export async function saveMarkerRouteLinks(
   chapterNumber = 1,
   completionCondition: MarkerRouteLink["completion_condition"] = "either",
   routeDirections: Record<string, MarkerRouteLink["start_direction"]> = {},
+  routeTravelModes: Record<string, string | null> = {},
 ) {
   const {
     data: { user },
@@ -1041,6 +1043,7 @@ export async function saveMarkerRouteLinks(
     sort_order: index + 1,
     starts_on_select: true,
     start_direction: routeDirections[routeId] ?? "forward",
+    travel_mode_id: routeTravelModes[routeId] ?? null,
     completion_condition: completionCondition,
     season_number: Number(seasonNumber) || 1,
     chapter_number: Number(chapterNumber) || 1,
@@ -1370,7 +1373,7 @@ export async function deleteMarkerMarketItem(marketItemId: string) {
   }
 }
 
-export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number"> & Partial<Pick<MapRoute, "mini_map_id" | "image_url" | "path_segments" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id">>) {
+export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number"> & Partial<Pick<MapRoute, "mini_map_id" | "image_url" | "path_segments" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id" | "travel_mode_id">>) {
   const { data, error } = await supabase
     .from("map_routes")
     .insert({
@@ -1387,7 +1390,7 @@ export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order"
   return data as MapRoute;
 }
 
-export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "path_segments" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number" | "mini_map_id" | "image_url" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id">>) {
+export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "path_segments" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number" | "mini_map_id" | "image_url" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id" | "travel_mode_id">>) {
   const { data, error } = await supabase
     .from("map_routes")
     .update({
