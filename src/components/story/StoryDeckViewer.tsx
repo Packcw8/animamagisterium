@@ -1,6 +1,6 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useMemo, useState } from "react";
-import { Image, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Image, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { resolveStoryDeckAssetUri, type StoryCard, type StoryDeck } from "../../services/storyDeckService";
 import { colors, fonts } from "../theme";
 
@@ -31,7 +31,7 @@ export function StoryDeckViewer({ deck, cards, onClose, onComplete }: StoryDeckV
 
   if (!activeCard) {
     return (
-      <View style={[styles.shell, { minHeight: height }]}>
+      <SafeAreaView style={[styles.shell, { height }]}>
         <View style={styles.panel}>
           <Text style={styles.kicker}>Story Deck</Text>
           <Text style={styles.title}>{deck.title}</Text>
@@ -40,12 +40,12 @@ export function StoryDeckViewer({ deck, cards, onClose, onComplete }: StoryDeckV
             <Text style={styles.primaryButtonText}>Close</Text>
           </Pressable>
         </View>
-      </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <View style={[styles.shell, { minHeight: height }]}>
+    <SafeAreaView style={[styles.shell, { height }]}>
       <View style={styles.panel}>
         <View style={styles.header}>
           <View style={styles.headerText}>
@@ -58,7 +58,7 @@ export function StoryDeckViewer({ deck, cards, onClose, onComplete }: StoryDeckV
         </View>
 
         <View style={styles.stage}>
-          {imageUri ? <Image source={{ uri: imageUri }} resizeMode="cover" style={styles.image} /> : <View style={styles.emptyImage} />}
+          {imageUri ? <Image source={{ uri: imageUri }} resizeMode="contain" style={styles.image} /> : <View style={styles.emptyImage} />}
           <View style={[styles.textBox, getTextPositionStyle(activeCard.text_position), getTextStyle(activeCard.text_style)]}>
             {activeCard.title ? <Text style={styles.cardTitle}>{activeCard.title}</Text> : null}
             <Text style={styles.body}>{activeCard.body}</Text>
@@ -79,7 +79,7 @@ export function StoryDeckViewer({ deck, cards, onClose, onComplete }: StoryDeckV
           </View>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -97,9 +97,10 @@ function getTextStyle(style: StoryCard["text_style"]) {
 
 const styles = StyleSheet.create({
   actions: {
+    flex: 1,
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: 10,
+    justifyContent: "flex-end",
   },
   body: {
     color: colors.text,
@@ -132,8 +133,10 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: "center",
     flexDirection: "row",
+    flexShrink: 0,
     justifyContent: "space-between",
     gap: 12,
+    minHeight: 56,
   },
   goldBox: {
     backgroundColor: "rgba(44, 30, 9, 0.82)",
@@ -148,6 +151,7 @@ const styles = StyleSheet.create({
   },
   image: {
     ...StyleSheet.absoluteFillObject,
+    backgroundColor: "#020202",
     height: "100%",
     width: "100%",
   },
@@ -163,8 +167,8 @@ const styles = StyleSheet.create({
   panel: {
     backgroundColor: "rgba(3, 5, 5, 0.96)",
     flex: 1,
-    gap: 14,
-    padding: 14,
+    gap: 10,
+    padding: 10,
   },
   primaryButton: {
     alignItems: "center",
@@ -172,7 +176,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     justifyContent: "center",
     minHeight: 48,
-    minWidth: 120,
+    minWidth: 112,
     paddingHorizontal: 16,
   },
   primaryButtonText: {
@@ -190,7 +194,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     justifyContent: "center",
     minHeight: 48,
-    minWidth: 96,
+    minWidth: 88,
     paddingHorizontal: 16,
   },
   secondaryButtonText: {
@@ -207,6 +211,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     flex: 1,
+    flexShrink: 1,
     minHeight: 0,
     overflow: "hidden",
     position: "relative",
@@ -219,6 +224,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     gap: 8,
     left: 0,
+    maxHeight: "52%",
     padding: 16,
     position: "absolute",
     right: 0,
