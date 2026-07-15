@@ -147,6 +147,7 @@ import {
   deleteTutorialStep,
   fallbackRoute,
   getCurrentRole,
+  getMarkerChapterVisibility,
   getMapMarkers,
   getMapRoutes,
   getMapChapters,
@@ -187,6 +188,7 @@ import {
   MapSeason,
   MarkerMarketItem,
   MarkerLegendItem,
+  MarkerChapterVisibility,
   MarkerRouteLink,
   MiniMapMarkerConnection,
   MiniMap,
@@ -202,6 +204,7 @@ import {
   DialogueNodeContentScope,
   saveMarkerMarketItem,
   saveMarkerLegendItem,
+  saveMarkerChapterVisibility,
   saveMarkerRouteLinks,
   saveMiniMapMarkerConnection,
   saveMiniMap,
@@ -533,6 +536,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [markerRepeatable, setMarkerRepeatable] = useState(false);
   const [markerRewardOnce, setMarkerRewardOnce] = useState(true);
   const [markerContentScope, setMarkerContentScope] = useState<MapMarker["content_scope"]>("chapter");
+  const [markerChapterVisibilityRows, setMarkerChapterVisibilityRows] = useState<MarkerChapterVisibility[]>([]);
+  const [markerChapterVisibilityKeys, setMarkerChapterVisibilityKeys] = useState<Set<string>>(new Set());
   const [markerLinkedRouteId, setMarkerLinkedRouteId] = useState<string | null>(null);
   const [markerLinkedRouteStartDirection, setMarkerLinkedRouteStartDirection] = useState<MapMarker["linked_route_start_direction"]>("forward");
   const [markerStartsRouteOnAccept, setMarkerStartsRouteOnAccept] = useState(false);
@@ -903,7 +908,17 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     () => markers.map((marker) => playerUnlockedMarkerIds.has(marker.id) ? { ...marker, is_unlocked: true } : marker),
     [markers, playerUnlockedMarkerIds],
   );
-  const chapterScopedMarkers = useMemo(() => effectiveMarkers.filter((marker) => isInSelectedChapter(marker, selectedSeason, selectedChapter)), [effectiveMarkers, selectedChapter, selectedSeason]);
+  const markerChapterVisibilityByMarkerId = useMemo(() => {
+    const rowsByMarker = new Map<string, MarkerChapterVisibility[]>();
+    markerChapterVisibilityRows.forEach((row) => {
+      rowsByMarker.set(row.marker_id, [...(rowsByMarker.get(row.marker_id) ?? []), row]);
+    });
+    return rowsByMarker;
+  }, [markerChapterVisibilityRows]);
+  const chapterScopedMarkers = useMemo(
+    () => effectiveMarkers.filter((marker) => isMarkerVisibleInChapter(marker, selectedSeason, selectedChapter)),
+    [effectiveMarkers, markerChapterVisibilityByMarkerId, selectedChapter, selectedSeason],
+  );
   const worldMarkers = useMemo(() => chapterScopedMarkers.filter((marker) => !marker.mini_map_id), [chapterScopedMarkers]);
   const miniMapMarkers = useMemo(() => chapterScopedMarkers.filter((marker) => marker.mini_map_id === activeMiniMap?.id), [chapterScopedMarkers, activeMiniMap?.id]);
   const miniMapMarkerConnectionNodeIds = useMemo(() => {
@@ -935,8 +950,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     ? { x: Number(activeMiniMapMovementMarker.x_percent), y: Number(activeMiniMapMovementMarker.y_percent) }
     : route.mini_map_id === activeMiniMap?.id ? playerPosition : savedMiniMapPosition ?? miniMapSpawnPosition;
   const currentInteractionPosition = activeMiniMap ? miniMapPlayerPosition : playerPosition;
-  const adminWorldMarkers = useMemo(() => worldMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, worldMarkers]);
-  const adminMiniMapMarkers = useMemo(() => miniMapMarkers.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [miniMapMarkers, selectedChapter, selectedSeason]);
+  const adminWorldMarkers = useMemo(() => worldMarkers, [worldMarkers]);
+  const adminMiniMapMarkers = useMemo(() => miniMapMarkers, [miniMapMarkers]);
   const adminMiniMapContentMarkers = useMemo(() => adminMiniMapMarkers.filter((marker) => marker.type !== "Movement"), [adminMiniMapMarkers]);
   const adminMiniMapMovementMarkers = useMemo(
     () => adminMiniMapMarkers.filter((marker) => marker.type === "Movement").sort((a, b) => getMovementMarkerStep(a) - getMovementMarkerStep(b) || a.title.localeCompare(b.title)),
@@ -1169,6 +1184,15 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
       return getMarkerAvailability({ marker, playerPosition: miniMapPlayerPosition, routeLinks: allMarkerRouteLinks, routeProgressRows: effectiveRouteProgressRows, inventoryItems }).visible;
     });
+
+  function isMarkerVisibleInChapter(marker: MapMarker, seasonNumber: number, chapterNumber: number) {
+    const visibilityRows = markerChapterVisibilityByMarkerId.get(marker.id);
+    if (visibilityRows && visibilityRows.length > 0) {
+      return visibilityRows.some((row) => Number(row.season_number) === seasonNumber && Number(row.chapter_number) === chapterNumber);
+    }
+
+    return isInSelectedChapter(marker, seasonNumber, chapterNumber);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -1952,7 +1976,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
   async function loadMap() {
     setMapReady(false);
-    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks, loadedToasts, loadedStoryDecks, loadedTravelModes] = await Promise.all([
+    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks, loadedToasts, loadedStoryDecks, loadedTravelModes, loadedMarkerChapterVisibility] = await Promise.all([
       getMapRoutes(),
       getMapMarkers(),
       getMiniMaps(),
@@ -1967,6 +1991,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       getGameToasts(),
       getStoryDecks(),
       getTravelModes(),
+      getMarkerChapterVisibility(),
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const [progressRows, playerMapState, markerUnlocks] = await Promise.all([
@@ -2011,6 +2036,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setAllMarkerRouteLinks(loadedMarkerRouteLinks);
     setAuthoredToasts(loadedToasts);
     setStoryDecks(loadedStoryDecks);
+    setMarkerChapterVisibilityRows(loadedMarkerChapterVisibility);
     const playerActiveSeason = Math.max(1, Math.round(Number(currentRoute?.season_number ?? playerMapState?.active_season_number ?? 1) || 1));
     const playerActiveChapter = Math.max(1, Math.round(Number(currentRoute?.chapter_number ?? playerMapState?.active_chapter_number ?? 1) || 1));
     if (loadedRole !== "admin") {
@@ -2643,6 +2669,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       const markerState = getMarkerPayloadState(activeMiniMapId);
       const created = await createMapMarker(buildCreateMarkerInput(markerState, clickedPercent));
       const configured = await updateMarkerSettings(created.id, getMarkerSettingsPayload("create"));
+      const savedChapterVisibility = await saveMarkerChapterVisibility(configured.id, markerChapterKeysToRows(markerChapterVisibilityKeys));
       await syncArenaMarker(configured);
       if (activeMiniMapId && configured.mini_map_id !== activeMiniMapId) {
         throw new Error("Mini-map marker was saved without the open mini map id. Try again after reopening the mini map.");
@@ -2650,6 +2677,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections, selectedMarkerRouteTravelModes);
       setMarkerRouteLinks(links);
       setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== configured.id), ...links]);
+      setMarkerChapterVisibilityRows((current) => [...current.filter((row) => row.marker_id !== configured.id), ...savedChapterVisibility]);
       setMarkers((current) => [...current, configured]);
       setSelectedMarker(configured);
       setDraftTitle("");
@@ -2660,6 +2688,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setMarkerJournalSortOrder("0");
       setMarkerStoryDeckId(null);
       setMarkerContentScope("chapter");
+      setMarkerChapterVisibilityKeys(new Set());
       setClickedPercent(null);
       setAdminMessage("Marker created.");
     } catch (error) {
@@ -2721,6 +2750,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerRepeatable(false);
     setMarkerRewardOnce(true);
     setMarkerContentScope("chapter");
+    setMarkerChapterVisibilityKeys(new Set());
     setMarkerLinkedRouteId(null);
     setMarkerLinkedRouteStartDirection("forward");
     setMarkerStartsRouteOnAccept(false);
@@ -2800,6 +2830,47 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
   function getMarkerSettingsPayload(mode: "create" | "update" = "update") {
     return buildMarkerSettingsPayload(getMarkerPayloadState(), mode);
+  }
+
+  function getChapterVisibilityKey(seasonNumber: number, chapterNumber: number) {
+    return `${Math.max(1, Math.round(Number(seasonNumber) || 1))}:${Math.max(1, Math.round(Number(chapterNumber) || 1))}`;
+  }
+
+  function markerChapterKeysToRows(keys: Set<string>) {
+    return Array.from(keys).map((key) => {
+      const [seasonNumber, chapterNumber] = key.split(":").map((value) => Math.max(1, Math.round(Number(value) || 1)));
+      return { season_number: seasonNumber, chapter_number: chapterNumber };
+    });
+  }
+
+  function getMarkerChapterKeys(markerId: string) {
+    return new Set(
+      markerChapterVisibilityRows
+        .filter((row) => row.marker_id === markerId)
+        .map((row) => getChapterVisibilityKey(row.season_number, row.chapter_number)),
+    );
+  }
+
+  function getMarkerChapterVisibilityLabel(marker: MapMarker) {
+    const rows = markerChapterVisibilityByMarkerId.get(marker.id);
+    if (rows && rows.length > 0) {
+      return `Specific chapters: ${rows.map((row) => `S${row.season_number}/C${row.chapter_number}`).join(", ")}`;
+    }
+
+    return marker.content_scope === "universal" ? "Universal marker" : `Season ${marker.season_number} / Chapter ${marker.chapter_number}`;
+  }
+
+  function toggleMarkerChapterVisibility(seasonNumber: number, chapterNumber: number) {
+    const key = getChapterVisibilityKey(seasonNumber, chapterNumber);
+    setMarkerChapterVisibilityKeys((current) => {
+      const next = new Set(current);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
   }
 
   function markerHasArrivalContent(marker: MapMarker) {
@@ -2927,6 +2998,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
     setMarkerContentScope(marker.content_scope ?? "chapter");
+    setMarkerChapterVisibilityKeys(getMarkerChapterKeys(marker.id));
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
     setMarkerLinkedRouteStartDirection(marker.linked_route_start_direction ?? "forward");
     setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
@@ -3037,6 +3109,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
     setMarkerContentScope(marker.content_scope ?? "chapter");
+    setMarkerChapterVisibilityKeys(getMarkerChapterKeys(marker.id));
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
     setMarkerLinkedRouteStartDirection(marker.linked_route_start_direction ?? "forward");
     setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
@@ -3204,10 +3277,12 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           })
         : selectedMarker;
       const updated = await updateMarkerSettings(moved.id, getMarkerSettingsPayload());
+      const savedChapterVisibility = await saveMarkerChapterVisibility(updated.id, markerChapterKeysToRows(markerChapterVisibilityKeys));
       await syncArenaMarker(updated);
       const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections, selectedMarkerRouteTravelModes);
       setMarkerRouteLinks(links);
       setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== updated.id), ...links]);
+      setMarkerChapterVisibilityRows((current) => [...current.filter((row) => row.marker_id !== updated.id), ...savedChapterVisibility]);
       setMarkers((current) => current.map((marker) => (marker.id === updated.id ? updated : marker)));
       setSelectedMarker(updated);
       setClickedPercent(null);
@@ -6988,6 +7063,28 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             <Text style={styles.debugLine}>Always shown</Text>
           </Pressable>
         </View>
+        <Text style={styles.selectedTitle}>Specific Chapter Availability</Text>
+        <Text style={styles.copy}>Optional. Select one or more chapters when this marker should appear in only certain chapters. Leave empty to use the scope above.</Text>
+        <View style={styles.storyRoutePicker}>
+          {availableChapters.map((chapter) => {
+            const key = getChapterVisibilityKey(chapter.season_number, chapter.chapter_number);
+            const selected = markerChapterVisibilityKeys.has(key);
+            return (
+              <Pressable
+                key={key}
+                style={[styles.routeChip, selected && styles.routeChipActive]}
+                onPress={() => toggleMarkerChapterVisibility(chapter.season_number, chapter.chapter_number)}
+              >
+                <Text style={styles.routeChipText}>{chapter.name}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        {markerChapterVisibilityKeys.size > 0 ? (
+          <Text style={styles.debugLine}>{markerChapterVisibilityKeys.size} chapter override{markerChapterVisibilityKeys.size === 1 ? "" : "s"} selected.</Text>
+        ) : (
+          <Text style={styles.debugLine}>No chapter override selected.</Text>
+        )}
       </View>
     );
   }
@@ -7171,7 +7268,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   rewardItemQuantity={choiceRewardItemQuantity}
                   legacyRewardItem={choiceRewardItem}
                   itemDefinitions={itemDefinitions}
-                  markers={effectiveMarkers.filter((marker) => isInSelectedChapter(marker, selectedSeason, selectedChapter))}
+                  markers={chapterScopedMarkers}
                   unlockMarkerId={choiceUnlockMarkerId}
                   updateTitle={choiceUpdateTitle}
                   updateBody={choiceUpdateBody}
@@ -8144,7 +8241,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   <View style={styles.markerTableInfo}>
                     <Text style={styles.markerName}>{marker.title}</Text>
                     <Text style={styles.copy}>{marker.type}{marker.type === "Movement" ? ` / Step ${getMovementMarkerStep(marker) || "-"}` : ""} / X {Number(marker.x_percent).toFixed(2)}% / Y {Number(marker.y_percent).toFixed(2)}%</Text>
-                    <Text style={styles.debugLine}>{marker.content_scope === "universal" ? "Universal marker" : `Season ${marker.season_number} / Chapter ${marker.chapter_number}`}</Text>
+                    <Text style={styles.debugLine}>{getMarkerChapterVisibilityLabel(marker)}</Text>
                     {marker.linked_route_id ? <Text style={styles.debugLine}>Linked path: {getRouteName(routes, marker.linked_route_id)} / Starts on accept: {marker.starts_route_on_accept ? "Yes" : "No"}</Text> : null}
                   </View>
                   <View style={styles.markerTableActions}>
@@ -8988,6 +9085,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               onMove={(marker) => void moveMarkerToClicked(marker)}
               canMove={Boolean(clickedPercent)}
               onDelete={(marker) => void removeMarker(marker)}
+              getScopeLabel={getMarkerChapterVisibilityLabel}
             />
           ) : null}
           {["World Markers", "Area/Town Markers", "Walking Paths"].includes(adminSection) ? (

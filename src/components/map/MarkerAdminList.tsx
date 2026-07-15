@@ -13,9 +13,10 @@ type MarkerAdminListProps = {
   onMove?: (marker: MapMarker) => void;
   onDelete: (marker: MapMarker) => void;
   canMove?: boolean;
+  getScopeLabel?: (marker: MapMarker) => string;
 };
 
-export function MarkerAdminList({ title, emptyText, markers, onEdit, onPreview, onMove, onDelete, canMove = false }: MarkerAdminListProps) {
+export function MarkerAdminList({ title, emptyText, markers, onEdit, onPreview, onMove, onDelete, canMove = false, getScopeLabel }: MarkerAdminListProps) {
   const [searchText, setSearchText] = useState("");
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const markerTypes = useMemo(() => Array.from(new Set(markers.map((marker) => marker.type))).sort(), [markers]);
@@ -62,7 +63,7 @@ export function MarkerAdminList({ title, emptyText, markers, onEdit, onPreview, 
               Interactable: {marker.is_interactable ? "true" : "false"} / Visible: {marker.is_active ? "true" : "false"} / Unlocked: {marker.is_unlocked ? "true" : "false"}
             </Text>
             <Text style={styles.debugLine}>
-              Scope: {marker.content_scope === "universal" ? "Universal" : `Season ${marker.season_number} / Chapter ${marker.chapter_number}`}
+              Scope: {getScopeLabel ? getScopeLabel(marker) : marker.content_scope === "universal" ? "Universal" : `Season ${marker.season_number} / Chapter ${marker.chapter_number}`}
             </Text>
             {warnings.map((warning) => <Text key={warning} style={styles.warningText}>{warning}</Text>)}
           </View>

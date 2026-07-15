@@ -930,6 +930,15 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  marker_chapter_visibility: {
+    id: string;
+    marker_id: string;
+    season_number: number;
+    chapter_number: number;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
   player_marker_unlocks: {
     id: string;
     user_id: string;

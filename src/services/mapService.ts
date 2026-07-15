@@ -14,6 +14,7 @@ export type PlayerMapState = Tables["player_map_state"];
 export type PlayerMarkerUnlock = Tables["player_marker_unlocks"];
 export type PlayerDialogueChoiceHistory = Tables["player_dialogue_choice_history"];
 export type MapMarker = Tables["map_markers"];
+export type MarkerChapterVisibility = Tables["marker_chapter_visibility"];
 export type MarkerLegendItem = Tables["marker_legend_items"];
 export type WorldMapSetting = Tables["world_map_settings"];
 export type MarkerRouteLink = Tables["marker_route_links"];
@@ -212,6 +213,64 @@ export async function getMapMarkers() {
   }
 
   return ((data ?? []) as MapMarker[]).filter((marker) => !isSeededMarker(marker));
+}
+
+export async function getMarkerChapterVisibility() {
+  const { data, error } = await supabase
+    .from("marker_chapter_visibility")
+    .select("*")
+    .order("season_number", { ascending: true })
+    .order("chapter_number", { ascending: true });
+
+  if (error) {
+    console.warn("[map] marker chapter visibility unavailable", error.message);
+    return [];
+  }
+
+  return (data ?? []) as MarkerChapterVisibility[];
+}
+
+export async function saveMarkerChapterVisibility(markerId: string, chapters: Array<Pick<MarkerChapterVisibility, "season_number" | "chapter_number">>) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const normalized = Array.from(
+    new Map(
+      chapters
+        .map((chapter) => ({
+          marker_id: markerId,
+          season_number: Math.max(1, Math.round(Number(chapter.season_number) || 1)),
+          chapter_number: Math.max(1, Math.round(Number(chapter.chapter_number) || 1)),
+          created_by: user?.id ?? null,
+          updated_at: new Date().toISOString(),
+        }))
+        .map((chapter) => [`${chapter.season_number}:${chapter.chapter_number}`, chapter]),
+    ).values(),
+  );
+
+  const { error: deleteError } = await supabase.from("marker_chapter_visibility").delete().eq("marker_id", markerId);
+
+  if (deleteError) {
+    throw deleteError;
+  }
+
+  if (normalized.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("marker_chapter_visibility")
+    .insert(normalized)
+    .select()
+    .order("season_number", { ascending: true })
+    .order("chapter_number", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as MarkerChapterVisibility[];
 }
 
 export async function getMapSeasons() {
