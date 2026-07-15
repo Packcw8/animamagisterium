@@ -62,6 +62,7 @@ import { WalkingPathAdminPanel } from "../components/map/WalkingPathAdminPanel";
 import { ProgressBar } from "../components/ProgressBar";
 import { CharacterAbilitiesSheet } from "../components/player/CharacterAbilitiesSheet";
 import { CharacterInventorySheet } from "../components/player/CharacterInventorySheet";
+import { CharacterMountsSheet } from "../components/player/CharacterMountsSheet";
 import { StoryDeckViewer } from "../components/story/StoryDeckViewer";
 import type { PlayerAbilityTab } from "../components/home/PlayerAbilitiesPanel";
 import type { PlayerInventoryTab } from "../components/home/PlayerInventoryPanel";
@@ -72,6 +73,7 @@ import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, g
 import { EnemyDefinition, getEnemies, getNpcs, NpcDefinition, type EnemyWithLoadout } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
 import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, unequipInventorySlot } from "../services/inventoryService";
+import { equipMount, getActiveMountMultiplier, getMountDefinitions, getPlayerMounts, resolveMountImageUri, unmountCharacter, type MountDefinition, type PlayerMountWithDefinition } from "../services/mountService";
 import { isNativePedometerAvailable, requestPedometerPermission, startPedometerDistancePolling, type PedometerSubscription } from "../services/nativePedometerService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
@@ -386,10 +388,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
+  const [mountDefinitions, setMountDefinitions] = useState<MountDefinition[]>([]);
+  const [playerMounts, setPlayerMounts] = useState<PlayerMountWithDefinition[]>([]);
+  const [activeMount, setActiveMount] = useState<PlayerMountWithDefinition | null>(null);
   const [knownAbilities, setKnownAbilities] = useState<AbilityDefinition[]>([]);
   const [totalInventoryWeight, setTotalInventoryWeight] = useState(0);
   const [carryCapacity, setCarryCapacity] = useState(50);
-  const [activeMapSheet, setActiveMapSheet] = useState<"inventory" | "abilities" | null>(null);
+  const [activeMapSheet, setActiveMapSheet] = useState<"inventory" | "abilities" | "mounts" | null>(null);
   const [mapInventoryTab, setMapInventoryTab] = useState<PlayerInventoryTab>("Consumables");
   const [selectedMapInventoryItemId, setSelectedMapInventoryItemId] = useState<string | null>(null);
   const [mapAbilityTab, setMapAbilityTab] = useState<PlayerAbilityTab>("Attack");
@@ -557,6 +562,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [selectedMarkerRouteIds, setSelectedMarkerRouteIds] = useState<string[]>([]);
   const [selectedMarkerRouteDirections, setSelectedMarkerRouteDirections] = useState<Record<string, MarkerRouteLink["start_direction"]>>({});
   const [marketItemId, setMarketItemId] = useState<string | null>(null);
+  const [marketPurchaseType, setMarketPurchaseType] = useState<MarkerMarketItem["purchase_type"]>("item");
+  const [marketMountId, setMarketMountId] = useState<string | null>(null);
   const [marketBuyPrice, setMarketBuyPrice] = useState("0");
   const [marketSellPrice, setMarketSellPrice] = useState("0");
   const [marketStock, setMarketStock] = useState("0");
@@ -718,6 +725,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const pedometerSubscriptionRef = useRef<PedometerSubscription | null>(null);
   const nativePedometerMetersRef = useRef(0);
   const distanceWalkedRef = useRef(0);
+  const activeMountMultiplierRef = useRef(1);
   const routeRef = useRef(fallbackRoute);
   const routeDirectionRef = useRef<"forward" | "reverse">("forward");
   const activeBattleRouteRef = useRef<MapRoute | null>(null);
@@ -731,6 +739,12 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const actualIsAdmin = role === "admin";
   const isAdmin = actualIsAdmin && adminMapViewMode === "admin";
   const isAdminPlayerPreview = actualIsAdmin && adminMapViewMode === "player";
+  const activeMountMultiplier = getActiveMountMultiplier(activeMount);
+  const activeMountImageUri = resolveMountImageUri(activeMount?.mount?.image_url);
+
+  useEffect(() => {
+    activeMountMultiplierRef.current = activeMountMultiplier;
+  }, [activeMountMultiplier]);
 
   useEffect(() => {
     if (!actualIsAdmin) {
@@ -1277,6 +1291,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     });
     void loadCombatLoadout();
     void loadInventory();
+    void loadMounts();
     void loadEnemies();
 
     return () => {
@@ -1293,6 +1308,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   useEffect(() => {
     void loadCombatLoadout();
     void loadInventory();
+    void loadMounts();
   }, [character.id, character.attributes]);
 
   async function loadCombatLoadout() {
@@ -1611,9 +1627,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
     const activeRoute = routeRef.current;
     const direction = routeDirectionRef.current;
+    const progressMeters = cleanMeters * activeMountMultiplierRef.current;
     const nextDistance = direction === "reverse"
-      ? Math.max(0, distanceWalkedRef.current - cleanMeters)
-      : Math.min(activeRoute.distance_required_meters, distanceWalkedRef.current + cleanMeters);
+      ? Math.max(0, distanceWalkedRef.current - progressMeters)
+      : Math.min(activeRoute.distance_required_meters, distanceWalkedRef.current + progressMeters);
     const nextProgress = Math.min(100, (nextDistance / activeRoute.distance_required_meters) * 100);
     const nextMapPosition = getPointOnRoute(activeRoute.path_points, nextProgress);
 
@@ -1652,9 +1669,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         current_y_percent: nextMapPosition.y,
       });
     }
+    const mountNote = activeMountMultiplierRef.current > 1 ? ` Mount x${activeMountMultiplierRef.current.toFixed(2)} applied.` : "";
     setGpsMessage(direction === "reverse" && nextDistance <= 0
       ? "You returned to the starting sign post."
-      : `${Platform.OS === "web" ? "GPS" : "Pedometer"} counted ${Math.round(cleanMeters)}m. Route progress is saved.`);
+      : `${Platform.OS === "web" ? "GPS" : "Pedometer"} counted ${Math.round(cleanMeters)}m.${mountNote} Route progress is saved.`);
   }
 
   async function createSeasonFromAdmin() {
@@ -3115,27 +3133,30 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   }
 
   async function saveMarketItem() {
-    if (!selectedMarker || !marketItemId) {
-      setAdminMessage("Select a marker and item first.");
+    const savingMount = marketPurchaseType === "mount";
+    if (!selectedMarker || (!savingMount && !marketItemId) || (savingMount && !marketMountId)) {
+      setAdminMessage(savingMount ? "Select a marker and mount first." : "Select a marker and item first.");
       return;
     }
 
     try {
       const saved = await saveMarkerMarketItem({
         marker_id: selectedMarker.id,
-        item_id: marketItemId,
+        item_id: savingMount ? null : marketItemId,
+        mount_id: savingMount ? marketMountId : null,
+        purchase_type: marketPurchaseType,
         buy_price: Number(marketBuyPrice) || 0,
-        sell_price: Number(marketSellPrice) || 0,
+        sell_price: savingMount ? 0 : Number(marketSellPrice) || 0,
         stock_quantity: marketUnlimited ? null : Number(marketStock) || 0,
         unlimited_stock: marketUnlimited,
-        listing_mode: marketListingMode,
+        listing_mode: savingMount ? "buy_only" : marketListingMode,
         season_number: selectedSeason,
         chapter_number: selectedChapter,
       });
-      setMarkerMarketItems((current) => [saved, ...current.filter((item) => item.id !== saved.id && item.item_id !== saved.item_id)]);
-      setAdminMessage("Market item saved.");
+      setMarkerMarketItems((current) => [saved, ...current.filter((item) => item.id !== saved.id && item.item_id !== saved.item_id && item.mount_id !== saved.mount_id)]);
+      setAdminMessage(savingMount ? "Market mount saved." : "Market item saved.");
     } catch (error) {
-      setAdminMessage(getErrorMessage(error, "Unable to save market item."));
+      setAdminMessage(getErrorMessage(error, savingMount ? "Unable to save market mount." : "Unable to save market item."));
     }
   }
 
@@ -3212,12 +3233,14 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   async function buyFromMarker(marketItem: MarkerMarketItem) {
     try {
       const result = await buyMarketItem(character, marketItem);
+      const purchasedMount = marketItem.purchase_type === "mount" ? mountDefinitions.find((mount) => mount.id === marketItem.mount_id) ?? null : null;
+      const purchasedLabel = purchasedMount?.name ?? getItemName(itemDefinitions, marketItem.item_id);
       onCharacterUpdated({ ...character, gold: result.gold });
-      setMarkerPanelMessage("Item purchased.");
+      setMarkerPanelMessage(purchasedMount ? "Mount purchased." : "Item purchased.");
       showAuthoredToast("receiving_reward", {
-        title: "Item Added",
-        message: "Your purchase was added to Inventory.",
-        rewards: [{ label: getItemName(itemDefinitions, marketItem.item_id) }],
+        title: purchasedMount ? "Mount Acquired" : "Item Added",
+        message: purchasedMount ? "Your mount was added to your stable." : "Your purchase was added to Inventory.",
+        rewards: [{ label: purchasedLabel }],
         actionLabel: "OK",
       }, {
         triggerKey: marketItem.marker_id,
@@ -3225,6 +3248,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         chapterNumber: selectedMarker?.chapter_number,
       });
       await loadInventory();
+      await loadMounts();
       if (selectedMarker) {
         await loadMarkerMarketState(selectedMarker.id);
       }
@@ -3970,6 +3994,28 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
   }
 
+  async function equipMapMount(mountId: string) {
+    try {
+      const equipped = await equipMount(character.id, mountId);
+      setActiveMount(equipped);
+      await loadMounts();
+      setMapItemMessage(`${equipped.mount?.name ?? "Mount"} equipped. Trail progress x${getActiveMountMultiplier(equipped).toFixed(2)}.`);
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to equip mount."));
+    }
+  }
+
+  async function unmountMapMount() {
+    try {
+      await unmountCharacter(character.id);
+      setActiveMount(null);
+      await loadMounts();
+      setMapItemMessage("You are traveling on foot.");
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to unmount."));
+    }
+  }
+
   async function dropMapItem(entry: InventoryItem) {
     try {
       await consumeInventoryItem(entry, 1);
@@ -4498,6 +4544,20 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     openMiniMap(miniMap, { spawnPosition: getExitTargetMiniMapSpawnPosition(marker, miniMap.id) });
     await maybeClearActiveRouteForMarker(marker);
     await maybeStartMarkerContinuationRoute(marker);
+  }
+
+  async function loadMounts() {
+    try {
+      const [definitions, ownedMounts] = await Promise.all([
+        getMountDefinitions(),
+        getPlayerMounts(character.id),
+      ]);
+      setMountDefinitions(definitions);
+      setPlayerMounts(ownedMounts);
+      setActiveMount(ownedMounts.find((entry) => entry.is_equipped) ?? null);
+    } catch (error) {
+      setBattleLog((current) => [getErrorMessage(error, "Unable to load mounts."), ...current].slice(0, 8));
+    }
   }
 
   async function maybeClearActiveRouteForMarker(marker: MapMarker) {
@@ -7198,6 +7258,19 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     );
   }
 
+  if (activeMapSheet === "mounts") {
+    return (
+      <CharacterMountsSheet
+        mounts={playerMounts}
+        activeMount={activeMount}
+        message={mapItemMessage}
+        onClose={() => setActiveMapSheet(null)}
+        onEquip={(mountId) => void equipMapMount(mountId)}
+        onUnmount={() => void unmountMapMount()}
+      />
+    );
+  }
+
   if (selectedMarker?.type === "Puzzle" && selectedPuzzle && (previewMarkerScene || (!isAdmin && canUseSelectedMarker && !selectedMarkerLocked))) {
     return (
       <>
@@ -7228,6 +7301,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           routeProgressRows={effectiveRouteProgressRows}
           inventoryItems={inventoryItems}
           itemDefinitions={itemDefinitions}
+          mountDefinitions={mountDefinitions}
           markerHasDialogue={markerDialogueIds.has(selectedMarker.id) || Boolean(selectedMarker.dialogue_event_id)}
           arena={selectedArena}
           message={markerPanelMessage}
@@ -7468,6 +7542,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("abilities")}>
             <Text style={styles.journeySecondaryText}>Abilities</Text>
           </Pressable>
+          <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("mounts")}>
+            <Text style={styles.journeySecondaryText}>{activeMount ? `Mount x${activeMountMultiplier.toFixed(2)}` : "Mounts"}</Text>
+          </Pressable>
           <JourneyRecoveryAction disabled={isRecoveringPosition} onRecover={() => void recoverJourneyPosition()} />
         </View>
 
@@ -7614,7 +7691,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 markers={visibleMiniMapMarkers}
                 playerPosition={miniMapPlayerPosition}
                 playerName={character.name}
-                playerPortraitUrl={character.portrait_url}
+                playerPortraitUrl={activeMountImageUri ?? character.portrait_url}
                 playerScale={Math.max(0.35, Math.min(2, Number(activePlayerMiniMap.player_avatar_scale) || 1))}
                 markerScale={Math.max(0.35, Math.min(2, Number(activePlayerMiniMap.marker_scale) || 1))}
                 markerDisplayStates={miniMapMarkerDisplayStates}
@@ -7643,7 +7720,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 markers={visibleMarkers}
                 playerPosition={playerPosition}
                 playerName={character.name}
-                playerPortraitUrl={character.portrait_url}
+                playerPortraitUrl={activeMountImageUri ?? character.portrait_url}
                 playerPathVisibility={!route.mini_map_id ? playerPathVisibility : "visible"}
                 onSelectMarker={(marker) => void selectMarker(marker)}
               />
@@ -7784,7 +7861,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             markers={visibleMiniMapMarkers}
             playerPosition={miniMapPlayerPosition}
             playerName={character.name}
-            playerPortraitUrl={character.portrait_url}
+            playerPortraitUrl={!isAdmin ? activeMountImageUri ?? character.portrait_url : character.portrait_url}
             playerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.player_avatar_scale) || 1))}
             markerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.marker_scale) || 1))}
             markerDisplayStates={!isAdmin || openAdminPanels.movementGraph || editorMode === "Movement Grid" ? miniMapMarkerDisplayStates : {}}
@@ -8110,9 +8187,14 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               markerExitTargetSpawnMarkerId={markerExitTargetSpawnMarkerId}
               setMarkerExitTargetSpawnMarkerId={setMarkerExitTargetSpawnMarkerId}
               itemDefinitions={itemDefinitions}
+              mountDefinitions={mountDefinitions}
               markerMarketItems={markerMarketItems}
               marketItemId={marketItemId}
               setMarketItemId={setMarketItemId}
+              marketPurchaseType={marketPurchaseType}
+              setMarketPurchaseType={setMarketPurchaseType}
+              marketMountId={marketMountId}
+              setMarketMountId={setMarketMountId}
               marketBuyPrice={marketBuyPrice}
               setMarketBuyPrice={setMarketBuyPrice}
               marketSellPrice={marketSellPrice}
@@ -8276,9 +8358,14 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 markerExitTargetSpawnMarkerId={markerExitTargetSpawnMarkerId}
                 setMarkerExitTargetSpawnMarkerId={setMarkerExitTargetSpawnMarkerId}
                 itemDefinitions={itemDefinitions}
+                mountDefinitions={mountDefinitions}
                 markerMarketItems={[]}
                 marketItemId={marketItemId}
                 setMarketItemId={setMarketItemId}
+                marketPurchaseType={marketPurchaseType}
+                setMarketPurchaseType={setMarketPurchaseType}
+                marketMountId={marketMountId}
+                setMarketMountId={setMarketMountId}
                 marketBuyPrice={marketBuyPrice}
                 setMarketBuyPrice={setMarketBuyPrice}
                 marketSellPrice={marketSellPrice}
@@ -8567,7 +8654,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         markers={visibleMarkers}
         playerPosition={playerPosition}
         playerName={character.name}
-        playerPortraitUrl={character.portrait_url}
+        playerPortraitUrl={!isAdmin ? activeMountImageUri ?? character.portrait_url : character.portrait_url}
         playerPathVisibility={!route.mini_map_id ? playerPathVisibility : "visible"}
         onSelectMarker={(marker) => void selectMarker(marker)}
       />
@@ -9228,20 +9315,50 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   <TextInput value={markerShopBackground} onChangeText={setMarkerShopBackground} placeholder="Shop background image URL" placeholderTextColor={colors.muted} style={styles.input} />
                   <AdminImageUploadButton folder="shop-backgrounds" onUploaded={setMarkerShopBackground} onMessage={setAdminMessage} />
                   <TextInput value={markerInteractionRadius} onChangeText={setMarkerInteractionRadius} placeholder="Interaction radius percent, example 4" placeholderTextColor={colors.muted} style={styles.input} />
-                  <ItemPicker label="Market item" items={itemDefinitions} selectedId={marketItemId} onSelect={setMarketItemId} />
-                  <MarketListingModePicker value={marketListingMode} onSelect={setMarketListingMode} />
+                  <View style={styles.storyEditor}>
+                    <Text style={styles.selectedTitle}>Market Listing Type</Text>
+                    <View style={styles.storyRoutePicker}>
+                      <Pressable style={[styles.routeChip, marketPurchaseType === "item" && styles.routeChipActive]} onPress={() => setMarketPurchaseType("item")}>
+                        <Text style={styles.routeChipText}>Item</Text>
+                      </Pressable>
+                      <Pressable style={[styles.routeChip, marketPurchaseType === "mount" && styles.routeChipActive]} onPress={() => setMarketPurchaseType("mount")}>
+                        <Text style={styles.routeChipText}>Mount</Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                  {marketPurchaseType === "mount" ? (
+                    <View style={styles.storyEditor}>
+                      <Text style={styles.selectedTitle}>Market Mount</Text>
+                      <View style={styles.storyRoutePicker}>
+                        <Pressable style={[styles.routeChip, marketMountId === null && styles.routeChipActive]} onPress={() => setMarketMountId(null)}>
+                          <Text style={styles.routeChipText}>None</Text>
+                        </Pressable>
+                        {mountDefinitions.map((mount) => (
+                          <Pressable key={mount.id} style={[styles.routeChip, marketMountId === mount.id && styles.routeChipActive]} onPress={() => setMarketMountId(mount.id)}>
+                            <Text style={styles.routeChipText}>{mount.name} x{Number(mount.progress_multiplier).toFixed(2)}</Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                      {mountDefinitions.length === 0 ? <Text style={styles.debugLine}>No mount definitions found. Seed or create mount_definitions first.</Text> : null}
+                    </View>
+                  ) : (
+                    <>
+                      <ItemPicker label="Market item" items={itemDefinitions} selectedId={marketItemId} onSelect={setMarketItemId} />
+                      <MarketListingModePicker value={marketListingMode} onSelect={setMarketListingMode} />
+                    </>
+                  )}
                   <TextInput value={marketBuyPrice} onChangeText={setMarketBuyPrice} placeholder="Buy price" placeholderTextColor={colors.muted} style={styles.input} />
-                  <TextInput value={marketSellPrice} onChangeText={setMarketSellPrice} placeholder="Sell price" placeholderTextColor={colors.muted} style={styles.input} />
+                  {marketPurchaseType === "item" ? <TextInput value={marketSellPrice} onChangeText={setMarketSellPrice} placeholder="Sell price" placeholderTextColor={colors.muted} style={styles.input} /> : null}
                   <TextInput value={marketStock} onChangeText={setMarketStock} placeholder="Stock quantity" placeholderTextColor={colors.muted} style={styles.input} />
                   <Pressable style={[styles.secondaryButton, marketUnlimited && styles.typeSelected]} onPress={() => setMarketUnlimited((value) => !value)}>
                     <Text style={styles.secondaryText}>Unlimited Stock: {marketUnlimited ? "Yes" : "No"}</Text>
                   </Pressable>
-                  <Pressable style={styles.primaryButton} onPress={() => void saveMarketItem()} disabled={!selectedMarker || !marketItemId}>
-                    <Text style={styles.primaryText}>Save Market Item</Text>
+                  <Pressable style={styles.primaryButton} onPress={() => void saveMarketItem()} disabled={!selectedMarker || (marketPurchaseType === "item" ? !marketItemId : !marketMountId)}>
+                    <Text style={styles.primaryText}>{marketPurchaseType === "mount" ? "Save Market Mount" : "Save Market Item"}</Text>
                   </Pressable>
                   {markerMarketItems.map((marketItem) => (
                     <View key={marketItem.id} style={styles.storyCard}>
-                      <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
+                      <Text style={styles.markerName}>{marketItem.purchase_type === "mount" ? getMountName(mountDefinitions, marketItem.mount_id) : getItemName(itemDefinitions, marketItem.item_id)}</Text>
                       <Text style={styles.copy}>{formatMarketListingMode(marketItem.listing_mode)} / Buy {marketItem.buy_price} / Sell {marketItem.sell_price} / {marketItem.unlimited_stock ? "Unlimited" : `Stock ${marketItem.stock_quantity ?? 0}`}</Text>
                       <Pressable style={styles.secondaryButton} onPress={() => void removeMarketItem(marketItem.id)}>
                         <Text style={styles.dangerText}>Remove Item</Text>
@@ -9861,9 +9978,14 @@ function MiniMapMarkerAdminForm({
   markerExitTargetSpawnMarkerId,
   setMarkerExitTargetSpawnMarkerId,
   itemDefinitions,
+  mountDefinitions,
   markerMarketItems,
   marketItemId,
   setMarketItemId,
+  marketPurchaseType,
+  setMarketPurchaseType,
+  marketMountId,
+  setMarketMountId,
   marketBuyPrice,
   setMarketBuyPrice,
   marketSellPrice,
@@ -10026,9 +10148,14 @@ function MiniMapMarkerAdminForm({
   markerExitTargetSpawnMarkerId: string | null;
   setMarkerExitTargetSpawnMarkerId: (value: string | null) => void;
   itemDefinitions: ItemDefinition[];
+  mountDefinitions: MountDefinition[];
   markerMarketItems: MarkerMarketItem[];
   marketItemId: string | null;
   setMarketItemId: (value: string | null) => void;
+  marketPurchaseType: MarkerMarketItem["purchase_type"];
+  setMarketPurchaseType: (value: MarkerMarketItem["purchase_type"]) => void;
+  marketMountId: string | null;
+  setMarketMountId: (value: string | null) => void;
   marketBuyPrice: string;
   setMarketBuyPrice: (value: string) => void;
   marketSellPrice: string;
@@ -10466,22 +10593,52 @@ function MiniMapMarkerAdminForm({
           <AdminImageUploadButton folder="mini-shop-images" onUploaded={setMarkerShopImage} onMessage={() => undefined} />
           <TextInput value={markerShopBackground} onChangeText={setMarkerShopBackground} placeholder="Shop background image URL" placeholderTextColor={colors.muted} style={styles.input} />
           <AdminImageUploadButton folder="mini-shop-backgrounds" onUploaded={setMarkerShopBackground} onMessage={() => undefined} />
-          <ItemPicker label="Market item" items={itemDefinitions} selectedId={marketItemId} onSelect={setMarketItemId} />
-          <MarketListingModePicker value={marketListingMode} onSelect={setMarketListingMode} />
+          <View style={styles.storyEditor}>
+            <Text style={styles.selectedTitle}>Market Listing Type</Text>
+            <View style={styles.storyRoutePicker}>
+              <Pressable style={[styles.routeChip, marketPurchaseType === "item" && styles.routeChipActive]} onPress={() => setMarketPurchaseType("item")}>
+                <Text style={styles.routeChipText}>Item</Text>
+              </Pressable>
+              <Pressable style={[styles.routeChip, marketPurchaseType === "mount" && styles.routeChipActive]} onPress={() => setMarketPurchaseType("mount")}>
+                <Text style={styles.routeChipText}>Mount</Text>
+              </Pressable>
+            </View>
+          </View>
+          {marketPurchaseType === "mount" ? (
+            <View style={styles.storyEditor}>
+              <Text style={styles.selectedTitle}>Market Mount</Text>
+              <View style={styles.storyRoutePicker}>
+                <Pressable style={[styles.routeChip, marketMountId === null && styles.routeChipActive]} onPress={() => setMarketMountId(null)}>
+                  <Text style={styles.routeChipText}>None</Text>
+                </Pressable>
+                {mountDefinitions.map((mount) => (
+                  <Pressable key={mount.id} style={[styles.routeChip, marketMountId === mount.id && styles.routeChipActive]} onPress={() => setMarketMountId(mount.id)}>
+                    <Text style={styles.routeChipText}>{mount.name} x{Number(mount.progress_multiplier).toFixed(2)}</Text>
+                  </Pressable>
+                ))}
+              </View>
+              {mountDefinitions.length === 0 ? <Text style={styles.debugLine}>No mount definitions found. Seed or create mount_definitions first.</Text> : null}
+            </View>
+          ) : (
+            <>
+              <ItemPicker label="Market item" items={itemDefinitions} selectedId={marketItemId} onSelect={setMarketItemId} />
+              <MarketListingModePicker value={marketListingMode} onSelect={setMarketListingMode} />
+            </>
+          )}
           <TextInput value={marketBuyPrice} onChangeText={setMarketBuyPrice} placeholder="Buy price" placeholderTextColor={colors.muted} style={styles.input} />
-          <TextInput value={marketSellPrice} onChangeText={setMarketSellPrice} placeholder="Sell price" placeholderTextColor={colors.muted} style={styles.input} />
+          {marketPurchaseType === "item" ? <TextInput value={marketSellPrice} onChangeText={setMarketSellPrice} placeholder="Sell price" placeholderTextColor={colors.muted} style={styles.input} /> : null}
           <TextInput value={marketStock} onChangeText={setMarketStock} placeholder="Stock quantity" placeholderTextColor={colors.muted} style={styles.input} />
           <Pressable style={[styles.secondaryButton, marketUnlimited && styles.typeSelected]} onPress={() => setMarketUnlimited((value) => !value)}>
             <Text style={styles.secondaryText}>Unlimited Stock: {marketUnlimited ? "Yes" : "No"}</Text>
           </Pressable>
-          <Pressable style={styles.primaryButton} onPress={onSaveMarketItem} disabled={!selectedMarker || !marketItemId}>
-            <Text style={styles.primaryText}>Save Market Item</Text>
+          <Pressable style={styles.primaryButton} onPress={onSaveMarketItem} disabled={!selectedMarker || (marketPurchaseType === "item" ? !marketItemId : !marketMountId)}>
+            <Text style={styles.primaryText}>{marketPurchaseType === "mount" ? "Save Market Mount" : "Save Market Item"}</Text>
           </Pressable>
           {selectedMarker?.type === "Market" ? null : <Text style={styles.copy}>Tip: save/select this marker as type Market before adding stock.</Text>}
           {markerMarketItems.length === 0 ? <Text style={styles.copy}>This mini-map market has no stock yet.</Text> : null}
           {markerMarketItems.map((marketItem) => (
             <View key={marketItem.id} style={styles.storyCard}>
-              <Text style={styles.markerName}>{getItemName(itemDefinitions, marketItem.item_id)}</Text>
+              <Text style={styles.markerName}>{marketItem.purchase_type === "mount" ? getMountName(mountDefinitions, marketItem.mount_id) : getItemName(itemDefinitions, marketItem.item_id)}</Text>
               <Text style={styles.copy}>{formatMarketListingMode(marketItem.listing_mode)} / Buy {marketItem.buy_price} / Sell {marketItem.sell_price} / {marketItem.unlimited_stock ? "Unlimited" : `Stock ${marketItem.stock_quantity ?? 0}`}</Text>
               <Pressable style={styles.secondaryButton} onPress={() => onRemoveMarketItem(marketItem.id)}>
                 <Text style={styles.dangerText}>Remove Item</Text>
@@ -10753,6 +10910,10 @@ function createMarkerBattleEvent(marker: MapMarker, enemies: EnemyDefinition[], 
     created_at: marker.created_at ?? now,
     updated_at: marker.updated_at ?? now,
   };
+}
+
+function getMountName(mounts: MountDefinition[], mountId: string | null) {
+  return mounts.find((mount) => mount.id === mountId)?.name ?? "mount";
 }
 
 const styles = StyleSheet.create({

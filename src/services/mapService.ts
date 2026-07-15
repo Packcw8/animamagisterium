@@ -1,6 +1,7 @@
 import { supabase, Tables } from "../lib/supabase";
 import { updateCharacterHealth, type CharacterWithDetails } from "./characterService";
 import { addCharacterGold, consumeInventoryItem, grantItemToCharacter, type InventoryItem } from "./inventoryService";
+import { grantMountToCharacter } from "./mountService";
 import { recordSocialContribution } from "./partyGuildService";
 import { applyCharacterXpGold } from "./progressionService";
 import { getDefaultChapterRuleFields, normalizeChapterRules } from "../utils/mapProgress";
@@ -24,7 +25,9 @@ export type TutorialStep = Tables["tutorial_steps"];
 export type MarkerMarketItem = Tables["marker_market_items"];
 export type PlayerMarketPurchase = Tables["player_market_purchases"];
 export type MarketListingMode = MarkerMarketItem["listing_mode"];
+export type MarketPurchaseType = MarkerMarketItem["purchase_type"];
 export const marketListingModes: MarketListingMode[] = ["buy_and_sell", "buy_only", "sell_only"];
+export const marketPurchaseTypes: MarketPurchaseType[] = ["item", "mount"];
 export type MapStoryInstance = Tables["map_story_instances"];
 export type MapEvent = Tables["map_events"];
 export type MapEventCompletion = Tables["map_event_completions"];
@@ -1331,9 +1334,12 @@ export async function getPlayerMarketPurchaseCounts(marketItemIds: string[]) {
 }
 
 export async function saveMarkerMarketItem(input: Omit<MarkerMarketItem, "id" | "created_at" | "updated_at"> & { id?: string }) {
+  const purchaseType = normalizeMarketPurchaseType(input.purchase_type);
   const values = {
     marker_id: input.marker_id,
-    item_id: input.item_id,
+    item_id: purchaseType === "item" ? input.item_id : null,
+    mount_id: purchaseType === "mount" ? input.mount_id : null,
+    purchase_type: purchaseType,
     buy_price: Number(input.buy_price) || 0,
     sell_price: Number(input.sell_price) || 0,
     stock_quantity: input.unlimited_stock ? null : Math.max(0, Number(input.stock_quantity) || 0),
@@ -1346,7 +1352,7 @@ export async function saveMarkerMarketItem(input: Omit<MarkerMarketItem, "id" | 
 
   const request = input.id
     ? supabase.from("marker_market_items").update(values).eq("id", input.id).select().single()
-    : supabase.from("marker_market_items").upsert(values, { onConflict: "marker_id,item_id" }).select().single();
+    : supabase.from("marker_market_items").insert(values).select().single();
   const { data, error } = await request;
 
   if (error) {
@@ -2060,6 +2066,14 @@ export async function buyMarketItem(character: CharacterWithDetails, marketItem:
     throw new Error("This market item is not for sale.");
   }
 
+  const purchaseType = normalizeMarketPurchaseType(marketItem.purchase_type);
+  if (purchaseType === "item" && !marketItem.item_id) {
+    throw new Error("This market listing is missing an item.");
+  }
+  if (purchaseType === "mount" && !marketItem.mount_id) {
+    throw new Error("This market listing is missing a mount.");
+  }
+
   const { data: currentCharacter, error: characterError } = await supabase
     .from("characters")
     .select("gold")
@@ -2093,6 +2107,22 @@ export async function buyMarketItem(character: CharacterWithDetails, marketItem:
     throw new Error("Not enough gold.");
   }
 
+  if (purchaseType === "mount") {
+    const { data: ownedMount, error: ownedMountError } = await supabase
+      .from("player_mounts")
+      .select("id")
+      .eq("character_id", character.id)
+      .eq("mount_id", marketItem.mount_id)
+      .maybeSingle();
+
+    if (ownedMountError) {
+      throw ownedMountError;
+    }
+    if (ownedMount) {
+      throw new Error("You already own this mount.");
+    }
+  }
+
   const { error: goldError } = await supabase
     .from("characters")
     .update({ gold: Number(currentCharacter.gold) - price })
@@ -2103,7 +2133,11 @@ export async function buyMarketItem(character: CharacterWithDetails, marketItem:
     throw goldError;
   }
 
-  await grantItemToCharacter(character.id, marketItem.item_id, 1);
+  if (purchaseType === "mount") {
+    await grantMountToCharacter(character.id, marketItem.mount_id as string);
+  } else {
+    await grantItemToCharacter(character.id, marketItem.item_id as string, 1);
+  }
 
   if (!marketItem.unlimited_stock) {
     const { error: stockError } = await supabase.from("player_market_purchases").upsert(
@@ -2152,6 +2186,9 @@ export function canMarketItemBeBought(marketItem: MarkerMarketItem) {
 }
 
 export function canMarketItemBeSoldTo(marketItem: MarkerMarketItem) {
+  if (normalizeMarketPurchaseType(marketItem.purchase_type) === "mount") {
+    return false;
+  }
   const mode = normalizeMarketListingMode(marketItem.listing_mode);
   return mode === "buy_and_sell" || mode === "sell_only";
 }
@@ -2160,12 +2197,17 @@ function normalizeMarketItem(marketItem: MarkerMarketItem): MarkerMarketItem {
   return {
     ...marketItem,
     listing_mode: normalizeMarketListingMode(marketItem.listing_mode),
+    purchase_type: normalizeMarketPurchaseType(marketItem.purchase_type),
     unlimited_stock: marketItem.unlimited_stock ?? true,
   };
 }
 
 function normalizeMarketListingMode(mode: MarkerMarketItem["listing_mode"] | null | undefined): MarketListingMode {
   return marketListingModes.includes(mode as MarketListingMode) ? (mode as MarketListingMode) : "buy_and_sell";
+}
+
+function normalizeMarketPurchaseType(type: MarkerMarketItem["purchase_type"] | null | undefined): MarketPurchaseType {
+  return marketPurchaseTypes.includes(type as MarketPurchaseType) ? (type as MarketPurchaseType) : "item";
 }
 
 function formatRewardMessage(xp: number, gold: number, itemQuantity: number, fullHeal = false) {

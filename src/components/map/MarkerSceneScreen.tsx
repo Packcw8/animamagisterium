@@ -5,6 +5,7 @@ import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
 import { canUseItemInContext, type InventoryItem, type ItemDefinition, resolveInventoryImageUri } from "../../services/inventoryService";
+import { normalizeMountMultiplier, resolveMountImageUri, type MountDefinition } from "../../services/mountService";
 import {
   canMarketItemBeBought,
   canMarketItemBeSoldTo,
@@ -25,7 +26,7 @@ import type { ArenaLeaderboardEntry, ArenaWithLeaders } from "../../services/are
 const marketModes = ["Buy", "Sell"] as const;
 type MarketMode = (typeof marketModes)[number];
 type SelectedMarketItem =
-  | { mode: "Buy"; marketItem: MarkerMarketItem; item: ItemDefinition | null; purchasedCount: number }
+  | { mode: "Buy"; marketItem: MarkerMarketItem; item: ItemDefinition | null; mount: MountDefinition | null; purchasedCount: number }
   | { mode: "Sell"; entry: InventoryItem; marketItem: MarkerMarketItem | undefined };
 
 export function MarkerSceneScreen({
@@ -38,6 +39,7 @@ export function MarkerSceneScreen({
   routeProgressRows,
   inventoryItems,
   itemDefinitions,
+  mountDefinitions,
   markerHasDialogue,
   arena,
   message,
@@ -63,6 +65,7 @@ export function MarkerSceneScreen({
   routeProgressRows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>;
   inventoryItems: InventoryItem[];
   itemDefinitions: ItemDefinition[];
+  mountDefinitions: MountDefinition[];
   markerHasDialogue: boolean;
   arena: ArenaWithLeaders | null;
   message: string | null;
@@ -207,6 +210,7 @@ export function MarkerSceneScreen({
             marketPurchaseCounts={marketPurchaseCounts}
             inventoryItems={inventoryItems}
             itemDefinitions={itemDefinitions}
+            mountDefinitions={mountDefinitions}
             onBuy={onBuy}
             onSell={onSell}
           />
@@ -455,6 +459,7 @@ function MarketScene({
   marketPurchaseCounts,
   inventoryItems,
   itemDefinitions,
+  mountDefinitions,
   onBuy,
   onSell,
 }: {
@@ -463,19 +468,25 @@ function MarketScene({
   marketPurchaseCounts: Record<string, number>;
   inventoryItems: InventoryItem[];
   itemDefinitions: ItemDefinition[];
+  mountDefinitions: MountDefinition[];
   onBuy: (marketItem: MarkerMarketItem) => void;
   onSell: (item: InventoryItem) => void;
 }) {
   const [activeMode, setActiveMode] = useState<MarketMode>("Buy");
   const [selectedMarketItem, setSelectedMarketItem] = useState<SelectedMarketItem | null>(null);
   const itemById = useMemo(() => new Map(itemDefinitions.map((item) => [item.id, item])), [itemDefinitions]);
-  const marketItemByItemId = useMemo(() => new Map(marketItems.map((marketItem) => [marketItem.item_id, marketItem])), [marketItems]);
-  const sellableMarketItemIds = useMemo(() => new Set(marketItems.filter(canMarketItemBeSoldTo).map((marketItem) => marketItem.item_id)), [marketItems]);
+  const mountById = useMemo(() => new Map(mountDefinitions.map((mount) => [mount.id, mount])), [mountDefinitions]);
+  const marketItemByItemId = useMemo(() => new Map(marketItems.filter((marketItem) => marketItem.item_id).map((marketItem) => [marketItem.item_id as string, marketItem])), [marketItems]);
+  const sellableMarketItemIds = useMemo(() => new Set(marketItems.filter(canMarketItemBeSoldTo).map((marketItem) => marketItem.item_id).filter((itemId): itemId is string => Boolean(itemId))), [marketItems]);
   const buyableItems = useMemo(
     () => marketItems
       .filter((marketItem) => canMarketItemBeBought(marketItem) && getRemainingMarketStock(marketItem, marketPurchaseCounts) > 0)
-      .map((marketItem) => ({ marketItem, item: itemById.get(marketItem.item_id) ?? null })),
-    [itemById, marketItems, marketPurchaseCounts],
+      .map((marketItem) => ({
+        marketItem,
+        item: marketItem.purchase_type === "mount" ? null : itemById.get(marketItem.item_id ?? "") ?? null,
+        mount: marketItem.purchase_type === "mount" ? mountById.get(marketItem.mount_id ?? "") ?? null : null,
+      })),
+    [itemById, marketItems, marketPurchaseCounts, mountById],
   );
   const sellableItems = useMemo(
     () => inventoryItems.filter((entry) => entry.item.sellable && sellableMarketItemIds.has(entry.item_id)),
@@ -530,14 +541,15 @@ function MarketScene({
         {activeMode === "Buy" ? (
           <View style={styles.marketList}>
             {buyableItems.length === 0 ? <Text style={styles.copy}>This market has no items for sale.</Text> : null}
-            {buyableItems.map(({ marketItem, item }) => (
+            {buyableItems.map(({ marketItem, item, mount }) => (
               <MarketBuyCard
                 key={marketItem.id}
                 marketItem={marketItem}
                 purchasedCount={marketPurchaseCounts[marketItem.id] ?? 0}
                 item={item}
+                mount={mount}
                 onBuy={() => onBuy(marketItem)}
-                onInspect={() => setSelectedMarketItem({ mode: "Buy", marketItem, item, purchasedCount: marketPurchaseCounts[marketItem.id] ?? 0 })}
+                onInspect={() => setSelectedMarketItem({ mode: "Buy", marketItem, item, mount, purchasedCount: marketPurchaseCounts[marketItem.id] ?? 0 })}
               />
             ))}
           </View>
@@ -563,20 +575,25 @@ function MarketScene({
   );
 }
 
-function MarketBuyCard({ marketItem, purchasedCount, item, onBuy, onInspect }: { marketItem: MarkerMarketItem; purchasedCount: number; item: ItemDefinition | null; onBuy: () => void; onInspect: () => void }) {
-  const imageUri = resolveInventoryImageUri(item?.image_path);
+function MarketBuyCard({ marketItem, purchasedCount, item, mount, onBuy, onInspect }: { marketItem: MarkerMarketItem; purchasedCount: number; item: ItemDefinition | null; mount: MountDefinition | null; onBuy: () => void; onInspect: () => void }) {
+  const isMount = marketItem.purchase_type === "mount";
+  const imageUri = isMount ? resolveMountImageUri(mount?.image_url) : resolveInventoryImageUri(item?.image_path);
   const remainingStock = getRemainingMarketStock(marketItem, { [marketItem.id]: purchasedCount });
   const outOfStock = remainingStock <= 0;
+  const name = isMount ? mount?.name ?? "Unknown Mount" : item?.name ?? "Unknown Item";
+  const typeLabel = isMount ? `${mount?.breed || "Mount"} / ${mount?.rarity || "common"}` : `${item?.type ?? "item"} / ${item?.rarity ?? "common"}`;
+  const description = isMount ? mount?.description : item?.description;
 
   return (
     <Pressable style={[styles.marketCard, outOfStock && styles.lockedCard]} onPress={onInspect}>
       <View style={styles.marketImageBox}>
-        {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{(item?.name ?? "?").slice(0, 1).toUpperCase()}</Text>}
+        {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
       </View>
       <View style={styles.marketCardBody}>
-        <Text style={styles.marketItemName} numberOfLines={1}>{item?.name ?? "Unknown Item"}</Text>
-        <Text style={styles.marketItemType} numberOfLines={1}>{item?.type ?? "item"} / {item?.rarity ?? "common"}</Text>
-        {item?.description ? <Text style={styles.marketItemDescription} numberOfLines={2}>{item.description}</Text> : null}
+        <Text style={styles.marketItemName} numberOfLines={1}>{name}</Text>
+        <Text style={styles.marketItemType} numberOfLines={1}>{typeLabel}</Text>
+        {description ? <Text style={styles.marketItemDescription} numberOfLines={2}>{description}</Text> : null}
+        {isMount ? <Text style={styles.marketStockText}>Trail progress x{normalizeMountMultiplier(mount?.progress_multiplier).toFixed(2)}</Text> : null}
         <Text style={styles.marketStockText}>{marketItem.unlimited_stock ? "Unlimited stock" : `${remainingStock} available for you`}</Text>
       </View>
       <View style={styles.marketBuyColumn}>
@@ -636,8 +653,13 @@ function MarketItemDetail({
   onBuy: () => void;
   onSell: () => void;
 }) {
+  const isMount = selected.mode === "Buy" && selected.marketItem.purchase_type === "mount";
   const item = selected.mode === "Buy" ? selected.item : selected.entry.item;
-  const imageUri = resolveInventoryImageUri(item?.image_path);
+  const mount = selected.mode === "Buy" ? selected.mount : null;
+  const displayName = isMount ? mount?.name ?? "Unknown Mount" : item?.name ?? "Unknown Item";
+  const displayType = isMount ? `${mount?.breed || "Mount"} / ${mount?.rarity || "common"}` : `${item?.type ?? "item"} / ${item?.rarity ?? "common"}`;
+  const displayDescription = isMount ? mount?.description : item?.description;
+  const imageUri = isMount ? resolveMountImageUri(mount?.image_url) : resolveInventoryImageUri(item?.image_path);
   const remainingStock = selected.mode === "Buy"
     ? getRemainingMarketStock(selected.marketItem, { [selected.marketItem.id]: selected.purchasedCount })
     : Number(selected.entry.quantity) || 0;
@@ -647,12 +669,12 @@ function MarketItemDetail({
     <View style={styles.marketDetailPanel}>
       <View style={styles.marketDetailHeader}>
         <View style={styles.marketDetailImageBox}>
-          {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{(item?.name ?? "?").slice(0, 1).toUpperCase()}</Text>}
+          {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{displayName.slice(0, 1).toUpperCase()}</Text>}
         </View>
         <View style={styles.marketDetailBody}>
-          <Text style={styles.marketItemName} numberOfLines={2}>{item?.name ?? "Unknown Item"}</Text>
-          <Text style={styles.marketItemType}>{item?.type ?? "item"} / {item?.rarity ?? "common"}</Text>
-          <Text style={styles.marketItemDescription}>{item?.description || "No item details available yet."}</Text>
+          <Text style={styles.marketItemName} numberOfLines={2}>{displayName}</Text>
+          <Text style={styles.marketItemType}>{displayType}</Text>
+          <Text style={styles.marketItemDescription}>{displayDescription || "No details available yet."}</Text>
         </View>
       </View>
       <View style={styles.marketDetailStats}>
@@ -663,6 +685,7 @@ function MarketItemDetail({
         {item?.armor_value ? <Text style={styles.statPill}>Armor {item.armor_value}</Text> : null}
         {item?.restore_amount ? <Text style={styles.statPill}>Restore {item.restore_amount}</Text> : null}
         {item?.weight ? <Text style={styles.statPill}>{Number(item.weight).toFixed(1)} wt</Text> : null}
+        {isMount ? <Text style={styles.statPill}>Trail x{normalizeMountMultiplier(mount?.progress_multiplier).toFixed(2)}</Text> : null}
       </View>
       <View style={styles.marketDetailActions}>
         <Pressable
@@ -676,7 +699,7 @@ function MarketItemDetail({
             onBuy();
           }}
         >
-          <Text style={selected.mode === "Buy" ? styles.marketActionText : styles.secondaryText}>{selected.mode === "Buy" ? "Buy Item" : "Sell 1 Item"}</Text>
+          <Text style={selected.mode === "Buy" ? styles.marketActionText : styles.secondaryText}>{selected.mode === "Buy" ? isMount ? "Buy Mount" : "Buy Item" : "Sell 1 Item"}</Text>
         </Pressable>
         <Pressable style={styles.marketCloseButton} onPress={onClose}>
           <Text style={styles.secondaryText}>Close</Text>

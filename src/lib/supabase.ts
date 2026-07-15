@@ -1066,7 +1066,9 @@ export type Tables = {
   marker_market_items: {
     id: string;
     marker_id: string;
-    item_id: string;
+    item_id: string | null;
+    purchase_type: "item" | "mount";
+    mount_id: string | null;
     buy_price: number;
     sell_price: number;
     stock_quantity: number | null;
@@ -1083,6 +1085,30 @@ export type Tables = {
     character_id: string;
     market_item_id: string;
     quantity_purchased: number;
+    updated_at: string;
+  };
+  mount_definitions: {
+    id: string;
+    name: string;
+    breed: string | null;
+    description: string | null;
+    image_url: string | null;
+    rarity: string;
+    progress_multiplier: number;
+    is_active: boolean;
+    season_number: number;
+    chapter_number: number;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  player_mounts: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    mount_id: string;
+    is_equipped: boolean;
+    acquired_at: string;
     updated_at: string;
   };
   marker_reward_claims: {
