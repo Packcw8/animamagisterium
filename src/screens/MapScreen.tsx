@@ -4673,6 +4673,21 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setRouteProgressRows((current) => current.map((row) => ({ ...row, is_current: false })));
   }
 
+  async function maybeClearActiveRouteForMarkerId(markerId: string | null) {
+    if (!markerId) {
+      return;
+    }
+
+    const marker =
+      markers.find((item) => item.id === markerId) ??
+      effectiveMarkers.find((item) => item.id === markerId) ??
+      null;
+
+    if (marker) {
+      await maybeClearActiveRouteForMarker(marker);
+    }
+  }
+
   async function maybeStartMarkerContinuationRoute(marker: MapMarker) {
     if (!marker.starts_route_on_accept || !marker.linked_route_id) {
       return;
@@ -5327,6 +5342,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           await completeStoryMarker(marker.id);
           setCompletedStoryMarkerIds((current) => new Set([...current, marker.id]));
         }
+        await maybeClearActiveRouteForMarkerId(activeMarkerEventId);
         setActiveEvent(null);
         setActiveMarkerEventId(null);
         setActiveBattle(null);
@@ -5407,6 +5423,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         await completeStoryMarker(completedMarker.id);
         setCompletedStoryMarkerIds((current) => new Set([...current, completedMarker.id]));
       }
+      await maybeClearActiveRouteForMarkerId(completedMarker?.id ?? null);
       setActiveEvent(null);
       setActiveMarkerEventId(null);
       setActiveBattle(null);
@@ -5472,6 +5489,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return;
     }
 
+    const activeMarkerIdForChoice = activeMarkerEventId;
     const requirement = dialogueChoiceAvailability[choice.id];
     if (requirement && !requirement.met) {
       setDialogueLog((current) => [requirement.message ?? "That choice is not available yet.", ...current].slice(0, 4));
@@ -5794,6 +5812,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         return;
       }
 
+      await maybeClearActiveRouteForMarkerId(activeMarkerIdForChoice);
       setActiveEvent(null);
       setActiveMarkerEventId(null);
       return;
@@ -5805,6 +5824,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
 
     await recordThisChoice();
+    await maybeClearActiveRouteForMarkerId(activeMarkerIdForChoice);
     setActiveEvent(null);
     setActiveMarkerEventId(null);
   }
@@ -5876,6 +5896,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return;
     }
 
+    await maybeClearActiveRouteForMarkerId(activeMarkerEventId);
     setPendingRewardChoice(null);
     setActiveEvent(null);
     setActiveMarkerEventId(null);
