@@ -5,6 +5,9 @@ export type CombatAbility = Tables["combat_abilities"];
 export type EnemyDefinition = Tables["enemy_definitions"];
 export type EnemyAbility = Tables["enemy_abilities"];
 export type EnemyItemDrop = Tables["enemy_item_drops"];
+export type EnemyTrophySetting = Tables["enemy_trophy_settings"];
+export type EnemyTrophyDrop = Tables["enemy_trophy_drop_pool"];
+export type PlayerTrophyHarvest = Tables["player_trophy_harvests"];
 export type NpcDefinition = Tables["npc_definitions"];
 export type NpcAbility = Tables["npc_abilities"];
 export type NpcItemDrop = Tables["npc_item_drops"];
@@ -12,6 +15,8 @@ export type NpcItemDrop = Tables["npc_item_drops"];
 export type EnemyWithLoadout = EnemyDefinition & {
   abilities: Array<EnemyAbility & { ability?: CombatAbility }>;
   drops: EnemyItemDrop[];
+  trophy?: EnemyTrophySetting | null;
+  trophyDrops?: EnemyTrophyDrop[];
 };
 
 export type NpcWithLoadout = NpcDefinition & {
@@ -28,6 +33,7 @@ export const requiredAttributes: NonNullable<CombatAbility["required_attribute"]
 export const requiredClassKeys = classCombinations.map((combo) => combo.key);
 export const learnMethods: CombatAbility["learn_method"][] = ["starter", "level", "class level", "weapon equipped", "armor equipped", "wearable equipped", "scroll", "quest", "admin"];
 export const usageContexts: CombatAbility["usage_context"][] = ["battle_only", "outside_battle_only", "both"];
+export const trophyScoreFormulas: EnemyTrophySetting["score_formula"][] = ["combined", "weight", "antlers", "horns", "skull", "pelt"];
 export const enemyAssetBasePath = "/assets/Enemies/";
 
 export function resolveEnemyImageUri(imagePath?: string | null) {
@@ -126,6 +132,27 @@ export function blankEnemy(): Partial<EnemyDefinition> {
   };
 }
 
+export function blankEnemyTrophySetting(enemyId = ""): Partial<EnemyTrophySetting> {
+  return {
+    enemy_id: enemyId,
+    trophy_enabled: false,
+    species: "",
+    leaderboard_enabled: true,
+    score_formula: "combined",
+    min_weight: 0,
+    max_weight: 0,
+    min_antler_spread: 0,
+    max_antler_spread: 0,
+    min_horn_length: 0,
+    max_horn_length: 0,
+    min_skull_size: 0,
+    max_skull_size: 0,
+    min_pelt_quality: 50,
+    max_pelt_quality: 100,
+    rarity_bonus: 0,
+  };
+}
+
 export function blankNpc(): Partial<NpcDefinition> {
   return {
     name: "",
@@ -219,17 +246,21 @@ export async function getNpcs() {
 }
 
 export async function getEnemyLoadout(enemyId: string): Promise<EnemyWithLoadout | null> {
-  const [enemyResult, abilityRowsResult, abilitiesResult, dropsResult] = await Promise.all([
+  const [enemyResult, abilityRowsResult, abilitiesResult, dropsResult, trophyResult, trophyDropsResult] = await Promise.all([
     supabase.from("enemy_definitions").select("*").eq("id", enemyId).maybeSingle(),
     supabase.from("enemy_abilities").select("*").eq("enemy_id", enemyId),
     supabase.from("combat_abilities").select("*"),
     supabase.from("enemy_item_drops").select("*").eq("enemy_id", enemyId),
+    supabase.from("enemy_trophy_settings").select("*").eq("enemy_id", enemyId).maybeSingle(),
+    supabase.from("enemy_trophy_drop_pool").select("*").eq("enemy_id", enemyId),
   ]);
 
   if (enemyResult.error) throw enemyResult.error;
   if (abilityRowsResult.error) throw abilityRowsResult.error;
   if (abilitiesResult.error) throw abilitiesResult.error;
   if (dropsResult.error) throw dropsResult.error;
+  if (trophyResult.error) throw trophyResult.error;
+  if (trophyDropsResult.error) throw trophyDropsResult.error;
   if (!enemyResult.data) return null;
 
   const abilities = (abilitiesResult.data ?? []) as CombatAbility[];
@@ -240,6 +271,8 @@ export async function getEnemyLoadout(enemyId: string): Promise<EnemyWithLoadout
       ability: abilities.find((ability) => ability.id === row.ability_id),
     })),
     drops: (dropsResult.data ?? []) as EnemyItemDrop[],
+    trophy: (trophyResult.data ?? null) as EnemyTrophySetting | null,
+    trophyDrops: (trophyDropsResult.data ?? []) as EnemyTrophyDrop[],
   };
 }
 
@@ -375,6 +408,45 @@ export async function deleteEnemyDrop(id: string) {
   if (error) throw error;
 }
 
+export async function saveEnemyTrophySetting(enemyId: string, input: Partial<EnemyTrophySetting>) {
+  const values = normalizeEnemyTrophySetting(enemyId, input);
+  const { data, error } = await supabase
+    .from("enemy_trophy_settings")
+    .upsert(values, { onConflict: "enemy_id" })
+    .select()
+    .single();
+  if (error) {
+    throw error;
+  }
+  return data as EnemyTrophySetting;
+}
+
+export async function saveEnemyTrophyDrop(enemyId: string, itemId: string, minQuantity: number, maxQuantity: number, dropChance: number) {
+  const safeMin = Math.max(1, Number(minQuantity) || 1);
+  const safeMax = Math.max(safeMin, Number(maxQuantity) || safeMin);
+  const { data, error } = await supabase
+    .from("enemy_trophy_drop_pool")
+    .upsert({
+      enemy_id: enemyId,
+      item_id: itemId,
+      min_quantity: safeMin,
+      max_quantity: safeMax,
+      drop_chance: Math.max(0, Math.min(100, Number(dropChance) || 0)),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "enemy_id,item_id" })
+    .select()
+    .single();
+  if (error) {
+    throw error;
+  }
+  return data as EnemyTrophyDrop;
+}
+
+export async function deleteEnemyTrophyDrop(id: string) {
+  const { error } = await supabase.from("enemy_trophy_drop_pool").delete().eq("id", id);
+  if (error) throw error;
+}
+
 export async function deleteNpcDrop(id: string) {
   const { error } = await supabase.from("npc_item_drops").delete().eq("id", id);
   if (error) throw error;
@@ -448,6 +520,34 @@ function normalizeEnemy(input: Partial<EnemyDefinition>, userId: string | null) 
     chapter_number: Number(input.chapter_number) || 1,
     is_active: input.is_active ?? true,
     created_by: input.id ? input.created_by ?? userId : userId,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function normalizeEnemyTrophySetting(enemyId: string, input: Partial<EnemyTrophySetting>) {
+  const minWeight = Math.max(0, Number(input.min_weight) || 0);
+  const minAntlerSpread = Math.max(0, Number(input.min_antler_spread) || 0);
+  const minHornLength = Math.max(0, Number(input.min_horn_length) || 0);
+  const minSkullSize = Math.max(0, Number(input.min_skull_size) || 0);
+  const minPeltQuality = Math.max(0, Math.min(100, Number(input.min_pelt_quality) || 0));
+
+  return {
+    enemy_id: enemyId,
+    trophy_enabled: input.trophy_enabled ?? false,
+    species: input.species?.trim() || null,
+    leaderboard_enabled: input.leaderboard_enabled ?? true,
+    score_formula: input.score_formula ?? "combined",
+    min_weight: minWeight,
+    max_weight: Math.max(minWeight, Number(input.max_weight) || minWeight),
+    min_antler_spread: minAntlerSpread,
+    max_antler_spread: Math.max(minAntlerSpread, Number(input.max_antler_spread) || minAntlerSpread),
+    min_horn_length: minHornLength,
+    max_horn_length: Math.max(minHornLength, Number(input.max_horn_length) || minHornLength),
+    min_skull_size: minSkullSize,
+    max_skull_size: Math.max(minSkullSize, Number(input.max_skull_size) || minSkullSize),
+    min_pelt_quality: minPeltQuality,
+    max_pelt_quality: Math.max(minPeltQuality, Math.min(100, Number(input.max_pelt_quality) || minPeltQuality)),
+    rarity_bonus: Math.max(0, Number(input.rarity_bonus) || 0),
     updated_at: new Date().toISOString(),
   };
 }

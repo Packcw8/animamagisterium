@@ -1339,6 +1339,56 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  enemy_trophy_settings: {
+    id: string;
+    enemy_id: string;
+    trophy_enabled: boolean;
+    species: string | null;
+    leaderboard_enabled: boolean;
+    score_formula: "weight" | "antlers" | "horns" | "skull" | "pelt" | "combined";
+    min_weight: number;
+    max_weight: number;
+    min_antler_spread: number;
+    max_antler_spread: number;
+    min_horn_length: number;
+    max_horn_length: number;
+    min_skull_size: number;
+    max_skull_size: number;
+    min_pelt_quality: number;
+    max_pelt_quality: number;
+    rarity_bonus: number;
+    created_at: string;
+    updated_at: string;
+  };
+  enemy_trophy_drop_pool: {
+    id: string;
+    enemy_id: string;
+    item_id: string;
+    min_quantity: number;
+    max_quantity: number;
+    drop_chance: number;
+    created_at: string;
+    updated_at: string;
+  };
+  player_trophy_harvests: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    enemy_id: string | null;
+    battle_event_id: string | null;
+    marker_id: string | null;
+    species: string | null;
+    enemy_name: string | null;
+    weight: number;
+    antler_spread: number;
+    horn_length: number;
+    skull_size: number;
+    pelt_quality: number;
+    rarity_bonus: number;
+    trophy_score: number;
+    drops: unknown[];
+    created_at: string;
+  };
   npc_definitions: {
     id: string;
     name: string;

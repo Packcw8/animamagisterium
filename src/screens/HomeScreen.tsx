@@ -20,6 +20,7 @@ import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, g
 import {
   blankCombatAbility,
   blankEnemy,
+  blankEnemyTrophySetting,
   blankNpc,
   abilityTargetModes,
   combatAbilityTypes,
@@ -28,12 +29,15 @@ import {
   deleteEnemy,
   deleteEnemyAbility,
   deleteEnemyDrop,
+  deleteEnemyTrophyDrop,
   deleteNpc,
   deleteNpcAbility,
   deleteNpcDrop,
   EnemyAbility,
   EnemyDefinition,
   EnemyItemDrop,
+  EnemyTrophyDrop,
+  EnemyTrophySetting,
   NpcAbility,
   NpcDefinition,
   NpcItemDrop,
@@ -51,11 +55,14 @@ import {
   saveEnemy,
   saveEnemyAbility,
   saveEnemyDrop,
+  saveEnemyTrophyDrop,
+  saveEnemyTrophySetting,
   saveNpc,
   saveNpcAbility,
   saveNpcDrop,
   statusEffects,
   summonKinds,
+  trophyScoreFormulas,
   usageContexts as abilityUsageContexts,
 } from "../services/combatAdminService";
 import { classCombinations } from "../services/classService";
@@ -195,6 +202,12 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [enemyTypeFilter, setEnemyTypeFilter] = useState("all");
   const [enemyAbilities, setEnemyAbilities] = useState<EnemyAbility[]>([]);
   const [enemyDrops, setEnemyDrops] = useState<EnemyItemDrop[]>([]);
+  const [enemyTrophyForm, setEnemyTrophyForm] = useState<Partial<EnemyTrophySetting>>(blankEnemyTrophySetting());
+  const [enemyTrophyDrops, setEnemyTrophyDrops] = useState<EnemyTrophyDrop[]>([]);
+  const [selectedTrophyDropItemId, setSelectedTrophyDropItemId] = useState<string | null>(null);
+  const [trophyDropMinQuantity, setTrophyDropMinQuantity] = useState("1");
+  const [trophyDropMaxQuantity, setTrophyDropMaxQuantity] = useState("1");
+  const [trophyDropChance, setTrophyDropChance] = useState("100");
   const [npcs, setNpcs] = useState<NpcDefinition[]>([]);
   const [npcForm, setNpcForm] = useState<Partial<NpcDefinition>>(blankNpc());
   const [editingNpcId, setEditingNpcId] = useState<string | null>(null);
@@ -438,6 +451,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
     const loadout = await getEnemyLoadout(enemyId);
     setEnemyAbilities(loadout?.abilities ?? []);
     setEnemyDrops(loadout?.drops ?? []);
+    setEnemyTrophyForm(loadout?.trophy ?? blankEnemyTrophySetting(enemyId));
+    setEnemyTrophyDrops(loadout?.trophyDrops ?? []);
   }
 
   async function loadNpcDetails(npcId: string) {
@@ -488,8 +503,11 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
       setEditingEnemyId(null);
       setEnemyAbilities([]);
       setEnemyDrops([]);
+      setEnemyTrophyForm(blankEnemyTrophySetting());
+      setEnemyTrophyDrops([]);
       setSelectedEnemyAbilityId(null);
       setSelectedDropItemId(null);
+      setSelectedTrophyDropItemId(null);
       await loadAdminCombat();
     } catch (error) {
       setAbilityMessage(error instanceof Error ? error.message : "Unable to save enemy.");
@@ -560,6 +578,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
       setEnemyForm(blankEnemy());
       setEnemyAbilities([]);
       setEnemyDrops([]);
+      setEnemyTrophyForm(blankEnemyTrophySetting());
+      setEnemyTrophyDrops([]);
       await loadAdminCombat();
     } catch (error) {
       setAbilityMessage(error instanceof Error ? error.message : "Unable to delete enemy.");
@@ -750,6 +770,34 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
       await loadInventory();
     } catch (error) {
       setInventoryMessage(error instanceof Error ? error.message : "Unable to delete item.");
+    }
+  }
+
+  async function saveTrophySettings() {
+    if (!editingEnemyId) {
+      setAbilityMessage("Save/select an enemy before configuring trophy settings.");
+      return;
+    }
+    try {
+      await saveEnemyTrophySetting(editingEnemyId, enemyTrophyForm);
+      await loadEnemyDetails(editingEnemyId);
+      setAbilityMessage("Trophy settings saved.");
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to save trophy settings.");
+    }
+  }
+
+  async function addEnemyTrophyDrop() {
+    if (!editingEnemyId || !selectedTrophyDropItemId) {
+      setAbilityMessage("Save/select an enemy and trophy item first.");
+      return;
+    }
+    try {
+      await saveEnemyTrophyDrop(editingEnemyId, selectedTrophyDropItemId, Number(trophyDropMinQuantity) || 1, Number(trophyDropMaxQuantity) || 1, Number(trophyDropChance) || 0);
+      await loadEnemyDetails(editingEnemyId);
+      setAbilityMessage("Trophy drop saved.");
+    } catch (error) {
+      setAbilityMessage(error instanceof Error ? error.message : "Unable to save trophy drop.");
     }
   }
 
@@ -1423,8 +1471,11 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     setEnemyForm({ ...blankEnemy(), season_number: adminContentSeason, chapter_number: adminContentChapter });
                     setEnemyAbilities([]);
                     setEnemyDrops([]);
+                    setEnemyTrophyForm(blankEnemyTrophySetting());
+                    setEnemyTrophyDrops([]);
                     setSelectedEnemyAbilityId(null);
                     setSelectedDropItemId(null);
+                    setSelectedTrophyDropItemId(null);
                   }}>
                     <Text style={styles.smallButtonText}>New Enemy</Text>
                   </Pressable>
@@ -1485,8 +1536,11 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     setEnemyForm({ ...blankEnemy(), season_number: adminContentSeason, chapter_number: adminContentChapter });
                     setEnemyAbilities([]);
                     setEnemyDrops([]);
+                    setEnemyTrophyForm(blankEnemyTrophySetting());
+                    setEnemyTrophyDrops([]);
                     setSelectedEnemyAbilityId(null);
                     setSelectedDropItemId(null);
+                    setSelectedTrophyDropItemId(null);
                   }}>
                     <Text style={styles.smallButtonText}>New Enemy</Text>
                   </Pressable>
@@ -1516,6 +1570,49 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                         <Text style={styles.slotName}>{itemDefinitions.find((item) => item.id === drop.item_id)?.name ?? "Unknown Item"}</Text>
                         <Text style={styles.muted}>Qty {drop.quantity} / Chance {drop.drop_chance}%</Text>
                         <Pressable style={styles.smallButton} onPress={() => void deleteEnemyDrop(drop.id).then(() => editingEnemyId ? loadEnemyDetails(editingEnemyId) : undefined)}><Text style={styles.smallButtonText}>Remove</Text></Pressable>
+                      </View>
+                    ))}
+                    <Text style={styles.subTitle}>Trophy Animal</Text>
+                    <Text style={styles.muted}>Optional hunting layer for trophy beasts. This prepares weight, antlers, scoring, trophy drops, and future leaderboards without changing standard rewards yet.</Text>
+                    <ToggleRow label="Trophy Animal" value={enemyTrophyForm.trophy_enabled ?? false} onPress={() => setEnemyTrophyForm((current) => ({ ...current, trophy_enabled: !current.trophy_enabled }))} />
+                    <ToggleRow label="Trophy Leaderboard" value={enemyTrophyForm.leaderboard_enabled ?? true} onPress={() => setEnemyTrophyForm((current) => ({ ...current, leaderboard_enabled: !current.leaderboard_enabled }))} />
+                    <ItemText label="Species / Leaderboard Group" value={enemyTrophyForm.species ?? ""} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, species: value }))} />
+                    <ChoiceRow label="Score Formula" options={trophyScoreFormulas} value={enemyTrophyForm.score_formula ?? "combined"} labels={{ combined: "Combined Score", weight: "Weight Only", antlers: "Antlers", horns: "Horns", skull: "Skull", pelt: "Pelt Quality" }} onSelect={(value) => setEnemyTrophyForm((current) => ({ ...current, score_formula: value }))} />
+                    <View style={styles.slotActions}>
+                      <ItemText label="Min Weight" value={String(enemyTrophyForm.min_weight ?? 0)} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, min_weight: Number(value) || 0 }))} />
+                      <ItemText label="Max Weight" value={String(enemyTrophyForm.max_weight ?? 0)} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, max_weight: Number(value) || 0 }))} />
+                    </View>
+                    <View style={styles.slotActions}>
+                      <ItemText label="Min Antler Spread" value={String(enemyTrophyForm.min_antler_spread ?? 0)} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, min_antler_spread: Number(value) || 0 }))} />
+                      <ItemText label="Max Antler Spread" value={String(enemyTrophyForm.max_antler_spread ?? 0)} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, max_antler_spread: Number(value) || 0 }))} />
+                    </View>
+                    <View style={styles.slotActions}>
+                      <ItemText label="Min Horn Length" value={String(enemyTrophyForm.min_horn_length ?? 0)} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, min_horn_length: Number(value) || 0 }))} />
+                      <ItemText label="Max Horn Length" value={String(enemyTrophyForm.max_horn_length ?? 0)} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, max_horn_length: Number(value) || 0 }))} />
+                    </View>
+                    <View style={styles.slotActions}>
+                      <ItemText label="Min Skull Size" value={String(enemyTrophyForm.min_skull_size ?? 0)} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, min_skull_size: Number(value) || 0 }))} />
+                      <ItemText label="Max Skull Size" value={String(enemyTrophyForm.max_skull_size ?? 0)} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, max_skull_size: Number(value) || 0 }))} />
+                    </View>
+                    <View style={styles.slotActions}>
+                      <ItemText label="Min Pelt Quality" value={String(enemyTrophyForm.min_pelt_quality ?? 50)} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, min_pelt_quality: Number(value) || 0 }))} />
+                      <ItemText label="Max Pelt Quality" value={String(enemyTrophyForm.max_pelt_quality ?? 100)} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, max_pelt_quality: Number(value) || 0 }))} />
+                    </View>
+                    <ItemText label="Rarity Bonus" value={String(enemyTrophyForm.rarity_bonus ?? 0)} onChange={(value) => setEnemyTrophyForm((current) => ({ ...current, rarity_bonus: Number(value) || 0 }))} />
+                    <Pressable style={styles.smallButton} onPress={() => void saveTrophySettings()}><Text style={styles.smallButtonText}>Save Trophy Settings</Text></Pressable>
+                    <Text style={styles.subTitle}>Trophy Drop Pool</Text>
+                    <NamedChoiceRow label="Trophy Drop Item" options={itemDefinitions.map((item) => ({ id: item.id, label: item.name }))} value={selectedTrophyDropItemId ?? ""} onSelect={setSelectedTrophyDropItemId} />
+                    <View style={styles.slotActions}>
+                      <ItemText label="Min Qty" value={trophyDropMinQuantity} onChange={setTrophyDropMinQuantity} />
+                      <ItemText label="Max Qty" value={trophyDropMaxQuantity} onChange={setTrophyDropMaxQuantity} />
+                      <ItemText label="Chance %" value={trophyDropChance} onChange={setTrophyDropChance} />
+                    </View>
+                    <Pressable style={styles.smallButton} onPress={() => void addEnemyTrophyDrop()}><Text style={styles.smallButtonText}>Add Trophy Drop</Text></Pressable>
+                    {enemyTrophyDrops.map((drop) => (
+                      <View key={drop.id} style={styles.slotCard}>
+                        <Text style={styles.slotName}>{itemDefinitions.find((item) => item.id === drop.item_id)?.name ?? "Unknown Item"}</Text>
+                        <Text style={styles.muted}>Qty {drop.min_quantity}-{drop.max_quantity} / Chance {drop.drop_chance}%</Text>
+                        <Pressable style={styles.smallButton} onPress={() => void deleteEnemyTrophyDrop(drop.id).then(() => editingEnemyId ? loadEnemyDetails(editingEnemyId) : undefined)}><Text style={styles.smallButtonText}>Remove</Text></Pressable>
                       </View>
                     ))}
                   </View>
