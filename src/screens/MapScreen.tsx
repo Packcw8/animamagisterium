@@ -5602,7 +5602,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       userId: character.user_id,
       characterId: character.id,
       enemy: trophyEnemy,
-      battleEventId: event.id,
+      battleEventId: markerId && event.id === markerId ? null : event.id,
       markerId,
     });
 

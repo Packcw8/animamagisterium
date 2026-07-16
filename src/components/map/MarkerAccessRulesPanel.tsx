@@ -193,16 +193,27 @@ export function MarkerAccessRulesPanel({
 
       {isBattleMarkerType(markerType) ? (
         <View style={styles.ruleBlock}>
-          <Text style={styles.subTitle}>Victory Story Flag</Text>
-          <Text style={styles.copy}>Optional. When the player wins this battle, set a per-player story flag to true or false.</Text>
+          <Text style={styles.subTitle}>Battle Victory Result</Text>
+          <Text style={styles.copy}>
+            This is not a visibility rule. Use it when winning this battle should update story progress, reveal another marker, or permanently close this battle for that player.
+          </Text>
           <MarkerStoryFlagVisibilityEditor
             storyFlagKeys={storyFlagKeys}
             visibleStoryFlagKey={victoryStoryFlagKey}
             visibleStoryFlagValue={victoryStoryFlagValue}
+            title="After Victory, Set This Flag"
+            description="Choose the per-player story flag this battle writes after victory. Set the value to True to unlock/reveal something, or False to turn a story gate off."
+            placeholder="Flag set after victory, example trophy_bear_defeated"
+            valueLabel="Set Flag Value"
+            clearLabel="Clear Victory Flag"
+            emptyText="No victory flag. Winning this battle only gives rewards, drops, trophy records, and completion state."
             onChangeVisibleStoryFlagKey={onChangeVictoryStoryFlagKey}
             onToggleVisibleStoryFlagValue={onToggleVictoryStoryFlagValue}
             onClear={onClearVictoryStoryFlag}
           />
+          <Text style={styles.hintText}>
+            Common setup: Battle marker visible by Story Flag, Hide When Completed enabled, Victory Flag set to True for the next quest step.
+          </Text>
         </View>
       ) : null}
 
@@ -284,6 +295,11 @@ const styles = StyleSheet.create({
     color: colors.text,
     minHeight: 48,
     paddingHorizontal: 12,
+  },
+  hintText: {
+    color: colors.gold,
+    fontSize: 12,
+    lineHeight: 16,
   },
   panel: {
     borderColor: colors.gold,
