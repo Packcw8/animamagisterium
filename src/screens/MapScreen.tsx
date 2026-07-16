@@ -6021,9 +6021,12 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   }
 
   function getBattleActionContext() {
+    const routeSetbackOnDefeat = Boolean(activeBattle?.route_id && !activeMarkerEventId && !activeArenaChallenge && !adminPreviewMode);
+
     return {
       previewMode: Boolean(adminPreviewMode),
       battleMode: activeArenaChallenge ? "arena" as const : "normal" as const,
+      routeSetbackOnDefeat,
       equippedItems,
       inventoryItems,
       closePreview: closeAdminPreview,
@@ -6085,6 +6088,14 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
   async function useBattleItem(entry: InventoryItem) {
     await runUseBattleItem(entry, getBattleActionContext());
+  }
+
+  function completeNonRouteBattleDefeat() {
+    const defeatedTitle = activeBattle?.title ?? "Battle";
+    clearActiveBattleState();
+    resetBattleState();
+    setSelectedMarker(null);
+    setGpsMessage(`${defeatedTitle} lost. No trail progress was changed.`);
   }
 
   async function resetCurrentRouteAfterDefeat() {
@@ -7455,8 +7466,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         result={battleFinished}
         previewMode={adminPreviewMode === "battle"}
         defeatTitle={activeArenaChallenge ? "Arena Challenge Lost" : undefined}
-        defeatBody={activeArenaChallenge ? "The current holder defended this arena. No trail progress was changed." : undefined}
-        defeatActionLabel={activeArenaChallenge ? "Return to Arena" : undefined}
+        defeatBody={activeArenaChallenge ? "The current holder defended this arena. No trail progress was changed." : activeMarkerEventId ? "You lost this encounter. No trail progress was changed." : undefined}
+        defeatActionLabel={activeArenaChallenge ? "Return to Arena" : activeMarkerEventId ? "Return to Map" : undefined}
         fleeTitle={activeArenaChallenge ? "Arena Challenge Left" : undefined}
         fleeBody={activeArenaChallenge ? "You left the arena challenge. The holder keeps the arena, and no trail progress was changed." : activeBattle.route_id && !activeMarkerEventId ? "You escaped the battle. No rewards were granted, and you will lose 3% progress on this path." : "You escaped the battle. No rewards were granted."}
         fleeActionLabel={activeArenaChallenge ? "Return to Arena" : activeBattle.route_id && !activeMarkerEventId ? "Accept 3% Setback" : "Return to Map"}
@@ -7469,7 +7480,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         onUseItem={(item) => void useBattleItem(item)}
         onToggleInventory={() => setBattleInventoryOpen((current) => !current)}
         onDeclineRevive={() => void declineReviveAfterDefeat()}
-        onReturnToStart={() => activeArenaChallenge ? void finishEvent(activeBattle) : void resetCurrentRouteAfterDefeat()}
+        onReturnToStart={() => activeArenaChallenge ? void finishEvent(activeBattle) : activeMarkerEventId ? completeNonRouteBattleDefeat() : void resetCurrentRouteAfterDefeat()}
         onCompleteFlee={() => void completeFleeBattle()}
         onComplete={() => void finishEvent(activeBattle)}
         onExitPreview={closeAdminPreview}
