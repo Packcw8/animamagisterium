@@ -158,7 +158,7 @@ export function MarkerSceneScreen({
             ) : (
               <Text style={styles.copy}>No dialogue tree is linked to this NPC yet.</Text>
             )}
-            {marker.battle_event_id || marker.enemy_id ? (
+            {marker.battle_event_id || marker.enemy_id || marker.npc_id ? (
               <Pressable style={styles.secondaryButton} onPress={onStartBattleEvent}>
                 <Text style={styles.secondaryText}>Challenge / Fight</Text>
               </Pressable>
@@ -219,8 +219,8 @@ export function MarkerSceneScreen({
         ) : isBattleMarkerType(marker.type) ? (
           <View style={styles.storyEditor}>
             <Text style={styles.selectedTitle}>Battle</Text>
-            <Text style={styles.copy}>{marker.battle_event_id || marker.enemy_id || marker.npc_id ? "This marker starts a standalone battle without changing trail progress." : "No Battle Event, Enemy, or NPC is linked to this marker yet."}</Text>
-            <Pressable style={[styles.primaryButton, !marker.battle_event_id && !marker.enemy_id && !marker.npc_id && styles.disabledAction]} onPress={onStartBattleEvent} disabled={!marker.battle_event_id && !marker.enemy_id && !marker.npc_id}>
+            <Text style={styles.copy}>{marker.battle_event_id || marker.enemy_id || marker.npc_id ? "This marker starts a standalone battle without changing trail progress." : "Start this battle marker. If no battle board enemy is placed yet, the marker will tell you what is missing."}</Text>
+            <Pressable style={styles.primaryButton} onPress={onStartBattleEvent}>
               <Text style={styles.primaryText}>Start Battle</Text>
             </Pressable>
           </View>

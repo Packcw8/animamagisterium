@@ -135,7 +135,7 @@ export function MarkerInteractionPanel({
   }
 
   if (isBattleMarkerType(marker.type)) {
-    const hasOpponent = Boolean(marker.battle_event_id || marker.enemy_id || marker.npc_id);
+    const hasDirectOpponent = Boolean(marker.battle_event_id || marker.enemy_id || marker.npc_id);
 
     return (
       <PanelShell marker={marker} message={message} onClose={onClose}>
@@ -143,8 +143,8 @@ export function MarkerInteractionPanel({
           {marker.scene_npc_image_url || marker.quest_image_url ? <Image source={{ uri: marker.scene_npc_image_url || marker.quest_image_url || "" }} style={styles.eventImage} /> : null}
           <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
           {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
-          <Text style={styles.copy}>{hasOpponent ? "This marker starts a standalone battle." : "No Battle Event, Enemy, or NPC is linked to this battle marker yet."}</Text>
-          <Pressable style={[styles.primaryButton, !hasOpponent && styles.disabledAction]} onPress={onStartBattleEvent} disabled={!hasOpponent}>
+          <Text style={styles.copy}>{hasDirectOpponent ? "This marker starts a standalone battle." : "Start this battle marker. If no battle board enemy is placed yet, the marker will tell you what is missing."}</Text>
+          <Pressable style={styles.primaryButton} onPress={onStartBattleEvent}>
             <Text style={styles.primaryText}>Start Battle</Text>
           </Pressable>
         </View>
@@ -153,7 +153,7 @@ export function MarkerInteractionPanel({
   }
 
   if (marker.type === "NPC") {
-    const hasOpponent = Boolean(marker.battle_event_id || marker.enemy_id);
+    const hasOpponent = Boolean(marker.battle_event_id || marker.enemy_id || marker.npc_id);
 
     return (
       <PanelShell marker={marker} message={message} onClose={onClose}>
