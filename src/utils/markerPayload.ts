@@ -27,6 +27,8 @@ export type MarkerPayloadState = {
   markerAccessHint: string;
   markerVisibleStoryFlagKey: string;
   markerVisibleStoryFlagValue: boolean;
+  markerVictoryStoryFlagKey: string;
+  markerVictoryStoryFlagValue: boolean;
   markerStoryOrder: string;
   markerUnlockAfterId: string | null;
   markerHideWhenCompleted: boolean;
@@ -96,6 +98,8 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     access_hint: state.markerAccessHint.trim() || null,
     visible_story_flag_key: state.markerVisibleStoryFlagKey.trim() || null,
     visible_story_flag_value: state.markerVisibleStoryFlagValue,
+    victory_story_flag_key: state.markerVictoryStoryFlagKey.trim() || null,
+    victory_story_flag_value: state.markerVictoryStoryFlagValue,
     story_order: Number(state.markerStoryOrder) || 0,
     unlock_after_marker_id: state.markerUnlockAfterId,
     hide_when_completed: state.markerHideWhenCompleted,
@@ -164,6 +168,8 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     access_hint: settings.access_hint,
     visible_story_flag_key: settings.visible_story_flag_key,
     visible_story_flag_value: settings.visible_story_flag_value,
+    victory_story_flag_key: settings.victory_story_flag_key,
+    victory_story_flag_value: settings.victory_story_flag_value,
     story_order: settings.story_order,
     unlock_after_marker_id: settings.unlock_after_marker_id,
     hide_when_completed: settings.hide_when_completed,

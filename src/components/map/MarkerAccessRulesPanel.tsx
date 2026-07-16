@@ -12,6 +12,8 @@ type MarkerAccessRulesPanelProps = {
   storyFlagKeys: string[];
   visibleStoryFlagKey: string;
   visibleStoryFlagValue: boolean;
+  victoryStoryFlagKey: string;
+  victoryStoryFlagValue: boolean;
   markerLockType: MapMarker["lock_type"];
   markerLockMessage: string;
   markerAccessRule: MapMarker["access_rule"];
@@ -32,6 +34,9 @@ type MarkerAccessRulesPanelProps = {
   onChangeVisibleStoryFlagKey: (value: string) => void;
   onToggleVisibleStoryFlagValue: () => void;
   onClearVisibleStoryFlag: () => void;
+  onChangeVictoryStoryFlagKey: (value: string) => void;
+  onToggleVictoryStoryFlagValue: () => void;
+  onClearVictoryStoryFlag: () => void;
   onChangeMarkerLockType: (value: MapMarker["lock_type"]) => void;
   onChangeMarkerLockMessage: (value: string) => void;
   onChangeMarkerAccessRule: (value: MapMarker["access_rule"]) => void;
@@ -49,6 +54,8 @@ export function MarkerAccessRulesPanel({
   storyFlagKeys,
   visibleStoryFlagKey,
   visibleStoryFlagValue,
+  victoryStoryFlagKey,
+  victoryStoryFlagValue,
   markerLockType,
   markerLockMessage,
   markerAccessRule,
@@ -69,6 +76,9 @@ export function MarkerAccessRulesPanel({
   onChangeVisibleStoryFlagKey,
   onToggleVisibleStoryFlagValue,
   onClearVisibleStoryFlag,
+  onChangeVictoryStoryFlagKey,
+  onToggleVictoryStoryFlagValue,
+  onClearVictoryStoryFlag,
   onChangeMarkerLockType,
   onChangeMarkerLockMessage,
   onChangeMarkerAccessRule,
@@ -181,6 +191,21 @@ export function MarkerAccessRulesPanel({
         </View>
       ) : null}
 
+      {isBattleMarkerType(markerType) ? (
+        <View style={styles.ruleBlock}>
+          <Text style={styles.subTitle}>Victory Story Flag</Text>
+          <Text style={styles.copy}>Optional. When the player wins this battle, set a per-player story flag to true or false.</Text>
+          <MarkerStoryFlagVisibilityEditor
+            storyFlagKeys={storyFlagKeys}
+            visibleStoryFlagKey={victoryStoryFlagKey}
+            visibleStoryFlagValue={victoryStoryFlagValue}
+            onChangeVisibleStoryFlagKey={onChangeVictoryStoryFlagKey}
+            onToggleVisibleStoryFlagValue={onToggleVictoryStoryFlagValue}
+            onClear={onClearVictoryStoryFlag}
+          />
+        </View>
+      ) : null}
+
       <View style={styles.ruleBlock}>
         <Text style={styles.subTitle}>Use Rule</Text>
         <Text style={styles.copy}>Most markers should stay Public. Use locked text only when players should see the marker but not open it yet.</Text>
@@ -232,6 +257,10 @@ const accessRuleOptions: Array<{ value: MapMarker["access_rule"]; label: string;
   { value: "item_required", label: "Item Required", description: "Visible, but needs an item to open." },
   { value: "admin_only", label: "Admin Only", description: "Hidden from players." },
 ];
+
+function isBattleMarkerType(type: string) {
+  return type === "Battle" || type === "Battle Zone" || type === "NPC";
+}
 
 const styles = StyleSheet.create({
   copy: {

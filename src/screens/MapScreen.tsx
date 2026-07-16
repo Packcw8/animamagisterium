@@ -554,6 +554,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [markerAccessHint, setMarkerAccessHint] = useState("");
   const [markerVisibleStoryFlagKey, setMarkerVisibleStoryFlagKey] = useState("");
   const [markerVisibleStoryFlagValue, setMarkerVisibleStoryFlagValue] = useState(true);
+  const [markerVictoryStoryFlagKey, setMarkerVictoryStoryFlagKey] = useState("");
+  const [markerVictoryStoryFlagValue, setMarkerVictoryStoryFlagValue] = useState(true);
   const [markerStoryOrder, setMarkerStoryOrder] = useState("0");
   const [markerUnlockAfterId, setMarkerUnlockAfterId] = useState<string | null>(null);
   const [markerHideWhenCompleted, setMarkerHideWhenCompleted] = useState(true);
@@ -1088,6 +1090,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       const visibleFlagKey = marker.visible_story_flag_key?.trim();
       if (visibleFlagKey) {
         keys.add(visibleFlagKey);
+      }
+
+      const victoryFlagKey = marker.victory_story_flag_key?.trim();
+      if (victoryFlagKey) {
+        keys.add(victoryFlagKey);
       }
     });
 
@@ -2730,6 +2737,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerAccessHint("");
     setMarkerVisibleStoryFlagKey("");
     setMarkerVisibleStoryFlagValue(true);
+    setMarkerVictoryStoryFlagKey("");
+    setMarkerVictoryStoryFlagValue(true);
     setMarkerStoryOrder("0");
     setMarkerUnlockAfterId(null);
     setMarkerHideWhenCompleted(true);
@@ -2791,6 +2800,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       markerAccessHint,
       markerVisibleStoryFlagKey,
       markerVisibleStoryFlagValue,
+      markerVictoryStoryFlagKey,
+      markerVictoryStoryFlagValue,
       markerStoryOrder,
       markerUnlockAfterId,
       markerHideWhenCompleted,
@@ -2978,6 +2989,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerAccessHint(marker.access_hint ?? "");
     setMarkerVisibleStoryFlagKey(marker.visible_story_flag_key ?? "");
     setMarkerVisibleStoryFlagValue(marker.visible_story_flag_value ?? true);
+    setMarkerVictoryStoryFlagKey(marker.victory_story_flag_key ?? "");
+    setMarkerVictoryStoryFlagValue(marker.victory_story_flag_value ?? true);
     setMarkerStoryOrder(String(marker.story_order ?? 0));
     setMarkerUnlockAfterId(marker.unlock_after_marker_id ?? null);
     setMarkerHideWhenCompleted(marker.hide_when_completed ?? true);
@@ -3094,6 +3107,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerAccessHint(marker.access_hint ?? "");
     setMarkerVisibleStoryFlagKey(marker.visible_story_flag_key ?? "");
     setMarkerVisibleStoryFlagValue(marker.visible_story_flag_value ?? true);
+    setMarkerVictoryStoryFlagKey(marker.victory_story_flag_key ?? "");
+    setMarkerVictoryStoryFlagValue(marker.victory_story_flag_value ?? true);
     setMarkerStoryOrder(String(marker.story_order ?? 0));
     setMarkerUnlockAfterId(null);
     setMarkerHideWhenCompleted(marker.hide_when_completed ?? true);
@@ -5418,16 +5433,17 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           await completeStoryMarker(marker.id);
           setCompletedStoryMarkerIds((current) => new Set([...current, marker.id]));
         }
+        const victoryFlagMessage = markerBattleWon ? await applyMarkerBattleVictoryFlag(marker) : "";
         await maybeClearActiveRouteForMarkerId(activeMarkerEventId);
         setActiveEvent(null);
         setActiveMarkerEventId(null);
         setActiveBattle(null);
         setActiveEnemy(null);
         activeBattleRouteRef.current = null;
-        setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}${trophyResult.message}`);
+        setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}${trophyResult.message}${victoryFlagMessage}`);
         showAuthoredToast("receiving_reward", {
           title: trophyResult.trophy ? "Trophy Harvest" : `${event.title} Complete`,
-          message: trophyResult.message ? "Battle rewards and trophy harvest were saved." : drops.length ? "Battle rewards and drops were added to Inventory." : "Battle complete. Rewards were saved.",
+          message: trophyResult.message ? "Battle rewards and trophy harvest were saved." : drops.length ? "Battle rewards and drops were added to Inventory." : victoryFlagMessage ? "Battle complete. Story progress was updated." : "Battle complete. Rewards were saved.",
           overline: trophyResult.trophy ? "Hunt Complete" : undefined,
           iconImageUrl: trophyResult.trophy?.imageUrl ?? undefined,
           trophy: trophyResult.trophy,
@@ -5504,16 +5520,17 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         await completeStoryMarker(completedMarker.id);
         setCompletedStoryMarkerIds((current) => new Set([...current, completedMarker.id]));
       }
+      const victoryFlagMessage = event.event_type === "battle" && battleFinished === "victory" ? await applyMarkerBattleVictoryFlag(completedMarker) : "";
       await maybeClearActiveRouteForMarkerId(completedMarker?.id ?? null);
       setActiveEvent(null);
       setActiveMarkerEventId(null);
       setActiveBattle(null);
       setActiveEnemy(null);
       activeBattleRouteRef.current = null;
-      setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}${trophyResult.message}`);
+      setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}${trophyResult.message}${victoryFlagMessage}`);
       showAuthoredToast("receiving_reward", {
         title: trophyResult.trophy ? "Trophy Harvest" : `${event.title} Complete`,
-        message: trophyResult.message ? "Rewards and trophy harvest were saved." : drops.length ? "Rewards and drops were added to Inventory." : "Event complete. Rewards were saved.",
+        message: trophyResult.message ? "Rewards and trophy harvest were saved." : drops.length ? "Rewards and drops were added to Inventory." : victoryFlagMessage ? "Battle complete. Story progress was updated." : "Event complete. Rewards were saved.",
         overline: trophyResult.trophy ? "Hunt Complete" : undefined,
         iconImageUrl: trophyResult.trophy?.imageUrl ?? undefined,
         trophy: trophyResult.trophy,
@@ -5539,6 +5556,24 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         closeBattleSession(message);
       }
     }
+  }
+
+  async function applyMarkerBattleVictoryFlag(marker: MapMarker | null | undefined) {
+    const flagKey = marker?.victory_story_flag_key?.trim();
+
+    if (!flagKey || adminPreviewMode) {
+      return "";
+    }
+
+    const flagValue = marker?.victory_story_flag_value ?? true;
+    await setPlayerStoryFlag(character.id, flagKey, flagValue, marker?.id ?? null);
+    setStoryFlags((current) => {
+      const next = new Map(current);
+      next.set(flagKey, flagValue);
+      return next;
+    });
+
+    return " Story progress updated.";
   }
 
   function emptyTrophyToastResult() {
@@ -8446,6 +8481,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               setMarkerVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
               markerVisibleStoryFlagValue={markerVisibleStoryFlagValue}
               setMarkerVisibleStoryFlagValue={setMarkerVisibleStoryFlagValue}
+              markerVictoryStoryFlagKey={markerVictoryStoryFlagKey}
+              setMarkerVictoryStoryFlagKey={setMarkerVictoryStoryFlagKey}
+              markerVictoryStoryFlagValue={markerVictoryStoryFlagValue}
+              setMarkerVictoryStoryFlagValue={setMarkerVictoryStoryFlagValue}
               knownStoryFlagKeys={knownStoryFlagKeys}
               markerStoryOrder={markerStoryOrder}
               setMarkerStoryOrder={setMarkerStoryOrder}
@@ -8621,6 +8660,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 setMarkerVisibleStoryFlagKey={setMarkerVisibleStoryFlagKey}
                 markerVisibleStoryFlagValue={markerVisibleStoryFlagValue}
                 setMarkerVisibleStoryFlagValue={setMarkerVisibleStoryFlagValue}
+                markerVictoryStoryFlagKey={markerVictoryStoryFlagKey}
+                setMarkerVictoryStoryFlagKey={setMarkerVictoryStoryFlagKey}
+                markerVictoryStoryFlagValue={markerVictoryStoryFlagValue}
+                setMarkerVictoryStoryFlagValue={setMarkerVictoryStoryFlagValue}
                 knownStoryFlagKeys={knownStoryFlagKeys}
                 markerStoryOrder={markerStoryOrder}
                 setMarkerStoryOrder={setMarkerStoryOrder}
@@ -9291,6 +9334,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 storyFlagKeys={knownStoryFlagKeys}
                 visibleStoryFlagKey={markerVisibleStoryFlagKey}
                 visibleStoryFlagValue={markerVisibleStoryFlagValue}
+                victoryStoryFlagKey={markerVictoryStoryFlagKey}
+                victoryStoryFlagValue={markerVictoryStoryFlagValue}
                 markerLockType={markerLockType}
                 markerLockMessage={markerLockMessage}
                 markerAccessRule={markerAccessRule}
@@ -9313,6 +9358,12 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 onClearVisibleStoryFlag={() => {
                   setMarkerVisibleStoryFlagKey("");
                   setMarkerVisibleStoryFlagValue(true);
+                }}
+                onChangeVictoryStoryFlagKey={setMarkerVictoryStoryFlagKey}
+                onToggleVictoryStoryFlagValue={() => setMarkerVictoryStoryFlagValue((value) => !value)}
+                onClearVictoryStoryFlag={() => {
+                  setMarkerVictoryStoryFlagKey("");
+                  setMarkerVictoryStoryFlagValue(true);
                 }}
                 onChangeMarkerLockType={setMarkerLockType}
                 onChangeMarkerLockMessage={setMarkerLockMessage}
@@ -10331,6 +10382,10 @@ function MiniMapMarkerAdminForm({
   setMarkerVisibleStoryFlagKey,
   markerVisibleStoryFlagValue,
   setMarkerVisibleStoryFlagValue,
+  markerVictoryStoryFlagKey,
+  setMarkerVictoryStoryFlagKey,
+  markerVictoryStoryFlagValue,
+  setMarkerVictoryStoryFlagValue,
   knownStoryFlagKeys,
   markerStoryOrder,
   setMarkerStoryOrder,
@@ -10505,6 +10560,10 @@ function MiniMapMarkerAdminForm({
   setMarkerVisibleStoryFlagKey: (value: string) => void;
   markerVisibleStoryFlagValue: boolean;
   setMarkerVisibleStoryFlagValue: (value: boolean | ((current: boolean) => boolean)) => void;
+  markerVictoryStoryFlagKey: string;
+  setMarkerVictoryStoryFlagKey: (value: string) => void;
+  markerVictoryStoryFlagValue: boolean;
+  setMarkerVictoryStoryFlagValue: (value: boolean | ((current: boolean) => boolean)) => void;
   knownStoryFlagKeys: string[];
   markerStoryOrder: string;
   setMarkerStoryOrder: (value: string) => void;
@@ -10695,6 +10754,8 @@ function MiniMapMarkerAdminForm({
           storyFlagKeys={knownStoryFlagKeys}
           visibleStoryFlagKey={markerVisibleStoryFlagKey}
           visibleStoryFlagValue={markerVisibleStoryFlagValue}
+          victoryStoryFlagKey={markerVictoryStoryFlagKey}
+          victoryStoryFlagValue={markerVictoryStoryFlagValue}
           markerLockType={markerLockType}
           markerLockMessage={markerLockMessage}
           markerAccessRule={markerAccessRule}
@@ -10718,6 +10779,12 @@ function MiniMapMarkerAdminForm({
           onClearVisibleStoryFlag={() => {
             setMarkerVisibleStoryFlagKey("");
             setMarkerVisibleStoryFlagValue(true);
+          }}
+          onChangeVictoryStoryFlagKey={setMarkerVictoryStoryFlagKey}
+          onToggleVictoryStoryFlagValue={() => setMarkerVictoryStoryFlagValue((value) => !value)}
+          onClearVictoryStoryFlag={() => {
+            setMarkerVictoryStoryFlagKey("");
+            setMarkerVictoryStoryFlagValue(true);
           }}
           onChangeMarkerLockType={setMarkerLockType}
           onChangeMarkerLockMessage={setMarkerLockMessage}

@@ -910,6 +910,8 @@ export type Tables = {
     access_hint: string | null;
     visible_story_flag_key: string | null;
     visible_story_flag_value: boolean;
+    victory_story_flag_key: string | null;
+    victory_story_flag_value: boolean;
     story_order: number;
     unlock_after_marker_id: string | null;
     hide_when_completed: boolean;
