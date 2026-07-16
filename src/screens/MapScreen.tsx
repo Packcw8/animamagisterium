@@ -9595,7 +9595,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               {isBattleMarkerType(draftType) ? (
                 <View style={styles.storyEditor}>
                   <Text style={styles.selectedTitle}>Battle Setup</Text>
-                  <Text style={styles.copy}>Link a saved Battle Event to use its battleground image, battlefield layout, rewards, and combatants. Or pick a direct Enemy/NPC for a simple standalone battle.</Text>
+                  <Text style={styles.copy}>Use one battle source: a linked Battle Event, a direct Enemy/NPC, or the Marker Battle Board below. Trophy animals must be placed from Enemy Admin with Trophy Animal enabled.</Text>
+                  <Text style={styles.debugLine}>Visibility and locks are controlled in Access Rules. Flags set after victory are controlled in Battle Victory Result.</Text>
                   <EventPicker
                     label="Linked Battle Event"
                     events={reusableMapEvents.filter((event) => event.event_type === "battle")}
@@ -9637,7 +9638,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   />
                   <BattlefieldLayoutEditor
                     title="Marker Battle Board"
-                    emptyText="Select or create this Battle marker first, then place enemies directly on its battleground."
+                    emptyText="Select or create this Battle marker first, then place enemies directly on its battleground. Use Enemy actors for trophy animals and leaderboards."
                     eventId={selectedMarker?.id ?? null}
                     backgroundImageUrl={markerSceneBackground || markerQuestImage}
                     combatants={battlefieldCombatants}
@@ -10975,7 +10976,8 @@ function MiniMapMarkerAdminForm({
       {supportsBattle ? (
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>Battle Setup</Text>
-          <Text style={styles.copy}>Link a saved Battle Event to use its battleground image, battlefield layout, rewards, and combatants. Or pick a direct Enemy/NPC for a simple standalone battle.</Text>
+          <Text style={styles.copy}>Use one battle source: a linked Battle Event, a direct Enemy/NPC, or the Marker Battle Board below. Trophy animals must be placed from Enemy Admin with Trophy Animal enabled.</Text>
+          <Text style={styles.debugLine}>Visibility and locks are controlled in Access Rules. Flags set after victory are controlled in Battle Victory Result.</Text>
           <EventPicker
             label="Linked Battle Event"
             events={reusableMapEvents.filter((event) => event.event_type === "battle")}
@@ -11015,7 +11017,7 @@ function MiniMapMarkerAdminForm({
           />
           <BattlefieldLayoutEditor
             title="Marker Battle Board"
-            emptyText="Select or create this Battle marker first, then place enemies directly on its battleground."
+            emptyText="Select or create this Battle marker first, then place enemies directly on its battleground. Use Enemy actors for trophy animals and leaderboards."
             eventId={selectedMarker?.id ?? null}
             backgroundImageUrl={markerSceneBackground || markerQuestImage}
             combatants={battlefieldCombatants}

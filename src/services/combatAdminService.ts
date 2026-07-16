@@ -482,27 +482,43 @@ export async function rollAndSaveTrophyHarvest(input: {
   });
   const drops = rollTrophyDrops(enemy.trophyDrops ?? []);
 
-  const { data, error } = await supabase
+  const harvestPayload = {
+    user_id: input.userId,
+    character_id: input.characterId,
+    enemy_id: enemy.id,
+    battle_event_id: input.battleEventId ?? null,
+    marker_id: input.markerId ?? null,
+    species: trophy.species || enemy.type || enemy.name,
+    enemy_name: enemy.name,
+    weight,
+    antler_spread: antlerSpread,
+    horn_length: hornLength,
+    skull_size: skullSize,
+    pelt_quality: peltQuality,
+    rarity_bonus: rarityBonus,
+    trophy_score: trophyScore,
+    drops,
+  };
+
+  let { data, error } = await supabase
     .from("player_trophy_harvests")
-    .insert({
-      user_id: input.userId,
-      character_id: input.characterId,
-      enemy_id: enemy.id,
-      battle_event_id: input.battleEventId ?? null,
-      marker_id: input.markerId ?? null,
-      species: trophy.species || enemy.type || enemy.name,
-      enemy_name: enemy.name,
-      weight,
-      antler_spread: antlerSpread,
-      horn_length: hornLength,
-      skull_size: skullSize,
-      pelt_quality: peltQuality,
-      rarity_bonus: rarityBonus,
-      trophy_score: trophyScore,
-      drops,
-    })
+    .insert(harvestPayload)
     .select()
     .single();
+
+  if (error && (harvestPayload.battle_event_id || harvestPayload.marker_id) && isTrophyLinkConstraintError(error)) {
+    const retry = await supabase
+      .from("player_trophy_harvests")
+      .insert({
+        ...harvestPayload,
+        battle_event_id: null,
+        marker_id: null,
+      })
+      .select()
+      .single();
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     throw error;
@@ -512,6 +528,12 @@ export async function rollAndSaveTrophyHarvest(input: {
     harvest: data as PlayerTrophyHarvest,
     drops,
   };
+}
+
+function isTrophyLinkConstraintError(error: unknown) {
+  const maybeError = error as { code?: string; message?: string; details?: string } | null;
+  const text = `${maybeError?.message ?? ""} ${maybeError?.details ?? ""}`.toLowerCase();
+  return maybeError?.code === "23503" || text.includes("battle_event_id") || text.includes("marker_id") || text.includes("foreign key");
 }
 
 export async function deleteNpcDrop(id: string) {
