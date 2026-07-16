@@ -16,6 +16,18 @@ export type GameToastData = {
   iconImageUrl?: string | null;
   soundUrl?: string | null;
   seenFlagKey?: string | null;
+  trophy?: {
+    name: string;
+    species?: string | null;
+    imageUrl?: string | null;
+    score: number;
+    weight?: number | null;
+    antlerSpread?: number | null;
+    hornLength?: number | null;
+    skullSize?: number | null;
+    peltQuality?: number | null;
+    rarityBonus?: number | null;
+  } | null;
   rewards?: GameToastReward[];
   nextMarker?: MapMarker | null;
   nextImageUri?: string | null;
@@ -43,6 +55,7 @@ export function GameToast({ toast, onDismiss }: GameToastProps) {
           </View>
         </View>
         <Text style={styles.message}>{toast.message}</Text>
+        {toast.trophy ? <TrophyToastCard trophy={toast.trophy} /> : null}
         {toast.rewards && toast.rewards.length > 0 ? (
           <View style={styles.rewardList}>
             {toast.rewards.map((reward) => (
@@ -65,6 +78,37 @@ export function GameToast({ toast, onDismiss }: GameToastProps) {
         <Pressable style={styles.okButton} onPress={onDismiss}>
           <Text style={styles.okText}>{toast.actionLabel ?? "OK"}</Text>
         </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function TrophyToastCard({ trophy }: { trophy: NonNullable<GameToastData["trophy"]> }) {
+  const stats = [
+    { label: "Score", value: trophy.score > 0 ? trophy.score.toFixed(2) : null },
+    { label: "Weight", value: Number(trophy.weight) > 0 ? `${Number(trophy.weight).toFixed(1)} lb` : null },
+    { label: "Spread", value: Number(trophy.antlerSpread) > 0 ? `${Number(trophy.antlerSpread).toFixed(1)} in` : null },
+    { label: "Horns", value: Number(trophy.hornLength) > 0 ? `${Number(trophy.hornLength).toFixed(1)} in` : null },
+    { label: "Skull", value: Number(trophy.skullSize) > 0 ? `${Number(trophy.skullSize).toFixed(1)} in` : null },
+    { label: "Pelt", value: Number(trophy.peltQuality) > 0 ? `${Math.round(Number(trophy.peltQuality))}%` : null },
+    { label: "Rarity", value: Number(trophy.rarityBonus) > 0 ? `+${Number(trophy.rarityBonus).toFixed(1)}` : null },
+  ].filter((stat) => stat.value);
+
+  return (
+    <View style={styles.trophyCard}>
+      {trophy.imageUrl ? <Image source={{ uri: trophy.imageUrl }} style={styles.trophyImage} /> : <View style={styles.trophyFallback}><Text style={styles.trophyFallbackText}>{trophy.name.slice(0, 1).toUpperCase()}</Text></View>}
+      <View style={styles.trophyCopy}>
+        <Text style={styles.trophyOverline}>Trophy Recorded</Text>
+        <Text style={styles.trophyName}>{trophy.name}</Text>
+        {trophy.species ? <Text style={styles.trophySpecies}>{trophy.species}</Text> : null}
+        <View style={styles.trophyStats}>
+          {stats.map((stat) => (
+            <View key={stat.label} style={styles.trophyStat}>
+              <Text style={styles.trophyStatLabel}>{stat.label}</Text>
+              <Text style={styles.trophyStatValue}>{stat.value}</Text>
+            </View>
+          ))}
+        </View>
       </View>
     </View>
   );
@@ -168,6 +212,78 @@ const styles = StyleSheet.create({
     fontFamily: fonts.title,
     fontSize: 14,
     lineHeight: 20,
+  },
+  trophyCard: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "rgba(217, 164, 65, 0.08)",
+  },
+  trophyImage: {
+    width: "100%",
+    height: 150,
+  },
+  trophyFallback: {
+    height: 110,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(36, 24, 12, 0.92)",
+  },
+  trophyFallbackText: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 42,
+  },
+  trophyCopy: {
+    padding: 12,
+  },
+  trophyOverline: {
+    color: colors.blue,
+    fontFamily: fonts.title,
+    fontSize: 11,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  trophyName: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 17,
+  },
+  trophySpecies: {
+    color: colors.muted,
+    fontFamily: fonts.title,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  trophyStats: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+  },
+  trophyStat: {
+    minWidth: 78,
+    flexGrow: 1,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    backgroundColor: "rgba(0, 0, 0, 0.24)",
+  },
+  trophyStatLabel: {
+    color: colors.muted,
+    fontFamily: fonts.title,
+    fontSize: 10,
+    textTransform: "uppercase",
+  },
+  trophyStatValue: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 13,
+    marginTop: 2,
   },
   rewardList: {
     flexDirection: "row",

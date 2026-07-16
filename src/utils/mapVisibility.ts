@@ -27,12 +27,12 @@ export function getOrderedMarkerRouteLinks(links: MarkerRouteLink[]) {
 }
 
 export function canPlayerSeeStoryMarker(marker: MapMarker, scopeMarkers: MapMarker[], completedMarkerIds: Set<string>, startedMarkerIds: Set<string> = new Set()) {
-  if (!isStoryQuestMarker(marker)) {
-    return true;
-  }
-
   if (marker.hide_when_completed !== false && completedMarkerIds.has(marker.id)) {
     return false;
+  }
+
+  if (!isStoryQuestMarker(marker)) {
+    return true;
   }
 
   if (marker.unlock_after_marker_id && !completedMarkerIds.has(marker.unlock_after_marker_id)) {
