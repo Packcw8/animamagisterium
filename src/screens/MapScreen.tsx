@@ -4549,6 +4549,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           active_mini_map_id: miniMap.id,
           current_x_percent: nextFreeRoamPosition.x,
           current_y_percent: nextFreeRoamPosition.y,
+          active_season_number: miniMap.season_number,
+          active_chapter_number: miniMap.chapter_number,
         });
       }
     }
@@ -4693,6 +4695,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           ? markers.find((item) => item.id === targetSpawnMarkerId && item.mini_map_id === nextMiniMap.id && item.type === "Player Spawn")
           : null;
         openMiniMap(nextMiniMap, {
+          persistPlayerState: true,
           spawnPosition: spawnMarker
             ? { x: Number(spawnMarker.x_percent), y: Number(spawnMarker.y_percent) }
             : getMiniMapSpawnPosition(nextMiniMap.id),
@@ -4734,7 +4737,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return;
     }
 
-    openMiniMap(miniMap, { spawnPosition: getExitTargetMiniMapSpawnPosition(marker, miniMap.id) });
+    openMiniMap(miniMap, { persistPlayerState: true, spawnPosition: getExitTargetMiniMapSpawnPosition(marker, miniMap.id) });
     await maybeClearActiveRouteForMarker(marker);
     await maybeStartMarkerContinuationRoute(marker);
   }
