@@ -1873,6 +1873,21 @@ export async function completeStoryMarker(markerId: string) {
     throw userError ?? new Error("You must be signed in to complete story quests.");
   }
 
+  const { data: existing, error: existingError } = await supabase
+    .from("story_marker_completions")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("marker_id", markerId)
+    .maybeSingle();
+
+  if (existingError) {
+    throw existingError;
+  }
+
+  if (existing) {
+    return existing as StoryMarkerCompletion;
+  }
+
   const { data, error } = await supabase
     .from("story_marker_completions")
     .insert({
@@ -1884,18 +1899,18 @@ export async function completeStoryMarker(markerId: string) {
     .single();
 
   if (error?.code === "23505") {
-    const { data: existing, error: existingError } = await supabase
+    const { data: racedCompletion, error: racedError } = await supabase
       .from("story_marker_completions")
       .select("*")
       .eq("user_id", user.id)
       .eq("marker_id", markerId)
       .maybeSingle();
 
-    if (existingError) {
-      throw existingError;
+    if (racedError) {
+      throw racedError;
     }
 
-    return existing as StoryMarkerCompletion;
+    return racedCompletion as StoryMarkerCompletion;
   }
 
   if (error) {
