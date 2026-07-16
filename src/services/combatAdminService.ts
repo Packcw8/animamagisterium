@@ -36,6 +36,11 @@ export const usageContexts: CombatAbility["usage_context"][] = ["battle_only", "
 export const trophyScoreFormulas: EnemyTrophySetting["score_formula"][] = ["combined", "weight", "antlers", "horns", "skull", "pelt"];
 export const enemyAssetBasePath = "/assets/Enemies/";
 
+export type TrophyHarvestRoll = {
+  harvest: PlayerTrophyHarvest;
+  drops: Array<{ item_id: string; quantity: number }>;
+};
+
 export function resolveEnemyImageUri(imagePath?: string | null) {
   const trimmed = imagePath?.trim();
 
@@ -447,6 +452,68 @@ export async function deleteEnemyTrophyDrop(id: string) {
   if (error) throw error;
 }
 
+export async function rollAndSaveTrophyHarvest(input: {
+  userId: string;
+  characterId: string;
+  enemy: EnemyWithLoadout | NpcWithLoadout | null;
+  battleEventId?: string | null;
+  markerId?: string | null;
+}): Promise<TrophyHarvestRoll | null> {
+  const enemy = input.enemy as EnemyWithLoadout | null;
+
+  if (!enemy?.id || !enemy.trophy?.trophy_enabled) {
+    return null;
+  }
+
+  const trophy = enemy.trophy;
+  const weight = rollRange(trophy.min_weight, trophy.max_weight);
+  const antlerSpread = rollRange(trophy.min_antler_spread, trophy.max_antler_spread);
+  const hornLength = rollRange(trophy.min_horn_length, trophy.max_horn_length);
+  const skullSize = rollRange(trophy.min_skull_size, trophy.max_skull_size);
+  const peltQuality = Math.round(rollRange(trophy.min_pelt_quality, trophy.max_pelt_quality));
+  const rarityBonus = Number(trophy.rarity_bonus) || 0;
+  const trophyScore = calculateTrophyScore(trophy.score_formula, {
+    weight,
+    antlerSpread,
+    hornLength,
+    skullSize,
+    peltQuality,
+    rarityBonus,
+  });
+  const drops = rollTrophyDrops(enemy.trophyDrops ?? []);
+
+  const { data, error } = await supabase
+    .from("player_trophy_harvests")
+    .insert({
+      user_id: input.userId,
+      character_id: input.characterId,
+      enemy_id: enemy.id,
+      battle_event_id: input.battleEventId ?? null,
+      marker_id: input.markerId ?? null,
+      species: trophy.species || enemy.type || enemy.name,
+      enemy_name: enemy.name,
+      weight,
+      antler_spread: antlerSpread,
+      horn_length: hornLength,
+      skull_size: skullSize,
+      pelt_quality: peltQuality,
+      rarity_bonus: rarityBonus,
+      trophy_score: trophyScore,
+      drops,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    harvest: data as PlayerTrophyHarvest,
+    drops,
+  };
+}
+
 export async function deleteNpcDrop(id: string) {
   const { error } = await supabase.from("npc_item_drops").delete().eq("id", id);
   if (error) throw error;
@@ -550,6 +617,45 @@ function normalizeEnemyTrophySetting(enemyId: string, input: Partial<EnemyTrophy
     rarity_bonus: Math.max(0, Number(input.rarity_bonus) || 0),
     updated_at: new Date().toISOString(),
   };
+}
+
+function rollRange(min: number, max: number) {
+  const safeMin = Number(min) || 0;
+  const safeMax = Math.max(safeMin, Number(max) || safeMin);
+  const value = safeMin + Math.random() * (safeMax - safeMin);
+
+  return Math.round(value * 100) / 100;
+}
+
+function rollTrophyDrops(drops: EnemyTrophyDrop[]) {
+  return drops.reduce<Array<{ item_id: string; quantity: number }>>((rolled, drop) => {
+    if (Math.random() * 100 > Number(drop.drop_chance)) {
+      return rolled;
+    }
+
+    const min = Math.max(1, Number(drop.min_quantity) || 1);
+    const max = Math.max(min, Number(drop.max_quantity) || min);
+    const quantity = Math.floor(min + Math.random() * (max - min + 1));
+    rolled.push({ item_id: drop.item_id, quantity });
+    return rolled;
+  }, []);
+}
+
+function calculateTrophyScore(
+  formula: EnemyTrophySetting["score_formula"],
+  values: { weight: number; antlerSpread: number; hornLength: number; skullSize: number; peltQuality: number; rarityBonus: number },
+) {
+  const score = (() => {
+    if (formula === "weight") return values.weight;
+    if (formula === "antlers") return values.antlerSpread * 10;
+    if (formula === "horns") return values.hornLength * 10;
+    if (formula === "skull") return values.skullSize * 10;
+    if (formula === "pelt") return values.peltQuality;
+
+    return values.weight + values.antlerSpread * 3 + values.hornLength * 2 + values.skullSize * 2 + values.peltQuality + values.rarityBonus;
+  })();
+
+  return Math.round(score * 100) / 100;
 }
 
 function normalizeNpc(input: Partial<NpcDefinition>, userId: string | null) {

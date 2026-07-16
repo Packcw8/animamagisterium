@@ -1,4 +1,6 @@
 import { supabase } from "../lib/supabase";
+import type { PlayerTrophyHarvest } from "./combatAdminService";
+import { resolveEnemyImageUri } from "./combatAdminService";
 
 export type LeaderboardMetric =
   | "total_distance_walked_meters"
@@ -31,6 +33,13 @@ export type LeaderboardRow = {
   training_sessions_completed: number;
   event_completions: number;
   total_enemy_kills: number;
+};
+
+export type TrophyLeaderboardRow = PlayerTrophyHarvest & {
+  character_name: string;
+  display_name: string;
+  portrait_url: string | null;
+  enemy_image_url: string | null;
 };
 
 export const leaderboardMetrics: Array<{ key: LeaderboardMetric; label: string }> = [
@@ -134,4 +143,99 @@ export async function getLeaderboardProfileForCharacter(characterId: string) {
   }
 
   return data as LeaderboardRow | null;
+}
+
+export async function getTrophyLeaderboard(limit = 100, userIds?: string[]) {
+  let query = supabase
+    .from("player_trophy_harvests")
+    .select("*")
+    .order("trophy_score", { ascending: false })
+    .order("created_at", { ascending: true });
+
+  if (userIds?.length) {
+    query = query.in("user_id", userIds);
+  }
+
+  const { data, error } = await query.limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  const harvests = (data ?? []) as PlayerTrophyHarvest[];
+  return hydrateTrophyRows(harvests);
+}
+
+export async function getTrophyLeaderboardWithRank(userIds?: string[]) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  let query = supabase
+    .from("player_trophy_harvests")
+    .select("*")
+    .order("trophy_score", { ascending: false })
+    .order("created_at", { ascending: true });
+
+  if (userIds?.length) {
+    query = query.in("user_id", userIds);
+  }
+
+  const { data, error } = await query.limit(5000);
+
+  if (error) {
+    throw error;
+  }
+
+  const harvests = (data ?? []) as PlayerTrophyHarvest[];
+  const hydrated = await hydrateTrophyRows(harvests);
+  const ranked = hydrated.map((row, index) => ({ row, rank: index + 1 }));
+  const topRows = ranked.slice(0, 100);
+  const currentPlayer = user ? ranked.find((entry) => entry.row.user_id === user.id) ?? null : null;
+
+  return {
+    rows: topRows.map((entry) => entry.row),
+    currentPlayerRow: currentPlayer?.row ?? null,
+    currentPlayerRank: currentPlayer?.rank ?? null,
+  };
+}
+
+async function hydrateTrophyRows(harvests: PlayerTrophyHarvest[]): Promise<TrophyLeaderboardRow[]> {
+  if (harvests.length === 0) {
+    return [];
+  }
+
+  const characterIds = [...new Set(harvests.map((row) => row.character_id))];
+  const enemyIds = [...new Set(harvests.map((row) => row.enemy_id).filter(Boolean) as string[])];
+  const [profilesResult, enemiesResult] = await Promise.all([
+    supabase.from("player_leaderboards").select("*").in("character_id", characterIds),
+    enemyIds.length ? supabase.from("enemy_definitions").select("id,image_url").in("id", enemyIds) : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (profilesResult.error) {
+    throw profilesResult.error;
+  }
+  if (enemiesResult.error) {
+    throw enemiesResult.error;
+  }
+
+  const profiles = new Map(((profilesResult.data ?? []) as LeaderboardRow[]).map((row) => [row.character_id, row]));
+  const enemyImages = new Map(((enemiesResult.data ?? []) as Array<{ id: string; image_url: string | null }>).map((row) => [row.id, resolveEnemyImageUri(row.image_url)]));
+
+  return harvests.map((harvest) => {
+    const profile = profiles.get(harvest.character_id);
+
+    return {
+      ...harvest,
+      character_name: profile?.character_name ?? "Unknown Character",
+      display_name: profile?.display_name ?? "Unknown Player",
+      portrait_url: profile?.portrait_url ?? null,
+      enemy_image_url: harvest.enemy_id ? enemyImages.get(harvest.enemy_id) ?? null : null,
+    };
+  });
 }

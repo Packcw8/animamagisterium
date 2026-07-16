@@ -70,7 +70,7 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails, getCharacter, incrementCharacterDistanceWalked, spendCharacterGold, updateCharacter } from "../services/characterService";
 import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getCharacterResources, getCombatLoadout, getCurrentHealth, learnAbilityFromScroll } from "../services/abilityService";
-import { EnemyDefinition, getEnemies, getNpcs, NpcDefinition, type EnemyWithLoadout } from "../services/combatAdminService";
+import { EnemyDefinition, getEnemies, getNpcs, NpcDefinition, rollAndSaveTrophyHarvest, type EnemyWithLoadout } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
 import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, unequipInventorySlot } from "../services/inventoryService";
 import { equipMount, getActiveMountMultiplier, getMountDefinitions, getPlayerMounts, resolveMountImageUri, unmountCharacter, type MountDefinition, type PlayerMountWithDefinition } from "../services/mountService";
@@ -5413,6 +5413,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           console.warn("[battle] unable to record marker enemy kill", killError);
           killMessage = " Kill tracking could not be saved.";
         }
+        const trophyResult = markerBattleWon ? await awardTrophyHarvest(event, marker?.id ?? null) : { message: "", rewards: [] as GameToastReward[] };
         if (marker && markerBattleWon) {
           await completeStoryMarker(marker.id);
           setCompletedStoryMarkerIds((current) => new Set([...current, marker.id]));
@@ -5423,17 +5424,17 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         setActiveBattle(null);
         setActiveEnemy(null);
         activeBattleRouteRef.current = null;
-        setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}`);
+        setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}${trophyResult.message}`);
         showAuthoredToast("receiving_reward", {
           title: `${event.title} Complete`,
-          message: drops.length ? "Battle rewards and drops were added to Inventory." : "Battle complete. Rewards were saved.",
+          message: trophyResult.message ? "Battle rewards and trophy harvest were saved." : drops.length ? "Battle rewards and drops were added to Inventory." : "Battle complete. Rewards were saved.",
           rewards: rewardResult.claimed ? buildRewardToastItems({
             xp: (marker?.reward_xp ?? 0) + (activeEnemy?.xp_reward ?? 0),
             gold: (marker?.reward_gold ?? 0) + (activeEnemy?.gold_reward ?? 0),
             itemId: marker?.reward_item_id ?? null,
             itemQuantity: marker?.reward_item_quantity ?? 1,
             fullHeal: marker?.reward_full_heal,
-          }, dropRewards) : dropRewards,
+          }, [...dropRewards, ...trophyResult.rewards]) : [...dropRewards, ...trophyResult.rewards],
           actionLabel: "OK",
         }, {
           triggerKey: marker?.id ?? event.id,
@@ -5468,6 +5469,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         }
       }
       let killMessage = "";
+      let trophyResult = { message: "", rewards: [] as GameToastReward[] };
       if (event.event_type === "battle") {
         try {
           const enemySource = event.npc_id ? "npc" : event.enemy_id ? "enemy" : "manual";
@@ -5489,6 +5491,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           console.warn("[battle] unable to record enemy kill", killError);
           killMessage = " Kill tracking could not be saved.";
         }
+        trophyResult = battleFinished === "victory" ? await awardTrophyHarvest(event, completedMarker?.id ?? null) : trophyResult;
       }
       if (!completedMarker) {
         await completeMapEvent(event.id);
@@ -5504,17 +5507,17 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setActiveBattle(null);
       setActiveEnemy(null);
       activeBattleRouteRef.current = null;
-      setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}`);
+      setGpsMessage(`${event.title} completed. ${rewardResult.message}${drops.length ? ` Drops: ${drops.join(", ")}.` : ""}${killMessage}${trophyResult.message}`);
       showAuthoredToast("receiving_reward", {
         title: `${event.title} Complete`,
-        message: drops.length ? "Rewards and drops were added to Inventory." : "Event complete. Rewards were saved.",
+        message: trophyResult.message ? "Rewards and trophy harvest were saved." : drops.length ? "Rewards and drops were added to Inventory." : "Event complete. Rewards were saved.",
         rewards: rewardResult.claimed ? buildRewardToastItems({
           xp: ((completedMarker?.reward_xp ?? event.reward_xp) ?? 0) + (activeEnemy?.xp_reward ?? 0),
           gold: ((completedMarker?.reward_gold ?? event.reward_gold) ?? 0) + (activeEnemy?.gold_reward ?? 0),
           itemId: completedMarker?.reward_item_id ?? event.reward_item_id,
           itemQuantity: completedMarker?.reward_item_quantity ?? event.reward_item_quantity,
           fullHeal: completedMarker?.reward_full_heal,
-        }, dropRewards) : dropRewards,
+        }, [...dropRewards, ...trophyResult.rewards]) : [...dropRewards, ...trophyResult.rewards],
         nextMarker: completedMarker ? getNextStoryMarkerAfter(completedMarker) : getJourneyDestinationMarker(routeRef.current, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null, routeDirectionRef.current),
         actionLabel: "OK",
       }, {
@@ -5530,6 +5533,46 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         closeBattleSession(message);
       }
     }
+  }
+
+  async function awardTrophyHarvest(event: MapEvent, markerId: string | null) {
+    if (battleFinished !== "victory" || !activeEnemy) {
+      return { message: "", rewards: [] as GameToastReward[] };
+    }
+
+    const trophyResult = await rollAndSaveTrophyHarvest({
+      userId: character.user_id,
+      characterId: character.id,
+      enemy: activeEnemy,
+      battleEventId: event.id,
+      markerId,
+    });
+
+    if (!trophyResult) {
+      return { message: "", rewards: [] as GameToastReward[] };
+    }
+
+    const trophyRewards: GameToastReward[] = [{ label: `${trophyResult.harvest.enemy_name ?? "Trophy"} Score`, quantity: Math.round(Number(trophyResult.harvest.trophy_score) || 0) }];
+    const dropMessages: string[] = [];
+
+    for (const drop of trophyResult.drops) {
+      await grantItemToCharacter(character.id, drop.item_id, drop.quantity);
+      const itemName = getItemName(itemDefinitions, drop.item_id);
+      dropMessages.push(`${itemName} x${drop.quantity}`);
+      trophyRewards.push({ label: itemName, quantity: drop.quantity });
+    }
+
+    const measurementMessage = [
+      `${Number(trophyResult.harvest.trophy_score).toFixed(2)} score`,
+      Number(trophyResult.harvest.weight) > 0 ? `${Number(trophyResult.harvest.weight).toFixed(1)} lb` : null,
+      Number(trophyResult.harvest.antler_spread) > 0 ? `${Number(trophyResult.harvest.antler_spread).toFixed(1)} in spread` : null,
+      Number(trophyResult.harvest.pelt_quality) > 0 ? `${trophyResult.harvest.pelt_quality}% pelt` : null,
+    ].filter(Boolean).join(" / ");
+
+    return {
+      message: ` Trophy recorded: ${measurementMessage}.${dropMessages.length ? ` Trophy drops: ${dropMessages.join(", ")}.` : ""}`,
+      rewards: trophyRewards,
+    };
   }
 
   function handleStoryChoice(action: MapEvent["choices"][number]["action"]) {

@@ -8,19 +8,23 @@ import { Screen } from "../components/Screen";
 import { PartyGuildPanel } from "../components/social/PartyGuildPanel";
 import { colors, fonts } from "../components/theme";
 import { getEarnedBadgesForCharacter, EarnedBadgeSummary } from "../services/badgeService";
-import { getLeaderboardWithRank, LeaderboardMetric, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers } from "../services/leaderboardService";
+import { getLeaderboardWithRank, getTrophyLeaderboardWithRank, LeaderboardMetric, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, type TrophyLeaderboardRow } from "../services/leaderboardService";
 import { FriendWithProfile, getCurrentUserId, getFriendRows, removeFriend, sendFriendRequest, updateFriendRequest } from "../services/socialService";
 
 type SocialTab = "friends" | "partyGuild" | "leaderboard" | "profile";
 type LeaderboardScope = "all" | "friends";
+type SocialLeaderboardMetric = LeaderboardMetric | "trophies";
 
 export function SocialScreen() {
   const [activeTab, setActiveTab] = useState<SocialTab>("leaderboard");
-  const [activeMetric, setActiveMetric] = useState<LeaderboardMetric>("total_distance_walked_meters");
+  const [activeMetric, setActiveMetric] = useState<SocialLeaderboardMetric>("total_distance_walked_meters");
   const [scope, setScope] = useState<LeaderboardScope>("all");
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [currentPlayerRow, setCurrentPlayerRow] = useState<LeaderboardRow | null>(null);
   const [currentPlayerRank, setCurrentPlayerRank] = useState<number | null>(null);
+  const [trophyRows, setTrophyRows] = useState<TrophyLeaderboardRow[]>([]);
+  const [currentTrophyRow, setCurrentTrophyRow] = useState<TrophyLeaderboardRow | null>(null);
+  const [currentTrophyRank, setCurrentTrophyRank] = useState<number | null>(null);
   const [friends, setFriends] = useState<FriendWithProfile[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -30,7 +34,7 @@ export function SocialScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
-  const activeLabel = useMemo(() => leaderboardMetrics.find((metric) => metric.key === activeMetric)?.label ?? "Leaderboard", [activeMetric]);
+  const activeLabel = useMemo(() => activeMetric === "trophies" ? "Trophy Animals" : leaderboardMetrics.find((metric) => metric.key === activeMetric)?.label ?? "Leaderboard", [activeMetric]);
   const acceptedFriendIds = useMemo(
     () => friends.filter((friend) => friend.status === "accepted").map((friend) => friend.friend_user_id),
     [friends],
@@ -65,10 +69,24 @@ export function SocialScreen() {
     setMessage(null);
     try {
       const friendScopeIds = scope === "friends" ? [userId, ...acceptedFriendIds].filter(Boolean) as string[] : undefined;
+      if (activeMetric === "trophies") {
+        const data = await getTrophyLeaderboardWithRank(friendScopeIds);
+        setTrophyRows(data.rows);
+        setCurrentTrophyRow(data.currentPlayerRow);
+        setCurrentTrophyRank(data.currentPlayerRank);
+        setRows([]);
+        setCurrentPlayerRow(null);
+        setCurrentPlayerRank(null);
+        return;
+      }
+
       const data = await getLeaderboardWithRank(activeMetric, friendScopeIds);
       setRows(data.rows);
       setCurrentPlayerRow(data.currentPlayerRow);
       setCurrentPlayerRank(data.currentPlayerRank);
+      setTrophyRows([]);
+      setCurrentTrophyRow(null);
+      setCurrentTrophyRank(null);
     } catch (error) {
       setRows([]);
       setMessage(error instanceof Error ? error.message : "Unable to load leaderboards. Confirm the Supabase leaderboard migration has run.");
@@ -201,6 +219,9 @@ export function SocialScreen() {
                 <Text style={[styles.metricTabText, activeMetric === metric.key && styles.metricTabTextActive]}>{metric.label}</Text>
               </Pressable>
             ))}
+            <Pressable style={[styles.metricTab, activeMetric === "trophies" && styles.metricTabActive]} onPress={() => setActiveMetric("trophies")}>
+              <Text style={[styles.metricTabText, activeMetric === "trophies" && styles.metricTabTextActive]}>Trophies</Text>
+            </Pressable>
           </View>
 
           <View style={styles.scopeTabs}>
@@ -210,16 +231,33 @@ export function SocialScreen() {
 
           <Frame style={styles.board}>
             {isLoading ? <Text style={styles.copy}>Loading leaderboard...</Text> : null}
-            {!isLoading && rows.length === 0 ? <Text style={styles.copy}>No leaderboard entries yet.</Text> : null}
-            {rows.map((row, index) => (
-              <LeaderboardCard key={row.character_id} row={row} rank={index + 1} metric={activeMetric} onOpen={() => void openProfile(row)} />
-            ))}
-            {currentPlayerRow && currentPlayerRank && currentPlayerRank > 100 && !rows.some((row) => row.character_id === currentPlayerRow.character_id) ? (
+            {activeMetric === "trophies" ? (
               <>
-                <Text style={styles.rankDivider}>Your Rank</Text>
-                <LeaderboardCard row={currentPlayerRow} rank={currentPlayerRank} metric={activeMetric} onOpen={() => void openProfile(currentPlayerRow)} />
+                {!isLoading && trophyRows.length === 0 ? <Text style={styles.copy}>No trophy animals have been recorded yet.</Text> : null}
+                {trophyRows.map((row, index) => (
+                  <TrophyLeaderboardCard key={row.id} row={row} rank={index + 1} />
+                ))}
+                {currentTrophyRow && currentTrophyRank && currentTrophyRank > 100 && !trophyRows.some((row) => row.id === currentTrophyRow.id) ? (
+                  <>
+                    <Text style={styles.rankDivider}>Your Best Trophy</Text>
+                    <TrophyLeaderboardCard row={currentTrophyRow} rank={currentTrophyRank} />
+                  </>
+                ) : null}
               </>
-            ) : null}
+            ) : (
+              <>
+                {!isLoading && rows.length === 0 ? <Text style={styles.copy}>No leaderboard entries yet.</Text> : null}
+                {rows.map((row, index) => (
+                  <LeaderboardCard key={row.character_id} row={row} rank={index + 1} metric={activeMetric} onOpen={() => void openProfile(row)} />
+                ))}
+                {currentPlayerRow && currentPlayerRank && currentPlayerRank > 100 && !rows.some((row) => row.character_id === currentPlayerRow.character_id) ? (
+                  <>
+                    <Text style={styles.rankDivider}>Your Rank</Text>
+                    <LeaderboardCard row={currentPlayerRow} rank={currentPlayerRank} metric={activeMetric} onOpen={() => void openProfile(currentPlayerRow)} />
+                  </>
+                ) : null}
+              </>
+            )}
           </Frame>
         </View>
       ) : selectedProfile ? (
@@ -297,12 +335,47 @@ function LeaderboardCard({ row, rank, metric, onOpen }: { row: LeaderboardRow; r
   );
 }
 
+function TrophyLeaderboardCard({ row, rank }: { row: TrophyLeaderboardRow; rank: number }) {
+  return (
+    <View style={[styles.rankCard, rank <= 3 && styles.topRankCard]}>
+      <View style={styles.rankBadge}>
+        <Text style={styles.rankText}>{rank}</Text>
+      </View>
+      <View style={styles.trophyImageWrap}>
+        {row.enemy_image_url ? <Image source={{ uri: row.enemy_image_url }} style={styles.trophyImage} /> : <Text style={styles.initial}>{(row.enemy_name ?? "T").slice(0, 1).toUpperCase()}</Text>}
+      </View>
+      <View style={styles.playerInfo}>
+        <Text style={styles.name}>{row.enemy_name ?? row.species ?? "Trophy Animal"}</Text>
+        <Text style={styles.copy}>{row.character_name} / {row.display_name}</Text>
+        <Text style={styles.copy}>{formatTrophyMeasurements(row)}</Text>
+      </View>
+      <View style={styles.scoreBox}>
+        <Text style={styles.score}>{Number(row.trophy_score).toFixed(2)}</Text>
+        <Text style={styles.scoreLabel}>Score</Text>
+      </View>
+    </View>
+  );
+}
+
 function formatMetricValue(row: LeaderboardRow, metric: LeaderboardMetric) {
   if (metric === "total_distance_walked_meters") {
     return formatDistance(row.total_distance_walked_meters);
   }
 
   return Number(row[metric] ?? 0).toLocaleString();
+}
+
+function formatTrophyMeasurements(row: TrophyLeaderboardRow) {
+  const parts = [
+    row.species,
+    Number(row.weight) > 0 ? `${Number(row.weight).toFixed(1)} lb` : null,
+    Number(row.antler_spread) > 0 ? `${Number(row.antler_spread).toFixed(1)} in spread` : null,
+    Number(row.horn_length) > 0 ? `${Number(row.horn_length).toFixed(1)} in horn` : null,
+    Number(row.skull_size) > 0 ? `${Number(row.skull_size).toFixed(1)} in skull` : null,
+    Number(row.pelt_quality) > 0 ? `${row.pelt_quality}% pelt` : null,
+  ].filter(Boolean);
+
+  return parts.join(" / ");
 }
 
 function formatDistance(meters: number) {
@@ -550,6 +623,21 @@ const styles = StyleSheet.create({
     backgroundColor: "#061118",
   },
   portrait: {
+    width: "100%",
+    height: "100%",
+  },
+  trophyImageWrap: {
+    width: 64,
+    height: 54,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "#061118",
+  },
+  trophyImage: {
     width: "100%",
     height: "100%",
   },
