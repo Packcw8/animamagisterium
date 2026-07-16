@@ -1298,7 +1298,7 @@ export async function initializePlayerMiniMapMarkerState(miniMapId: string, mark
         marker_id: markerId,
         discovered_at: timestamp,
       },
-      { onConflict: "user_id,mini_map_id,marker_id" },
+      { onConflict: "user_id,mini_map_id,marker_id", ignoreDuplicates: true },
     );
 
   if (discoveryError) {

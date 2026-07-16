@@ -70,7 +70,7 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails, getCharacter, incrementCharacterDistanceWalked, spendCharacterGold, updateCharacter } from "../services/characterService";
 import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getCharacterResources, getCombatLoadout, getCurrentHealth, learnAbilityFromScroll } from "../services/abilityService";
-import { EnemyDefinition, getEnemies, getNpcs, NpcDefinition, resolveEnemyImageUri, rollAndSaveTrophyHarvest, type EnemyWithLoadout } from "../services/combatAdminService";
+import { EnemyDefinition, getEnemies, getNpcs, NpcDefinition, resolveEnemyImageUri, rollAndSaveTrophyHarvest, type EnemyWithLoadout, type NpcWithLoadout } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
 import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, unequipInventorySlot } from "../services/inventoryService";
 import { equipMount, getActiveMountMultiplier, getMountDefinitions, getPlayerMounts, resolveMountImageUri, unmountCharacter, type MountDefinition, type PlayerMountWithDefinition } from "../services/mountService";
@@ -5580,15 +5580,28 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     return { message: "", rewards: [] as GameToastReward[], trophy: null as GameToastData["trophy"] | null };
   }
 
+  function isTrophyEnemy(enemy: EnemyWithLoadout | NpcWithLoadout | null | undefined): enemy is EnemyWithLoadout {
+    return Boolean(enemy && "trophy" in enemy && enemy.trophy?.trophy_enabled);
+  }
+
   async function awardTrophyHarvest(event: MapEvent, markerId: string | null) {
-    if (battleFinished !== "victory" || !activeEnemy) {
+    if (battleFinished !== "victory") {
+      return emptyTrophyToastResult();
+    }
+
+    const trophyEnemy = [
+      activeEnemy,
+      ...battleOpponents.map((opponent) => opponent.enemy),
+    ].find(isTrophyEnemy);
+
+    if (!trophyEnemy) {
       return emptyTrophyToastResult();
     }
 
     const trophyResult = await rollAndSaveTrophyHarvest({
       userId: character.user_id,
       characterId: character.id,
-      enemy: activeEnemy,
+      enemy: trophyEnemy,
       battleEventId: event.id,
       markerId,
     });
@@ -5618,9 +5631,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       message: ` Trophy recorded: ${measurementMessage}.${dropMessages.length ? ` Trophy drops: ${dropMessages.join(", ")}.` : ""}`,
       rewards: trophyRewards,
       trophy: {
-        name: trophyResult.harvest.enemy_name ?? activeEnemy.name ?? "Trophy Animal",
+        name: trophyResult.harvest.enemy_name ?? trophyEnemy.name ?? "Trophy Animal",
         species: trophyResult.harvest.species,
-        imageUrl: resolveEnemyImageUri(activeEnemy.image_url ?? event.enemy_image_url),
+        imageUrl: resolveEnemyImageUri(trophyEnemy.image_url ?? event.enemy_image_url),
         score: Number(trophyResult.harvest.trophy_score) || 0,
         weight: trophyResult.harvest.weight,
         antlerSpread: trophyResult.harvest.antler_spread,
