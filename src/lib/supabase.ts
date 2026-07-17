@@ -1219,6 +1219,7 @@ export type Tables = {
     width: number;
     height: number;
     behavior_mode: "scrollable" | "follow_player" | "fixed";
+    content_scope: "universal" | "chapter";
     zoom_enabled: boolean;
     player_avatar_scale: number;
     marker_scale: number;

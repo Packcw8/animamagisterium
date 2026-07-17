@@ -16,6 +16,7 @@ type MiniMapEditorProps<MiniMapType extends string> = {
   sortOrder: string;
   width: string;
   height: string;
+  contentScope: MiniMap["content_scope"];
   behaviorMode: MiniMap["behavior_mode"];
   zoomEnabled: boolean;
   playerAvatarScale: string;
@@ -35,6 +36,7 @@ type MiniMapEditorProps<MiniMapType extends string> = {
   onChangeSortOrder: (value: string) => void;
   onChangeWidth: (value: string) => void;
   onChangeHeight: (value: string) => void;
+  onChangeContentScope: (value: MiniMap["content_scope"]) => void;
   onChangeBehaviorMode: (value: MiniMap["behavior_mode"]) => void;
   onToggleZoomEnabled: () => void;
   onChangePlayerAvatarScale: (value: string) => void;
@@ -66,6 +68,7 @@ export function MiniMapEditor<MiniMapType extends string>({
   sortOrder,
   width,
   height,
+  contentScope,
   behaviorMode,
   zoomEnabled,
   playerAvatarScale,
@@ -85,6 +88,7 @@ export function MiniMapEditor<MiniMapType extends string>({
   onChangeSortOrder,
   onChangeWidth,
   onChangeHeight,
+  onChangeContentScope,
   onChangeBehaviorMode,
   onToggleZoomEnabled,
   onChangePlayerAvatarScale,
@@ -142,6 +146,18 @@ export function MiniMapEditor<MiniMapType extends string>({
         <TextInput value={width} onChangeText={onChangeWidth} placeholder="Frame width, example 900" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
         <TextInput value={height} onChangeText={onChangeHeight} placeholder="Frame height, example 650" placeholderTextColor={colors.muted} style={[styles.input, styles.flexInput]} />
       </View>
+      <Text style={styles.selectedTitle}>Mini Map Scope</Text>
+      <Text style={styles.copy}>Use Universal for reusable places like towns, inns, tunnels, and roads. Chapter Only is for maps that should exist in one specific chapter.</Text>
+      <View style={styles.storyRoutePicker}>
+        {[
+          { key: "universal", label: "Universal" },
+          { key: "chapter", label: "Chapter Only" },
+        ].map((option) => (
+          <Pressable key={option.key} style={[styles.routeChip, contentScope === option.key && styles.routeChipActive]} onPress={() => onChangeContentScope(option.key as MiniMap["content_scope"])}>
+            <Text style={styles.routeChipText}>{option.label}</Text>
+          </Pressable>
+        ))}
+      </View>
       <Text style={styles.selectedTitle}>Player Behavior</Text>
       <Text style={styles.copy}>Choose whether players can manually scroll this mini map. Admin editing always remains scrollable.</Text>
       <View style={styles.storyRoutePicker}>
@@ -187,7 +203,7 @@ export function MiniMapEditor<MiniMapType extends string>({
           {group.maps.map((miniMap) => (
             <View key={miniMap.id} style={styles.storyCard}>
               <Text style={styles.markerName}>{miniMap.name}</Text>
-              <Text style={styles.copy}>{miniMap.type} / {(miniMap.behavior_mode ?? "scrollable").replace("_", " ")} / Order {miniMap.sort_order ?? 0} / {miniMap.width ?? 900} x {miniMap.height ?? 650} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
+              <Text style={styles.copy}>{miniMap.type} / {formatMiniMapScope(miniMap)} / {(miniMap.behavior_mode ?? "scrollable").replace("_", " ")} / Order {miniMap.sort_order ?? 0} / {miniMap.width ?? 900} x {miniMap.height ?? 650} / {miniMap.is_active ? "Active" : "Hidden"}</Text>
               <View style={styles.modeRow}>
                 <Pressable style={[styles.secondaryButtonFlex, editingMiniMapId === miniMap.id && styles.typeSelected]} onPress={() => onEdit(miniMap)}>
                   <Text style={styles.secondaryText}>Edit</Text>
@@ -222,6 +238,14 @@ function isMiniMapBehaviorOptionActive(current: MiniMap["behavior_mode"], option
 
 function getMiniMapAreaName(miniMap: MiniMap) {
   return miniMap.area_name?.trim() || titleCase(miniMap.type || "Area");
+}
+
+function formatMiniMapScope(miniMap: MiniMap) {
+  if ((miniMap.content_scope ?? "universal") === "universal") {
+    return "Universal";
+  }
+
+  return `S${Number(miniMap.season_number ?? 1)} / C${Number(miniMap.chapter_number ?? 1)}`;
 }
 
 function getMiniMapAreaOptions(miniMaps: MiniMap[]) {

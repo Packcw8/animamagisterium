@@ -22,6 +22,10 @@ const rewardTimingLabels: Record<(typeof rewardTimings)[number], string> = {
 type MiniMapChapterFilter = "all" | "current";
 
 function formatMiniMapChapter(miniMap: MiniMap) {
+  if ((miniMap.content_scope ?? "universal") === "universal") {
+    return "Universal";
+  }
+
   return `S${Number(miniMap.season_number ?? 1)} / C${Number(miniMap.chapter_number ?? 1)}`;
 }
 
@@ -32,7 +36,7 @@ function useMiniMapChapterFilter(miniMaps: MiniMap[], selectedSeason?: number, s
       return miniMaps;
     }
 
-    return miniMaps.filter((miniMap) => Number(miniMap.season_number ?? 1) === selectedSeason && Number(miniMap.chapter_number ?? 1) === selectedChapter);
+    return miniMaps.filter((miniMap) => (miniMap.content_scope ?? "universal") === "universal" || (Number(miniMap.season_number ?? 1) === selectedSeason && Number(miniMap.chapter_number ?? 1) === selectedChapter));
   }, [filter, miniMaps, selectedChapter, selectedSeason]);
 
   return { filter, setFilter, filteredMiniMaps };

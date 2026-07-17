@@ -482,6 +482,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [miniMapActive, setMiniMapActive] = useState(true);
   const [miniMapEditorWidth, setMiniMapEditorWidth] = useState("900");
   const [miniMapEditorHeight, setMiniMapEditorHeight] = useState("650");
+  const [miniMapContentScope, setMiniMapContentScope] = useState<MiniMap["content_scope"]>("universal");
   const [miniMapBehaviorMode, setMiniMapBehaviorMode] = useState<MiniMap["behavior_mode"]>("scrollable");
   const [miniMapZoomEnabled, setMiniMapZoomEnabled] = useState(false);
   const [miniMapPlayerAvatarScale, setMiniMapPlayerAvatarScale] = useState("1");
@@ -960,7 +961,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     [adminMiniMapMarkers],
   );
   const adminStoryMarkers = useMemo(() => chapterScopedMarkers.filter((item) => isStoryQuestMarker(item)), [chapterScopedMarkers]);
-  const adminMiniMaps = useMemo(() => sortMiniMaps(miniMaps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter))), [miniMaps, selectedChapter, selectedSeason]);
+  const adminMiniMaps = useMemo(() => sortMiniMaps(miniMaps), [miniMaps]);
   const adminTargetMiniMaps = useMemo(() => sortMiniMaps(miniMaps), [miniMaps]);
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
@@ -3714,7 +3715,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setSelectedMiniMapId(targetMiniMap?.id ?? null);
       setSavedMiniMapPosition(null);
       if (targetMiniMap) {
-        void savePlayerMapState({ active_mini_map_id: targetMiniMap.id, current_x_percent: startPoint.x, current_y_percent: startPoint.y });
+        void savePlayerMapState({
+          active_mini_map_id: targetMiniMap.id,
+          current_x_percent: startPoint.x,
+          current_y_percent: startPoint.y,
+          active_season_number: linkedRoute.season_number,
+          active_chapter_number: linkedRoute.chapter_number,
+        });
       } else {
         void clearPlayerMapState();
       }
@@ -4029,7 +4036,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerPanelMessage(null);
     setSavedMiniMapPosition(null);
     if (activeMiniMap) {
-      void savePlayerMapState({ active_mini_map_id: activeMiniMap.id, current_x_percent: nextPoint.x, current_y_percent: nextPoint.y });
+      void savePlayerMapState({
+        active_mini_map_id: activeMiniMap.id,
+        current_x_percent: nextPoint.x,
+        current_y_percent: nextPoint.y,
+        active_season_number: nextRoute.season_number,
+        active_chapter_number: nextRoute.chapter_number,
+      });
     } else {
       void clearPlayerMapState();
     }
@@ -4408,6 +4421,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         description: miniMapDescription,
         width: Number(miniMapEditorWidth) || 900,
         height: Number(miniMapEditorHeight) || 650,
+        content_scope: miniMapContentScope,
         behavior_mode: miniMapBehaviorMode,
         zoom_enabled: miniMapZoomEnabled,
         player_avatar_scale: Number(miniMapPlayerAvatarScale) || 1,
@@ -4418,8 +4432,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         entry_video_url: miniMapEntryVideoUrl,
         sort_order: Number(miniMapSortOrder) || 0,
         is_active: miniMapActive,
-        season_number: selectedSeason,
-        chapter_number: selectedChapter,
+        season_number: miniMapContentScope === "chapter" ? selectedSeason : 1,
+        chapter_number: miniMapContentScope === "chapter" ? selectedChapter : 1,
       });
       setMiniMaps((current) => sortMiniMaps([saved, ...current.filter((item) => item.id !== saved.id)]));
       setSelectedMiniMapId(saved.id);
@@ -4436,6 +4450,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         setMiniMapDescription("");
         setMiniMapEditorWidth("900");
         setMiniMapEditorHeight("650");
+        setMiniMapContentScope("universal");
         setMiniMapBehaviorMode("scrollable");
         setMiniMapZoomEnabled(false);
         setMiniMapPlayerAvatarScale("1");
@@ -4464,6 +4479,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMiniMapDescription(miniMap.description ?? "");
     setMiniMapEditorWidth(String(miniMap.width ?? 900));
     setMiniMapEditorHeight(String(miniMap.height ?? 650));
+    setMiniMapContentScope(miniMap.content_scope ?? "universal");
     setMiniMapBehaviorMode(miniMap.behavior_mode ?? "scrollable");
     setMiniMapZoomEnabled(Boolean(miniMap.zoom_enabled));
     setMiniMapPlayerAvatarScale(String(miniMap.player_avatar_scale ?? 1));
@@ -4487,6 +4503,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMiniMapDescription("");
     setMiniMapEditorWidth("900");
     setMiniMapEditorHeight("650");
+    setMiniMapContentScope("universal");
     setMiniMapBehaviorMode("scrollable");
     setMiniMapZoomEnabled(false);
     setMiniMapPlayerAvatarScale("1");
@@ -4511,9 +4528,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
   }
 
-  function openMiniMap(miniMap: MiniMap, options?: { persistPlayerState?: boolean; spawnPosition?: { x: number; y: number } }) {
+  function openMiniMap(miniMap: MiniMap, options?: { persistPlayerState?: boolean; spawnPosition?: { x: number; y: number }; stateSeasonNumber?: number; stateChapterNumber?: number }) {
     const persistPlayerState = options?.persistPlayerState ?? !isAdmin;
     const nextFreeRoamPosition = options?.spawnPosition ?? getMiniMapSpawnPosition(miniMap.id);
+    const stateSeasonNumber = Math.max(1, Math.round(Number(options?.stateSeasonNumber ?? selectedSeason) || 1));
+    const stateChapterNumber = Math.max(1, Math.round(Number(options?.stateChapterNumber ?? selectedChapter) || 1));
     setActiveMiniMap(miniMap);
     setSelectedMiniMapId(miniMap.id);
     if (isAdmin) {
@@ -4549,8 +4568,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           active_mini_map_id: miniMap.id,
           current_x_percent: nextFreeRoamPosition.x,
           current_y_percent: nextFreeRoamPosition.y,
-          active_season_number: miniMap.season_number,
-          active_chapter_number: miniMap.chapter_number,
+          active_season_number: miniMap.content_scope === "chapter" ? miniMap.season_number : stateSeasonNumber,
+          active_chapter_number: miniMap.content_scope === "chapter" ? miniMap.chapter_number : stateChapterNumber,
         });
       }
     }
@@ -4666,6 +4685,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       targetMiniMapId: marker.linked_mini_map_id,
       targetSpawnMarkerId: marker.exit_target_spawn_marker_id,
       fallbackToWorldExit: true,
+      stateSeasonNumber: marker.season_number,
+      stateChapterNumber: marker.chapter_number,
     });
     await maybeClearActiveRouteForMarker(marker);
     await maybeStartMarkerContinuationRoute(marker);
@@ -4681,12 +4702,16 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     targetMiniMapId,
     targetSpawnMarkerId,
     fallbackToWorldExit = false,
+    stateSeasonNumber,
+    stateChapterNumber,
   }: {
     targetType?: MapMarker["exit_target_type"] | null;
     targetMarkerId?: string | null;
     targetMiniMapId?: string | null;
     targetSpawnMarkerId?: string | null;
     fallbackToWorldExit?: boolean;
+    stateSeasonNumber?: number | null;
+    stateChapterNumber?: number | null;
   }) {
     if (targetType === "mini_map" && targetMiniMapId) {
       const nextMiniMap = miniMaps.find((item) => item.id === targetMiniMapId);
@@ -4696,6 +4721,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           : null;
         openMiniMap(nextMiniMap, {
           persistPlayerState: true,
+          stateSeasonNumber: stateSeasonNumber ?? selectedSeason,
+          stateChapterNumber: stateChapterNumber ?? selectedChapter,
           spawnPosition: spawnMarker
             ? { x: Number(spawnMarker.x_percent), y: Number(spawnMarker.y_percent) }
             : getMiniMapSpawnPosition(nextMiniMap.id),
@@ -4737,7 +4764,12 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return;
     }
 
-    openMiniMap(miniMap, { persistPlayerState: true, spawnPosition: getExitTargetMiniMapSpawnPosition(marker, miniMap.id) });
+    openMiniMap(miniMap, {
+      persistPlayerState: true,
+      stateSeasonNumber: marker.season_number,
+      stateChapterNumber: marker.chapter_number,
+      spawnPosition: getExitTargetMiniMapSpawnPosition(marker, miniMap.id),
+    });
     await maybeClearActiveRouteForMarker(marker);
     await maybeStartMarkerContinuationRoute(marker);
   }
@@ -5996,6 +6028,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         targetMarkerId: choice.travel_target_marker_id,
         targetMiniMapId: choice.travel_target_mini_map_id,
         targetSpawnMarkerId: choice.travel_target_spawn_marker_id,
+        stateSeasonNumber: activeEvent?.season_number ?? selectedSeason,
+        stateChapterNumber: activeEvent?.chapter_number ?? selectedChapter,
       });
 
       if (!didTravel) {
@@ -9239,6 +9273,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               sortOrder={miniMapSortOrder}
               width={miniMapEditorWidth}
               height={miniMapEditorHeight}
+              contentScope={miniMapContentScope}
               behaviorMode={miniMapBehaviorMode}
               zoomEnabled={miniMapZoomEnabled}
               playerAvatarScale={miniMapPlayerAvatarScale}
@@ -9258,6 +9293,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               onChangeSortOrder={setMiniMapSortOrder}
               onChangeWidth={setMiniMapEditorWidth}
               onChangeHeight={setMiniMapEditorHeight}
+              onChangeContentScope={setMiniMapContentScope}
               onChangeBehaviorMode={setMiniMapBehaviorMode}
               onToggleZoomEnabled={() => setMiniMapZoomEnabled((value) => !value)}
               onChangePlayerAvatarScale={setMiniMapPlayerAvatarScale}

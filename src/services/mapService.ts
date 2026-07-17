@@ -509,6 +509,7 @@ export async function saveMiniMap(input: Partial<MiniMap>) {
     width: Math.max(320, Number(input.width) || 900),
     height: Math.max(280, Number(input.height) || 650),
     behavior_mode: input.behavior_mode ?? "scrollable",
+    content_scope: input.content_scope === "chapter" ? "chapter" : "universal",
     zoom_enabled: input.zoom_enabled ?? false,
     player_avatar_scale: Math.max(0.35, Math.min(2, Number(input.player_avatar_scale) || 1)),
     marker_scale: Math.max(0.35, Math.min(2, Number(input.marker_scale) || 1)),
@@ -518,8 +519,8 @@ export async function saveMiniMap(input: Partial<MiniMap>) {
     entry_video_url: input.entry_video_url?.trim() || null,
     sort_order: Number(input.sort_order) || 0,
     is_active: input.is_active ?? true,
-    season_number: Number(input.season_number) || 1,
-    chapter_number: Number(input.chapter_number) || 1,
+    season_number: input.content_scope === "chapter" ? Number(input.season_number) || 1 : 1,
+    chapter_number: input.content_scope === "chapter" ? Number(input.chapter_number) || 1 : 1,
     created_by: input.id ? input.created_by ?? user?.id ?? null : user?.id ?? null,
     updated_at: new Date().toISOString(),
   };
