@@ -27,7 +27,7 @@ export type NpcWithLoadout = NpcDefinition & {
 export const combatAbilityTypes: CombatAbility["type"][] = ["attack", "heal", "buff", "debuff", "defense", "passive", "summon", "conjure"];
 export const abilityTargetModes: CombatAbility["target_mode"][] = ["single_enemy", "all_enemies", "random_enemy", "self", "all_allies"];
 export const summonKinds: NonNullable<CombatAbility["summon_kind"]>[] = ["enemy", "npc"];
-export const statusEffects: CombatAbility["status_effect"][] = ["none", "poison", "burn", "regen", "shield", "weakness", "slow", "stun"];
+export const statusEffects: CombatAbility["status_effect"][] = ["none", "poison", "burn", "regen", "shield", "weakness", "slow", "stun", "taunt"];
 export const linkedStats: CombatAbility["linked_stat"][] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit", "weapon", "item", "none"];
 export const requiredAttributes: NonNullable<CombatAbility["required_attribute"]>[] = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"];
 export const requiredClassKeys = classCombinations.map((combo) => combo.key);

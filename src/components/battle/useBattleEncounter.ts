@@ -65,10 +65,11 @@ export type BattleCompanionState = {
 export type BattleTurnPhase = "rolling" | "player" | "enemy" | "finished";
 
 type BattleTimedEffect = {
-  status: "poison" | "burn" | "regen" | "shield" | "weakness" | "slow" | "stun";
+  status: "poison" | "burn" | "regen" | "shield" | "weakness" | "slow" | "stun" | "taunt";
   amount: number;
   turns: number;
   source: string;
+  iconUri?: string | null;
 };
 
 export function useBattleEncounter(character: CharacterWithDetails, onCharacterUpdated: (character: CharacterWithDetails) => void) {
@@ -278,6 +279,26 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   }
 
   function selectBattleTarget(key: string) {
+    const forcedTarget = getEnemyTauntTarget();
+    if (forcedTarget && forcedTarget.key !== key) {
+      setBattleLog((current) => [`${forcedTarget.enemy?.name || "Enemy"} demands your focus. You are locked onto that target.`, ...current].slice(0, 8));
+      return;
+    }
+
+    const opponent = battleOpponents.find((entry) => entry.key === key);
+
+    if (!opponent || opponent.hp <= 0 || battleFinished) {
+      return;
+    }
+
+    setSelectedOpponentKey(key);
+    setActiveEnemy(opponent.enemy);
+    setBattleEnemyHp(opponent.hp);
+    setBattleEnemyStamina(opponent.stamina);
+    setBattleEnemyMagika(opponent.magika);
+  }
+
+  function forceBattleTarget(key: string) {
     const opponent = battleOpponents.find((entry) => entry.key === key);
 
     if (!opponent || opponent.hp <= 0 || battleFinished) {
@@ -435,6 +456,11 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
           } satisfies BattleOpponentState]
         : [];
 
+    const forcedTarget = getEnemyTauntTarget();
+    if (forcedTarget && forcedTarget.hp > 0) {
+      return [forcedTarget];
+    }
+
     if (targetMode === "random_enemy") {
       const target = living[Math.floor(Math.random() * living.length)];
       return target ? [target] : [];
@@ -444,11 +470,12 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   }
 
   function allOpponentsDefeated(nextSelectedHp: number) {
+    const checkedTargetKey = getEnemyTauntTarget()?.key ?? selectedOpponentKey;
     if (battleOpponents.length <= 1) {
       return nextSelectedHp <= 0;
     }
 
-    return battleOpponents.every((opponent) => opponent.key === selectedOpponentKey ? nextSelectedHp <= 0 : opponent.hp <= 0);
+    return battleOpponents.every((opponent) => opponent.key === checkedTargetKey ? nextSelectedHp <= 0 : opponent.hp <= 0);
   }
 
   function markSelectedOpponentHp(nextHp: number) {
@@ -465,6 +492,14 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   }
 
   function getSelectedOpponentSnapshot(selectedNextHp?: number) {
+    const forcedTarget = getEnemyTauntTarget();
+    if (forcedTarget) {
+      return {
+        ...forcedTarget,
+        hp: forcedTarget.key === selectedOpponentKey ? selectedNextHp ?? forcedTarget.hp : forcedTarget.hp,
+      };
+    }
+
     const selected = battleOpponents.find((opponent) => opponent.key === selectedOpponentKey) ?? null;
 
     if (!selected) {
@@ -907,13 +942,18 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
 
-    const enemyDefense = getEnemyDefense();
+    const activeTarget = getSelectedOpponentSnapshot();
+    if (!activeTarget || activeTarget.hp <= 0) {
+      setBattleLog((current) => [`${ability.name} has no valid target.`, ...current].slice(0, 8));
+      return;
+    }
+    const enemyDefense = getOpponentDefense(activeTarget);
     const attackRoll = rollD20Attack(getPlayerAbilityAttackBonus(ability), getAbilityAttackBonus(ability), enemyDefense, ability.adminAbility?.critical_chance ?? 0, ability.adminAbility?.critical_multiplier ?? 2);
     const nextLog = [`${ability.name}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
 
     if (!attackRoll.hit) {
-      pushCombatIndicator("enemy", "MISS", "#9ca3af", selectedOpponentKey, abilityIndicatorIcon);
-      nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${ability.name} misses.`);
+      pushCombatIndicator("enemy", "MISS", "#9ca3af", activeTarget.key, abilityIndicatorIcon);
+      nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${ability.name} misses ${activeTarget.enemy?.name || "the target"}.`);
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
       const allies = await resolveCompanionRound(battleEnemyHp, context);
@@ -938,12 +978,12 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     const rawDamage = getAbilityBaseDamage(ability) + getAbilityAttributeLevel(ability, "player") + getEquipmentDamageBonus(context.equippedItems);
-    const reducedDamage = Math.max(1, rawDamage - getEnemyArmorReduction());
+    const reducedDamage = Math.max(1, rawDamage - getOpponentArmorReduction(activeTarget));
     const totalDamage = attackRoll.critical ? Math.ceil(reducedDamage * Number(attackRoll.criticalMultiplier || 2)) : reducedDamage;
-    const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
-    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", selectedOpponentKey, abilityIndicatorIcon);
-    nextLog.push(`${ability.name} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} ${ability.kind} damage.`);
-    applyAbilityStatusToTarget(ability, "enemy", nextLog, selectedOpponentKey);
+    const nextEnemyHp = Math.max(0, activeTarget.hp - totalDamage);
+    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", activeTarget.key, abilityIndicatorIcon);
+    nextLog.push(`${ability.name} hits ${activeTarget.enemy?.name || "the target"} for ${attackRoll.critical ? "Critical " : ""}${totalDamage} ${ability.kind} damage.`);
+    applyAbilityStatusToTarget(ability, "enemy", nextLog, activeTarget.key);
     if (healthRestore > 0) {
       postAbilityPlayerHp = Math.min(combatResources.maxHp, battlePlayerHp + healthRestore);
       pushCombatIndicator("player", `+${healthRestore}`, "#42d77d", null, abilityIndicatorIcon);
@@ -964,17 +1004,17 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       if (healthRestore > 0) {
         await savePlayerHealth(postAbilityPlayerHp, context.previewMode);
       }
-      markSelectedOpponentHp(0);
+      setSelectedOpponentSnapshotHp(activeTarget, 0);
       if (allOpponentsDefeated(nextEnemyHp)) {
         setBattleFinished("victory");
         setBattleTurnPhase("finished");
         setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
         return;
       }
-      const nextTarget = chooseNextLivingOpponent(battleOpponents, selectedOpponentKey, nextEnemyHp);
+      const nextTarget = chooseNextLivingOpponent(battleOpponents, activeTarget.key, nextEnemyHp);
       if (nextTarget) {
         selectBattleTarget(nextTarget.key);
-        nextLog.push(`${activeEnemy?.name || "Target"} falls. Choose the next target.`);
+        nextLog.push(`${activeTarget.enemy?.name || "Target"} falls. Choose the next target.`);
       }
       setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
@@ -994,7 +1034,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const nextPlayerHp = Math.max(0, postAbilityPlayerHp - counter.damage);
     nextLog.push(...counter.log);
 
-    markSelectedOpponentHp(allies.selectedHp);
+    setSelectedOpponentSnapshotHp(activeTarget, allies.selectedHp);
     await savePlayerHealth(nextPlayerHp, context.previewMode);
 
     if (nextPlayerHp <= 0) {
@@ -1036,15 +1076,20 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     const bonuses = getInventoryResourceBonuses(context.equippedItems as Record<EquipmentSlot, ItemDefinition | null>);
-    const enemyDefense = getEnemyDefense();
+    const activeTarget = getSelectedOpponentSnapshot();
+    if (!activeTarget || activeTarget.hp <= 0) {
+      setBattleLog((current) => [`${weapon.ability_name || weapon.name} has no valid target.`, ...current].slice(0, 8));
+      return;
+    }
+    const enemyDefense = getOpponentDefense(activeTarget);
     const attackRoll = rollD20Attack(getStrengthAttackBonus(character.attributes?.strength ?? 0), bonuses.damage, enemyDefense, 0, 2);
     const actionName = weapon.ability_name || weapon.name;
     const weaponIndicatorIcon = getWeaponIndicatorIcon(weapon);
     const nextLog = [`${actionName}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
 
     if (!attackRoll.hit) {
-      pushCombatIndicator("enemy", "MISS", "#9ca3af", selectedOpponentKey, weaponIndicatorIcon);
-      nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${actionName} misses.`);
+      pushCombatIndicator("enemy", "MISS", "#9ca3af", activeTarget.key, weaponIndicatorIcon);
+      nextLog.push(attackRoll.roll === 1 ? "Natural 1. Automatic miss." : `${actionName} misses ${activeTarget.enemy?.name || "the target"}.`);
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
       const allies = await resolveCompanionRound(battleEnemyHp, context);
@@ -1069,10 +1114,10 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     const weaponDamage = Number(weapon.damage_amount ?? 0) + Number(weapon.elemental_damage_amount ?? 0) + bonuses.damage + getStrengthAttackBonus(character.attributes?.strength ?? 0);
-    const totalDamage = attackRoll.critical ? Math.ceil(Math.max(1, weaponDamage - getEnemyArmorReduction()) * 2) : Math.max(1, weaponDamage - getEnemyArmorReduction());
-    const nextEnemyHp = Math.max(0, battleEnemyHp - totalDamage);
-    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", selectedOpponentKey, weaponIndicatorIcon);
-    nextLog.push(`${actionName} hits for ${attackRoll.critical ? "Critical " : ""}${totalDamage} damage${weapon.elemental_damage_type !== "none" ? ` with ${weapon.elemental_damage_type}` : ""}.`);
+    const totalDamage = attackRoll.critical ? Math.ceil(Math.max(1, weaponDamage - getOpponentArmorReduction(activeTarget)) * 2) : Math.max(1, weaponDamage - getOpponentArmorReduction(activeTarget));
+    const nextEnemyHp = Math.max(0, activeTarget.hp - totalDamage);
+    pushCombatIndicator("enemy", attackRoll.critical ? `CRITICAL -${totalDamage}` : `-${totalDamage}`, attackRoll.critical ? "#f6d365" : "#ff5c5c", activeTarget.key, weaponIndicatorIcon);
+    nextLog.push(`${actionName} hits ${activeTarget.enemy?.name || "the target"} for ${attackRoll.critical ? "Critical " : ""}${totalDamage} damage${weapon.elemental_damage_type !== "none" ? ` with ${weapon.elemental_damage_type}` : ""}.`);
 
     if (weapon.on_hit_effect === "restore health per hit") {
       await savePlayerHealth(Math.min(combatResources.maxHp, battlePlayerHp + Math.max(1, weapon.buff_amount || 2)), context.previewMode);
@@ -1088,17 +1133,17 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     if (nextEnemyHp <= 0) {
-      markSelectedOpponentHp(0);
+      setSelectedOpponentSnapshotHp(activeTarget, 0);
       if (allOpponentsDefeated(nextEnemyHp)) {
         setBattleFinished("victory");
         setBattleTurnPhase("finished");
         setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
         return;
       }
-      const nextTarget = chooseNextLivingOpponent(battleOpponents, selectedOpponentKey, nextEnemyHp);
+      const nextTarget = chooseNextLivingOpponent(battleOpponents, activeTarget.key, nextEnemyHp);
       if (nextTarget) {
         selectBattleTarget(nextTarget.key);
-        nextLog.push(`${activeEnemy?.name || "Target"} falls. Choose the next target.`);
+        nextLog.push(`${activeTarget.enemy?.name || "Target"} falls. Choose the next target.`);
       }
       setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
       return;
@@ -1117,7 +1162,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const counter = await resolveEnemyRound(context, allies.selectedHp);
     const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
     nextLog.push(...counter.log);
-    markSelectedOpponentHp(allies.selectedHp);
+    setSelectedOpponentSnapshotHp(activeTarget, allies.selectedHp);
     await savePlayerHealth(nextPlayerHp, context.previewMode);
 
     if (nextPlayerHp <= 0) {
@@ -1255,15 +1300,20 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const defenseAmount = Math.max(0, Number(ability.defense_amount ?? 0));
       const duration = Math.max(1, Number(ability.duration_turns ?? ability.effect_duration ?? 1) || 1);
       if (defenseAmount > 0) {
-        queueEnemyEffect?.(opponent.key, { status: "shield", amount: defenseAmount, turns: duration, source: ability.name });
+        queueEnemyEffect?.(opponent.key, { status: "shield", amount: defenseAmount, turns: duration, source: ability.name, iconUri: resolveAbilityImageUri(ability.image_path) });
       }
-      if (ability.status_effect === "regen" || ability.status_effect === "shield") {
+      if (ability.status_effect === "regen" || ability.status_effect === "shield" || ability.status_effect === "taunt") {
         queueEnemyEffect?.(opponent.key, {
           status: ability.status_effect,
-          amount: Math.max(ability.status_effect === "shield" ? defenseAmount : 0, Number(ability.effect_amount ?? 0)),
+          amount: ability.status_effect === "taunt" ? Math.max(1, Number(ability.effect_amount ?? 1) || 1) : Math.max(ability.status_effect === "shield" ? defenseAmount : 0, Number(ability.effect_amount ?? 0)),
           turns: Math.max(1, Number(ability.effect_duration ?? ability.duration_turns ?? 1) || 1),
           source: ability.name,
+          iconUri: resolveAbilityImageUri(ability.image_path),
         });
+        if (ability.status_effect === "taunt") {
+          forceBattleTarget(opponent.key);
+        }
+        pushStatusIndicator("enemy", ability.status_effect, Math.max(1, Number(ability.effect_amount ?? defenseAmount ?? 1) || 1), opponent.key, resolveAbilityImageUri(ability.image_path));
       }
       return { damage: 0, log: [`${enemyName} uses ${ability.name}. ${ability.status_effect !== "none" ? `Status: ${ability.status_effect}.` : "It braces for the next exchange."}`] };
     }
@@ -1285,7 +1335,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
         const reducedDamage = Math.max(1, baseDamage - extraPlayerDefense);
         const damage = roll.critical ? Math.ceil(reducedDamage * Number(ability.critical_multiplier || 2)) : reducedDamage;
         applyEnemyDamageToTarget(groupTarget, damage, roll.critical);
-        pushStatusIndicator(groupTarget.kind === "player" ? "player" : "companion", ability.status_effect, ability.effect_amount, groupTarget.kind === "companion" ? groupTarget.companion.key : null);
+        pushStatusIndicator(groupTarget.kind === "player" ? "player" : "companion", ability.status_effect, ability.effect_amount, groupTarget.kind === "companion" ? groupTarget.companion.key : null, resolveAbilityImageUri(ability.image_path));
         applyEnemyAbilityStatusToTarget(ability, groupTarget);
         if (groupTarget.kind === "player") {
           playerDamage += damage;
@@ -1307,12 +1357,16 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const damage = roll.critical ? Math.ceil(reducedDamage * Number(ability.critical_multiplier || 2)) : reducedDamage;
     const statusText = ability.status_effect !== "none" ? ` ${ability.status_effect} may linger.` : "";
     applyEnemyDamageToTarget(target, damage, roll.critical);
-    pushStatusIndicator(target.kind === "player" ? "player" : "companion", ability.status_effect, ability.effect_amount, target.kind === "companion" ? target.companion.key : null);
+    pushStatusIndicator(target.kind === "player" ? "player" : "companion", ability.status_effect, ability.effect_amount, target.kind === "companion" ? target.companion.key : null, resolveAbilityImageUri(ability.image_path));
     applyEnemyAbilityStatusToTarget(ability, target);
     return { damage: target.kind === "player" ? damage : 0, log: [`${enemyName} uses ${ability.name} on ${targetName} for ${roll.critical ? "Critical " : ""}${damage}.${statusText}`] };
   }
 
   function chooseEnemyTarget(equippedItems: Record<string, ItemDefinition | null>, extraDefense = 0): { kind: "player"; defense: number } | { kind: "companion"; companion: BattleCompanionState; defense: number } {
+    if (playerHasTaunt()) {
+      return { kind: "player", defense: getPlayerDefense(equippedItems, extraDefense) };
+    }
+
     const pool = getEnemySideTargets(equippedItems, extraDefense);
     return pool[Math.floor(Math.random() * pool.length)] ?? { kind: "player", defense: getPlayerDefense(equippedItems, extraDefense) };
   }
@@ -1410,6 +1464,14 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     return (enemyTimedEffects[targetKey] ?? []).reduce((sum, effect) => effect.status === "shield" ? sum + effect.amount : sum, 0);
   }
 
+  function getEnemyTauntTarget() {
+    return battleOpponents.find((opponent) => opponent.hp > 0 && (enemyTimedEffects[opponent.key] ?? []).some((effect) => effect.status === "taunt" && effect.turns > 0)) ?? null;
+  }
+
+  function playerHasTaunt() {
+    return playerTimedEffects.some((effect) => effect.status === "taunt" && effect.turns > 0);
+  }
+
   function consumePlayerStun() {
     const stun = playerTimedEffects.find((effect) => effect.status === "stun" && effect.turns > 0);
     if (!stun) {
@@ -1433,6 +1495,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       amount: status === "stun" ? Math.max(1, Number(ability.effect_amount ?? 1) || 1) : Math.max(1, Number(ability.effect_amount ?? 0) || 1),
       turns: Math.max(1, Number(ability.effect_duration ?? ability.duration_turns ?? 1) || 1),
       source: ability.name,
+      iconUri: resolveAbilityImageUri(ability.image_path),
     };
 
     if (target.kind === "player") {
@@ -1506,14 +1569,15 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
     const amount = Number(ability.adminAbility?.effect_amount ?? 0);
     const duration = Math.max(1, Number(ability.adminAbility?.effect_duration ?? ability.adminAbility?.duration_turns ?? 1) || 1);
-    if (amount <= 0 && status !== "stun") {
+    if (amount <= 0 && status !== "stun" && status !== "taunt") {
       return null;
     }
     return {
       status,
-      amount: status === "stun" && amount <= 0 ? 1 : amount,
+      amount: (status === "stun" || status === "taunt") && amount <= 0 ? 1 : amount,
       turns: duration,
       source: ability.name,
+      iconUri: getAbilityIndicatorIcon(ability),
     };
   }
 
@@ -1524,9 +1588,9 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     if (defenseAmount > 0) {
       immediateDefense += defenseAmount;
       if (duration > 1) {
-        addPlayerTimedEffect({ status: "shield", amount: defenseAmount, turns: duration - 1, source: ability.name });
+        addPlayerTimedEffect({ status: "shield", amount: defenseAmount, turns: duration - 1, source: ability.name, iconUri: getAbilityIndicatorIcon(ability) });
       }
-      pushCombatIndicator("player", `Shield +${defenseAmount}`, "#7dd3fc");
+      pushCombatIndicator("player", `Shield +${defenseAmount}`, "#7dd3fc", null, getAbilityIndicatorIcon(ability));
       log.push(`${ability.name} adds +${defenseAmount} Defense for ${duration} turn${duration === 1 ? "" : "s"}.`);
     }
 
@@ -1540,12 +1604,12 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       if (effect.turns > 1) {
         addPlayerTimedEffect({ ...effect, turns: effect.turns - 1 });
       }
-      pushStatusIndicator("player", effect.status, effect.amount);
+      pushStatusIndicator("player", effect.status, effect.amount, null, effect.iconUri);
       log.push(`${effect.status} applied for ${effect.turns} turn${effect.turns === 1 ? "" : "s"}.`);
-    } else if (effect.status === "regen") {
+    } else if (effect.status === "regen" || effect.status === "taunt") {
       addPlayerTimedEffect(effect);
-      pushStatusIndicator("player", effect.status, effect.amount);
-      log.push(`${effect.status} applied for ${effect.turns} turn${effect.turns === 1 ? "" : "s"}.`);
+      pushStatusIndicator("player", effect.status, effect.amount, null, effect.iconUri);
+      log.push(effect.status === "taunt" ? `${ability.name} draws enemy focus for ${effect.turns} turn${effect.turns === 1 ? "" : "s"}.` : `${effect.status} applied for ${effect.turns} turn${effect.turns === 1 ? "" : "s"}.`);
     }
 
     return immediateDefense;
@@ -1564,8 +1628,16 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       addPlayerTimedEffect(effect);
     }
 
-    pushStatusIndicator(target, effect.status, effect.amount, targetKey);
-    log.push(`${effect.status} applied for ${effect.turns} turn${effect.turns === 1 ? "" : "s"}.`);
+    pushStatusIndicator(target, effect.status, effect.amount, targetKey, effect.iconUri);
+    if (effect.status === "taunt" && target === "enemy") {
+      const tauntingEnemy = battleOpponents.find((opponent) => opponent.key === targetKey);
+      if (targetKey) {
+        forceBattleTarget(targetKey);
+      }
+      log.push(`${tauntingEnemy?.enemy?.name || "The enemy"} commands your attention for ${effect.turns} turn${effect.turns === 1 ? "" : "s"}.`);
+    } else {
+      log.push(`${effect.status} applied for ${effect.turns} turn${effect.turns === 1 ? "" : "s"}.`);
+    }
   }
 
   function tickPlayerTimedEffects(log: string[]) {
@@ -1577,10 +1649,13 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     for (const effect of playerTimedEffects) {
       if (effect.status === "shield") {
         defenseBonus += effect.amount;
+        pushCombatIndicator("player", `Shield +${effect.amount}`, "#7dd3fc", null, effect.iconUri);
       } else if (effect.status === "weakness" || effect.status === "slow") {
         attackPenalty += effect.amount;
       } else if (effect.status === "regen") {
         healing += effect.amount;
+      } else if (effect.status === "taunt") {
+        pushCombatIndicator("player", "TAUNT", "#f6d365", null, effect.iconUri);
       }
 
       if (effect.turns > 1) {
@@ -1589,7 +1664,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     if (healing > 0) {
-      pushCombatIndicator("player", `+${healing}`, "#42d77d");
+      const regenIcon = playerTimedEffects.find((effect) => effect.status === "regen")?.iconUri;
+      pushCombatIndicator("player", `+${healing}`, "#42d77d", null, regenIcon);
       log.push(`Regeneration restores ${healing} Health.`);
     }
 
@@ -1609,16 +1685,19 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     for (const effect of effects) {
       if (effect.status === "poison" || effect.status === "burn") {
         damage += effect.amount;
-        pushStatusIndicator("enemy", effect.status, effect.amount, opponent.key);
+        pushStatusIndicator("enemy", effect.status, effect.amount, opponent.key, effect.iconUri);
       } else if (effect.status === "stun") {
         skipTurn = true;
       } else if (effect.status === "weakness" || effect.status === "slow") {
         attackPenalty += effect.amount;
       } else if (effect.status === "regen") {
         healing += effect.amount;
-        pushStatusIndicator("enemy", effect.status, effect.amount, opponent.key);
+        pushStatusIndicator("enemy", effect.status, effect.amount, opponent.key, effect.iconUri);
       } else if (effect.status === "shield") {
         defenseBonus += effect.amount;
+        pushCombatIndicator("enemy", `Shield +${effect.amount}`, "#7dd3fc", opponent.key, effect.iconUri);
+      } else if (effect.status === "taunt") {
+        pushCombatIndicator("enemy", "TAUNT", "#f6d365", opponent.key, effect.iconUri);
       }
 
       if (effect.turns > 1) {
@@ -1648,17 +1727,25 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     };
   }
 
-  function pushStatusIndicator(target: CombatIndicator["target"], status: string | null | undefined, amount: number, targetKey?: string | null) {
+  function pushStatusIndicator(target: CombatIndicator["target"], status: string | null | undefined, amount: number, targetKey?: string | null, iconUri?: string | null) {
     if (!status || status === "none" || amount <= 0) {
       return;
     }
 
     if (status === "poison") {
-      pushCombatIndicator(target, `Poison -${amount}`, "#b55cff", targetKey);
+      pushCombatIndicator(target, `Poison -${amount}`, "#b55cff", targetKey, iconUri);
     } else if (status === "burn") {
-      pushCombatIndicator(target, `Burn -${amount}`, "#ff8a2a", targetKey);
+      pushCombatIndicator(target, `Burn -${amount}`, "#ff8a2a", targetKey, iconUri);
     } else if (status === "regen") {
-      pushCombatIndicator(target, `+${amount}`, "#42d77d", targetKey);
+      pushCombatIndicator(target, `+${amount}`, "#42d77d", targetKey, iconUri);
+    } else if (status === "shield") {
+      pushCombatIndicator(target, `Shield +${amount}`, "#7dd3fc", targetKey, iconUri);
+    } else if (status === "taunt") {
+      pushCombatIndicator(target, "TAUNT", "#f6d365", targetKey, iconUri);
+    } else if (status === "stun") {
+      pushCombatIndicator(target, "STUN", "#9ca3af", targetKey, iconUri);
+    } else if (status === "weakness" || status === "slow") {
+      pushCombatIndicator(target, `${status.toUpperCase()} -${amount}`, "#f6d365", targetKey, iconUri);
     }
   }
 

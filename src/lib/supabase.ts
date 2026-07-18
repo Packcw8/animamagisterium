@@ -1273,7 +1273,7 @@ export type Tables = {
     critical_multiplier: number;
     cooldown_turns: number;
     duration_turns: number;
-    status_effect: "none" | "poison" | "burn" | "regen" | "shield" | "weakness" | "slow" | "stun";
+    status_effect: "none" | "poison" | "burn" | "regen" | "shield" | "weakness" | "slow" | "stun" | "taunt";
     effect_amount: number;
     effect_duration: number;
     linked_stat: "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | "weapon" | "item" | "none";
