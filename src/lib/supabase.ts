@@ -388,6 +388,8 @@ export type Tables = {
     sort_order: number;
     terrain: string;
     danger_level: string;
+    route_kind?: "story" | "farming" | "travel";
+    farming_summary?: string | null;
     distance_required_meters: number;
     estimated_encounters: number;
     path_points: Array<{ x: number; y: number }>;
@@ -486,6 +488,8 @@ export type Tables = {
     trigger_mode: "fixed" | "random";
     random_chance_percent: number;
     linked_only: boolean;
+    repeatable?: boolean;
+    rarity?: "common" | "uncommon" | "rare" | "epic" | "legendary";
     story_deck_id?: string | null;
     season_number: number;
     chapter_number: number;

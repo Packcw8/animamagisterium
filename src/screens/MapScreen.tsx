@@ -253,6 +253,8 @@ const adminMapWorkspaceStorageKey = "animamagisterium:admin-map-workspace";
 const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
 const eventTriggerModes = ["fixed", "random"] as const;
+const routeKinds = ["story", "farming", "travel"] as const;
+const eventRarities = ["common", "uncommon", "rare", "epic", "legendary"] as const;
 const lockTypes = ["public", "story_locked", "quest_locked"] as const;
 const rewardTimings = ["on_interact", "on_path_complete"] as const;
 const signPostRouteScopes = ["current_map", "overworld", "all_chapter"] as const;
@@ -277,6 +279,19 @@ const eventTriggerModeLabels: Record<(typeof eventTriggerModes)[number], string>
   fixed: "Fixed Percent",
   random: "Random Encounter",
 };
+const routeKindLabels: Record<(typeof routeKinds)[number], string> = {
+  story: "Story",
+  farming: "Farming",
+  travel: "Travel",
+};
+const eventRarityLabels: Record<(typeof eventRarities)[number], string> = {
+  common: "Common",
+  uncommon: "Uncommon",
+  rare: "Rare",
+  epic: "Epic",
+  legendary: "Legendary",
+};
+const randomEventCooldownMs = 120000;
 const movementStateDebounceMs = 5000;
 
 type MapScreenProps = {
@@ -616,6 +631,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [routeOrder, setRouteOrder] = useState("1");
   const [routeTerrain, setRouteTerrain] = useState("");
   const [routeDanger, setRouteDanger] = useState("");
+  const [routeKind, setRouteKind] = useState<(typeof routeKinds)[number]>("story");
+  const [routeFarmingSummary, setRouteFarmingSummary] = useState("");
   const [routeDistance, setRouteDistance] = useState("");
   const [routeImage, setRouteImage] = useState("");
   const [routeJournalTitle, setRouteJournalTitle] = useState("");
@@ -632,6 +649,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [eventDistance, setEventDistance] = useState("25");
   const [eventTriggerMode, setEventTriggerMode] = useState<(typeof eventTriggerModes)[number]>("fixed");
   const [eventRandomChance, setEventRandomChance] = useState("10");
+  const [eventRepeatable, setEventRepeatable] = useState(false);
+  const [eventRarity, setEventRarity] = useState<(typeof eventRarities)[number]>("common");
   const [eventBackgroundImage, setEventBackgroundImage] = useState("");
   const [eventNpcName, setEventNpcName] = useState("");
   const [eventNpcPortrait, setEventNpcPortrait] = useState("");
@@ -759,6 +778,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const routeRef = useRef(fallbackRoute);
   const routeDirectionRef = useRef<"forward" | "reverse">("forward");
   const activeBattleRouteRef = useRef<MapRoute | null>(null);
+  const randomEventCooldownsRef = useRef<Map<string, number>>(new Map());
   const exitingMiniMapRef = useRef(false);
   const openingToastShownRef = useRef(false);
   const adminMapWorkspaceLoadedRef = useRef(false);
@@ -1340,6 +1360,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const activeSectionMarkerTypes = adminSection === "Area/Town Markers" ? ["Area/Town Entrance"] : markerTypes;
   const routeEvents = useMemo(() => mapEvents.filter((event) => event.route_id === route.id), [mapEvents, route.id]);
   const requiredRouteEvents = useMemo(() => routeEvents.filter((event) => !event.linked_only), [routeEvents]);
+  const farmingRouteEvents = useMemo(
+    () =>
+      routeEvents
+        .filter((event) => event.is_active && (event.trigger_mode ?? "fixed") === "random")
+        .sort((a, b) => Number(a.distance_marker_percent ?? 0) - Number(b.distance_marker_percent ?? 0) || Number(b.random_chance_percent ?? 0) - Number(a.random_chance_percent ?? 0)),
+    [routeEvents],
+  );
   const reusableMapEvents = useMemo(() => allMapEvents.filter((event) => isInSelectedChapter(event, selectedSeason, selectedChapter)), [allMapEvents, selectedChapter, selectedSeason]);
   const completedRouteEvents = useMemo(() => requiredRouteEvents.filter((event) => completedEventIds.has(event.id)).length, [completedEventIds, requiredRouteEvents]);
   const routePotentialXp = useMemo(() => requiredRouteEvents.reduce((total, event) => total + Number(event.reward_xp ?? 0), 0), [requiredRouteEvents]);
@@ -1945,18 +1972,29 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         event.is_active &&
         !event.linked_only &&
         event.route_id === route.id &&
-        !completedEventIds.has(event.id) &&
+        (!completedEventIds.has(event.id) || ((event.trigger_mode ?? "fixed") === "random" && Boolean(event.repeatable))) &&
         Number(event.distance_marker_percent) <= progressPercent,
     );
     const fixedEvent = eligibleFixedEvents.find((event) => (event.trigger_mode ?? "fixed") !== "random");
+    const now = Date.now();
     const randomEvents = playerMovementState === "MOVING"
-      ? eligibleFixedEvents.filter((event) => (event.trigger_mode ?? "fixed") === "random")
+      ? eligibleFixedEvents.filter((event) => {
+          if ((event.trigger_mode ?? "fixed") !== "random") {
+            return false;
+          }
+          const lastTriggeredAt = randomEventCooldownsRef.current.get(event.id) ?? 0;
+          return now - lastTriggeredAt >= randomEventCooldownMs;
+        })
       : [];
     const randomEvent = randomEvents.find((event) => Math.random() * 100 < Number(event.random_chance_percent ?? 0));
     const nextEvent = fixedEvent ?? randomEvent;
 
     if (!nextEvent) {
       return;
+    }
+
+    if (randomEvent && nextEvent.id === randomEvent.id) {
+      randomEventCooldownsRef.current.set(randomEvent.id, now);
     }
 
     void playStoryDeckById(nextEvent.story_deck_id);
@@ -2102,15 +2140,17 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setRouteOrder(String(firstRoute.sort_order));
       setRouteTerrain(firstRoute.terrain);
       setRouteDanger(firstRoute.danger_level);
-    setRouteDistance(String(Math.round(firstRoute.distance_required_meters)));
-    setRouteImage(firstRoute.image_url ?? "");
-    setRouteJournalTitle(firstRoute.journal_title ?? "");
-    setRouteJournalBody(firstRoute.journal_body ?? "");
-    setRouteJournalImageUrl(firstRoute.journal_image_url ?? "");
-    setRouteJournalSortOrder(String(firstRoute.journal_sort_order ?? firstRoute.sort_order ?? 0));
-    setRouteStoryDeckId(firstRoute.story_deck_id ?? null);
-    setRouteTravelModeId(firstRoute.travel_mode_id ?? null);
-    setRouteLockType(firstRoute.lock_type ?? "public");
+      setRouteKind((firstRoute.route_kind ?? "story") as (typeof routeKinds)[number]);
+      setRouteFarmingSummary(firstRoute.farming_summary ?? "");
+      setRouteDistance(String(Math.round(firstRoute.distance_required_meters)));
+      setRouteImage(firstRoute.image_url ?? "");
+      setRouteJournalTitle(firstRoute.journal_title ?? "");
+      setRouteJournalBody(firstRoute.journal_body ?? "");
+      setRouteJournalImageUrl(firstRoute.journal_image_url ?? "");
+      setRouteJournalSortOrder(String(firstRoute.journal_sort_order ?? firstRoute.sort_order ?? 0));
+      setRouteStoryDeckId(firstRoute.story_deck_id ?? null);
+      setRouteTravelModeId(firstRoute.travel_mode_id ?? null);
+      setRouteLockType(firstRoute.lock_type ?? "public");
       setRouteLockMessage(firstRoute.lock_message ?? "");
       setPathDraft([]);
       setPathSegmentDraft([]);
@@ -2289,6 +2329,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setRouteOrder(String(nextRoute.sort_order));
     setRouteTerrain(nextRoute.terrain);
     setRouteDanger(nextRoute.danger_level);
+    setRouteKind((nextRoute.route_kind ?? "story") as (typeof routeKinds)[number]);
+    setRouteFarmingSummary(nextRoute.farming_summary ?? "");
     setRouteDistance(String(Math.round(nextRoute.distance_required_meters)));
     setRouteImage(nextRoute.image_url ?? "");
     setRouteJournalTitle(nextRoute.journal_title ?? "");
@@ -4732,6 +4774,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         setRouteOrder(String(displayWorldRoute.sort_order));
         setRouteTerrain(displayWorldRoute.terrain);
         setRouteDanger(displayWorldRoute.danger_level);
+        setRouteKind((displayWorldRoute.route_kind ?? "story") as (typeof routeKinds)[number]);
+        setRouteFarmingSummary(displayWorldRoute.farming_summary ?? "");
         setRouteDistance(String(Math.round(displayWorldRoute.distance_required_meters)));
         setRouteImage(displayWorldRoute.image_url ?? "");
         setRouteJournalTitle(displayWorldRoute.journal_title ?? "");
@@ -5084,6 +5128,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         sort_order: Number(routeOrder) || route.sort_order,
         terrain: routeTerrain.trim() || route.terrain,
         danger_level: routeDanger.trim() || route.danger_level,
+        route_kind: routeKind,
+        farming_summary: routeFarmingSummary.trim() || null,
         distance_required_meters: Number(routeDistance) || route.distance_required_meters,
         path_points: pathDraft,
         path_segments: normalizePathSegments(pathSegmentDraft, pathDraft.length),
@@ -5122,6 +5168,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         sort_order: Number(routeOrder) || getNextRouteOrder(activeRouteScopeRoutes.length > 0 ? activeRouteScopeRoutes : routes),
         terrain: routeTerrain.trim() || "Unknown road",
         danger_level: routeDanger.trim() || "Low",
+        route_kind: routeKind,
+        farming_summary: routeFarmingSummary.trim() || null,
         distance_required_meters: Number(routeDistance) || 1000,
         estimated_encounters: route.estimated_encounters,
         path_points: pathDraft,
@@ -6352,6 +6400,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setEventDistance(String(event.distance_marker_percent));
     setEventTriggerMode((event.trigger_mode ?? "fixed") === "random" ? "random" : "fixed");
     setEventRandomChance(String(event.random_chance_percent ?? 10));
+    setEventRepeatable(Boolean(event.repeatable));
+    setEventRarity((event.rarity ?? "common") as (typeof eventRarities)[number]);
     setEventBackgroundImage(event.background_image_url ?? "");
     setEventNpcName(event.npc_name ?? "");
     setEventNpcPortrait(event.npc_portrait_url ?? "");
@@ -6546,6 +6596,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setEventDistance("25");
     setEventTriggerMode("fixed");
     setEventRandomChance("10");
+    setEventRepeatable(false);
+    setEventRarity("common");
     setEventBackgroundImage("");
     setEventNpcName("");
     setEventNpcPortrait("");
@@ -6584,6 +6636,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       distance_marker_percent: clamp(Number(eventDistance) || 0, 0, 100),
       trigger_mode: eventTriggerMode,
       random_chance_percent: eventTriggerMode === "random" ? clamp(Number(eventRandomChance) || 0, 0, 100) : 0,
+      repeatable: eventRepeatable,
+      rarity: eventRarity,
       linked_only: editingEvent?.linked_only ?? false,
       background_image_url: eventBackgroundImage.trim() || null,
       npc_name: eventNpcName.trim() || null,
@@ -7182,6 +7236,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setRouteOrder(String(getNextRouteOrder(routeSource)));
     setRouteTerrain("");
     setRouteDanger("");
+    setRouteKind("story");
+    setRouteFarmingSummary("");
     setRouteDistance("");
     setRouteImage("");
     setRouteJournalTitle("");
@@ -8016,6 +8072,42 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           </View>
           <Text style={styles.journeyPercent}>{Math.round(progressPercent)}%</Text>
         </View>
+
+        {(route.route_kind ?? "story") === "farming" ? (
+          <View style={styles.journeyFarmingCard}>
+            <View style={styles.journeyFarmingHeader}>
+              <Text style={styles.journeyFarmingLabel}>Possible Finds</Text>
+              <Text style={styles.journeyFarmingMeta}>Repeatable path</Text>
+            </View>
+            {route.farming_summary ? <Text style={styles.journeyQuestText}>{route.farming_summary}</Text> : null}
+            {farmingRouteEvents.length > 0 ? (
+              <View style={styles.journeyFindList}>
+                {farmingRouteEvents.slice(0, 5).map((event) => {
+                  const rewardBits = [
+                    event.event_type === "battle" ? "Battle" : event.reward_item_id ? `${event.reward_item_quantity ?? 1} ${getItemName(itemDefinitions, event.reward_item_id)}` : event.reward_item || eventTypeName(event.event_type),
+                    Number(event.reward_gold ?? 0) > 0 ? `${event.reward_gold} gold` : null,
+                    Number(event.reward_xp ?? 0) > 0 ? `${event.reward_xp} XP` : null,
+                  ].filter(Boolean);
+                  return (
+                    <View key={event.id} style={styles.journeyFindRow}>
+                      <View style={styles.journeyFindText}>
+                        <Text style={styles.journeyFindTitle} numberOfLines={1}>{event.title}</Text>
+                        <Text style={styles.journeyFindReward} numberOfLines={1}>{rewardBits.join(" / ")}</Text>
+                      </View>
+                      <View style={styles.journeyFindMeta}>
+                        <Text style={styles.journeyFindRarity}>{eventRarityLabels[event.rarity ?? "common"]}</Text>
+                        <Text style={styles.journeyFindChance}>{Math.round(Number(event.random_chance_percent ?? 0))}%</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+                {farmingRouteEvents.length > 5 ? <Text style={styles.journeyFindMore}>+{farmingRouteEvents.length - 5} more possible finds</Text> : null}
+              </View>
+            ) : (
+              <Text style={styles.journeyQuestText}>No random finds have been added to this path yet.</Text>
+            )}
+          </View>
+        ) : null}
 
         <View style={styles.journeyStats}>
           <View style={styles.journeyStat}>
@@ -8960,6 +9052,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 <TextInput value={routeOrder} onChangeText={setRouteOrder} placeholder="Route order" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={routeTerrain} onChangeText={setRouteTerrain} placeholder="Terrain" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={routeDanger} onChangeText={setRouteDanger} placeholder="Danger level" placeholderTextColor={colors.muted} style={styles.input} />
+                <ChoiceRow label="Path purpose" options={routeKinds} value={routeKind} labels={routeKindLabels} onSelect={(value) => setRouteKind(value as (typeof routeKinds)[number])} />
+                {routeKind === "farming" ? <TextInput value={routeFarmingSummary} onChangeText={setRouteFarmingSummary} placeholder="Farming notes shown to players" placeholderTextColor={colors.muted} style={styles.input} /> : null}
                 <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={routeImage} onChangeText={setRouteImage} placeholder="Route image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
                 <AdminImageUploadButton folder="route-images" onUploaded={setRouteImage} onMessage={setAdminMessage} />
@@ -9057,6 +9151,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   {eventTriggerMode === "random" ? (
                     <>
                       <TextInput value={eventRandomChance} onChangeText={setEventRandomChance} placeholder="Random chance percent while moving" placeholderTextColor={colors.muted} style={styles.input} />
+                      <ChoiceRow label="Rarity shown to player" options={eventRarities} value={eventRarity} labels={eventRarityLabels} onSelect={(value) => setEventRarity(value as (typeof eventRarities)[number])} />
+                      <Pressable style={[styles.secondaryButton, eventRepeatable && styles.typeSelected]} onPress={() => setEventRepeatable((value) => !value)}>
+                        <Text style={styles.secondaryText}>Repeatable farming event: {eventRepeatable ? "Yes" : "No"}</Text>
+                      </Pressable>
                       <Text style={styles.debugLine}>Random encounters can trigger after this mini-map trail reaches the distance marker.</Text>
                     </>
                   ) : null}
@@ -9139,7 +9237,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   {adminMapEvents.map((event) => (
                     <View key={event.id} style={styles.storyCard}>
                       <Text style={styles.markerName}>{event.distance_marker_percent}% - {event.title}</Text>
-                      <Text style={styles.copy}>{eventTriggerModeName(event)} / {event.linked_only ? "Linked Only / " : ""}{event.event_type === "battle" && event.npc_id ? getNpcName(npcDefinitions, event.npc_id) : eventTypeName(event.event_type)}</Text>
+                      <Text style={styles.copy}>
+                        {eventTriggerModeName(event)} / {event.linked_only ? "Linked Only / " : ""}
+                        {(event.trigger_mode ?? "fixed") === "random" ? `${eventRarityLabels[event.rarity ?? "common"]} / ${event.repeatable ? "Repeatable" : "Once"} / ` : ""}
+                        {event.event_type === "battle" && event.npc_id ? getNpcName(npcDefinitions, event.npc_id) : eventTypeName(event.event_type)}
+                      </Text>
                       <View style={styles.modeRow}>
                         <Pressable style={styles.secondaryButtonFlex} onPress={() => void previewMapEvent(event)}>
                           <Text style={styles.secondaryText}>Preview/Test</Text>
@@ -10005,6 +10107,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               <TextInput value={routeOrder} onChangeText={setRouteOrder} placeholder="Route order" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeTerrain} onChangeText={setRouteTerrain} placeholder="Terrain" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeDanger} onChangeText={setRouteDanger} placeholder="Danger level" placeholderTextColor={colors.muted} style={styles.input} />
+              <ChoiceRow label="Path purpose" options={routeKinds} value={routeKind} labels={routeKindLabels} onSelect={(value) => setRouteKind(value as (typeof routeKinds)[number])} />
+              {routeKind === "farming" ? <TextInput value={routeFarmingSummary} onChangeText={setRouteFarmingSummary} placeholder="Farming notes shown to players" placeholderTextColor={colors.muted} style={styles.input} /> : null}
               <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeImage} onChangeText={setRouteImage} placeholder="Route image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
               <AdminImageUploadButton folder="route-images" onUploaded={setRouteImage} onMessage={setAdminMessage} />
@@ -10133,6 +10237,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             {eventTriggerMode === "random" ? (
               <>
                 <TextInput value={eventRandomChance} onChangeText={setEventRandomChance} placeholder="Random chance percent while moving" placeholderTextColor={colors.muted} style={styles.input} />
+                <ChoiceRow label="Rarity shown to player" options={eventRarities} value={eventRarity} labels={eventRarityLabels} onSelect={(value) => setEventRarity(value as (typeof eventRarities)[number])} />
+                <Pressable style={[styles.secondaryButton, eventRepeatable && styles.typeSelected]} onPress={() => setEventRepeatable((value) => !value)}>
+                  <Text style={styles.secondaryText}>Repeatable farming event: {eventRepeatable ? "Yes" : "No"}</Text>
+                </Pressable>
                 <Text style={styles.debugLine}>Random encounters can trigger after the route reaches the distance marker above.</Text>
               </>
             ) : null}
@@ -10217,7 +10325,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             {adminMapEvents.map((event) => (
               <View key={event.id} style={styles.storyCard}>
                 <Text style={styles.markerName}>{event.distance_marker_percent}% - {event.title}</Text>
-                <Text style={styles.debugLine}>{event.linked_only ? "Linked Only / " : ""}{eventTriggerModeName(event)}</Text>
+                <Text style={styles.debugLine}>
+                  {event.linked_only ? "Linked Only / " : ""}{eventTriggerModeName(event)}
+                  {(event.trigger_mode ?? "fixed") === "random" ? ` / ${eventRarityLabels[event.rarity ?? "common"]} / ${event.repeatable ? "Repeatable" : "Once"}` : ""}
+                </Text>
                 <Text style={styles.copy}>
                   {event.event_type === "battle"
                     ? `${event.npc_id ? getNpcName(npcDefinitions, event.npc_id) : event.enemy_id ? getEnemyName(enemyDefinitions, event.enemy_id) : event.enemy_name || "Enemy"} - ${event.npc_id ? "Admin NPC" : event.enemy_id ? "Admin Enemy" : `HP ${event.enemy_hp}`}`
@@ -11546,6 +11657,33 @@ function MiniMapMarkerAdminForm({
   );
 }
 
+function ChoiceRow<T extends string>({
+  label,
+  options,
+  value,
+  labels,
+  onSelect,
+}: {
+  label: string;
+  options: readonly T[];
+  value: T;
+  labels?: Partial<Record<T, string>>;
+  onSelect: (value: T) => void;
+}) {
+  return (
+    <View>
+      <Text style={styles.selectedTitle}>{label}</Text>
+      <View style={styles.storyRoutePicker}>
+        {options.map((option) => (
+          <Pressable key={option} style={[styles.routeChip, value === option && styles.routeChipActive]} onPress={() => onSelect(option)}>
+            <Text style={styles.routeChipText}>{labels?.[option] ?? option}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <View style={styles.infoRow}>
@@ -12250,6 +12388,83 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     lineHeight: 17,
+  },
+  journeyFarmingCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.24)",
+    backgroundColor: "rgba(218, 164, 65, 0.065)",
+    padding: 10,
+    gap: 7,
+  },
+  journeyFarmingHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
+  journeyFarmingLabel: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  journeyFarmingMeta: {
+    color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  journeyFindList: {
+    gap: 6,
+  },
+  journeyFindRow: {
+    minHeight: 46,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    backgroundColor: "rgba(0,0,0,0.2)",
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  journeyFindText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  journeyFindTitle: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  journeyFindReward: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  journeyFindMeta: {
+    alignItems: "flex-end",
+    gap: 2,
+    minWidth: 58,
+  },
+  journeyFindRarity: {
+    color: colors.gold,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  journeyFindChance: {
+    color: colors.blue,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  journeyFindMore: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    textAlign: "center",
   },
   journeyDestination: {
     marginTop: 6,
