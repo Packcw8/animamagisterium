@@ -102,6 +102,7 @@ export function BattleEventScreen({
 }: BattleEventScreenProps) {
   const [enemyImageFailed, setEnemyImageFailed] = useState(false);
   const [playerImageFailed, setPlayerImageFailed] = useState(false);
+  const [targetDetailsOpen, setTargetDetailsOpen] = useState(false);
   const enemyImageUri = resolveEnemyImageUri(activeEnemy?.image_url ?? event.enemy_image_url);
   const backgroundUri = resolveSceneImageUri(event.background_image_url);
   const enemyMaxHp = Number(activeEnemy?.health ?? event.enemy_hp) || 30;
@@ -133,6 +134,15 @@ export function BattleEventScreen({
   const playerSize = Math.max(48, Math.min(112, playerSizePercent * 5.6));
   const playerRingSize = Math.max(50, playerSize - 2);
   const playerRingRadius = Math.max(20, playerRingSize / 2 - 7);
+  const selectedOpponent = visibleOpponents.find((opponent) => opponent.key === selectedOpponentKey) ?? null;
+  const targetDetailsEnemy = selectedOpponent?.enemy ?? activeEnemy;
+  const targetDetailsHp = selectedOpponent ? selectedOpponent.hp : enemyHp;
+  const targetDetailsStamina = selectedOpponent ? selectedOpponent.stamina : enemyStamina;
+  const targetDetailsMana = selectedOpponent ? selectedOpponent.magika : enemyMana;
+  const targetDetailsImageUri = resolveEnemyImageUri(targetDetailsEnemy?.image_url ?? (!selectedOpponent ? event.enemy_image_url : null));
+  const targetDetailsName = targetDetailsEnemy?.name || selectedOpponent?.combatant?.label || enemyName;
+  const targetDetailsType = targetDetailsEnemy?.type || "Enemy";
+  const targetDetailsKind = targetDetailsEnemy && "can_battle" in targetDetailsEnemy ? "NPC Combatant" : "Enemy";
 
   return (
     <Screen>
@@ -316,6 +326,24 @@ export function BattleEventScreen({
             </View>
             <Text style={styles.stageHint}>{playerTurnActive ? "Choose an ability, then strike the selected target." : enemyTurnActive ? "Enemy action resolving..." : "Battle is resolving."}</Text>
           </View>
+          <BattleTargetDetailsCard
+            open={targetDetailsOpen}
+            onToggle={() => setTargetDetailsOpen((value) => !value)}
+            name={targetDetailsName}
+            type={targetDetailsType}
+            kind={targetDetailsKind}
+            imageUri={targetDetailsImageUri}
+            hp={targetDetailsHp}
+            maxHp={Number(targetDetailsEnemy?.health ?? event.enemy_hp) || enemyMaxHp}
+            stamina={targetDetailsStamina}
+            maxStamina={Number(targetDetailsEnemy?.stamina ?? 0) || 0}
+            mana={targetDetailsMana}
+            maxMana={Number(targetDetailsEnemy?.magika ?? 0) || 0}
+            defense={Number(targetDetailsEnemy?.defense ?? 10) || 10}
+            armor={Number(targetDetailsEnemy?.armor_rating ?? 0) || 0}
+            attackBonus={Number(targetDetailsEnemy?.attack_bonus ?? 0) || 0}
+            abilities={targetDetailsEnemy?.abilities?.map((entry) => entry.ability?.name).filter((name): name is string => Boolean(name)) ?? []}
+          />
           <View style={styles.abilityGrid}>
             {equippedAbilities.map((ability, index) => {
               const resourcePool = ability?.resource === "stamina" ? stamina : ability?.resource === "magicka" ? magicka : ability?.resource === "health" ? playerHp : Number.POSITIVE_INFINITY;
@@ -439,6 +467,110 @@ function CombatIndicatorStackOverlay({ indicators }: { indicators: CombatIndicat
           </Text>
         </View>
       ))}
+    </View>
+  );
+}
+
+function BattleTargetDetailsCard({
+  open,
+  onToggle,
+  name,
+  type,
+  kind,
+  imageUri,
+  hp,
+  maxHp,
+  stamina,
+  maxStamina,
+  mana,
+  maxMana,
+  defense,
+  armor,
+  attackBonus,
+  abilities,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  name: string;
+  type: string;
+  kind: string;
+  imageUri: string | null;
+  hp: number;
+  maxHp: number;
+  stamina: number;
+  maxStamina: number;
+  mana: number;
+  maxMana: number;
+  defense: number;
+  armor: number;
+  attackBonus: number;
+  abilities: string[];
+}) {
+  return (
+    <View style={styles.targetDetailsPanel}>
+      <Pressable style={styles.targetDetailsHeader} onPress={onToggle}>
+        <View style={styles.targetDetailsHeaderText}>
+          <Text style={styles.targetDetailsEyebrow}>Selected Target</Text>
+          <Text style={styles.targetDetailsName} numberOfLines={1}>{name}</Text>
+        </View>
+        <View style={styles.targetDetailsToggle}>
+          <Text style={styles.targetDetailsToggleText}>{open ? "Hide" : "View"}</Text>
+        </View>
+      </Pressable>
+      {open ? (
+        <View style={styles.targetDetailsBody}>
+          <View style={styles.targetDetailsPortraitWrap}>
+            {imageUri ? (
+              <Image source={{ uri: imageUri }} style={styles.targetDetailsPortrait} resizeMode="cover" />
+            ) : (
+              <Text style={styles.targetDetailsFallback}>{name.slice(0, 2).toUpperCase()}</Text>
+            )}
+          </View>
+          <View style={styles.targetDetailsContent}>
+            <View style={styles.targetDetailsMetaRow}>
+              <Text style={styles.targetDetailsMeta}>{kind}</Text>
+              <Text style={styles.targetDetailsMeta}>{type}</Text>
+            </View>
+            <View style={styles.targetResourceStack}>
+              <CompactTargetMeter label="HP" value={hp} max={maxHp} color={colors.red} />
+              {maxStamina > 0 ? <CompactTargetMeter label="Stamina" value={stamina} max={maxStamina} color={colors.gold} /> : null}
+              {maxMana > 0 ? <CompactTargetMeter label="Mana" value={mana} max={maxMana} color={colors.blue} /> : null}
+            </View>
+            <View style={styles.targetStatGrid}>
+              <TargetStat label="Defense" value={defense} />
+              <TargetStat label="Armor" value={armor} />
+              <TargetStat label="Attack" value={`+${attackBonus}`} />
+            </View>
+            <View style={styles.targetAbilityList}>
+              <Text style={styles.targetAbilityTitle}>Known Abilities</Text>
+              <Text style={styles.targetAbilityText}>{abilities.length > 0 ? abilities.slice(0, 4).join(" / ") : "No special abilities known."}</Text>
+            </View>
+          </View>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function CompactTargetMeter({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+  return (
+    <View style={styles.compactTargetMeter}>
+      <View style={styles.compactTargetMeterHeader}>
+        <Text style={styles.compactTargetMeterLabel}>{label}</Text>
+        <Text style={styles.compactTargetMeterValue}>{Math.max(0, value)} / {Math.max(1, max)}</Text>
+      </View>
+      <View style={styles.compactTargetTrack}>
+        <View style={[styles.compactTargetFill, { width: `${getPercent(value, max)}%`, backgroundColor: color } as object]} />
+      </View>
+    </View>
+  );
+}
+
+function TargetStat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <View style={styles.targetStatPill}>
+      <Text style={styles.targetStatLabel}>{label}</Text>
+      <Text style={styles.targetStatValue}>{value}</Text>
     </View>
   );
 }
@@ -595,6 +727,178 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textAlign: "center",
     paddingHorizontal: 10,
+  },
+  targetDetailsPanel: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(232, 181, 94, 0.24)",
+    backgroundColor: "rgba(0,0,0,0.42)",
+    overflow: "hidden",
+  },
+  targetDetailsHeader: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  targetDetailsHeaderText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  targetDetailsEyebrow: {
+    color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  targetDetailsName: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 17,
+  },
+  targetDetailsToggle: {
+    minWidth: 62,
+    minHeight: 32,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(54, 171, 224, 0.52)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(6, 23, 34, 0.58)",
+  },
+  targetDetailsToggleText: {
+    color: colors.blue,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  targetDetailsBody: {
+    flexDirection: "row",
+    gap: 10,
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.07)",
+  },
+  targetDetailsPortraitWrap: {
+    width: 86,
+    height: 86,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(232, 181, 94, 0.42)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "rgba(4,7,8,0.72)",
+  },
+  targetDetailsPortrait: {
+    width: "100%",
+    height: "100%",
+  },
+  targetDetailsFallback: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  targetDetailsContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 8,
+  },
+  targetDetailsMetaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  targetDetailsMeta: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    borderWidth: 1,
+    borderColor: "rgba(232, 181, 94, 0.18)",
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  targetResourceStack: {
+    gap: 5,
+  },
+  compactTargetMeter: {
+    gap: 3,
+  },
+  compactTargetMeterHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  compactTargetMeterLabel: {
+    color: colors.muted,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  compactTargetMeterValue: {
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  compactTargetTrack: {
+    height: 5,
+    borderRadius: 999,
+    overflow: "hidden",
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  compactTargetFill: {
+    height: "100%",
+    borderRadius: 999,
+  },
+  targetStatGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  targetStatPill: {
+    minWidth: 66,
+    flexGrow: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  targetStatLabel: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  targetStatValue: {
+    color: colors.gold,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  targetAbilityList: {
+    gap: 2,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.06)",
+    paddingTop: 6,
+  },
+  targetAbilityTitle: {
+    color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  targetAbilityText: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 16,
   },
   combatantSurface: {
     position: "absolute",
