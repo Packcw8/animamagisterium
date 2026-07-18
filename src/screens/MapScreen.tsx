@@ -3963,7 +3963,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   async function startPathFromSignPost(
     nextRoute: MapRoute,
     routeLink?: Pick<MarkerRouteLink, "start_direction" | "travel_mode_id">,
-    options?: { allowMapTransition?: boolean },
+    options: { allowMapTransition?: boolean } = { allowMapTransition: true },
   ) {
     if (!isAdmin && isRouteLocked(nextRoute)) {
       setMarkerPanelMessage(getRouteLockMessage(nextRoute));
@@ -3971,9 +3971,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
 
     const nextMiniMap = nextRoute.mini_map_id ? miniMaps.find((item) => item.id === nextRoute.mini_map_id) ?? null : null;
-    const canStartMiniMapRoute = !nextRoute.mini_map_id || activeMiniMap?.id === nextRoute.mini_map_id || options?.allowMapTransition;
+    const canStartMiniMapRoute = !nextRoute.mini_map_id || activeMiniMap?.id === nextRoute.mini_map_id || options.allowMapTransition;
     if (!canStartMiniMapRoute) {
       setMarkerPanelMessage(`${nextRoute.name} belongs to ${nextMiniMap?.name ?? "another area"}. Enter that area before starting this path.`);
+      return;
+    }
+    if (nextRoute.mini_map_id && !nextMiniMap) {
+      setMarkerPanelMessage(`${nextRoute.name} belongs to another area, but that mini map could not be found.`);
       return;
     }
 
@@ -4038,16 +4042,19 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setSelectedMarker(null);
     setPreviewMarkerScene(false);
     setMarkerPanelMessage(null);
-    setSavedMiniMapPosition(null);
-    if (activeMiniMap) {
+    if (nextRoute.mini_map_id) {
+      setActiveMiniMap(nextMiniMap);
+      setSavedMiniMapPosition(nextPoint);
       void savePlayerMapState({
-        active_mini_map_id: activeMiniMap.id,
+        active_mini_map_id: nextRoute.mini_map_id,
         current_x_percent: nextPoint.x,
         current_y_percent: nextPoint.y,
         active_season_number: nextRoute.season_number,
         active_chapter_number: nextRoute.chapter_number,
       });
     } else {
+      setActiveMiniMap(null);
+      setSavedMiniMapPosition(null);
       void clearPlayerMapState();
     }
     await selectRoute(nextRoute, true);
