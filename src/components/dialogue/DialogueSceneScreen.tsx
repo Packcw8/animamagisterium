@@ -1,4 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { CheckCircle, ChevronRight, Coins, Gift, HelpCircle, Lock, Map, MessageCircle, Package, Sparkles, Swords } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Image, StyleSheet, Text, View } from "react-native";
 import { Frame } from "../Frame";
@@ -179,23 +180,27 @@ export function DialogueSceneScreen({
                 const availability = choiceAvailability[choice.id] ?? { met: true, hidden: false, disabled: false, message: null };
                 const checkSummary = getAttributeCheckSummary(choice);
                 const hasRequirement = (choice.requirement_type ?? "none") !== "none" || Boolean(checkSummary);
+                const rewardPreview = getChoiceRewardPreview(choice, choiceRewards, itemDefinitions);
+                const visual = getChoiceVisual(choice, rewardPreview.length > 0, availability.disabled, hasRequirement);
+                const ChoiceIcon = visual.Icon;
                 return (
                   <Pressable
                     key={choice.id}
-                    style={[styles.choiceButton, availability.disabled && styles.lockedButton]}
+                    style={[styles.choiceButton, visual.emphasis === "reward" && styles.rewardChoiceButton, visual.emphasis === "danger" && styles.dangerChoiceButton, availability.disabled && styles.lockedButton]}
                     onPress={() => onChoice(choice)}
                     disabled={availability.disabled}
                   >
                     <View style={styles.choiceRow}>
-                      <View style={[styles.choiceIcon, availability.disabled && styles.choiceIconLocked]}>
-                        <Text style={[styles.choiceIconText, availability.disabled && styles.lockedText]}>{availability.disabled ? "!" : hasRequirement ? "?" : "..."}</Text>
+                      <View style={[styles.choiceIcon, visual.emphasis === "reward" && styles.rewardChoiceIcon, visual.emphasis === "danger" && styles.dangerChoiceIcon, availability.disabled && styles.choiceIconLocked]}>
+                        <ChoiceIcon size={17} color={availability.disabled ? colors.muted : visual.color} strokeWidth={2.5} />
                       </View>
                       <View style={styles.choiceTextWrap}>
                         {checkSummary ? <Text style={styles.checkBadge}>{checkSummary}</Text> : null}
+                        {visual.badge ? <Text style={[styles.choiceBadge, visual.emphasis === "reward" && styles.rewardChoiceBadge, visual.emphasis === "danger" && styles.dangerChoiceBadge]}>{visual.badge}</Text> : null}
                         <Text style={[styles.choiceText, availability.disabled && styles.lockedText]}>{choice.button_text}</Text>
                         {availability.disabled && availability.message ? <Text style={styles.requirementText}>{availability.message}</Text> : null}
                       </View>
-                      <Text style={[styles.choiceArrow, availability.disabled && styles.lockedText]}>{">"}</Text>
+                      <ChevronRight size={22} color={availability.disabled ? colors.muted : visual.color} strokeWidth={2.5} />
                     </View>
                   </Pressable>
                 );
@@ -216,10 +221,10 @@ export function DialogueSceneScreen({
               <Pressable key={`${choice.label}-${index}`} style={styles.choiceButton} onPress={() => onLegacyChoice(choice.action)}>
                 <View style={styles.choiceRow}>
                   <View style={styles.choiceIcon}>
-                    <Text style={styles.choiceIconText}>...</Text>
+                    <MessageCircle size={17} color={colors.gold} strokeWidth={2.5} />
                   </View>
                   <Text style={styles.choiceText}>{choice.label}</Text>
-                  <Text style={styles.choiceArrow}>{">"}</Text>
+                  <ChevronRight size={22} color={colors.gold} strokeWidth={2.5} />
                 </View>
               </Pressable>
             ))
@@ -276,6 +281,48 @@ function getChoiceRewardPreview(choice: StoryDialogueChoice, rewards: DialogueCh
     });
 
   return preview;
+}
+
+function getChoiceVisual(choice: StoryDialogueChoice, hasReward: boolean, disabled: boolean, hasRequirement: boolean) {
+  if (disabled) {
+    return { Icon: Lock, color: colors.muted, badge: "Locked", emphasis: "locked" as const };
+  }
+
+  if (hasReward) {
+    if (choice.reward_item_id || choiceRewardsIncludeItemHint(choice)) {
+      return { Icon: Package, color: colors.gold, badge: "Reward", emphasis: "reward" as const };
+    }
+    if (Number(choice.reward_gold ?? 0) > 0) {
+      return { Icon: Coins, color: colors.gold, badge: "Gold", emphasis: "reward" as const };
+    }
+    return { Icon: Gift, color: colors.gold, badge: "Reward", emphasis: "reward" as const };
+  }
+
+  if (choice.action === "start_battle") {
+    return { Icon: Swords, color: colors.red, badge: "Danger", emphasis: "danger" as const };
+  }
+
+  if (choice.action === "start_quest" || choice.action === "travel_to_marker") {
+    return { Icon: Map, color: colors.blue, badge: "Journey", emphasis: "route" as const };
+  }
+
+  if (choice.action === "complete_event" || choice.action === "end_conversation") {
+    return { Icon: CheckCircle, color: colors.gold, badge: null, emphasis: "plain" as const };
+  }
+
+  if (hasRequirement) {
+    return { Icon: HelpCircle, color: colors.blue, badge: "Check", emphasis: "plain" as const };
+  }
+
+  if (choice.set_story_flag_key || choice.unlock_marker_id || choice.story_deck_id) {
+    return { Icon: Sparkles, color: colors.gold, badge: "Story", emphasis: "reward" as const };
+  }
+
+  return { Icon: MessageCircle, color: colors.gold, badge: null, emphasis: "plain" as const };
+}
+
+function choiceRewardsIncludeItemHint(choice: StoryDialogueChoice) {
+  return Boolean(choice.reward_item?.trim());
 }
 
 const styles = StyleSheet.create({
@@ -553,6 +600,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
+  rewardChoiceButton: {
+    borderColor: "rgba(217, 170, 93, 0.82)",
+    backgroundColor: "rgba(217, 170, 93, 0.16)",
+  },
+  dangerChoiceButton: {
+    borderColor: "rgba(221, 78, 64, 0.58)",
+    backgroundColor: "rgba(62, 15, 15, 0.32)",
+  },
   choiceRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -568,6 +623,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  rewardChoiceIcon: {
+    borderColor: "rgba(217, 170, 93, 0.82)",
+    backgroundColor: "rgba(217, 170, 93, 0.26)",
+  },
+  dangerChoiceIcon: {
+    borderColor: "rgba(221, 78, 64, 0.62)",
+    backgroundColor: "rgba(120, 22, 22, 0.22)",
+  },
   choiceIconLocked: {
     borderColor: colors.red,
     backgroundColor: "rgba(120, 22, 22, 0.22)",
@@ -580,6 +643,20 @@ const styles = StyleSheet.create({
   choiceTextWrap: {
     flex: 1,
     minWidth: 0,
+  },
+  choiceBadge: {
+    alignSelf: "flex-start",
+    color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+    marginBottom: 3,
+    textTransform: "uppercase",
+  },
+  rewardChoiceBadge: {
+    color: colors.gold,
+  },
+  dangerChoiceBadge: {
+    color: colors.red,
   },
   choiceText: {
     color: colors.text,
