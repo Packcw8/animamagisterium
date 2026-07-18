@@ -165,6 +165,8 @@ export function BattleActionCard({
   disabled,
   unavailableReason,
   cooldownTurns = 0,
+  targetLabel,
+  targetTone = "enemy",
   onPress,
 }: {
   ability: AbilityDefinition | null;
@@ -172,8 +174,13 @@ export function BattleActionCard({
   disabled: boolean;
   unavailableReason: string | null;
   cooldownTurns?: number;
+  targetLabel?: string | null;
+  targetTone?: "enemy" | "self" | "area" | "ally" | "summon";
   onPress: () => void;
 }) {
+  const targetChipStyle = getActionTargetChipStyle(targetTone);
+  const targetTextStyle = getActionTargetTextStyle(targetTone);
+
   return (
     <Pressable
       style={({ pressed }) => [styles.battleActionCard, pressed && !disabled && styles.battleActionPressed, disabled && styles.disabledAction]}
@@ -186,12 +193,33 @@ export function BattleActionCard({
       <View style={styles.battleActionInfo}>
         <Text style={styles.battleActionName}>{ability?.name ?? `Empty Slot ${slotNumber}`}</Text>
         {ability ? <Text style={styles.battleActionMeta}>{getAbilityPowerLabel(ability)}</Text> : <Text style={styles.battleActionMeta}>Equip an ability on Home</Text>}
+        {ability && targetLabel ? (
+          <View style={[styles.actionTargetChip, targetChipStyle]}>
+            <Text style={[styles.actionTargetText, targetTextStyle]} numberOfLines={1}>{targetLabel}</Text>
+          </View>
+        ) : null}
         {ability ? <Text style={styles.actionCost}>{getAbilityCostLabel(ability)}</Text> : null}
         {ability && cooldownTurns > 0 ? <Text style={styles.cooldownText}>Cooldown {cooldownTurns}</Text> : null}
         {unavailableReason ? <Text style={styles.battleActionWarning}>{unavailableReason}</Text> : null}
       </View>
     </Pressable>
   );
+}
+
+function getActionTargetChipStyle(tone: "enemy" | "self" | "area" | "ally" | "summon") {
+  if (tone === "self") return styles.actionTargetChip_self;
+  if (tone === "area") return styles.actionTargetChip_area;
+  if (tone === "ally") return styles.actionTargetChip_ally;
+  if (tone === "summon") return styles.actionTargetChip_summon;
+  return styles.actionTargetChip_enemy;
+}
+
+function getActionTargetTextStyle(tone: "enemy" | "self" | "area" | "ally" | "summon") {
+  if (tone === "self") return styles.actionTargetText_self;
+  if (tone === "area") return styles.actionTargetText_area;
+  if (tone === "ally") return styles.actionTargetText_ally;
+  if (tone === "summon") return styles.actionTargetText_summon;
+  return styles.actionTargetText_enemy;
 }
 
 export function CombatIndicatorStack({ indicators }: { indicators: CombatIndicator[] }) {
@@ -478,6 +506,51 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     marginTop: 2,
+  },
+  actionTargetChip: {
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    marginTop: 5,
+    backgroundColor: "rgba(0,0,0,0.32)",
+  },
+  actionTargetChip_enemy: {
+    borderColor: "rgba(255,180,170,0.5)",
+  },
+  actionTargetChip_self: {
+    borderColor: "rgba(54,171,224,0.56)",
+  },
+  actionTargetChip_area: {
+    borderColor: "rgba(232,181,94,0.56)",
+  },
+  actionTargetChip_ally: {
+    borderColor: "rgba(66,215,125,0.56)",
+  },
+  actionTargetChip_summon: {
+    borderColor: "rgba(190,144,255,0.56)",
+  },
+  actionTargetText: {
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  actionTargetText_enemy: {
+    color: "#ffb4aa",
+  },
+  actionTargetText_self: {
+    color: colors.blue,
+  },
+  actionTargetText_area: {
+    color: colors.gold,
+  },
+  actionTargetText_ally: {
+    color: "#42d77d",
+  },
+  actionTargetText_summon: {
+    color: "#be90ff",
   },
   actionCost: {
     color: colors.muted,

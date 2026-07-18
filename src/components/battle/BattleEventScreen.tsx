@@ -143,6 +143,7 @@ export function BattleEventScreen({
   const targetDetailsName = targetDetailsEnemy?.name || selectedOpponent?.combatant?.label || enemyName;
   const targetDetailsType = targetDetailsEnemy?.type || "Enemy";
   const targetDetailsKind = targetDetailsEnemy && "can_battle" in targetDetailsEnemy ? "NPC Combatant" : "Enemy";
+  const targetCount = Math.max(visibleOpponents.length, activeEnemy ? 1 : 0);
 
   return (
     <Screen>
@@ -223,6 +224,11 @@ export function BattleEventScreen({
                               manaPercent={getPercent(opponent.magika, maxMana)}
                           />
                           {imageUri ? <Image source={{ uri: imageUri }} style={styles.stagedCombatantImage} /> : <Text style={styles.stagedCombatantFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
+                          {isSelected ? (
+                            <View style={styles.targetReticle} pointerEvents="none">
+                              <Text style={styles.targetReticleText}>Target</Text>
+                            </View>
+                          ) : null}
                           <CombatIndicatorStackOverlay indicators={opponentIndicators} />
                         </Pressable>
                         );
@@ -344,11 +350,18 @@ export function BattleEventScreen({
             attackBonus={Number(targetDetailsEnemy?.attack_bonus ?? 0) || 0}
             abilities={targetDetailsEnemy?.abilities?.map((entry) => entry.ability?.name).filter((name): name is string => Boolean(name)) ?? []}
           />
+          <BattleTargetLockStrip
+            name={targetDetailsName}
+            type={targetDetailsType}
+            targetCount={targetCount}
+            playerTurnActive={playerTurnActive}
+          />
           <View style={styles.abilityGrid}>
             {equippedAbilities.map((ability, index) => {
               const resourcePool = ability?.resource === "stamina" ? stamina : ability?.resource === "magicka" ? magicka : ability?.resource === "health" ? playerHp : Number.POSITIVE_INFINITY;
               const hasResource = ability ? resourcePool >= ability.cost : false;
               const cooldownTurns = ability ? abilityCooldowns[ability.adminAbility?.id ?? ability.key] ?? 0 : 0;
+              const targetCue = getAbilityTargetCue(ability, targetDetailsName, targetCount);
               return (
                 <BattleActionCard
                   key={`ability-${index}`}
@@ -356,6 +369,8 @@ export function BattleEventScreen({
                   slotNumber={index + 1}
                   disabled={!ability || !hasResource || cooldownTurns > 0 || Boolean(result) || !playerTurnActive}
                   cooldownTurns={cooldownTurns}
+                  targetLabel={targetCue?.label ?? null}
+                  targetTone={targetCue?.tone ?? "enemy"}
                   unavailableReason={ability && cooldownTurns > 0 ? `${cooldownTurns} turn cooldown` : ability && !hasResource ? "Not enough resource" : null}
                   onPress={() => ability ? onAction(ability) : undefined}
                 />
@@ -573,6 +588,47 @@ function TargetStat({ label, value }: { label: string; value: string | number })
       <Text style={styles.targetStatValue}>{value}</Text>
     </View>
   );
+}
+
+function BattleTargetLockStrip({ name, type, targetCount, playerTurnActive }: { name: string; type: string; targetCount: number; playerTurnActive: boolean }) {
+  return (
+    <View style={styles.targetLockStrip}>
+      <View style={styles.targetLockCopy}>
+        <Text style={styles.targetLockEyebrow}>{playerTurnActive ? "Target Lock" : "Current Target"}</Text>
+        <Text style={styles.targetLockName} numberOfLines={1}>{name}</Text>
+      </View>
+      <View style={styles.targetLockBadge}>
+        <Text style={styles.targetLockBadgeText} numberOfLines={1}>{targetCount > 1 ? `${targetCount} foes` : type}</Text>
+      </View>
+    </View>
+  );
+}
+
+function getAbilityTargetCue(ability: AbilityDefinition | null, selectedTargetName: string, targetCount: number): { label: string; tone: "enemy" | "self" | "area" | "ally" | "summon" } | null {
+  if (!ability) {
+    return null;
+  }
+
+  const type = ability.adminAbility?.type;
+  const mode = ability.adminAbility?.target_mode ?? "single_enemy";
+
+  if (type === "summon" || type === "conjure") {
+    return { label: "Summons ally", tone: "summon" };
+  }
+  if (mode === "self") {
+    return { label: "Targets self", tone: "self" };
+  }
+  if (mode === "all_allies") {
+    return { label: "Affects allies", tone: "ally" };
+  }
+  if (mode === "all_enemies") {
+    return { label: targetCount > 1 ? `Hits ${targetCount} foes` : "Hits all foes", tone: "area" };
+  }
+  if (mode === "random_enemy") {
+    return { label: "Random foe", tone: "area" };
+  }
+
+  return { label: `Hits ${selectedTargetName}`, tone: "enemy" };
 }
 
 function formatResourceName(resource: string) {
@@ -900,6 +956,50 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 16,
   },
+  targetLockStrip: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(54,171,224,0.22)",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: "rgba(3, 14, 20, 0.56)",
+  },
+  targetLockCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  targetLockEyebrow: {
+    color: colors.blue,
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  targetLockName: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "900",
+    marginTop: 1,
+  },
+  targetLockBadge: {
+    maxWidth: "45%",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(232,181,94,0.4)",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    backgroundColor: "rgba(232,181,94,0.1)",
+  },
+  targetLockBadgeText: {
+    color: colors.gold,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
   combatantSurface: {
     position: "absolute",
     left: 0,
@@ -987,6 +1087,28 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 20,
     zIndex: 4,
+  },
+  targetReticle: {
+    position: "absolute",
+    left: "50%",
+    bottom: -18,
+    minWidth: 64,
+    marginLeft: -32,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.78)",
+    zIndex: 8,
+    elevation: 8,
+  },
+  targetReticleText: {
+    color: colors.gold,
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
   },
   stageIndicatorStack: {
     position: "absolute",
