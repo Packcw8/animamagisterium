@@ -249,6 +249,12 @@ const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
 const eventTriggerModes = ["fixed", "random"] as const;
 const lockTypes = ["public", "story_locked", "quest_locked"] as const;
 const rewardTimings = ["on_interact", "on_path_complete"] as const;
+const signPostRouteScopes = ["current_map", "overworld", "all_chapter"] as const;
+const signPostRouteScopeLabels: Record<(typeof signPostRouteScopes)[number], string> = {
+  current_map: "Current Map",
+  overworld: "Overworld",
+  all_chapter: "All Chapter Routes",
+};
 const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle", "Complete Event"] as const;
 const dialogueRequirementTypes = ["none", "gold", "item", "story_flag", "completed_marker", "completed_event", "tutorial_step", "ability_known", "attribute_level"] as const;
 const dialogueRequirementOperators = [">=", ">", "=", "<=", "<"] as const;
@@ -541,6 +547,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [markerChapterVisibilityKeys, setMarkerChapterVisibilityKeys] = useState<Set<string>>(new Set());
   const [markerLinkedRouteId, setMarkerLinkedRouteId] = useState<string | null>(null);
   const [markerLinkedRouteStartDirection, setMarkerLinkedRouteStartDirection] = useState<MapMarker["linked_route_start_direction"]>("forward");
+  const [markerSignPostRouteScope, setMarkerSignPostRouteScope] = useState<MapMarker["signpost_route_scope"]>("current_map");
   const [markerStartsRouteOnAccept, setMarkerStartsRouteOnAccept] = useState(false);
   const [markerClearActiveRouteOnUse, setMarkerClearActiveRouteOnUse] = useState(true);
   const [markerExitTargetType, setMarkerExitTargetType] = useState<MapMarker["exit_target_type"]>("world_marker");
@@ -823,6 +830,17 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const adminWorldRoutes = useMemo(() => adminRoutes.filter((item) => !item.mini_map_id), [adminRoutes]);
   const adminMiniMapRoutes = useMemo(() => adminRoutes.filter((item) => item.mini_map_id === activeMiniMap?.id), [activeMiniMap?.id, adminRoutes]);
   const markerContinuationRoutes = useMemo(() => adminRoutes, [adminRoutes]);
+  const signPostRoutePickerRoutes = useMemo(() => {
+    if (markerSignPostRouteScope === "overworld") {
+      return adminWorldRoutes;
+    }
+
+    if (markerSignPostRouteScope === "all_chapter") {
+      return adminRoutes;
+    }
+
+    return activeMiniMap ? adminMiniMapRoutes : adminWorldRoutes;
+  }, [activeMiniMap, adminMiniMapRoutes, adminRoutes, adminWorldRoutes, markerSignPostRouteScope]);
   const dialogueChoiceAvailability = useMemo(
     () => {
       const selectedChoiceGroupKeys = new Map<string, StoryDialogueChoice>();
@@ -1017,6 +1035,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   function applyActiveChapter(seasonNumber: number, chapterNumber: number) {
     const safeSeason = Math.max(1, Math.round(Number(seasonNumber) || 1));
     const safeChapter = Math.max(1, Math.round(Number(chapterNumber) || 1));
+    if (safeSeason < selectedSeason || (safeSeason === selectedSeason && safeChapter < selectedChapter)) {
+      return;
+    }
     setSelectedSeason(safeSeason);
     setSelectedChapter(safeChapter);
     onStoryChapterChanged?.(safeSeason, safeChapter);
@@ -1610,7 +1631,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         return false;
       }
       const toastKey = `${chapter.season_number}:${chapter.chapter_number}:${flagKey}`;
-      return !chapterTransitionShownRef.current.has(toastKey) && storyFlags.get(flagKey) === (chapter.completion_story_flag_value ?? true);
+      const seenFlagKey = `toast_seen_chapter_transition_${chapter.season_number}_${chapter.chapter_number}_${flagKey}`;
+      return !chapterTransitionShownRef.current.has(toastKey) && storyFlags.get(seenFlagKey) !== true && storyFlags.get(flagKey) === (chapter.completion_story_flag_value ?? true);
     });
 
     if (!completedChapter) {
@@ -1619,6 +1641,16 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
     const flagKey = completedChapter.completion_story_flag_key?.trim() ?? "";
     chapterTransitionShownRef.current.add(`${completedChapter.season_number}:${completedChapter.chapter_number}:${flagKey}`);
+    const seenFlagKey = `toast_seen_chapter_transition_${completedChapter.season_number}_${completedChapter.chapter_number}_${flagKey}`;
+    void setPlayerStoryFlag(character.id, seenFlagKey, true)
+      .then(() => {
+        setStoryFlags((current) => {
+          const next = new Map(current);
+          next.set(seenFlagKey, true);
+          return next;
+        });
+      })
+      .catch((error) => console.warn("[map] unable to save chapter transition seen flag", error));
     showAuthoredToast("completing_chapter", {
       title: completedChapter.transition_title || `${completedChapter.name} Complete`,
       message: completedChapter.transition_body || "This chapter is complete. Look for the next story marker when the next chapter is available.",
@@ -1628,7 +1660,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       seasonNumber: completedChapter.season_number,
       chapterNumber: completedChapter.chapter_number,
     });
-  }, [actualIsAdmin, authoredToasts, mapChapters, mapReady, selectedChapter, selectedSeason, storyFlags]);
+  }, [actualIsAdmin, authoredToasts, character.id, mapChapters, mapReady, selectedChapter, selectedSeason, storyFlags]);
 
   async function loadEnemies() {
     try {
@@ -2015,13 +2047,24 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       getPlayerTutorialCompletions(character.id),
       getEventCompletions(loadedEvents.map((event) => event.id)),
     ]);
-    const currentProgressRow =
+    let currentProgressRow: RouteProgress | null =
       [...progressRows]
         .filter((row) => row.is_current)
         .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0] ?? null;
-    const currentRoute = nextRoutes.find((item) => item.id === currentProgressRow?.route_id) ?? null;
+    let currentRoute: MapRoute | null = nextRoutes.find((item) => item.id === currentProgressRow?.route_id) ?? null;
+    const savedSeason = Math.max(1, Math.round(Number(playerMapState?.active_season_number ?? 1) || 1));
+    const savedChapter = Math.max(1, Math.round(Number(playerMapState?.active_chapter_number ?? 1) || 1));
+    if (
+      currentRoute &&
+      playerMapState &&
+      (Number(currentRoute.season_number) < savedSeason || (Number(currentRoute.season_number) === savedSeason && Number(currentRoute.chapter_number) < savedChapter))
+    ) {
+      void clearCurrentRoute();
+      currentProgressRow = null;
+      currentRoute = null;
+    }
     const firstRoute = nextRoutes.find((item) => item.is_active) ?? nextRoutes[0] ?? fallbackRoute;
-    setRouteProgressRows(progressRows);
+    setRouteProgressRows(currentProgressRow ? progressRows : progressRows.map((row) => ({ ...row, is_current: false })));
     setCompletedStoryMarkerIds(new Set(storyCompletions.map((completion) => completion.marker_id)));
     setStartedStoryMarkerIds(new Set(storyStarts.map((start) => start.marker_id)));
     setStoryFlags(new Map(loadedStoryFlags.map((flag) => [flag.flag_key, flag.flag_value])));
@@ -2763,6 +2806,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerChapterVisibilityKeys(new Set());
     setMarkerLinkedRouteId(null);
     setMarkerLinkedRouteStartDirection("forward");
+    setMarkerSignPostRouteScope("current_map");
     setMarkerStartsRouteOnAccept(false);
     setMarkerClearActiveRouteOnUse(true);
     setMarkerExitTargetType("world_marker");
@@ -2787,6 +2831,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       markerExitTargetSpawnMarkerId,
       markerLinkedRouteId,
       markerLinkedRouteStartDirection,
+      markerSignPostRouteScope,
       markerStartsRouteOnAccept,
       markerClearActiveRouteOnUse,
       markerIconLabel,
@@ -3015,6 +3060,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerChapterVisibilityKeys(getMarkerChapterKeys(marker.id));
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
     setMarkerLinkedRouteStartDirection(marker.linked_route_start_direction ?? "forward");
+    setMarkerSignPostRouteScope(marker.signpost_route_scope ?? "current_map");
     setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
     setMarkerClearActiveRouteOnUse(Boolean(marker.clear_active_route_on_use));
     setMarkerExitTargetType(marker.exit_target_type ?? "world_marker");
@@ -3128,6 +3174,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerChapterVisibilityKeys(getMarkerChapterKeys(marker.id));
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
     setMarkerLinkedRouteStartDirection(marker.linked_route_start_direction ?? "forward");
+    setMarkerSignPostRouteScope(marker.signpost_route_scope ?? "current_map");
     setMarkerStartsRouteOnAccept(Boolean(marker.starts_route_on_accept));
     setMarkerClearActiveRouteOnUse(Boolean(marker.clear_active_route_on_use));
 
@@ -4789,13 +4836,17 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   }
 
   async function maybeClearActiveRouteForMarker(marker: MapMarker) {
-    if (!marker.clear_active_route_on_use) {
+    if (!shouldClearActiveRouteForMarker(marker)) {
       return;
     }
 
     await clearCurrentRoute();
     setHasActiveRoute(false);
     setRouteProgressRows((current) => current.map((row) => ({ ...row, is_current: false })));
+  }
+
+  function shouldClearActiveRouteForMarker(marker: MapMarker) {
+    return Boolean(marker.clear_active_route_on_use || marker.type === "Area/Town Entrance" || marker.type === "Exit" || marker.type === "Exit/Leave");
   }
 
   async function maybeClearActiveRouteForMarkerId(markerId: string | null) {
@@ -8523,6 +8574,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               setMarkerLinkedRouteId={setMarkerLinkedRouteId}
               markerLinkedRouteStartDirection={markerLinkedRouteStartDirection}
               setMarkerLinkedRouteStartDirection={setMarkerLinkedRouteStartDirection}
+              markerSignPostRouteScope={markerSignPostRouteScope}
+              setMarkerSignPostRouteScope={setMarkerSignPostRouteScope}
               markerStartsRouteOnAccept={markerStartsRouteOnAccept}
               setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
               markerClearActiveRouteOnUse={markerClearActiveRouteOnUse}
@@ -8558,6 +8611,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               enemyDefinitions={enemyDefinitions}
               npcDefinitions={npcDefinitions}
               routes={activeRouteScopeRoutes}
+              signPostRoutes={signPostRoutePickerRoutes}
               travelModes={travelModes}
               continuationRoutes={markerContinuationRoutes}
               storyRoutes={adminRoutes}
@@ -8702,6 +8756,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 setMarkerLinkedRouteId={setMarkerLinkedRouteId}
                 markerLinkedRouteStartDirection={markerLinkedRouteStartDirection}
                 setMarkerLinkedRouteStartDirection={setMarkerLinkedRouteStartDirection}
+                markerSignPostRouteScope={markerSignPostRouteScope}
+                setMarkerSignPostRouteScope={setMarkerSignPostRouteScope}
                 markerStartsRouteOnAccept={markerStartsRouteOnAccept}
                 setMarkerStartsRouteOnAccept={setMarkerStartsRouteOnAccept}
                 markerClearActiveRouteOnUse={markerClearActiveRouteOnUse}
@@ -8737,6 +8793,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 enemyDefinitions={enemyDefinitions}
                 npcDefinitions={npcDefinitions}
                 routes={activeRouteScopeRoutes}
+                signPostRoutes={signPostRoutePickerRoutes}
                 travelModes={travelModes}
                 continuationRoutes={markerContinuationRoutes}
                 storyRoutes={adminRoutes}
@@ -9509,17 +9566,22 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   ) : null}
                   {draftType === "Sign Post" ? (
                     <View style={styles.storyEditor}>
+                      <SignPostRouteScopePicker
+                        value={markerSignPostRouteScope}
+                        onChange={setMarkerSignPostRouteScope}
+                        currentMapLabel="Overworld"
+                      />
                       <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
                       <Text style={styles.copy}>Players choose from these paths when they interact with this Sign Post.</Text>
                       <View style={styles.storyRoutePicker}>
-                        {adminWorldRoutes.map((item) => (
+                        {signPostRoutePickerRoutes.map((item) => (
                           <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
                             <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
                           </Pressable>
                         ))}
                       </View>
                       <SignPostRouteDirectionEditor
-                        routes={adminWorldRoutes}
+                        routes={signPostRoutePickerRoutes}
                         travelModes={travelModes}
                         selectedRouteIds={selectedMarkerRouteIds}
                         routeDirections={selectedMarkerRouteDirections}
@@ -9527,6 +9589,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                         onSelectDirection={setSignPostRouteDirection}
                         onSelectTravelMode={setSignPostRouteTravelMode}
                       />
+                      {signPostRoutePickerRoutes.length === 0 ? <Text style={styles.copy}>No walking paths match this picker source yet.</Text> : null}
                       {selectedMarker ? (
                         <Text style={styles.debugLine}>Save Selected Marker Settings after changing linked paths.</Text>
                       ) : (
@@ -10253,6 +10316,31 @@ function LinkedMarkerPathNotice({
   );
 }
 
+function SignPostRouteScopePicker({
+  value,
+  onChange,
+  currentMapLabel,
+}: {
+  value: MapMarker["signpost_route_scope"];
+  onChange: (value: MapMarker["signpost_route_scope"]) => void;
+  currentMapLabel: string;
+}) {
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Route Picker Source</Text>
+      <Text style={styles.copy}>This only controls what paths admin can pick below. Players still see only the paths you link to this sign.</Text>
+      <View style={styles.storyRoutePicker}>
+        {signPostRouteScopes.map((scope) => (
+          <Pressable key={scope} style={[styles.routeChip, value === scope && styles.routeChipActive]} onPress={() => onChange(scope)}>
+            <Text style={styles.routeChipText}>{signPostRouteScopeLabels[scope]}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={styles.debugLine}>Current Map means {currentMapLabel}. Use Overworld for town hubs that start world travel.</Text>
+    </View>
+  );
+}
+
 function SignPostRouteDirectionEditor({
   routes,
   travelModes,
@@ -10427,6 +10515,8 @@ function MiniMapMarkerAdminForm({
   setMarkerLinkedRouteId,
   markerLinkedRouteStartDirection,
   setMarkerLinkedRouteStartDirection,
+  markerSignPostRouteScope,
+  setMarkerSignPostRouteScope,
   markerStartsRouteOnAccept,
   setMarkerStartsRouteOnAccept,
   markerClearActiveRouteOnUse,
@@ -10462,6 +10552,7 @@ function MiniMapMarkerAdminForm({
   enemyDefinitions,
   npcDefinitions,
   routes,
+  signPostRoutes,
   travelModes,
   continuationRoutes,
   storyRoutes,
@@ -10605,6 +10696,8 @@ function MiniMapMarkerAdminForm({
   setMarkerLinkedRouteId: (value: string | null) => void;
   markerLinkedRouteStartDirection: MapMarker["linked_route_start_direction"];
   setMarkerLinkedRouteStartDirection: (value: MapMarker["linked_route_start_direction"]) => void;
+  markerSignPostRouteScope: MapMarker["signpost_route_scope"];
+  setMarkerSignPostRouteScope: (value: MapMarker["signpost_route_scope"]) => void;
   markerStartsRouteOnAccept: boolean;
   setMarkerStartsRouteOnAccept: (value: boolean | ((current: boolean) => boolean)) => void;
   markerClearActiveRouteOnUse: boolean;
@@ -10640,6 +10733,7 @@ function MiniMapMarkerAdminForm({
   enemyDefinitions: EnemyDefinition[];
   npcDefinitions: NpcDefinition[];
   routes: MapRoute[];
+  signPostRoutes: MapRoute[];
   travelModes: TravelMode[];
   continuationRoutes: MapRoute[];
   storyRoutes: MapRoute[];
@@ -10867,17 +10961,22 @@ function MiniMapMarkerAdminForm({
         >
           {supportsSignPost ? (
             <View style={styles.storyEditor}>
+              <SignPostRouteScopePicker
+                value={markerSignPostRouteScope}
+                onChange={setMarkerSignPostRouteScope}
+                currentMapLabel="Current Mini Map"
+              />
               <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
               <Text style={styles.copy}>Players choose from these existing paths when they interact with this Sign Post inside the mini map.</Text>
               <View style={styles.storyRoutePicker}>
-                {routes.map((item) => (
+                {signPostRoutes.map((item) => (
                   <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
                     <Text style={styles.routeChipText}>{item.sort_order}. {item.name}</Text>
                   </Pressable>
                 ))}
               </View>
               <SignPostRouteDirectionEditor
-                routes={routes}
+                routes={signPostRoutes}
                 travelModes={travelModes}
                 selectedRouteIds={selectedMarkerRouteIds}
                 routeDirections={selectedMarkerRouteDirections}
@@ -10885,7 +10984,7 @@ function MiniMapMarkerAdminForm({
                 onSelectDirection={setSignPostRouteDirection}
                 onSelectTravelMode={setSignPostRouteTravelMode}
               />
-              {routes.length === 0 ? <Text style={styles.copy}>No walking paths exist in this season/chapter yet.</Text> : null}
+              {signPostRoutes.length === 0 ? <Text style={styles.copy}>No walking paths match this picker source yet.</Text> : null}
               {selectedMarker ? (
                 <Text style={styles.debugLine}>Save Marker Details after changing linked paths.</Text>
               ) : (

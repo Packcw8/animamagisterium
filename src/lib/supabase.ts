@@ -896,6 +896,7 @@ export type Tables = {
     exit_target_spawn_marker_id: string | null;
     linked_route_id: string | null;
     linked_route_start_direction: "forward" | "reverse";
+    signpost_route_scope: "current_map" | "overworld" | "all_chapter";
     starts_route_on_accept: boolean;
     clear_active_route_on_use: boolean;
     icon_label: string | null;

@@ -625,7 +625,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
 
-    if (ability.sourceWeapon) {
+    if (ability.sourceWeapon && !ability.adminAbility) {
       await handleWeaponAction(ability.sourceWeapon, context);
       return;
     }

@@ -719,6 +719,15 @@ export async function savePlayerMapState(values: Pick<PlayerMapState, "active_mi
     throw userError ?? new Error("You must be signed in to save map state.");
   }
 
+  const currentState = await getPlayerMapState();
+  const currentSeason = Math.max(1, Math.round(Number(currentState?.active_season_number ?? 1) || 1));
+  const currentChapter = Math.max(1, Math.round(Number(currentState?.active_chapter_number ?? 1) || 1));
+  const requestedSeason = values.active_season_number !== undefined ? Math.max(1, Math.round(Number(values.active_season_number) || 1)) : currentSeason;
+  const requestedChapter = values.active_chapter_number !== undefined ? Math.max(1, Math.round(Number(values.active_chapter_number) || 1)) : currentChapter;
+  const shouldKeepCurrentProgression = currentSeason > requestedSeason || (currentSeason === requestedSeason && currentChapter > requestedChapter);
+  const activeSeasonNumber = shouldKeepCurrentProgression ? currentSeason : requestedSeason;
+  const activeChapterNumber = shouldKeepCurrentProgression ? currentChapter : requestedChapter;
+
   const { data, error } = await supabase
     .from("player_map_state")
     .upsert(
@@ -727,8 +736,8 @@ export async function savePlayerMapState(values: Pick<PlayerMapState, "active_mi
         active_mini_map_id: values.active_mini_map_id,
         current_x_percent: values.current_x_percent,
         current_y_percent: values.current_y_percent,
-        ...(values.active_season_number !== undefined ? { active_season_number: Math.max(1, Math.round(Number(values.active_season_number) || 1)) } : {}),
-        ...(values.active_chapter_number !== undefined ? { active_chapter_number: Math.max(1, Math.round(Number(values.active_chapter_number) || 1)) } : {}),
+        active_season_number: activeSeasonNumber,
+        active_chapter_number: activeChapterNumber,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "user_id" },
@@ -774,7 +783,21 @@ export async function clearPlayerMapState() {
     return;
   }
 
-  const { error } = await supabase.from("player_map_state").delete().eq("user_id", user.id);
+  const currentState = await getPlayerMapState();
+  const { error } = await supabase
+    .from("player_map_state")
+    .upsert(
+      {
+        user_id: user.id,
+        active_mini_map_id: null,
+        current_x_percent: null,
+        current_y_percent: null,
+        active_season_number: Math.max(1, Math.round(Number(currentState?.active_season_number ?? 1) || 1)),
+        active_chapter_number: Math.max(1, Math.round(Number(currentState?.active_chapter_number ?? 1) || 1)),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
 
   if (error) {
     if (markPlayerMapStateUnavailable(error)) {
@@ -1334,7 +1357,7 @@ export async function movePlayerMiniMapMarker(miniMapId: string, destinationMark
   return data as PlayerMiniMapMarkerState;
 }
 
-export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key"> & Partial<Pick<MapMarker, "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "exit_target_spawn_marker_id" | "linked_route_id" | "linked_route_start_direction" | "starts_route_on_accept" | "clear_active_route_on_use" | "icon_label" | "icon_image_url" | "icon_color" | "marker_size" | "lock_type" | "lock_message" | "access_rule" | "required_item_id" | "required_item_quantity" | "access_hint" | "visible_story_flag_key" | "visible_story_flag_value" | "victory_story_flag_key" | "victory_story_flag_value" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "reward_timing" | "season_number" | "chapter_number" | "dialogue_event_id" | "battle_event_id" | "enemy_id" | "npc_id" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id">>) {
+export async function createMapMarker(input: Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key"> & Partial<Pick<MapMarker, "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "exit_target_spawn_marker_id" | "linked_route_id" | "linked_route_start_direction" | "signpost_route_scope" | "starts_route_on_accept" | "clear_active_route_on_use" | "icon_label" | "icon_image_url" | "icon_color" | "marker_size" | "lock_type" | "lock_message" | "access_rule" | "required_item_id" | "required_item_quantity" | "access_hint" | "visible_story_flag_key" | "visible_story_flag_value" | "victory_story_flag_key" | "victory_story_flag_value" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "reward_timing" | "season_number" | "chapter_number" | "dialogue_event_id" | "battle_event_id" | "enemy_id" | "npc_id" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id">>) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -1476,7 +1499,7 @@ export async function deleteMapRoute(routeId: string) {
   }
 }
 
-export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "exit_target_spawn_marker_id" | "linked_route_id" | "linked_route_start_direction" | "starts_route_on_accept" | "clear_active_route_on_use" | "icon_label" | "icon_image_url" | "icon_color" | "marker_size" | "lock_type" | "lock_message" | "access_rule" | "required_item_id" | "required_item_quantity" | "access_hint" | "visible_story_flag_key" | "visible_story_flag_value" | "victory_story_flag_key" | "victory_story_flag_value" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "reward_timing" | "season_number" | "chapter_number" | "dialogue_event_id" | "battle_event_id" | "enemy_id" | "npc_id" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id">>) {
+export async function updateMapMarker(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "x_percent" | "y_percent" | "is_active" | "is_unlocked" | "route_id" | "quest_key" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "exit_target_spawn_marker_id" | "linked_route_id" | "linked_route_start_direction" | "signpost_route_scope" | "starts_route_on_accept" | "clear_active_route_on_use" | "icon_label" | "icon_image_url" | "icon_color" | "marker_size" | "lock_type" | "lock_message" | "access_rule" | "required_item_id" | "required_item_quantity" | "access_hint" | "visible_story_flag_key" | "visible_story_flag_value" | "victory_story_flag_key" | "victory_story_flag_value" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "reward_timing" | "season_number" | "chapter_number" | "dialogue_event_id" | "battle_event_id" | "enemy_id" | "npc_id" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({
@@ -1494,7 +1517,7 @@ export async function updateMapMarker(markerId: string, values: Partial<Pick<Map
   return data as MapMarker;
 }
 
-export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_unlocked" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "reward_full_heal" | "reward_timing" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "exit_target_spawn_marker_id" | "linked_route_id" | "linked_route_start_direction" | "starts_route_on_accept" | "clear_active_route_on_use" | "icon_label" | "icon_image_url" | "icon_color" | "marker_size" | "lock_type" | "lock_message" | "access_rule" | "required_item_id" | "required_item_quantity" | "access_hint" | "visible_story_flag_key" | "visible_story_flag_value" | "victory_story_flag_key" | "victory_story_flag_value" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "season_number" | "chapter_number" | "dialogue_event_id" | "battle_event_id" | "enemy_id" | "npc_id" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id">>) {
+export async function updateMarkerSettings(markerId: string, values: Partial<Pick<MapMarker, "type" | "title" | "description" | "is_unlocked" | "is_interactable" | "quest_title" | "quest_dialogue" | "quest_image_url" | "shop_image_url" | "shop_background_image_url" | "scene_background_image_url" | "scene_npc_image_url" | "interaction_radius_percent" | "reward_xp" | "reward_gold" | "reward_item_id" | "reward_item_quantity" | "reward_full_heal" | "reward_timing" | "repeatable" | "reward_once_per_player" | "linked_mini_map_id" | "mini_map_id" | "parent_marker_id" | "exit_target_type" | "exit_target_marker_id" | "exit_target_spawn_marker_id" | "linked_route_id" | "linked_route_start_direction" | "signpost_route_scope" | "starts_route_on_accept" | "clear_active_route_on_use" | "icon_label" | "icon_image_url" | "icon_color" | "marker_size" | "lock_type" | "lock_message" | "access_rule" | "required_item_id" | "required_item_quantity" | "access_hint" | "visible_story_flag_key" | "visible_story_flag_value" | "victory_story_flag_key" | "victory_story_flag_value" | "story_order" | "unlock_after_marker_id" | "hide_when_completed" | "require_all_linked_routes" | "season_number" | "chapter_number" | "dialogue_event_id" | "battle_event_id" | "enemy_id" | "npc_id" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id">>) {
   const { data, error } = await supabase
     .from("map_markers")
     .update({

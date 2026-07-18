@@ -13,6 +13,7 @@ export type MarkerPayloadState = {
   markerExitTargetSpawnMarkerId: string | null;
   markerLinkedRouteId: string | null;
   markerLinkedRouteStartDirection: MapMarker["linked_route_start_direction"];
+  markerSignPostRouteScope: MapMarker["signpost_route_scope"];
   markerStartsRouteOnAccept: boolean;
   markerClearActiveRouteOnUse: boolean;
   markerIconLabel: string;
@@ -127,6 +128,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     exit_target_spawn_marker_id: (isExit && state.markerExitTargetType === "mini_map") || state.draftType === "Area/Town Entrance" ? state.markerExitTargetSpawnMarkerId : null,
     linked_route_id: supportsLinkedRoute(state.draftType) ? state.markerLinkedRouteId : null,
     linked_route_start_direction: supportsLinkedRoute(state.draftType) ? state.markerLinkedRouteStartDirection ?? "forward" : "forward",
+    signpost_route_scope: state.draftType === "Sign Post" ? state.markerSignPostRouteScope ?? "current_map" : "current_map",
     starts_route_on_accept: supportsLinkedRoute(state.draftType) && state.markerStartsRouteOnAccept,
     clear_active_route_on_use: state.markerClearActiveRouteOnUse,
     season_number: state.markerContentScope === "universal" ? 1 : state.selectedSeason,
@@ -154,6 +156,7 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     exit_target_spawn_marker_id: settings.exit_target_spawn_marker_id,
     linked_route_id: settings.linked_route_id,
     linked_route_start_direction: settings.linked_route_start_direction,
+    signpost_route_scope: settings.signpost_route_scope,
     starts_route_on_accept: settings.starts_route_on_accept,
     clear_active_route_on_use: settings.clear_active_route_on_use,
     icon_label: settings.icon_label,
