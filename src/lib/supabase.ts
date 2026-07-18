@@ -126,6 +126,7 @@ export type Tables = {
     crafting_value: number | null;
     equipment_slot: "weapon" | "main_hand" | "off_hand" | "helmet" | "chest" | "gloves" | "legs" | "boots" | "armor" | "necklace" | "ring" | "charm" | "relic" | null;
     damage_amount: number;
+    attack_bonus: number;
     ability_name: string | null;
     ability_cost_type: "health" | "stamina" | "magika" | "none";
     ability_cost_amount: number;

@@ -1844,6 +1844,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 {itemForm.type === "weapon" ? (
                   <>
                     <ItemText label="Damage amount" value={String(itemForm.damage_amount ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, damage_amount: Number(value) || 0 }))} />
+                    <ItemText label="Attack bonus" value={String(itemForm.attack_bonus ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, attack_bonus: Number(value) || 0 }))} />
                     <ItemText label="Ability name" value={itemForm.ability_name ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, ability_name: value }))} />
                     <ChoiceRow label="Ability cost type" options={costTypes} value={itemForm.ability_cost_type ?? "none"} onSelect={(value) => setItemForm((current) => ({ ...current, ability_cost_type: value }))} />
                     <ItemText label="Ability cost amount" value={String(itemForm.ability_cost_amount ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, ability_cost_amount: Number(value) || 0 }))} />

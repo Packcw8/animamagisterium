@@ -665,6 +665,27 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     return weapon.image_path ? resolveInventoryImageUri(weapon.image_path) : null;
   }
 
+  function applyWeaponOnHitEffect(weapon: ItemDefinition, target: BattleOpponentState, log: string[], iconUri?: string | null) {
+    const amount = Math.max(1, Number(weapon.buff_amount ?? 0) || Math.max(1, Number(weapon.elemental_damage_amount ?? 0) || 2));
+    const duration = 3;
+    const effect = weapon.on_hit_effect === "burn enemy"
+      ? { status: "burn" as const, amount, turns: duration, source: weapon.name, iconUri }
+      : weapon.on_hit_effect === "poison enemy"
+        ? { status: "poison" as const, amount, turns: duration, source: weapon.name, iconUri }
+        : weapon.on_hit_effect === "weaken enemy"
+          ? { status: "weakness" as const, amount, turns: duration, source: weapon.name, iconUri }
+          : null;
+
+    if (!effect) {
+      log.push(`On-hit effect: ${weapon.on_hit_effect}.`);
+      return;
+    }
+
+    addEnemyTimedEffect(target.key, effect);
+    pushStatusIndicator("enemy", effect.status, effect.amount, target.key, iconUri);
+    log.push(`${weapon.name} applies ${effect.status} for ${effect.turns} turns.`);
+  }
+
   async function savePlayerHealth(nextHealth: number, previewMode = false) {
     const safeHealth = clampHealth(nextHealth, combatResources.maxHp);
     setBattlePlayerHp(safeHealth);
@@ -1104,7 +1125,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
     const enemyDefense = getOpponentDefense(activeTarget);
-    const attackRoll = rollD20Attack(getStrengthAttackBonus(character.attributes?.strength ?? 0), bonuses.damage, enemyDefense, 0, 2);
+    const weaponAttackBonus = Number(weapon.attack_bonus ?? 0) || 0;
+    const attackRoll = rollD20Attack(getStrengthAttackBonus(character.attributes?.strength ?? 0), bonuses.damage + weaponAttackBonus, enemyDefense, 0, 2);
     const actionName = weapon.ability_name || weapon.name;
     const weaponIndicatorIcon = getWeaponIndicatorIcon(weapon);
     const nextLog = [`${actionName}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
@@ -1151,7 +1173,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       setBattleMagicka((current) => Math.min(combatResources.maxMagicka, current + Math.max(1, weapon.buff_amount || 2)));
       nextLog.push("On-hit effect restores Mana.");
     } else if (weapon.on_hit_effect) {
-      nextLog.push(`On-hit effect: ${weapon.on_hit_effect}.`);
+      applyWeaponOnHitEffect(weapon, activeTarget, nextLog, weaponIndicatorIcon);
     }
 
     if (nextEnemyHp <= 0) {
@@ -1441,7 +1463,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   }
 
   function getAbilityAttackBonus(ability: AbilityDefinition) {
-    return Number(ability.adminAbility?.attack_bonus ?? 0);
+    return Number(ability.adminAbility?.attack_bonus ?? 0) + Number(ability.sourceWeapon?.attack_bonus ?? 0);
   }
 
   function getAbilityBaseDamage(ability: AbilityDefinition) {
