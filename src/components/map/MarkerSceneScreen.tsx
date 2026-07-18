@@ -6,6 +6,7 @@ import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
 import { canUseItemInContext, type InventoryItem, type ItemDefinition, resolveInventoryImageUri } from "../../services/inventoryService";
 import { normalizeMountMultiplier, resolveMountImageUri, type MountDefinition } from "../../services/mountService";
+import { getCraftingItemName, getCraftingStatus, type CraftingRecipeWithIngredients } from "../../services/craftingService";
 import {
   canMarketItemBeBought,
   canMarketItemBeSoldTo,
@@ -33,6 +34,7 @@ export function MarkerSceneScreen({
   marker,
   characterGold,
   marketItems,
+  craftingRecipes,
   marketPurchaseCounts,
   routeLinks,
   routes,
@@ -46,6 +48,7 @@ export function MarkerSceneScreen({
   onExit,
   onBuy,
   onSell,
+  onCraft,
   onClaimReward,
   onAcceptQuest,
   onStartPath,
@@ -59,6 +62,7 @@ export function MarkerSceneScreen({
   marker: MapMarker;
   characterGold: number;
   marketItems: MarkerMarketItem[];
+  craftingRecipes: CraftingRecipeWithIngredients[];
   marketPurchaseCounts: Record<string, number>;
   routeLinks: MarkerRouteLink[];
   routes: MapRoute[];
@@ -72,6 +76,7 @@ export function MarkerSceneScreen({
   onExit: () => void;
   onBuy: (marketItem: MarkerMarketItem) => void;
   onSell: (item: InventoryItem) => void;
+  onCraft: (recipe: CraftingRecipeWithIngredients) => void;
   onClaimReward: () => void;
   onAcceptQuest: () => void;
   onStartPath: (route: MapRoute, routeLink?: MarkerRouteLink) => void;
@@ -213,6 +218,13 @@ export function MarkerSceneScreen({
             mountDefinitions={mountDefinitions}
             onBuy={onBuy}
             onSell={onSell}
+          />
+        ) : marker.type === "Crafting" ? (
+          <CraftingScene
+            recipes={craftingRecipes}
+            inventoryItems={inventoryItems}
+            itemDefinitions={itemDefinitions}
+            onCraft={onCraft}
           />
         ) : marker.type === "Arena" ? (
           <ArenaScene arena={arena} marker={marker} onClaimArena={onClaimArena} onChallengeArena={onChallengeArena} />
@@ -449,6 +461,62 @@ function SignPostScene({
             <Text style={locked ? styles.lockText : styles.unlockText}>{locked ? getRouteLockMessage(linkedRoute) : "Available"}</Text>
             <Pressable style={[styles.primaryButton, locked && styles.disabledAction]} onPress={() => onStartPath(linkedRoute, link)} disabled={locked}>
               <Text style={styles.primaryText}>{locked ? getRouteLockLabel(linkedRoute) : "Start Path"}</Text>
+            </Pressable>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function CraftingScene({
+  recipes,
+  inventoryItems,
+  itemDefinitions,
+  onCraft,
+}: {
+  recipes: CraftingRecipeWithIngredients[];
+  inventoryItems: InventoryItem[];
+  itemDefinitions: ItemDefinition[];
+  onCraft: (recipe: CraftingRecipeWithIngredients) => void;
+}) {
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Crafting</Text>
+      <Text style={styles.copy}>Create items from materials you have collected.</Text>
+      {recipes.length === 0 ? <Text style={styles.copy}>No recipes are available here yet.</Text> : null}
+      {recipes.map((recipe) => {
+        const status = getCraftingStatus(recipe, inventoryItems);
+        const outputItem = itemDefinitions.find((item) => item.id === recipe.output_item_id) ?? null;
+        const imageUri = resolveInventoryImageUri(outputItem?.image_path);
+
+        return (
+          <View key={recipe.id} style={styles.craftingCard}>
+            <View style={styles.craftingHeader}>
+              <View style={styles.craftingImageBox}>
+                {imageUri ? <Image source={{ uri: imageUri }} style={styles.craftingImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{recipe.name.slice(0, 1).toUpperCase()}</Text>}
+              </View>
+              <View style={styles.craftingInfo}>
+                <Text style={styles.markerName}>{recipe.name}</Text>
+                <Text style={styles.copy}>Creates {recipe.output_quantity} {getCraftingItemName(itemDefinitions, recipe.output_item_id)}</Text>
+                {recipe.description ? <Text style={styles.copy}>{recipe.description}</Text> : null}
+              </View>
+            </View>
+            <View style={styles.craftingRequirements}>
+              {recipe.ingredients.map((ingredient) => {
+                const owned = inventoryItems.find((entry) => entry.item_id === ingredient.item_id)?.quantity ?? 0;
+                const ready = owned >= ingredient.quantity;
+                return (
+                  <View key={ingredient.id} style={styles.craftingRequirementRow}>
+                    <Text style={ready ? styles.unlockText : styles.lockText}>{getCraftingItemName(itemDefinitions, ingredient.item_id)}</Text>
+                    <Text style={ready ? styles.unlockText : styles.lockText}>{owned} / {ingredient.quantity}</Text>
+                  </View>
+                );
+              })}
+            </View>
+            {status.missing.length > 0 ? <Text style={styles.lockText}>Missing materials.</Text> : null}
+            <Pressable style={[styles.primaryButton, !status.canCraft && styles.disabledAction]} onPress={() => onCraft(recipe)} disabled={!status.canCraft}>
+              <Text style={styles.primaryText}>{status.canCraft ? "Craft" : "Need Materials"}</Text>
             </Pressable>
           </View>
         );
@@ -916,6 +984,52 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSoft,
     padding: 10,
     backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  craftingCard: {
+    backgroundColor: "rgba(0,0,0,0.22)",
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 10,
+  },
+  craftingHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
+  },
+  craftingImageBox: {
+    alignItems: "center",
+    aspectRatio: 1,
+    backgroundColor: "rgba(0,0,0,0.52)",
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 74,
+  },
+  craftingImage: {
+    height: "100%",
+    width: "100%",
+  },
+  craftingInfo: {
+    flex: 1,
+    gap: 4,
+    minWidth: 0,
+  },
+  craftingRequirements: {
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+    padding: 10,
+  },
+  craftingRequirementRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between",
   },
   markerName: {
     color: colors.text,

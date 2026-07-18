@@ -816,6 +816,31 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  crafting_recipes: {
+    id: string;
+    name: string;
+    description: string | null;
+    output_item_id: string;
+    output_quantity: number;
+    station_type: string | null;
+    required_story_flag_key: string | null;
+    required_story_flag_value: boolean;
+    is_active: boolean;
+    season_number: number;
+    chapter_number: number;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  crafting_recipe_ingredients: {
+    id: string;
+    recipe_id: string;
+    item_id: string;
+    quantity: number;
+    sort_order: number;
+    created_at: string;
+    updated_at: string;
+  };
   player_story_flags: {
     id: string;
     user_id: string;

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
+import { CraftingAdminPanel } from "../components/admin/CraftingAdminPanel";
 import { AdminContentScopeBar, isInAdminContentScope } from "../components/home/AdminContentScopeBar";
 import { JourneyJournalPage } from "../components/home/JourneyJournalPage";
 import { PlayerAbilitiesPanel } from "../components/home/PlayerAbilitiesPanel";
@@ -120,7 +121,7 @@ const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Journal
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 const inventoryCategoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
-const adminToolTabs = ["Items", "Mounts", "Travel Modes", "Abilities", "Enemies", "NPCs"] as const;
+const adminToolTabs = ["Items", "Crafting", "Mounts", "Travel Modes", "Abilities", "Enemies", "NPCs"] as const;
 const adminRecordSortModes = ["newest", "name", "type", "chapter"] as const;
 const mountMultiplierPresets = ["1", "1.05", "1.10", "1.20", "1.35", "1.50", "1.70"] as const;
 const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
@@ -1913,6 +1914,14 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                   </View>
                 ))}
                   </>
+                ) : null}
+                {adminToolTab === "Crafting" ? (
+                  <CraftingAdminPanel
+                    itemDefinitions={itemDefinitions}
+                    seasonNumber={adminContentSeason}
+                    chapterNumber={adminContentChapter}
+                    onMessage={setInventoryMessage}
+                  />
                 ) : null}
                 {adminToolTab === "Mounts" ? (
                   <>

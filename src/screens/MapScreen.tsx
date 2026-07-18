@@ -84,6 +84,7 @@ import { requestPushNotificationPermission } from "../services/pushNotificationS
 import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAssetUri, type GameToastDefinition, type GameToastTriggerType } from "../services/gameToastService";
 import { getStoryCards, getStoryDeckView, getStoryDecks, markStoryDeckViewed, type StoryCard, type StoryDeck, type StoryDeckTriggerType } from "../services/storyDeckService";
 import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
+import { craftRecipe, getCraftingRecipesForChapter, type CraftingRecipeWithIngredients } from "../services/craftingService";
 import { recoverPlayerMapPosition } from "../services/mapRecoveryService";
 import { claimOpenArena, completeArenaChallenge, getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
 import { buildArenaBattleLayout, deleteArenaBattleSlot, getArenaBattleSlots, saveArenaBattleSlot, type ArenaBattleSlot } from "../services/arenaBattleBoardService";
@@ -242,8 +243,8 @@ import {
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
-const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Arena", "Point of Interest", "Puzzle", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
-const miniMapMarkerTypes = ["Player Spawn", "Movement", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Arena", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
+const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Crafting", "Arena", "Point of Interest", "Puzzle", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
+const miniMapMarkerTypes = ["Player Spawn", "Movement", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Crafting", "Arena", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const miniMapContentMarkerTypes = miniMapMarkerTypes.filter((type) => type !== "Movement");
 const miniMapMovementMarkerTypes = ["Movement"] as const;
 const walkingPathEditorModes = editorModes.filter((mode) => mode !== "Movement Grid");
@@ -582,6 +583,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [markerEnemyId, setMarkerEnemyId] = useState<string | null>(null);
   const [markerNpcId, setMarkerNpcId] = useState<string | null>(null);
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
+  const [markerCraftingRecipes, setMarkerCraftingRecipes] = useState<CraftingRecipeWithIngredients[]>([]);
   const [marketPurchaseCounts, setMarketPurchaseCounts] = useState<Record<string, number>>({});
   const [markerRouteLinks, setMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [selectedMarkerRouteIds, setSelectedMarkerRouteIds] = useState<string[]>([]);
@@ -3068,6 +3070,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         setArenaBattleSlots(slots);
       }
       await loadMarkerMarketState(marker.id);
+      await loadMarkerCraftingState(marker);
       if (isBattleMarkerType(marker.type)) {
         await loadMarkerBattlefieldCombatants(marker.id);
       } else {
@@ -3172,6 +3175,16 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarketPurchaseCounts(await getPlayerMarketPurchaseCounts(items.map((item) => item.id)));
   }
 
+  async function loadMarkerCraftingState(marker: MapMarker) {
+    if (marker.type !== "Crafting") {
+      setMarkerCraftingRecipes([]);
+      return;
+    }
+
+    const recipes = await getCraftingRecipesForChapter(Number(marker.season_number ?? selectedSeason), Number(marker.chapter_number ?? selectedChapter));
+    setMarkerCraftingRecipes(recipes);
+  }
+
   async function previewMarker(marker: MapMarker) {
     await selectMarker(marker);
     setPreviewMarkerScene(true);
@@ -3185,6 +3198,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setArenaBattleSlots([]);
     setMarkerPanelMessage(null);
     setMarketPurchaseCounts({});
+    setMarkerCraftingRecipes([]);
   }
 
   async function syncArenaMarker(marker: MapMarker) {
@@ -3472,6 +3486,30 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       await loadInventory();
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to sell item."));
+    }
+  }
+
+  async function craftAtMarker(recipe: CraftingRecipeWithIngredients) {
+    try {
+      const result = await craftRecipe(character.id, recipe.id);
+      const craftedName = getItemName(itemDefinitions, result.output_item_id);
+      setMarkerPanelMessage(`Crafted ${craftedName}.`);
+      showAuthoredToast("receiving_reward", {
+        title: "Item Crafted",
+        message: `${craftedName} was added to your inventory.`,
+        rewards: [{ label: craftedName, quantity: result.output_quantity }],
+        actionLabel: "OK",
+      }, {
+        triggerKey: selectedMarker?.id,
+        seasonNumber: selectedMarker?.season_number,
+        chapterNumber: selectedMarker?.chapter_number,
+      });
+      await loadInventory();
+      if (selectedMarker) {
+        await loadMarkerCraftingState(selectedMarker);
+      }
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to craft item."));
     }
   }
 
@@ -7780,6 +7818,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           marker={selectedMarker}
           characterGold={character.gold}
           marketItems={markerMarketItems}
+          craftingRecipes={markerCraftingRecipes}
           marketPurchaseCounts={marketPurchaseCounts}
           routeLinks={getVisibleMarkerRouteLinks(markerRouteLinks)}
           routes={routes}
@@ -7793,6 +7832,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           onExit={closeMarkerScene}
           onBuy={(marketItem) => void buyFromMarker(marketItem)}
           onSell={(entry) => void sellToMarker(entry)}
+          onCraft={(recipe) => void craftAtMarker(recipe)}
           onClaimReward={() => void claimSelectedMarkerReward()}
           onAcceptQuest={() => void acceptSelectedMarkerQuest()}
           onStartPath={(nextRoute, routeLink) => void startPathFromSignPost(nextRoute, routeLink)}
