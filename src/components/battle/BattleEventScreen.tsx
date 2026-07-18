@@ -104,6 +104,7 @@ export function BattleEventScreen({
   const [playerImageFailed, setPlayerImageFailed] = useState(false);
   const [targetDetailsOpen, setTargetDetailsOpen] = useState(false);
   const [teamDetailsOpen, setTeamDetailsOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
   const enemyImageUri = resolveEnemyImageUri(activeEnemy?.image_url ?? event.enemy_image_url);
   const backgroundUri = resolveSceneImageUri(event.background_image_url);
   const enemyMaxHp = Number(activeEnemy?.health ?? event.enemy_hp) || 30;
@@ -145,6 +146,41 @@ export function BattleEventScreen({
   const targetDetailsType = targetDetailsEnemy?.type || "Enemy";
   const targetDetailsKind = targetDetailsEnemy && "can_battle" in targetDetailsEnemy ? "NPC Combatant" : "Enemy";
   const targetCount = Math.max(visibleOpponents.length, activeEnemy ? 1 : 0);
+  const activeSheet = targetDetailsOpen ? "target" : teamDetailsOpen ? "team" : inventoryOpen ? "items" : logOpen ? "log" : null;
+
+  function showTargetDetails() {
+    setTargetDetailsOpen((open) => !open);
+    setTeamDetailsOpen(false);
+    setLogOpen(false);
+    if (inventoryOpen) {
+      onToggleInventory();
+    }
+  }
+
+  function showTeamDetails() {
+    setTeamDetailsOpen((open) => !open);
+    setTargetDetailsOpen(false);
+    setLogOpen(false);
+    if (inventoryOpen) {
+      onToggleInventory();
+    }
+  }
+
+  function showInventoryDetails() {
+    setTargetDetailsOpen(false);
+    setTeamDetailsOpen(false);
+    setLogOpen(false);
+    onToggleInventory();
+  }
+
+  function showBattleLog() {
+    setLogOpen((open) => !open);
+    setTargetDetailsOpen(false);
+    setTeamDetailsOpen(false);
+    if (inventoryOpen) {
+      onToggleInventory();
+    }
+  }
 
   return (
     <Screen>
@@ -158,17 +194,17 @@ export function BattleEventScreen({
               </Pressable>
             </View>
           ) : null}
-          <View style={styles.battleHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>{event.title}</Text>
-              <Text style={styles.copy}>{event.battle_intro_text || "Battle encounter"}</Text>
-            </View>
-            <View style={styles.phasePill}>
-              <Text style={styles.phaseText}>{battlePhase}</Text>
-            </View>
-          </View>
           <View style={styles.battleArena}>
             <View style={styles.stageLayer}>
+              <View style={styles.sceneTopOverlay}>
+                <View style={styles.sceneTitlePlate}>
+                  <Text style={styles.sceneTitle} numberOfLines={1}>{event.title}</Text>
+                  <Text style={styles.sceneSubtitle} numberOfLines={1}>{event.battle_intro_text || "Battle encounter"}</Text>
+                </View>
+                <View style={styles.phasePill}>
+                  <Text style={styles.phaseText}>{battlePhase}</Text>
+                </View>
+              </View>
               <View style={styles.stageImageViewport}>
                 {backgroundUri ? (
                   <Image source={{ uri: backgroundUri }} style={styles.stageImage} resizeMode="contain" />
@@ -331,45 +367,53 @@ export function BattleEventScreen({
                 <Text style={styles.enemyIntentText} numberOfLines={1}>{enemyIntent}</Text>
               </View>
             </View>
-            <Text style={styles.stageHint}>{playerTurnActive ? "Choose an ability, then strike the selected target." : enemyTurnActive ? "Enemy action resolving..." : "Battle is resolving."}</Text>
+            <View style={styles.battleCommandRail}>
+              <BattleCommandButton label="Target" value={targetDetailsName} active={activeSheet === "target"} onPress={showTargetDetails} />
+              <BattleCommandButton label="Allies" value={`${1 + companions.filter((companion) => companion.hp > 0).length}`} active={activeSheet === "team"} onPress={showTeamDetails} />
+              <BattleCommandButton label="Items" value={`${battleItems.length}`} active={activeSheet === "items"} onPress={showInventoryDetails} />
+              <BattleCommandButton label="Log" value={`${battleLog.length}`} active={activeSheet === "log"} onPress={showBattleLog} />
+            </View>
+            <Text style={styles.stageHint}>{playerTurnActive ? "Tap a foe to select. Use an ability below." : enemyTurnActive ? "Enemy action resolving..." : "Battle is resolving."}</Text>
           </View>
-          <BattleTargetDetailsCard
-            open={targetDetailsOpen}
-            onToggle={() => setTargetDetailsOpen((value) => !value)}
-            name={targetDetailsName}
-            type={targetDetailsType}
-            kind={targetDetailsKind}
-            imageUri={targetDetailsImageUri}
-            hp={targetDetailsHp}
-            maxHp={Number(targetDetailsEnemy?.health ?? event.enemy_hp) || enemyMaxHp}
-            stamina={targetDetailsStamina}
-            maxStamina={Number(targetDetailsEnemy?.stamina ?? 0) || 0}
-            mana={targetDetailsMana}
-            maxMana={Number(targetDetailsEnemy?.magika ?? 0) || 0}
-            defense={Number(targetDetailsEnemy?.defense ?? 10) || 10}
-            armor={Number(targetDetailsEnemy?.armor_rating ?? 0) || 0}
-            attackBonus={Number(targetDetailsEnemy?.attack_bonus ?? 0) || 0}
-            abilities={targetDetailsEnemy?.abilities?.map((entry) => entry.ability?.name).filter((name): name is string => Boolean(name)) ?? []}
-          />
-          <BattleTeamDetailsCard
-            open={teamDetailsOpen}
-            onToggle={() => setTeamDetailsOpen((value) => !value)}
-            characterName={character.name}
-            characterImageUri={character.portrait_url}
-            playerHp={playerHp}
-            maxHp={resources.maxHp}
-            stamina={stamina}
-            maxStamina={resources.maxStamina}
-            mana={magicka}
-            maxMana={resources.maxMagicka}
-            companions={companions}
-          />
-          <BattleTargetLockStrip
-            name={targetDetailsName}
-            type={targetDetailsType}
-            targetCount={targetCount}
-            playerTurnActive={playerTurnActive}
-          />
+          {activeSheet === "target" ? (
+            <BattleTargetDetailsCard
+              onClose={showTargetDetails}
+              name={targetDetailsName}
+              type={targetDetailsType}
+              kind={targetDetailsKind}
+              imageUri={targetDetailsImageUri}
+              hp={targetDetailsHp}
+              maxHp={Number(targetDetailsEnemy?.health ?? event.enemy_hp) || enemyMaxHp}
+              stamina={targetDetailsStamina}
+              maxStamina={Number(targetDetailsEnemy?.stamina ?? 0) || 0}
+              mana={targetDetailsMana}
+              maxMana={Number(targetDetailsEnemy?.magika ?? 0) || 0}
+              defense={Number(targetDetailsEnemy?.defense ?? 10) || 10}
+              armor={Number(targetDetailsEnemy?.armor_rating ?? 0) || 0}
+              attackBonus={Number(targetDetailsEnemy?.attack_bonus ?? 0) || 0}
+              abilities={targetDetailsEnemy?.abilities?.map((entry) => entry.ability?.name).filter((name): name is string => Boolean(name)) ?? []}
+            />
+          ) : null}
+          {activeSheet === "team" ? (
+            <BattleTeamDetailsCard
+              onClose={showTeamDetails}
+              characterName={character.name}
+              characterImageUri={character.portrait_url}
+              playerHp={playerHp}
+              maxHp={resources.maxHp}
+              stamina={stamina}
+              maxStamina={resources.maxStamina}
+              mana={magicka}
+              maxMana={resources.maxMagicka}
+              companions={companions}
+            />
+          ) : null}
+          {activeSheet === "items" ? (
+            <BattleInventorySheet battleItems={battleItems} onUseItem={onUseItem} />
+          ) : null}
+          {activeSheet === "log" ? (
+            <BattleLogSheet battleLog={battleLog} />
+          ) : null}
           <View style={styles.abilityGrid}>
             {equippedAbilities.map((ability, index) => {
               const resourcePool = ability?.resource === "stamina" ? stamina : ability?.resource === "magicka" ? magicka : ability?.resource === "health" ? playerHp : Number.POSITIVE_INFINITY;
@@ -392,20 +436,11 @@ export function BattleEventScreen({
             })}
           </View>
           <View style={styles.battleUtilityRow}>
-            <Pressable style={styles.inventoryBattleButton} onPress={onToggleInventory}>
-              <Text style={styles.secondaryText}>Inventory</Text>
-            </Pressable>
             {!result ? (
               <Pressable style={styles.fleeBattleButton} onPress={onFlee}>
                 <Text style={styles.dangerText}>Flee</Text>
               </Pressable>
             ) : null}
-          </View>
-          <View style={styles.battleLogPanel}>
-            <Text style={styles.battleLogTitle}>Battle Log</Text>
-            {battleLog.slice(0, 4).map((line, index) => (
-              <Text key={`${line}-${index}`} style={styles.battleLogLine}>{line}</Text>
-            ))}
           </View>
           {revivePromptOpen ? (
             <View style={styles.revivePrompt}>
@@ -423,17 +458,6 @@ export function BattleEventScreen({
                   <Text style={styles.secondaryText}>Accept 5% Setback</Text>
                 </Pressable>
               </View>
-            </View>
-          ) : null}
-          {inventoryOpen ? (
-            <View style={styles.battleInventory}>
-              {battleItems.length === 0 ? <Text style={styles.copy}>No usable battle items.</Text> : null}
-              {battleItems.map((entry) => (
-                <Pressable key={entry.id} style={styles.feedItem} onPress={() => onUseItem(entry)}>
-                  <Text style={styles.markerName}>{entry.item.name} x{entry.quantity}</Text>
-                  <Text style={styles.copy}>{entry.item.type} - restores {entry.item.restore_amount || entry.item.restore_percent || 0} {formatResourceName(entry.item.potion_target ?? "health")}</Text>
-                </Pressable>
-              ))}
             </View>
           ) : null}
           {result === "victory" ? (
@@ -500,9 +524,17 @@ function CombatIndicatorStackOverlay({ indicators }: { indicators: CombatIndicat
   );
 }
 
+function BattleCommandButton({ label, value, active, onPress }: { label: string; value: string; active: boolean; onPress: () => void }) {
+  return (
+    <Pressable style={[styles.commandButton, active && styles.commandButtonActive]} onPress={onPress}>
+      <Text style={[styles.commandLabel, active && styles.commandLabelActive]} numberOfLines={1}>{label}</Text>
+      <Text style={styles.commandValue} numberOfLines={1}>{value}</Text>
+    </Pressable>
+  );
+}
+
 function BattleTargetDetailsCard({
-  open,
-  onToggle,
+  onClose,
   name,
   type,
   kind,
@@ -518,8 +550,7 @@ function BattleTargetDetailsCard({
   attackBonus,
   abilities,
 }: {
-  open: boolean;
-  onToggle: () => void;
+  onClose: () => void;
   name: string;
   type: string;
   kind: string;
@@ -536,54 +567,51 @@ function BattleTargetDetailsCard({
   abilities: string[];
 }) {
   return (
-    <View style={styles.targetDetailsPanel}>
-      <Pressable style={styles.targetDetailsHeader} onPress={onToggle}>
+    <View style={styles.detailSheet}>
+      <View style={styles.targetDetailsHeader}>
         <View style={styles.targetDetailsHeaderText}>
           <Text style={styles.targetDetailsEyebrow}>Selected Target</Text>
           <Text style={styles.targetDetailsName} numberOfLines={1}>{name}</Text>
         </View>
-        <View style={styles.targetDetailsToggle}>
-          <Text style={styles.targetDetailsToggleText}>{open ? "Hide" : "View"}</Text>
+        <Pressable style={styles.sheetCloseButton} onPress={onClose}>
+          <Text style={styles.sheetCloseText}>Close</Text>
+        </Pressable>
+      </View>
+      <View style={styles.targetDetailsBody}>
+        <View style={styles.targetDetailsPortraitWrap}>
+          {imageUri ? (
+            <Image source={{ uri: imageUri }} style={styles.targetDetailsPortrait} resizeMode="cover" />
+          ) : (
+            <Text style={styles.targetDetailsFallback}>{name.slice(0, 2).toUpperCase()}</Text>
+          )}
         </View>
-      </Pressable>
-      {open ? (
-        <View style={styles.targetDetailsBody}>
-          <View style={styles.targetDetailsPortraitWrap}>
-            {imageUri ? (
-              <Image source={{ uri: imageUri }} style={styles.targetDetailsPortrait} resizeMode="cover" />
-            ) : (
-              <Text style={styles.targetDetailsFallback}>{name.slice(0, 2).toUpperCase()}</Text>
-            )}
+        <View style={styles.targetDetailsContent}>
+          <View style={styles.targetDetailsMetaRow}>
+            <Text style={styles.targetDetailsMeta}>{kind}</Text>
+            <Text style={styles.targetDetailsMeta}>{type}</Text>
           </View>
-          <View style={styles.targetDetailsContent}>
-            <View style={styles.targetDetailsMetaRow}>
-              <Text style={styles.targetDetailsMeta}>{kind}</Text>
-              <Text style={styles.targetDetailsMeta}>{type}</Text>
-            </View>
-            <View style={styles.targetResourceStack}>
-              <CompactTargetMeter label="HP" value={hp} max={maxHp} color={colors.red} />
-              {maxStamina > 0 ? <CompactTargetMeter label="Stamina" value={stamina} max={maxStamina} color={colors.gold} /> : null}
-              {maxMana > 0 ? <CompactTargetMeter label="Mana" value={mana} max={maxMana} color={colors.blue} /> : null}
-            </View>
-            <View style={styles.targetStatGrid}>
-              <TargetStat label="Defense" value={defense} />
-              <TargetStat label="Armor" value={armor} />
-              <TargetStat label="Attack" value={`+${attackBonus}`} />
-            </View>
-            <View style={styles.targetAbilityList}>
-              <Text style={styles.targetAbilityTitle}>Known Abilities</Text>
-              <Text style={styles.targetAbilityText}>{abilities.length > 0 ? abilities.slice(0, 4).join(" / ") : "No special abilities known."}</Text>
-            </View>
+          <View style={styles.targetResourceStack}>
+            <CompactTargetMeter label="HP" value={hp} max={maxHp} color={colors.red} />
+            {maxStamina > 0 ? <CompactTargetMeter label="Stamina" value={stamina} max={maxStamina} color={colors.gold} /> : null}
+            {maxMana > 0 ? <CompactTargetMeter label="Mana" value={mana} max={maxMana} color={colors.blue} /> : null}
+          </View>
+          <View style={styles.targetStatGrid}>
+            <TargetStat label="Defense" value={defense} />
+            <TargetStat label="Armor" value={armor} />
+            <TargetStat label="Attack" value={`+${attackBonus}`} />
+          </View>
+          <View style={styles.targetAbilityList}>
+            <Text style={styles.targetAbilityTitle}>Known Abilities</Text>
+            <Text style={styles.targetAbilityText}>{abilities.length > 0 ? abilities.slice(0, 4).join(" / ") : "No special abilities known."}</Text>
           </View>
         </View>
-      ) : null}
+      </View>
     </View>
   );
 }
 
 function BattleTeamDetailsCard({
-  open,
-  onToggle,
+  onClose,
   characterName,
   characterImageUri,
   playerHp,
@@ -594,8 +622,7 @@ function BattleTeamDetailsCard({
   maxMana,
   companions,
 }: {
-  open: boolean;
-  onToggle: () => void;
+  onClose: () => void;
   characterName: string;
   characterImageUri: string | null;
   playerHp: number;
@@ -610,47 +637,86 @@ function BattleTeamDetailsCard({
   const teamCount = 1 + livingCompanions.length;
 
   return (
-    <View style={styles.teamDetailsPanel}>
-      <Pressable style={styles.targetDetailsHeader} onPress={onToggle}>
+    <View style={styles.detailSheet}>
+      <View style={styles.targetDetailsHeader}>
         <View style={styles.targetDetailsHeaderText}>
           <Text style={styles.teamDetailsEyebrow}>Your Side</Text>
           <Text style={styles.targetDetailsName} numberOfLines={1}>{teamCount === 1 ? characterName : `${teamCount} Allies Ready`}</Text>
         </View>
-        <View style={styles.targetDetailsToggle}>
-          <Text style={styles.targetDetailsToggleText}>{open ? "Hide" : "View"}</Text>
-        </View>
-      </Pressable>
-      {open ? (
-        <View style={styles.teamDetailsBody}>
+        <Pressable style={styles.sheetCloseButton} onPress={onClose}>
+          <Text style={styles.sheetCloseText}>Close</Text>
+        </Pressable>
+      </View>
+      <View style={styles.teamDetailsBody}>
+        <TeamMemberRow
+          name={characterName}
+          role="Player"
+          imageUri={characterImageUri}
+          hp={playerHp}
+          maxHp={maxHp}
+          stamina={stamina}
+          maxStamina={maxStamina}
+          mana={mana}
+          maxMana={maxMana}
+        />
+        {livingCompanions.length > 0 ? livingCompanions.map((companion) => (
           <TeamMemberRow
-            name={characterName}
-            role="Player"
-            imageUri={characterImageUri}
-            hp={playerHp}
-            maxHp={maxHp}
-            stamina={stamina}
-            maxStamina={maxStamina}
-            mana={mana}
-            maxMana={maxMana}
+            key={`team-${companion.key}`}
+            name={companion.ally.name || companion.combatant.label || "Companion"}
+            role={companion.summoned ? "Summoned Ally" : "Companion"}
+            imageUri={resolveEnemyImageUri(companion.ally.image_url)}
+            hp={companion.hp}
+            maxHp={Number(companion.ally.health ?? 30) || 30}
+            stamina={companion.stamina}
+            maxStamina={Number(companion.ally.stamina ?? 0) || 0}
+            mana={companion.magika}
+            maxMana={Number(companion.ally.magika ?? 0) || 0}
           />
-          {livingCompanions.length > 0 ? livingCompanions.map((companion) => (
-            <TeamMemberRow
-              key={`team-${companion.key}`}
-              name={companion.ally.name || companion.combatant.label || "Companion"}
-              role={companion.summoned ? "Summoned Ally" : "Companion"}
-              imageUri={resolveEnemyImageUri(companion.ally.image_url)}
-              hp={companion.hp}
-              maxHp={Number(companion.ally.health ?? 30) || 30}
-              stamina={companion.stamina}
-              maxStamina={Number(companion.ally.stamina ?? 0) || 0}
-              mana={companion.magika}
-              maxMana={Number(companion.ally.magika ?? 0) || 0}
-            />
-          )) : (
-            <Text style={styles.teamEmptyText}>No companions are fighting beside you.</Text>
-          )}
+        )) : (
+          <Text style={styles.teamEmptyText}>No companions are fighting beside you.</Text>
+        )}
+      </View>
+    </View>
+  );
+}
+
+function BattleInventorySheet({ battleItems, onUseItem }: { battleItems: InventoryItem[]; onUseItem: (item: InventoryItem) => void }) {
+  return (
+    <View style={styles.detailSheet}>
+      <View style={styles.targetDetailsHeader}>
+        <View style={styles.targetDetailsHeaderText}>
+          <Text style={styles.targetDetailsEyebrow}>Inventory</Text>
+          <Text style={styles.targetDetailsName} numberOfLines={1}>{battleItems.length === 0 ? "No Battle Items" : `${battleItems.length} Usable Items`}</Text>
         </View>
-      ) : null}
+      </View>
+      <View style={styles.battleInventory}>
+        {battleItems.length === 0 ? <Text style={styles.copy}>No usable battle items.</Text> : null}
+        {battleItems.map((entry) => (
+          <Pressable key={entry.id} style={styles.feedItem} onPress={() => onUseItem(entry)}>
+            <Text style={styles.markerName}>{entry.item.name} x{entry.quantity}</Text>
+            <Text style={styles.copy}>{entry.item.type} - restores {entry.item.restore_amount || entry.item.restore_percent || 0} {formatResourceName(entry.item.potion_target ?? "health")}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function BattleLogSheet({ battleLog }: { battleLog: string[] }) {
+  return (
+    <View style={styles.detailSheet}>
+      <View style={styles.targetDetailsHeader}>
+        <View style={styles.targetDetailsHeaderText}>
+          <Text style={styles.targetDetailsEyebrow}>Battle Log</Text>
+          <Text style={styles.targetDetailsName} numberOfLines={1}>Recent Turns</Text>
+        </View>
+      </View>
+      <View style={styles.battleLogPanel}>
+        {battleLog.length === 0 ? <Text style={styles.copy}>No battle actions yet.</Text> : null}
+        {battleLog.slice(0, 6).map((line, index) => (
+          <Text key={`${line}-${index}`} style={styles.battleLogLine}>{line}</Text>
+        ))}
+      </View>
     </View>
   );
 }
@@ -699,20 +765,6 @@ function TargetStat({ label, value }: { label: string; value: string | number })
     <View style={styles.targetStatPill}>
       <Text style={styles.targetStatLabel}>{label}</Text>
       <Text style={styles.targetStatValue}>{value}</Text>
-    </View>
-  );
-}
-
-function BattleTargetLockStrip({ name, type, targetCount, playerTurnActive }: { name: string; type: string; targetCount: number; playerTurnActive: boolean }) {
-  return (
-    <View style={styles.targetLockStrip}>
-      <View style={styles.targetLockCopy}>
-        <Text style={styles.targetLockEyebrow}>{playerTurnActive ? "Target Lock" : "Current Target"}</Text>
-        <Text style={styles.targetLockName} numberOfLines={1}>{name}</Text>
-      </View>
-      <View style={styles.targetLockBadge}>
-        <Text style={styles.targetLockBadgeText} numberOfLines={1}>{targetCount > 1 ? `${targetCount} foes` : type}</Text>
-      </View>
     </View>
   );
 }
@@ -787,17 +839,21 @@ function getPercent(value: number, max: number) {
 
 const styles = StyleSheet.create({
   eventScreen: {
-    margin: 8,
-    padding: 8,
-    gap: 8,
+    margin: 0,
+    padding: 0,
+    gap: 0,
   },
   battleScreenFrame: {
     overflow: "hidden",
+    borderWidth: 0,
+    borderRadius: 0,
+    backgroundColor: "rgba(1,6,6,0.96)",
   },
   battleBackdrop: {
-    gap: 8,
-    padding: 8,
+    gap: 7,
+    paddingHorizontal: 8,
     paddingTop: 8,
+    paddingBottom: 28,
     borderRadius: 8,
     backgroundColor: "rgba(0,0,0,0.28)",
   },
@@ -823,18 +879,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.32)",
   },
-  battleHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
-    alignItems: "flex-start",
-  },
-  sectionTitle: {
-    color: colors.gold,
-    fontFamily: fonts.title,
-    fontSize: 18,
-    textTransform: "uppercase",
-  },
   copy: {
     color: colors.muted,
     lineHeight: 20,
@@ -853,19 +897,53 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   battleArena: {
-    gap: 8,
+    gap: 7,
     paddingHorizontal: 0,
-    paddingVertical: 4,
+    paddingVertical: 0,
   },
   stageLayer: {
     position: "relative",
     borderRadius: 14,
     overflow: "visible",
   },
+  sceneTopOverlay: {
+    position: "absolute",
+    left: 8,
+    right: 8,
+    top: 8,
+    zIndex: 12,
+    elevation: 12,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  sceneTitlePlate: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(232,181,94,0.28)",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    backgroundColor: "rgba(0,0,0,0.58)",
+  },
+  sceneTitle: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 15,
+    textTransform: "uppercase",
+  },
+  sceneSubtitle: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 1,
+  },
   stageImageViewport: {
     position: "relative",
     width: "100%",
-    aspectRatio: 1,
+    aspectRatio: 0.78,
     borderRadius: 14,
     overflow: "hidden",
     borderWidth: 1,
@@ -886,9 +964,9 @@ const styles = StyleSheet.create({
   enemyIntentBadge: {
     position: "absolute",
     right: 8,
-    top: 8,
+    top: 68,
     zIndex: 6,
-    maxWidth: 164,
+    maxWidth: 148,
     borderRadius: 10,
     borderWidth: 1,
     borderColor: "rgba(255,180,170,0.24)",
@@ -903,18 +981,47 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: 10,
   },
-  targetDetailsPanel: {
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(232, 181, 94, 0.24)",
-    backgroundColor: "rgba(0,0,0,0.42)",
-    overflow: "hidden",
+  battleCommandRail: {
+    flexDirection: "row",
+    gap: 6,
   },
-  teamDetailsPanel: {
+  commandButton: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 46,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: "rgba(232,181,94,0.2)",
+    paddingHorizontal: 7,
+    paddingVertical: 6,
+    backgroundColor: "rgba(0,0,0,0.36)",
+  },
+  commandButtonActive: {
+    borderColor: colors.gold,
+    backgroundColor: "rgba(232,181,94,0.12)",
+  },
+  commandLabel: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: "900",
+    textAlign: "center",
+    textTransform: "uppercase",
+  },
+  commandLabelActive: {
+    color: colors.gold,
+  },
+  commandValue: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: "900",
+    textAlign: "center",
+    marginTop: 2,
+  },
+  detailSheet: {
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "rgba(54,171,224,0.22)",
-    backgroundColor: "rgba(0,0,0,0.38)",
+    backgroundColor: "rgba(0,0,0,0.5)",
     overflow: "hidden",
   },
   targetDetailsHeader: {
@@ -947,8 +1054,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.title,
     fontSize: 17,
   },
-  targetDetailsToggle: {
-    minWidth: 62,
+  sheetCloseButton: {
+    minWidth: 66,
     minHeight: 32,
     borderRadius: 999,
     borderWidth: 1,
@@ -957,7 +1064,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "rgba(6, 23, 34, 0.58)",
   },
-  targetDetailsToggleText: {
+  sheetCloseText: {
     color: colors.blue,
     fontSize: 11,
     fontWeight: "900",
@@ -1155,50 +1262,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     lineHeight: 17,
   },
-  targetLockStrip: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(54,171,224,0.22)",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    backgroundColor: "rgba(3, 14, 20, 0.56)",
-  },
-  targetLockCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  targetLockEyebrow: {
-    color: colors.blue,
-    fontSize: 9,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
-  targetLockName: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: "900",
-    marginTop: 1,
-  },
-  targetLockBadge: {
-    maxWidth: "45%",
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(232,181,94,0.4)",
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    backgroundColor: "rgba(232,181,94,0.1)",
-  },
-  targetLockBadgeText: {
-    color: colors.gold,
-    fontSize: 10,
-    fontWeight: "900",
-    textTransform: "uppercase",
-  },
   combatantSurface: {
     position: "absolute",
     left: 0,
@@ -1333,21 +1396,11 @@ const styles = StyleSheet.create({
   abilityGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 6,
+    gap: 5,
   },
   battleUtilityRow: {
     flexDirection: "row",
     gap: 7,
-  },
-  inventoryBattleButton: {
-    flex: 1,
-    minHeight: 34,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(54, 171, 224, 0.52)",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(6, 23, 34, 0.58)",
   },
   fleeBattleButton: {
     flex: 1,
@@ -1441,12 +1494,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 8,
     backgroundColor: "rgba(0,0,0,0.46)",
-  },
-  battleLogTitle: {
-    color: colors.gold,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    fontSize: 12,
   },
   battleLogLine: {
     color: colors.text,
