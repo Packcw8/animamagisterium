@@ -1,10 +1,11 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { Hand } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AbilityDefinition, CharacterResources } from "../../services/abilityService";
 import { CharacterWithDetails } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
-import { InventoryItem, ItemDefinition, isReviveBattleItem } from "../../services/inventoryService";
+import { InventoryItem, ItemDefinition, isReviveBattleItem, resolveInventoryImageUri } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
 import { BattleEventCombatant, MarkerBattleCombatant } from "../../services/battlefieldService";
 import { Frame } from "../Frame";
@@ -689,16 +690,43 @@ function BattleInventorySheet({ battleItems, onUseItem }: { battleItems: Invento
           <Text style={styles.targetDetailsName} numberOfLines={1}>{battleItems.length === 0 ? "No Battle Items" : `${battleItems.length} Usable Items`}</Text>
         </View>
       </View>
-      <View style={styles.battleInventory}>
+      <ScrollView style={styles.battleInventoryScroll} contentContainerStyle={styles.battleInventory} showsVerticalScrollIndicator={false} nestedScrollEnabled>
         {battleItems.length === 0 ? <Text style={styles.copy}>No usable battle items.</Text> : null}
         {battleItems.map((entry) => (
-          <Pressable key={entry.id} style={styles.feedItem} onPress={() => onUseItem(entry)}>
-            <Text style={styles.markerName}>{entry.item.name} x{entry.quantity}</Text>
-            <Text style={styles.copy}>{entry.item.type} - restores {entry.item.restore_amount || entry.item.restore_percent || 0} {formatResourceName(entry.item.potion_target ?? "health")}</Text>
-          </Pressable>
+          <BattleInventoryItem key={entry.id} entry={entry} onUse={() => onUseItem(entry)} />
         ))}
-      </View>
+      </ScrollView>
     </View>
+  );
+}
+
+function BattleInventoryItem({ entry, onUse }: { entry: InventoryItem; onUse: () => void }) {
+  const imageUri = resolveInventoryImageUri(entry.item.image_path);
+  const restoreValue = entry.item.restore_percent ? `${entry.item.restore_percent}%` : `${entry.item.restore_amount || 0}`;
+  const target = formatResourceName(entry.item.potion_target ?? "health");
+
+  return (
+    <Pressable style={styles.battleItemCard} onPress={onUse}>
+      <View style={styles.battleItemImageWrap}>
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={styles.battleItemImage} resizeMode="cover" />
+        ) : (
+          <Text style={styles.battleItemFallback}>{entry.item.name.slice(0, 2).toUpperCase()}</Text>
+        )}
+        <View style={styles.battleItemQuantity}>
+          <Text style={styles.battleItemQuantityText}>x{entry.quantity}</Text>
+        </View>
+      </View>
+      <View style={styles.battleItemContent}>
+        <Text style={styles.battleItemName} numberOfLines={1}>{entry.item.name}</Text>
+        <Text style={styles.battleItemMeta} numberOfLines={1}>{entry.item.type} / restores {restoreValue} {target}</Text>
+        {entry.item.description ? <Text style={styles.battleItemDescription} numberOfLines={2}>{entry.item.description}</Text> : null}
+      </View>
+      <View style={styles.battleItemUsePill}>
+        <Hand size={14} color="#120e08" strokeWidth={2.6} />
+        <Text style={styles.battleItemUseText}>Use</Text>
+      </View>
+    </Pressable>
   );
 }
 
@@ -1457,21 +1485,100 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.borderSoft,
   },
-  battleInventory: {
-    gap: 8,
+  battleInventoryScroll: {
+    maxHeight: 252,
     borderWidth: 1,
     borderColor: colors.borderSoft,
     borderRadius: 8,
-    padding: 10,
     backgroundColor: "rgba(0,0,0,0.22)",
   },
-  feedItem: {
-    color: colors.text,
+  battleInventory: {
+    gap: 8,
+    padding: 8,
+  },
+  battleItemCard: {
+    minHeight: 82,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
     borderWidth: 1,
     borderColor: colors.borderSoft,
-    borderRadius: 8,
-    padding: 10,
+    borderRadius: 10,
+    padding: 8,
     backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  battleItemImageWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(232,181,94,0.36)",
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(6, 12, 12, 0.86)",
+  },
+  battleItemImage: {
+    width: "100%",
+    height: "100%",
+  },
+  battleItemFallback: {
+    color: colors.gold,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  battleItemQuantity: {
+    position: "absolute",
+    right: 3,
+    bottom: 3,
+    minWidth: 24,
+    minHeight: 18,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 5,
+    backgroundColor: "rgba(0,0,0,0.78)",
+    borderWidth: 1,
+    borderColor: "rgba(232,181,94,0.42)",
+  },
+  battleItemQuantityText: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 10,
+  },
+  battleItemContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
+  battleItemName: {
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 13,
+  },
+  battleItemMeta: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  battleItemDescription: {
+    color: colors.muted,
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  battleItemUsePill: {
+    minWidth: 58,
+    minHeight: 44,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
+    backgroundColor: colors.gold,
+  },
+  battleItemUseText: {
+    color: "#120e08",
+    fontSize: 11,
+    fontWeight: "900",
   },
   markerName: {
     color: colors.text,
