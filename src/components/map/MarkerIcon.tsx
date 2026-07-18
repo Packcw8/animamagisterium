@@ -50,7 +50,7 @@ function resolveMapImageUri(imagePath?: string | null) {
 
 function getDefaultMarkerIconLabel(type: string) {
   if (type === "Market") return "MKT";
-  if (type === "Sign Post") return "SIG";
+  if (type === "Sign Post") return "HUB";
   if (type === "World Spawn") return "WSP";
   if (type === "Player Spawn") return "SPN";
   if (type === "Area/Town Entrance") return "IN";

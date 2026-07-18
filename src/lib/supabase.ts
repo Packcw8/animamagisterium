@@ -1056,6 +1056,10 @@ export type Tables = {
     start_direction: "forward" | "reverse";
     travel_mode_id?: string | null;
     completion_condition: "start" | "end" | "either";
+    access_rule?: "always" | "story_flag";
+    required_story_flag_key?: string | null;
+    required_story_flag_value?: boolean;
+    lock_message?: string | null;
     season_number: number;
     chapter_number: number;
     created_by: string | null;

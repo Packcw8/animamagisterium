@@ -89,7 +89,7 @@ export function MarkerInteractionPanel({
         <View style={styles.storyEditor}>
           <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
           {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
-          {routeLinks.length === 0 ? <Text style={styles.copy}>No walking paths are linked to this sign post yet.</Text> : null}
+          {routeLinks.length === 0 ? <Text style={styles.copy}>No walking paths are linked to this Travel Hub yet.</Text> : null}
           {routeLinks.map((link) => {
             const linkedRoute = routes.find((item) => item.id === link.route_id);
             const progress = routeProgressRows.find((row) => row.route_id === link.route_id)?.progress_percent ?? 0;
@@ -236,13 +236,17 @@ function isBattleMarkerType(type: string) {
   return type === "Battle" || type === "Battle Zone";
 }
 
+function getMarkerTypeLabel(type: string) {
+  return type === "Sign Post" ? "Travel Hub" : type;
+}
+
 function PanelShell({ marker, message, onClose, children }: { marker: MapMarker; message: string | null; onClose: () => void; children: ReactNode }) {
   return (
     <Frame style={styles.panel}>
       <View style={styles.panelHeader}>
         <View>
           <Text style={styles.sectionTitle}>{marker.title}</Text>
-          <Text style={styles.copy}>{marker.type}</Text>
+          <Text style={styles.copy}>{getMarkerTypeLabel(marker.type)}</Text>
         </View>
         <Pressable style={styles.secondaryButtonFlex} onPress={onClose}>
           <Text style={styles.secondaryText}>Close</Text>

@@ -13,11 +13,15 @@ export function MarkerTypeSelector({ types, selectedType, onSelectType }: Marker
     <View style={styles.typeGrid}>
       {types.map((type) => (
         <Pressable key={type} style={[styles.typeButton, selectedType === type && styles.typeSelected]} onPress={() => onSelectType(type)}>
-          <Text style={styles.typeText}>{type}</Text>
+          <Text style={styles.typeText}>{getMarkerTypeLabel(type)}</Text>
         </Pressable>
       ))}
     </View>
   );
+}
+
+function getMarkerTypeLabel(type: string) {
+  return type === "Sign Post" ? "Travel Hub" : type;
 }
 
 const styles = StyleSheet.create({

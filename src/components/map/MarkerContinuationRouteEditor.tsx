@@ -53,7 +53,7 @@ export function MarkerContinuationRouteEditor({
       <Pressable style={[styles.secondaryButton, startsRouteOnAccept && styles.typeSelected]} onPress={onToggleStartsRoute}>
         <Text style={styles.secondaryText}>Start Linked Path After Opening: {startsRouteOnAccept ? "Yes" : "No"}</Text>
       </Pressable>
-      <Text style={styles.debugLine}>Use this for same-road continuations. Use Road Signs when the player should choose between paths.</Text>
+      <Text style={styles.debugLine}>Use this for same-road continuations. Use Travel Hubs when the player should choose between paths.</Text>
     </View>
   );
 }

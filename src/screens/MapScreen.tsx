@@ -16,6 +16,7 @@ import { DialogueChoiceEffectEditor } from "../components/dialogue/DialogueChoic
 import { DialogueChoiceRequirementEditor } from "../components/dialogue/DialogueChoiceRequirementEditor";
 import { DialogueNodeEditor } from "../components/dialogue/DialogueNodeEditor";
 import { DialogueSceneScreen } from "../components/dialogue/DialogueSceneScreen";
+import { StoryFlagPicker } from "../components/dialogue/StoryFlagPicker";
 import { DialogueTreeAdmin } from "../components/dialogue/DialogueTreeAdmin";
 import { Frame } from "../components/Frame";
 import { AdminCoordinatePanel } from "../components/map/AdminCoordinatePanel";
@@ -111,12 +112,14 @@ import {
   getAvailableNumbers,
   getChapterAccessStatus,
   getChapterLabel,
+  getMarkerRouteLinkLockMessage,
   getNextChoiceOrder,
   getNextDialogueNodeOrder,
   getNextRouteOrder,
   getRouteLockMessage,
   getSeasonLabel,
   isInSelectedChapter,
+  isMarkerRouteLinkUnlocked,
   isRouteLocked,
   mergeChapterRecords,
   mergeSeasonRecords,
@@ -257,6 +260,7 @@ const signPostRouteScopeLabels: Record<(typeof signPostRouteScopes)[number], str
   overworld: "Overworld",
   all_chapter: "All Chapter Routes",
 };
+type MarkerRouteAccessRuleDraft = Pick<MarkerRouteLink, "access_rule" | "required_story_flag_key" | "required_story_flag_value" | "lock_message">;
 const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle", "Complete Event"] as const;
 const dialogueRequirementTypes = ["none", "gold", "item", "story_flag", "completed_marker", "completed_event", "tutorial_step", "ability_known", "attribute_level"] as const;
 const dialogueRequirementOperators = [">=", ">", "=", "<=", "<"] as const;
@@ -583,6 +587,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [selectedMarkerRouteIds, setSelectedMarkerRouteIds] = useState<string[]>([]);
   const [selectedMarkerRouteDirections, setSelectedMarkerRouteDirections] = useState<Record<string, MarkerRouteLink["start_direction"]>>({});
   const [selectedMarkerRouteTravelModes, setSelectedMarkerRouteTravelModes] = useState<Record<string, string | null>>({});
+  const [selectedMarkerRouteAccessRules, setSelectedMarkerRouteAccessRules] = useState<Record<string, MarkerRouteAccessRuleDraft>>({});
   const [marketItemId, setMarketItemId] = useState<string | null>(null);
   const [marketPurchaseType, setMarketPurchaseType] = useState<MarkerMarketItem["purchase_type"]>("item");
   const [marketMountId, setMarketMountId] = useState<string | null>(null);
@@ -1714,7 +1719,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
     const mountNote = activeMountMultiplierRef.current > 1 ? ` Travel x${activeMountMultiplierRef.current.toFixed(2)} applied.` : "";
     setGpsMessage(direction === "reverse" && nextDistance <= 0
-      ? "You returned to the starting sign post."
+      ? "You returned to the starting Travel Hub."
       : `${Platform.OS === "web" ? "GPS" : "Pedometer"} counted ${Math.round(cleanMeters)}m.${mountNote} Route progress is saved.`);
   }
 
@@ -1907,11 +1912,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
 
     setCompletedRouteId(route.id);
-    setGpsMessage(`${route.name} completed. Return to a Sign Post to choose your next path.`);
+    setGpsMessage(`${route.name} completed. Return to a Travel Hub to choose your next path.`);
     if (!route.mini_map_id) {
       showAuthoredToast("completing_path", {
         title: "Trail Complete",
-        message: "You reached the end of this path. Open the destination marker or return to a Sign Post to choose another trail.",
+        message: "You reached the end of this path. Open the destination marker or return to a Travel Hub to choose another trail.",
         nextMarker: getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, currentRouteProgress?.source_marker_id ?? null, routeDirection),
         actionLabel: "OK",
       }, {
@@ -2323,7 +2328,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
   function startGpsTracking() {
     if (!hasActiveRoute) {
-      setGpsMessage("Choose a story path or sign post path before tracking a walk.");
+      setGpsMessage("Choose a story path or Travel Hub path before tracking a walk.");
       return;
     }
 
@@ -2692,7 +2697,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       if (activeMiniMapId && configured.mini_map_id !== activeMiniMapId) {
         throw new Error("Mini-map marker was saved without the open mini map id. Try again after reopening the mini map.");
       }
-      const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections, selectedMarkerRouteTravelModes);
+      const links = await saveMarkerRouteLinks(configured.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections, selectedMarkerRouteTravelModes, selectedMarkerRouteAccessRules);
       setMarkerRouteLinks(links);
       setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== configured.id), ...links]);
       setMarkerChapterVisibilityRows((current) => [...current.filter((row) => row.marker_id !== configured.id), ...savedChapterVisibility]);
@@ -2725,6 +2730,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setSelectedMarkerRouteIds([]);
     setSelectedMarkerRouteDirections({});
     setSelectedMarkerRouteTravelModes({});
+    setSelectedMarkerRouteAccessRules({});
     setMarkerRouteCompletionCondition("either");
     setDraftTitle("");
     setDraftDescription("");
@@ -3071,6 +3077,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setSelectedMarkerRouteIds(links.map((link) => link.route_id));
       setSelectedMarkerRouteDirections(Object.fromEntries(links.map((link) => [link.route_id, link.start_direction ?? "forward"])));
       setSelectedMarkerRouteTravelModes(Object.fromEntries(links.map((link) => [link.route_id, link.travel_mode_id ?? null])));
+      setSelectedMarkerRouteAccessRules(Object.fromEntries(links.map((link) => [link.route_id, getMarkerRouteAccessRuleDraft(link)])));
       setMarkerRouteCompletionCondition(links[0]?.completion_condition ?? "either");
       setMarkerDialogueIds((current) => {
         const next = new Set(current);
@@ -3151,6 +3158,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setSelectedMarkerRouteIds(links.map((link) => link.route_id));
       setSelectedMarkerRouteDirections(Object.fromEntries(links.map((link) => [link.route_id, link.start_direction ?? "forward"])));
       setSelectedMarkerRouteTravelModes(Object.fromEntries(links.map((link) => [link.route_id, link.travel_mode_id ?? null])));
+      setSelectedMarkerRouteAccessRules(Object.fromEntries(links.map((link) => [link.route_id, getMarkerRouteAccessRuleDraft(link)])));
       setMarkerRouteCompletionCondition(links[0]?.completion_condition ?? "either");
       setAdminMessage(clickedPercent ? `Loaded ${marker.title}. Save it to place a copy in ${activeMiniMap.name}.` : `Loaded ${marker.title}. Tap the mini map to choose its new position, then save.`);
     } catch (error) {
@@ -3309,7 +3317,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       const updated = await updateMarkerSettings(moved.id, getMarkerSettingsPayload());
       const savedChapterVisibility = await saveMarkerChapterVisibility(updated.id, markerChapterKeysToRows(markerChapterVisibilityKeys));
       await syncArenaMarker(updated);
-      const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections, selectedMarkerRouteTravelModes);
+      const links = await saveMarkerRouteLinks(updated.id, selectedMarkerRouteIds, selectedSeason, selectedChapter, markerRouteCompletionCondition, selectedMarkerRouteDirections, selectedMarkerRouteTravelModes, selectedMarkerRouteAccessRules);
       setMarkerRouteLinks(links);
       setAllMarkerRouteLinks((current) => [...current.filter((link) => link.marker_id !== updated.id), ...links]);
       setMarkerChapterVisibilityRows((current) => [...current.filter((row) => row.marker_id !== updated.id), ...savedChapterVisibility]);
@@ -3953,11 +3961,17 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           delete next[routeId];
           return next;
         });
+        setSelectedMarkerRouteAccessRules((rules) => {
+          const next = { ...rules };
+          delete next[routeId];
+          return next;
+        });
         return current.filter((id) => id !== routeId);
       }
 
       setSelectedMarkerRouteDirections((directions) => ({ ...directions, [routeId]: directions[routeId] ?? "forward" }));
       setSelectedMarkerRouteTravelModes((modes) => ({ ...modes, [routeId]: modes[routeId] ?? null }));
+      setSelectedMarkerRouteAccessRules((rules) => ({ ...rules, [routeId]: rules[routeId] ?? getDefaultMarkerRouteAccessRuleDraft() }));
       return [...current, routeId];
     });
   }
@@ -3970,11 +3984,24 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setSelectedMarkerRouteTravelModes((current) => ({ ...current, [routeId]: travelModeId }));
   }
 
+  function setSignPostRouteAccessRule(routeId: string, nextRule: MarkerRouteAccessRuleDraft) {
+    setSelectedMarkerRouteAccessRules((current) => ({ ...current, [routeId]: normalizeMarkerRouteAccessRuleDraft(nextRule) }));
+  }
+
+  function getVisibleMarkerRouteLinks(links: MarkerRouteLink[]) {
+    return isAdmin ? links : links.filter((link) => isMarkerRouteLinkUnlocked(link, storyFlags));
+  }
+
   async function startPathFromSignPost(
     nextRoute: MapRoute,
-    routeLink?: Pick<MarkerRouteLink, "start_direction" | "travel_mode_id">,
+    routeLink?: Pick<MarkerRouteLink, "start_direction" | "travel_mode_id" | "access_rule" | "required_story_flag_key" | "required_story_flag_value" | "lock_message">,
     options: { allowMapTransition?: boolean } = { allowMapTransition: true },
   ) {
+    if (!isAdmin && routeLink && !isMarkerRouteLinkUnlocked(routeLink, storyFlags)) {
+      setMarkerPanelMessage(getMarkerRouteLinkLockMessage(routeLink));
+      return;
+    }
+
     if (!isAdmin && isRouteLocked(nextRoute)) {
       setMarkerPanelMessage(getRouteLockMessage(nextRoute));
       return;
@@ -4156,8 +4183,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     });
     setGpsMessage(
       nextDirection === "reverse"
-        ? `Turning back on ${route.name}. Walking now returns you toward the starting sign post.`
-        : `Continuing forward on ${route.name}. Walking now heads toward the destination sign post.`,
+        ? `Turning back on ${route.name}. Walking now returns you toward the starting Travel Hub.`
+        : `Continuing forward on ${route.name}. Walking now heads toward the destination Travel Hub.`,
     );
   }
 
@@ -7754,7 +7781,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           characterGold={character.gold}
           marketItems={markerMarketItems}
           marketPurchaseCounts={marketPurchaseCounts}
-          routeLinks={markerRouteLinks}
+          routeLinks={getVisibleMarkerRouteLinks(markerRouteLinks)}
           routes={routes}
           routeProgressRows={effectiveRouteProgressRows}
           inventoryItems={inventoryItems}
@@ -7811,12 +7838,12 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     const sourceRouteIndex = sourceRouteLinks.findIndex((link) => link.route_id === route.id);
     const destinationMarker = getJourneyDestinationMarker(route, markers, allMarkerRouteLinks, sourceMarker?.id ?? null, routeDirection);
     const hasStoryContext = Boolean(sourceMarker && isStoryQuestMarker(sourceMarker));
-    const journeyMode = hasStoryContext ? (sourceMarker?.type === "Side Quest" || sourceMarker?.type === "Quest" ? "Quest Journey" : "Story Journey") : "Road Sign Travel";
+    const journeyMode = hasStoryContext ? (sourceMarker?.type === "Side Quest" || sourceMarker?.type === "Quest" ? "Quest Journey" : "Story Journey") : "Travel Hub";
     const journeyTitle = hasStoryContext ? sourceMarker?.quest_title || sourceMarker?.title || route.name : route.name;
     const journeyObjective = hasStoryContext
       ? getJourneyObjective(sourceMarker, route, sourceRouteLinks[sourceRouteIndex])
       : routeDirection === "reverse"
-        ? "Return to the previous sign post."
+        ? "Return to the previous Travel Hub."
         : "Follow the selected trail.";
     const stepLabel = hasStoryContext && sourceRouteIndex >= 0
       ? `Path ${sourceRouteIndex + 1} of ${sourceRouteLinks.length}`
@@ -7827,7 +7854,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     const arrivedAtStart = routeDirection === "reverse" && progressPercent <= 0;
     const arrived = arrivedAtEnd || arrivedAtStart;
     const travelTitle = arrived ? "Arrived" : routeDirection === "reverse" ? "Returning" : journeyMode;
-    const primaryLabel = arrived && destinationMarker ? `Open ${destinationMarker.type}` : isTracking ? (Platform.OS === "web" ? "Pause GPS" : "Pause Steps") : "Continue Walking";
+    const primaryLabel = arrived && destinationMarker ? `Open ${getMarkerTypeLabel(destinationMarker.type)}` : isTracking ? (Platform.OS === "web" ? "Pause GPS" : "Pause Steps") : "Continue Walking";
     const turnLabel = routeDirection === "reverse" ? "Travel Forward" : "Turn Back";
     const handlePrimaryJourneyAction = () => {
       if (arrived && destinationMarker) {
@@ -7937,7 +7964,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               <View style={styles.journeyDestinationCopy}>
                 <Text style={styles.journeyDestinationLabel}>Destination Marker</Text>
                 <Text style={styles.journeyDestinationTitle}>{journey.destinationMarker.title}</Text>
-                <Text style={styles.journeyDestinationType}>{journey.destinationMarker.type}</Text>
+                <Text style={styles.journeyDestinationType}>{getMarkerTypeLabel(journey.destinationMarker.type)}</Text>
               </View>
             </View>
           ) : null}
@@ -8105,7 +8132,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           distance={selectedMarkerDistance}
           radius={selectedMarkerRadius}
           isTracking={isTracking}
-          routeLinks={markerRouteLinks}
+          routeLinks={getVisibleMarkerRouteLinks(markerRouteLinks)}
           routes={routes}
           routeProgressRows={routeProgressRows}
           marketItems={markerMarketItems}
@@ -8643,9 +8670,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               selectedMarkerRouteIds={selectedMarkerRouteIds}
               selectedMarkerRouteDirections={selectedMarkerRouteDirections}
               selectedMarkerRouteTravelModes={selectedMarkerRouteTravelModes}
+              selectedMarkerRouteAccessRules={selectedMarkerRouteAccessRules}
               toggleSignPostRoute={toggleSignPostRoute}
               setSignPostRouteDirection={setSignPostRouteDirection}
               setSignPostRouteTravelMode={setSignPostRouteTravelMode}
+              setSignPostRouteAccessRule={setSignPostRouteAccessRule}
               worldMarkers={adminWorldMarkers}
               storyScopeMarkers={adminStoryMarkers}
               miniMaps={adminTargetMiniMaps}
@@ -8825,9 +8854,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 selectedMarkerRouteIds={selectedMarkerRouteIds}
                 selectedMarkerRouteDirections={selectedMarkerRouteDirections}
                 selectedMarkerRouteTravelModes={selectedMarkerRouteTravelModes}
+                selectedMarkerRouteAccessRules={selectedMarkerRouteAccessRules}
                 toggleSignPostRoute={toggleSignPostRoute}
                 setSignPostRouteDirection={setSignPostRouteDirection}
                 setSignPostRouteTravelMode={setSignPostRouteTravelMode}
+                setSignPostRouteAccessRule={setSignPostRouteAccessRule}
                 worldMarkers={adminWorldMarkers}
                 storyScopeMarkers={adminStoryMarkers}
                 miniMaps={adminTargetMiniMaps}
@@ -8884,7 +8915,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             ) : (
               <View style={styles.pathEditor}>
                 <Text style={styles.selectedTitle}>Create / Edit Mini Map Walking Path</Text>
-                <Text style={styles.copy}>Click the mini map image above to add percentage path points. These trails can be linked to Sign Post markers in this mini map.</Text>
+                <Text style={styles.copy}>Click the mini map image above to add percentage path points. These trails can be linked to Travel Hub markers in this mini map.</Text>
                 <TextInput value={routeName} onChangeText={setRouteName} placeholder="Route name" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={routeOrder} onChangeText={setRouteOrder} placeholder="Route order" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={routeTerrain} onChangeText={setRouteTerrain} placeholder="Terrain" placeholderTextColor={colors.muted} style={styles.input} />
@@ -9163,7 +9194,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           distance={selectedMarkerDistance}
           radius={selectedMarkerRadius}
           isTracking={isTracking}
-          routeLinks={markerRouteLinks}
+          routeLinks={getVisibleMarkerRouteLinks(markerRouteLinks)}
           routes={routes}
           routeProgressRows={routeProgressRows}
           marketItems={markerMarketItems}
@@ -9596,7 +9627,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                         currentMapLabel="Overworld"
                       />
                       <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
-                      <Text style={styles.copy}>Players choose from these paths when they interact with this Sign Post.</Text>
+                      <Text style={styles.copy}>Players choose from these paths when they interact with this Travel Hub.</Text>
                       <View style={styles.storyRoutePicker}>
                         {signPostRoutePickerRoutes.map((item) => (
                           <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
@@ -9607,17 +9638,20 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                       <SignPostRouteDirectionEditor
                         routes={signPostRoutePickerRoutes}
                         travelModes={travelModes}
+                        storyFlagKeys={knownStoryFlagKeys}
                         selectedRouteIds={selectedMarkerRouteIds}
                         routeDirections={selectedMarkerRouteDirections}
                         routeTravelModes={selectedMarkerRouteTravelModes}
+                        routeAccessRules={selectedMarkerRouteAccessRules}
                         onSelectDirection={setSignPostRouteDirection}
                         onSelectTravelMode={setSignPostRouteTravelMode}
+                        onSelectAccessRule={setSignPostRouteAccessRule}
                       />
                       {signPostRoutePickerRoutes.length === 0 ? <Text style={styles.copy}>No walking paths match this picker source yet.</Text> : null}
                       {selectedMarker ? (
                         <Text style={styles.debugLine}>Save Selected Marker Settings after changing linked paths.</Text>
                       ) : (
-                        <Text style={styles.debugLine}>Selected paths will be linked when the Sign Post marker is created.</Text>
+                        <Text style={styles.debugLine}>Selected paths will be linked when the Travel Hub marker is created.</Text>
                       )}
                     </View>
                   ) : null}
@@ -10352,7 +10386,7 @@ function SignPostRouteScopePicker({
   return (
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Route Picker Source</Text>
-      <Text style={styles.copy}>This only controls what paths admin can pick below. Players still see only the paths you link to this sign.</Text>
+      <Text style={styles.copy}>This only controls what paths admin can pick below. Players still see only the paths you link to this Travel Hub.</Text>
       <View style={styles.storyRoutePicker}>
         {signPostRouteScopes.map((scope) => (
           <Pressable key={scope} style={[styles.routeChip, value === scope && styles.routeChipActive]} onPress={() => onChange(scope)}>
@@ -10368,19 +10402,25 @@ function SignPostRouteScopePicker({
 function SignPostRouteDirectionEditor({
   routes,
   travelModes,
+  storyFlagKeys,
   selectedRouteIds,
   routeDirections,
   routeTravelModes,
+  routeAccessRules,
   onSelectDirection,
   onSelectTravelMode,
+  onSelectAccessRule,
 }: {
   routes: MapRoute[];
   travelModes: TravelMode[];
+  storyFlagKeys: string[];
   selectedRouteIds: string[];
   routeDirections: Record<string, MarkerRouteLink["start_direction"]>;
   routeTravelModes: Record<string, string | null>;
+  routeAccessRules: Record<string, MarkerRouteAccessRuleDraft>;
   onSelectDirection: (routeId: string, direction: MarkerRouteLink["start_direction"]) => void;
   onSelectTravelMode: (routeId: string, travelModeId: string | null) => void;
+  onSelectAccessRule: (routeId: string, rule: MarkerRouteAccessRuleDraft) => void;
 }) {
   const selectedRoutes = selectedRouteIds
     .map((routeId) => routes.find((route) => route.id === routeId))
@@ -10396,6 +10436,7 @@ function SignPostRouteDirectionEditor({
       <Text style={styles.copy}>Forward starts at 0% and walks to 100%. Reverse starts at 100% and walks back to 0%.</Text>
       {selectedRoutes.map((selectedRoute) => {
         const selectedDirection = routeDirections[selectedRoute.id] ?? "forward";
+        const selectedAccessRule = normalizeMarkerRouteAccessRuleDraft(routeAccessRules[selectedRoute.id]);
         return (
           <View key={selectedRoute.id} style={styles.storyCard}>
             <Text style={styles.markerName}>{selectedRoute.sort_order}. {selectedRoute.name}</Text>
@@ -10414,9 +10455,70 @@ function SignPostRouteDirectionEditor({
               selectedId={routeTravelModes[selectedRoute.id] ?? selectedRoute.travel_mode_id ?? null}
               onSelect={(travelModeId) => onSelectTravelMode(selectedRoute.id, travelModeId)}
             />
+            <TravelHubPathUnlockEditor
+              routeName={selectedRoute.name}
+              storyFlagKeys={storyFlagKeys}
+              value={selectedAccessRule}
+              onChange={(rule) => onSelectAccessRule(selectedRoute.id, rule)}
+            />
           </View>
         );
       })}
+    </View>
+  );
+}
+
+function TravelHubPathUnlockEditor({
+  routeName,
+  storyFlagKeys,
+  value,
+  onChange,
+}: {
+  routeName: string;
+  storyFlagKeys: string[];
+  value: MarkerRouteAccessRuleDraft;
+  onChange: (rule: MarkerRouteAccessRuleDraft) => void;
+}) {
+  const accessRule = value.access_rule ?? "always";
+  const flagKey = value.required_story_flag_key ?? "";
+
+  return (
+    <View style={styles.storyEditor}>
+      <Text style={styles.selectedTitle}>Path Unlock</Text>
+      <Text style={styles.copy}>Controls when players see {routeName} as an option from this Travel Hub.</Text>
+      <View style={styles.modeRow}>
+        <Pressable style={[styles.secondaryButtonFlex, accessRule !== "story_flag" && styles.typeSelected]} onPress={() => onChange(getDefaultMarkerRouteAccessRuleDraft())}>
+          <Text style={styles.secondaryText}>Always Available</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.secondaryButtonFlex, accessRule === "story_flag" && styles.typeSelected]}
+          onPress={() => onChange({ ...value, access_rule: "story_flag", required_story_flag_value: value.required_story_flag_value ?? true })}
+        >
+          <Text style={styles.secondaryText}>Story Flag</Text>
+        </Pressable>
+      </View>
+      {accessRule === "story_flag" ? (
+        <>
+          <StoryFlagPicker flags={storyFlagKeys} selectedKey={flagKey} onSelect={(nextKey) => onChange({ ...value, access_rule: "story_flag", required_story_flag_key: nextKey })} />
+          <TextInput
+            value={flagKey}
+            onChangeText={(nextKey) => onChange({ ...value, access_rule: "story_flag", required_story_flag_key: nextKey })}
+            placeholder="Story flag key, example royal_pass_granted"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+          />
+          <Pressable style={[styles.secondaryButton, value.required_story_flag_value !== false && styles.typeSelected]} onPress={() => onChange({ ...value, access_rule: "story_flag", required_story_flag_value: !(value.required_story_flag_value ?? true) })}>
+            <Text style={styles.secondaryText}>Required Value: {value.required_story_flag_value ?? true ? "True" : "False"}</Text>
+          </Pressable>
+          <TextInput
+            value={value.lock_message ?? ""}
+            onChangeText={(message) => onChange({ ...value, access_rule: "story_flag", lock_message: message })}
+            placeholder="Optional admin note or lock message"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+          />
+        </>
+      ) : null}
     </View>
   );
 }
@@ -10453,6 +10555,38 @@ function TravelModePicker({
       {activeTravelModes.length === 0 ? <Text style={styles.debugLine}>No travel modes yet. Create one in Home / Inventory / Admin / Travel Modes.</Text> : null}
     </View>
   );
+}
+
+function getDefaultMarkerRouteAccessRuleDraft(): MarkerRouteAccessRuleDraft {
+  return {
+    access_rule: "always",
+    required_story_flag_key: null,
+    required_story_flag_value: true,
+    lock_message: null,
+  };
+}
+
+function normalizeMarkerRouteAccessRuleDraft(rule: MarkerRouteAccessRuleDraft | undefined): MarkerRouteAccessRuleDraft {
+  const accessRule = rule?.access_rule === "story_flag" ? "story_flag" : "always";
+  return {
+    access_rule: accessRule,
+    required_story_flag_key: accessRule === "story_flag" ? rule?.required_story_flag_key?.trim() || null : null,
+    required_story_flag_value: rule?.required_story_flag_value ?? true,
+    lock_message: rule?.lock_message?.trim() || null,
+  };
+}
+
+function getMarkerRouteAccessRuleDraft(link: MarkerRouteLink): MarkerRouteAccessRuleDraft {
+  return normalizeMarkerRouteAccessRuleDraft({
+    access_rule: link.access_rule ?? "always",
+    required_story_flag_key: link.required_story_flag_key ?? null,
+    required_story_flag_value: link.required_story_flag_value ?? true,
+    lock_message: link.lock_message ?? null,
+  });
+}
+
+function getMarkerTypeLabel(type: string) {
+  return type === "Sign Post" ? "Travel Hub" : type;
 }
 
 function MiniMapMarkerAdminForm({
@@ -10584,9 +10718,11 @@ function MiniMapMarkerAdminForm({
   selectedMarkerRouteIds,
   selectedMarkerRouteDirections,
   selectedMarkerRouteTravelModes,
+  selectedMarkerRouteAccessRules,
   toggleSignPostRoute,
   setSignPostRouteDirection,
   setSignPostRouteTravelMode,
+  setSignPostRouteAccessRule,
   worldMarkers,
   storyScopeMarkers,
   miniMaps,
@@ -10765,9 +10901,11 @@ function MiniMapMarkerAdminForm({
   selectedMarkerRouteIds: string[];
   selectedMarkerRouteDirections: Record<string, MarkerRouteLink["start_direction"]>;
   selectedMarkerRouteTravelModes: Record<string, string | null>;
+  selectedMarkerRouteAccessRules: Record<string, MarkerRouteAccessRuleDraft>;
   toggleSignPostRoute: (routeId: string) => void;
   setSignPostRouteDirection: (routeId: string, direction: MarkerRouteLink["start_direction"]) => void;
   setSignPostRouteTravelMode: (routeId: string, travelModeId: string | null) => void;
+  setSignPostRouteAccessRule: (routeId: string, rule: MarkerRouteAccessRuleDraft) => void;
   worldMarkers: MapMarker[];
   storyScopeMarkers: MapMarker[];
   miniMaps: MiniMap[];
@@ -10993,7 +11131,7 @@ function MiniMapMarkerAdminForm({
                 currentMapLabel="Current Mini Map"
               />
               <Text style={styles.selectedTitle}>Linked Walking Paths</Text>
-              <Text style={styles.copy}>Players choose from these existing paths when they interact with this Sign Post inside the mini map.</Text>
+              <Text style={styles.copy}>Players choose from these existing paths when they interact with this Travel Hub inside the mini map.</Text>
               <View style={styles.storyRoutePicker}>
                 {signPostRoutes.map((item) => (
                   <Pressable key={item.id} style={[styles.routeChip, selectedMarkerRouteIds.includes(item.id) && styles.routeChipActive]} onPress={() => toggleSignPostRoute(item.id)}>
@@ -11004,17 +11142,20 @@ function MiniMapMarkerAdminForm({
               <SignPostRouteDirectionEditor
                 routes={signPostRoutes}
                 travelModes={travelModes}
+                storyFlagKeys={knownStoryFlagKeys}
                 selectedRouteIds={selectedMarkerRouteIds}
                 routeDirections={selectedMarkerRouteDirections}
                 routeTravelModes={selectedMarkerRouteTravelModes}
+                routeAccessRules={selectedMarkerRouteAccessRules}
                 onSelectDirection={setSignPostRouteDirection}
                 onSelectTravelMode={setSignPostRouteTravelMode}
+                onSelectAccessRule={setSignPostRouteAccessRule}
               />
               {signPostRoutes.length === 0 ? <Text style={styles.copy}>No walking paths match this picker source yet.</Text> : null}
               {selectedMarker ? (
                 <Text style={styles.debugLine}>Save Marker Details after changing linked paths.</Text>
               ) : (
-                <Text style={styles.debugLine}>Selected paths will be linked when the Sign Post marker is created.</Text>
+                <Text style={styles.debugLine}>Selected paths will be linked when the Travel Hub marker is created.</Text>
               )}
             </View>
           ) : null}

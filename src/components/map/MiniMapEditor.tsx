@@ -219,7 +219,7 @@ export function MiniMapEditor<MiniMapType extends string>({
           ))}
         </View>
       ))}
-      <Text style={styles.debugLine}>Open a mini map to place spawn markers, sign posts, shops, encounters, and mini-map walking paths.</Text>
+      <Text style={styles.debugLine}>Open a mini map to place spawn markers, Travel Hubs, shops, encounters, and mini-map walking paths.</Text>
     </View>
   );
 }

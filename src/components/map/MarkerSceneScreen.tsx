@@ -106,7 +106,7 @@ export function MarkerSceneScreen({
         <View style={styles.sceneIntro}>
           <View style={styles.panelHeader}>
             <View style={styles.titleBlock}>
-              <Text style={styles.markerType}>{marker.type}</Text>
+              <Text style={styles.markerType}>{getMarkerTypeLabel(marker.type)}</Text>
             <Text style={styles.sectionTitle}>{marker.quest_title || marker.title}</Text>
             </View>
             {marker.reward_xp || marker.reward_gold || marker.reward_item_id || marker.reward_full_heal ? (
@@ -410,6 +410,10 @@ function isDialogueMarkerType(type: string) {
   return ["Quest", "Side Quest", "Story", "Point of Interest", "NPC"].includes(type);
 }
 
+function getMarkerTypeLabel(type: string) {
+  return type === "Sign Post" ? "Travel Hub" : type;
+}
+
 function SignPostScene({
   routeLinks,
   routes,
@@ -424,7 +428,7 @@ function SignPostScene({
   return (
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Choose Your Path</Text>
-      {routeLinks.length === 0 ? <Text style={styles.copy}>No walking paths are linked to this sign post yet.</Text> : null}
+      {routeLinks.length === 0 ? <Text style={styles.copy}>No walking paths are linked to this Travel Hub yet.</Text> : null}
       {routeLinks.map((link) => {
         const linkedRoute = routes.find((item) => item.id === link.route_id);
         const progress = routeProgressRows.find((row) => row.route_id === link.route_id)?.progress_percent ?? 0;

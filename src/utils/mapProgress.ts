@@ -1,4 +1,4 @@
-import type { MapChapter, MapRoute, MapSeason, StoryDialogueChoice, StoryDialogueNode } from "../services/mapService";
+import type { MapChapter, MapRoute, MapSeason, MarkerRouteLink, StoryDialogueChoice, StoryDialogueNode } from "../services/mapService";
 
 export type ChapterAccessType = NonNullable<MapChapter["access_type"]>;
 
@@ -107,6 +107,32 @@ export function getRouteLockMessage(route: MapRoute) {
   }
 
   return route.lock_type === "quest_locked" ? "Continue the required quest to unlock this path." : "Progress further in the story to unlock this path.";
+}
+
+export function isMarkerRouteLinkUnlocked(link: Pick<MarkerRouteLink, "access_rule" | "required_story_flag_key" | "required_story_flag_value">, storyFlags: Map<string, boolean>) {
+  if ((link.access_rule ?? "always") !== "story_flag") {
+    return true;
+  }
+
+  const flagKey = link.required_story_flag_key?.trim();
+  if (!flagKey) {
+    return false;
+  }
+
+  return storyFlags.get(flagKey) === (link.required_story_flag_value ?? true);
+}
+
+export function getMarkerRouteLinkLockMessage(link: Pick<MarkerRouteLink, "access_rule" | "required_story_flag_key" | "required_story_flag_value" | "lock_message">) {
+  if ((link.access_rule ?? "always") !== "story_flag") {
+    return "Available";
+  }
+
+  if (link.lock_message?.trim()) {
+    return link.lock_message;
+  }
+
+  const flagKey = link.required_story_flag_key?.trim();
+  return flagKey ? `Requires story flag: ${flagKey} = ${link.required_story_flag_value ?? true ? "true" : "false"}.` : "This path is locked by a story flag.";
 }
 
 export function isInSelectedChapter(item: { content_scope?: string | null; season_number?: number | null; chapter_number?: number | null }, seasonNumber: number, chapterNumber: number) {

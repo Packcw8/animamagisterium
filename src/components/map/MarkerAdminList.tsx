@@ -42,7 +42,7 @@ export function MarkerAdminList({ title, emptyText, markers, onEdit, onPreview, 
             </Pressable>
             {markerTypes.map((type) => (
               <Pressable key={type} style={[styles.routeChip, typeFilter === type && styles.routeChipActive]} onPress={() => setTypeFilter(type)}>
-                <Text style={styles.routeChipText}>{type}</Text>
+                <Text style={styles.routeChipText}>{getMarkerTypeLabel(type)}</Text>
               </Pressable>
             ))}
           </View>
@@ -57,7 +57,7 @@ export function MarkerAdminList({ title, emptyText, markers, onEdit, onPreview, 
           <View style={styles.markerTableInfo}>
             <Text style={styles.markerName}>{marker.title}</Text>
             <Text style={styles.copy}>
-              {marker.type} / X {Number(marker.x_percent).toFixed(2)}% / Y {Number(marker.y_percent).toFixed(2)}% / Radius {Number(marker.interaction_radius_percent ?? 4).toFixed(2)}%
+              {getMarkerTypeLabel(marker.type)} / X {Number(marker.x_percent).toFixed(2)}% / Y {Number(marker.y_percent).toFixed(2)}% / Radius {Number(marker.interaction_radius_percent ?? 4).toFixed(2)}%
             </Text>
             <Text style={styles.debugLine}>
               Interactable: {marker.is_interactable ? "true" : "false"} / Visible: {marker.is_active ? "true" : "false"} / Unlocked: {marker.is_unlocked ? "true" : "false"}
@@ -88,6 +88,10 @@ export function MarkerAdminList({ title, emptyText, markers, onEdit, onPreview, 
       })}
     </View>
   );
+}
+
+function getMarkerTypeLabel(type: string) {
+  return type === "Sign Post" ? "Travel Hub" : type;
 }
 
 function getMarkerWarnings(marker: MapMarker) {

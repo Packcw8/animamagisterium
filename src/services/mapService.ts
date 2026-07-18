@@ -1105,6 +1105,7 @@ export async function saveMarkerRouteLinks(
   completionCondition: MarkerRouteLink["completion_condition"] = "either",
   routeDirections: Record<string, MarkerRouteLink["start_direction"]> = {},
   routeTravelModes: Record<string, string | null> = {},
+  routeAccessRules: Record<string, Pick<MarkerRouteLink, "access_rule" | "required_story_flag_key" | "required_story_flag_value" | "lock_message">> = {},
 ) {
   const {
     data: { user },
@@ -1128,6 +1129,10 @@ export async function saveMarkerRouteLinks(
     start_direction: routeDirections[routeId] ?? "forward",
     travel_mode_id: routeTravelModes[routeId] ?? null,
     completion_condition: completionCondition,
+    access_rule: routeAccessRules[routeId]?.access_rule ?? "always",
+    required_story_flag_key: routeAccessRules[routeId]?.access_rule === "story_flag" ? routeAccessRules[routeId]?.required_story_flag_key?.trim() || null : null,
+    required_story_flag_value: routeAccessRules[routeId]?.required_story_flag_value ?? true,
+    lock_message: routeAccessRules[routeId]?.lock_message?.trim() || null,
     season_number: Number(seasonNumber) || 1,
     chapter_number: Number(chapterNumber) || 1,
     created_by: user?.id ?? null,
