@@ -982,6 +982,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const adminTargetMiniMaps = useMemo(() => sortMiniMaps(miniMaps), [miniMaps]);
   const adminTutorialSteps = useMemo(() => tutorialSteps.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [selectedChapter, selectedSeason, tutorialSteps]);
   const adminLegendItems = useMemo(() => legendItems.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [legendItems, selectedChapter, selectedSeason]);
+  const reusableLegendTemplates = useMemo(
+    () => legendItems.filter((item) => item.is_active).sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0) || a.title.localeCompare(b.title)),
+    [legendItems],
+  );
   const adminMapEvents = useMemo(() => mapEvents.filter((item) => isInSelectedChapter(item, selectedSeason, selectedChapter)), [mapEvents, selectedChapter, selectedSeason]);
   useEffect(() => {
     if (!isAdmin || !activeMiniMap?.id || adminPreviewMovementMarkerId) {
@@ -7200,7 +7204,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   }
 
   function applyLegendStyleToMarker(item: MarkerLegendItem) {
-    setDraftType(item.marker_type);
+    if (item.marker_type !== "Custom") {
+      setDraftType(item.marker_type);
+    }
     setMarkerIconLabel(item.icon_label ?? "");
     setMarkerIconImage(item.icon_image_url ?? "");
     setMarkerIconColor(item.icon_color ?? "");
@@ -8447,7 +8453,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             {editorMode === "Marker" ? renderReuseStoryMarkerPanel() : null}
             {editorMode === "Marker" ? <MiniMapMarkerAdminForm
               activeSectionMarkerTypes={miniMapContentMarkerTypes}
-              legendItems={adminLegendItems}
+              legendItems={reusableLegendTemplates}
               onApplyLegendStyle={applyLegendStyleToMarker}
               markerScopeEditor={renderMarkerChapterScopeEditor()}
               draftType={draftType}
@@ -8629,7 +8635,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             /> : editorMode === "Movement Grid" ? (
               <MiniMapMarkerAdminForm
                 activeSectionMarkerTypes={miniMapMovementMarkerTypes}
-                legendItems={adminLegendItems}
+                legendItems={reusableLegendTemplates}
                 onApplyLegendStyle={applyLegendStyleToMarker}
                 markerScopeEditor={renderMarkerChapterScopeEditor()}
                 draftType={draftType === "Movement" ? draftType : "Movement"}
@@ -10184,7 +10190,7 @@ function parseChoices(value: string): MapEvent["choices"] {
     });
 }
 
-function LegendStylePicker({ items, onApply }: { items: MarkerLegendItem[]; onApply: (item: MarkerLegendItem) => void }) {
+function LegendStylePicker({ items, onApply, contextLabel = "this marker draft" }: { items: MarkerLegendItem[]; onApply: (item: MarkerLegendItem) => void; contextLabel?: string }) {
   const activeItems = items.filter((item) => item.is_active).sort((a, b) => a.sort_order - b.sort_order);
 
   if (activeItems.length === 0) {
@@ -10194,7 +10200,7 @@ function LegendStylePicker({ items, onApply }: { items: MarkerLegendItem[]; onAp
   return (
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Reuse Legend Marker Style</Text>
-      <Text style={styles.copy}>Apply an existing legend icon, label, color, and marker type to this marker draft.</Text>
+      <Text style={styles.copy}>Apply an existing legend icon, label, color, and marker type to {contextLabel}. Custom legend styles keep the current marker type.</Text>
       <View style={styles.storyRoutePicker}>
         {activeItems.map((item) => (
           <Pressable key={item.id} style={styles.routeChip} onPress={() => onApply(item)}>
@@ -10773,6 +10779,8 @@ function MiniMapMarkerAdminForm({
     setOpenMarkerSections((current) => ({ ...current, [key]: current[key] === false }));
   }
 
+  const availableLegendTemplates = legendItems.filter((item) => item.marker_type === "Custom" || activeSectionMarkerTypes.includes(item.marker_type));
+
   return (
     <View style={styles.storyEditor}>
       <Text style={styles.selectedTitle}>Create / Edit Mini Map Marker</Text>
@@ -10783,7 +10791,7 @@ function MiniMapMarkerAdminForm({
         onToggle={() => toggleMarkerSection("details")}
       >
         <MarkerTypeSelector types={activeSectionMarkerTypes} selectedType={draftType} onSelectType={setDraftType} />
-        <LegendStylePicker items={legendItems} onApply={onApplyLegendStyle} />
+        <LegendStylePicker items={availableLegendTemplates} onApply={onApplyLegendStyle} contextLabel="this mini map marker" />
         {markerScopeEditor}
         <TextInput value={draftTitle} onChangeText={setDraftTitle} placeholder="Marker title" placeholderTextColor={colors.muted} style={styles.input} />
         <TextInput value={draftDescription} onChangeText={setDraftDescription} placeholder="Marker description" placeholderTextColor={colors.muted} style={styles.input} />
