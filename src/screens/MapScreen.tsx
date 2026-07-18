@@ -61,6 +61,7 @@ import { MiniMapEditor } from "../components/map/MiniMapEditor";
 import { WalkingPathAdminPanel } from "../components/map/WalkingPathAdminPanel";
 import { ProgressBar } from "../components/ProgressBar";
 import { CharacterAbilitiesSheet } from "../components/player/CharacterAbilitiesSheet";
+import { CharacterCompanionSheet } from "../components/player/CharacterCompanionSheet";
 import { CharacterInventorySheet } from "../components/player/CharacterInventorySheet";
 import { CharacterMountsSheet } from "../components/player/CharacterMountsSheet";
 import { StoryDeckViewer } from "../components/story/StoryDeckViewer";
@@ -87,6 +88,7 @@ import { claimOpenArena, completeArenaChallenge, getArenaForMarker, saveArenaFor
 import { buildArenaBattleLayout, deleteArenaBattleSlot, getArenaBattleSlots, saveArenaBattleSlot, type ArenaBattleSlot } from "../services/arenaBattleBoardService";
 import { createCurrentPlayerBattleSnapshot } from "../services/battleSnapshotService";
 import { createArenaChallengeEvent, createArenaSnapshotOpponent } from "../services/arenaBattleService";
+import { equipPartyCompanion, getPartyCompanionBuildState, refreshOwnPartyAllySnapshot, unequipPartyCompanion, type EquippedPartyCompanion, type PartyCompanionBuildState } from "../services/partyCompanionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { adminSections, editorModes, getDefaultDraftTypeForAdminSection, getEditorModeForAdminSection, isMapAdminSection, type MapAdminSection } from "../utils/mapAdminSections";
@@ -405,13 +407,15 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [knownAbilities, setKnownAbilities] = useState<AbilityDefinition[]>([]);
   const [totalInventoryWeight, setTotalInventoryWeight] = useState(0);
   const [carryCapacity, setCarryCapacity] = useState(50);
-  const [activeMapSheet, setActiveMapSheet] = useState<"inventory" | "abilities" | "mounts" | null>(null);
+  const [activeMapSheet, setActiveMapSheet] = useState<"inventory" | "abilities" | "mounts" | "companions" | null>(null);
   const [mapInventoryTab, setMapInventoryTab] = useState<PlayerInventoryTab>("Consumables");
   const [selectedMapInventoryItemId, setSelectedMapInventoryItemId] = useState<string | null>(null);
   const [mapAbilityTab, setMapAbilityTab] = useState<PlayerAbilityTab>("Attack");
   const [selectedMapAbility, setSelectedMapAbility] = useState<AbilityDefinition | null>(null);
   const [selectedMapAbilityKey, setSelectedMapAbilityKey] = useState<string | null>(null);
   const [mapItemMessage, setMapItemMessage] = useState<string | null>(null);
+  const [partyCompanionBuild, setPartyCompanionBuild] = useState<PartyCompanionBuildState>({ options: [], equipped: null });
+  const [activePartyCompanion, setActivePartyCompanion] = useState<EquippedPartyCompanion | null>(null);
   const [gameToast, setGameToast] = useState<GameToastData | null>(null);
   const [role, setRole] = useState<Role>("player");
   const [adminMapViewMode, setAdminMapViewMode] = useState<"admin" | "player">("admin");
@@ -1359,6 +1363,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     void loadCombatLoadout();
     void loadInventory();
     void loadMounts();
+    void loadPartyCompanions();
     void loadEnemies();
 
     return () => {
@@ -1376,6 +1381,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     void loadCombatLoadout();
     void loadInventory();
     void loadMounts();
+    void loadPartyCompanions();
   }, [character.id, character.attributes]);
 
   async function loadCombatLoadout() {
@@ -4803,6 +4809,46 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
   }
 
+  async function loadPartyCompanions() {
+    try {
+      const build = await getPartyCompanionBuildState(character.id);
+      setPartyCompanionBuild(build);
+      setActivePartyCompanion(build.equipped);
+    } catch (error) {
+      setBattleLog((current) => [getErrorMessage(error, "Unable to load party companion."), ...current].slice(0, 8));
+    }
+  }
+
+  async function refreshMapPartySnapshot() {
+    try {
+      await refreshOwnPartyAllySnapshot();
+      await loadPartyCompanions();
+      setMapItemMessage("Party battle snapshot refreshed.");
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to refresh party snapshot."));
+    }
+  }
+
+  async function equipMapPartyCompanion(userId: string) {
+    try {
+      await equipPartyCompanion(userId, character.id);
+      await loadPartyCompanions();
+      setMapItemMessage("Party companion equipped.");
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to equip party companion."));
+    }
+  }
+
+  async function unequipMapPartyCompanion() {
+    try {
+      await unequipPartyCompanion(character.id);
+      await loadPartyCompanions();
+      setMapItemMessage("Party companion unequipped.");
+    } catch (error) {
+      setMapItemMessage(getErrorMessage(error, "Unable to unequip party companion."));
+    }
+  }
+
   async function maybeClearActiveRouteForMarker(marker: MapMarker) {
     if (!shouldClearActiveRouteForMarker(marker)) {
       return;
@@ -7669,6 +7715,20 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     );
   }
 
+  if (activeMapSheet === "companions") {
+    return (
+      <CharacterCompanionSheet
+        options={partyCompanionBuild.options}
+        equipped={activePartyCompanion}
+        message={mapItemMessage}
+        onClose={() => setActiveMapSheet(null)}
+        onRefreshOwnSnapshot={() => void refreshMapPartySnapshot()}
+        onEquip={(userId) => void equipMapPartyCompanion(userId)}
+        onUnequip={() => void unequipMapPartyCompanion()}
+      />
+    );
+  }
+
   if (selectedMarker?.type === "Puzzle" && selectedPuzzle && (previewMarkerScene || (!isAdmin && canUseSelectedMarker && !selectedMarkerLocked))) {
     return (
       <>
@@ -7942,6 +8002,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           </Pressable>
           <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("mounts")}>
             <Text style={styles.journeySecondaryText}>{activeTravelMode ? `${activeTravelMode.name} x${activeTravelMultiplier.toFixed(2)}` : activeMount ? `Mount x${activeMountMultiplier.toFixed(2)}` : "Mounts"}</Text>
+          </Pressable>
+          <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("companions")}>
+            <Text style={styles.journeySecondaryText}>{activePartyCompanion?.snapshot?.character_name ? `Ally: ${activePartyCompanion.snapshot.character_name}` : "Companion"}</Text>
           </Pressable>
           <JourneyRecoveryAction disabled={isRecoveringPosition} onRecover={() => void recoverJourneyPosition()} />
         </View>

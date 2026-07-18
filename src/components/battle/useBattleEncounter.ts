@@ -5,6 +5,7 @@ import { EnemyWithLoadout, NpcWithLoadout, getEnemyLoadout, getNpcLoadout, resol
 import { BattleEventCombatant, MarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants } from "../../services/battlefieldService";
 import { EquipmentSlot, InventoryItem, ItemDefinition, consumeInventoryItem, getInventoryResourceBonuses, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
+import { createCompanionFromSnapshot, getEquippedPartyCompanion } from "../../services/partyCompanionService";
 import { chooseWeightedEnemyAbility, getD20StatBonus, rollD20Attack } from "../../utils/combatMath";
 import { type CombatIndicator } from "./BattleDisplay";
 
@@ -142,6 +143,8 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const stagedLayout = syntheticLayout ?? (skipStagedLayout ? [] : await loadStagedLayout(event));
       const stagedOpponents = await loadStagedOpponents(event, stagedLayout);
       const stagedCompanions = suppressCompanions ? [] : await loadStagedCompanions(event, stagedLayout);
+      const equippedCompanion = suppressCompanions ? null : await loadEquippedPartyCompanion(stagedLayout);
+      const allCompanions = equippedCompanion ? [...stagedCompanions, equippedCompanion] : stagedCompanions;
       const fallbackOpponent = stagedOpponents.length === 0
         ? [{
           key: "primary",
@@ -156,7 +159,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       const selectedEnemy = firstOpponent?.enemy ?? opponent;
       const enemyImage = resolveEnemyImageUri(selectedEnemy?.image_url ?? event.enemy_image_url);
       const playerInitiative = rollInitiative(character.attributes?.agility ?? 0);
-      const companionInitiatives = stagedCompanions
+      const companionInitiatives = allCompanions
         .map((entry) => ({
           name: entry.ally.name || entry.combatant.label || "Companion",
           initiative: rollInitiative(Number(entry.ally.agility ?? 0)),
@@ -179,7 +182,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       setActiveEnemy(selectedEnemy);
       setBattleLayoutCombatants(stagedLayout);
       setBattleOpponents(fallbackOpponent);
-      setBattleCompanions(stagedCompanions);
+      setBattleCompanions(allCompanions);
       setSelectedOpponentKey(firstOpponent?.key ?? null);
       setCombatIndicators([]);
       setBattlePlayerHp(currentHealth);
@@ -195,7 +198,7 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       setBattleInventoryOpen(false);
       setBattleLog([
         `Initiative: you rolled ${playerInitiative.roll} + ${playerInitiative.bonus} = ${playerInitiative.total}. Fastest enemy: ${enemyInitiatives[0]?.name || "Enemy"} ${leadEnemyInitiative.roll} + ${leadEnemyInitiative.bonus} = ${leadEnemyInitiative.total}.`,
-        suppressCompanions ? "Arena rules: no party members or companions may join." : companionInitiatives.length > 0 ? `Companions joined: ${stagedCompanions.map((entry) => entry.ally.name || entry.combatant.label || "Ally").join(", ")}.` : "No companions joined this fight.",
+        suppressCompanions ? "Arena rules: no party members or companions may join." : companionInitiatives.length > 0 ? `Companions joined: ${allCompanions.map((entry) => entry.ally.name || entry.combatant.label || "Ally").join(", ")}.` : "No companions joined this fight.",
         enemyStarts ? "The enemies act first." : "Your side acts first.",
         event.battle_intro_text || `${selectedEnemy?.name || event.enemy_name || "An enemy"} blocks the trail.`,
         stagedOpponents.length > 0
@@ -275,6 +278,25 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return loaded.filter(Boolean) as BattleCompanionState[];
     } catch {
       return [];
+    }
+  }
+
+  async function loadEquippedPartyCompanion(staged: Array<BattleEventCombatant | MarkerBattleCombatant>): Promise<BattleCompanionState | null> {
+    try {
+      const equipped = await getEquippedPartyCompanion(character.id);
+      const snapshot = equipped?.snapshot;
+
+      if (!snapshot) {
+        return null;
+      }
+
+      const partySlot = staged
+        .filter((combatant) => combatant.is_active && combatant.side === "companion" && !combatant.enemy_id && !combatant.npc_id)
+        .sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0))[0] ?? null;
+
+      return createCompanionFromSnapshot(snapshot, partySlot) satisfies BattleCompanionState;
+    } catch {
+      return null;
     }
   }
 

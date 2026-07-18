@@ -294,6 +294,17 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  player_equipped_party_companions: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    party_member_user_id: string;
+    snapshot_id: string;
+    slot: number;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  };
   arena_spots: {
     id: string;
     marker_id: string;

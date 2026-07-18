@@ -27,6 +27,13 @@ import {
   SocialGoalMetric,
   getPartyGuildState,
 } from "../../services/partyGuildService";
+import {
+  equipPartyCompanion,
+  getPartyCompanionBuildState,
+  PartyCompanionBuildState,
+  refreshOwnPartyAllySnapshot,
+  unequipPartyCompanion,
+} from "../../services/partyCompanionService";
 
 type PartyGuildPanelProps = {
   friends: FriendWithProfile[];
@@ -54,6 +61,8 @@ export function PartyGuildPanel({ friends, onMessage }: PartyGuildPanelProps) {
   const [goalRewardGold, setGoalRewardGold] = useState("0");
   const [goalRewardItems, setGoalRewardItems] = useState<Array<{ itemId: string; quantity: string }>>([]);
   const [goalIsActive, setGoalIsActive] = useState(true);
+  const [companionBuild, setCompanionBuild] = useState<PartyCompanionBuildState>({ options: [], equipped: null });
+  const [companionLoading, setCompanionLoading] = useState(false);
 
   const acceptedFriends = friends.filter((friend) => friend.status === "accepted" && friend.friend);
 
@@ -72,10 +81,54 @@ export function PartyGuildPanel({ friends, onMessage }: PartyGuildPanelProps) {
       setState(nextState);
       setRole(nextRole);
       setItemDefinitions(nextItems);
+      if (nextState.party) {
+        setCompanionBuild(await getPartyCompanionBuildState());
+      } else {
+        setCompanionBuild({ options: [], equipped: null });
+      }
     } catch (error) {
       onMessage(error instanceof Error ? error.message : "Unable to load parties and guilds. Confirm the party/guild migration has run.");
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function refreshPartySnapshot() {
+    setCompanionLoading(true);
+    try {
+      await refreshOwnPartyAllySnapshot();
+      setCompanionBuild(await getPartyCompanionBuildState());
+      onMessage("Party battle snapshot refreshed.");
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Unable to refresh party snapshot.");
+    } finally {
+      setCompanionLoading(false);
+    }
+  }
+
+  async function equipCompanion(userId: string) {
+    setCompanionLoading(true);
+    try {
+      await equipPartyCompanion(userId);
+      setCompanionBuild(await getPartyCompanionBuildState());
+      onMessage("Party companion equipped.");
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Unable to equip party companion.");
+    } finally {
+      setCompanionLoading(false);
+    }
+  }
+
+  async function unequipCompanion() {
+    setCompanionLoading(true);
+    try {
+      await unequipPartyCompanion();
+      setCompanionBuild(await getPartyCompanionBuildState());
+      onMessage("Party companion unequipped.");
+    } catch (error) {
+      onMessage(error instanceof Error ? error.message : "Unable to unequip party companion.");
+    } finally {
+      setCompanionLoading(false);
     }
   }
 
@@ -301,6 +354,44 @@ export function PartyGuildPanel({ friends, onMessage }: PartyGuildPanelProps) {
               <MemberRow key={member.id} member={member} />
             ))}
           </Frame>
+
+          {mode === "party" ? (
+            <Frame style={styles.panel}>
+              <View style={styles.sectionHeaderRow}>
+                <View style={styles.flex}>
+                  <Text style={styles.sectionTitle}>Party Build</Text>
+                  <Text style={styles.copy}>Choose one active party member to travel with you in battles.</Text>
+                </View>
+                <Pressable style={styles.smallButton} onPress={() => void refreshPartySnapshot()} disabled={companionLoading}>
+                  <Text style={styles.buttonText}>Refresh Me</Text>
+                </Pressable>
+              </View>
+              {companionBuild.options.length === 0 ? <Text style={styles.copy}>Join an active party to equip a companion.</Text> : null}
+              {companionBuild.options.map((option) => (
+                <View key={option.member.id} style={[styles.companionCard, option.isEquipped && styles.companionCardActive]}>
+                  <MemberProfile profile={option.member.profile ?? null} />
+                  <View style={styles.companionMetaRow}>
+                    <Text style={styles.copy}>{option.snapshot ? `Snapshot Lv ${option.snapshot.level}` : option.unavailableReason}</Text>
+                    <Text style={styles.roleText}>{option.isSelf ? "You" : option.member.role}</Text>
+                  </View>
+                  <View style={styles.actionRow}>
+                    <Pressable
+                      style={[styles.smallButton, (!option.snapshot || option.isEquipped || companionLoading) && styles.disabledButton]}
+                      onPress={() => void equipCompanion(option.member.user_id)}
+                      disabled={!option.snapshot || option.isEquipped || companionLoading}
+                    >
+                      <Text style={styles.buttonText}>{option.isEquipped ? "Equipped" : "Equip Companion"}</Text>
+                    </Pressable>
+                    {option.isEquipped ? (
+                      <Pressable style={styles.secondaryButton} onPress={() => void unequipCompanion()} disabled={companionLoading}>
+                        <Text style={styles.secondaryText}>Unequip</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </View>
+              ))}
+            </Frame>
+          ) : null}
 
           <Frame style={styles.panel}>
             <Text style={styles.sectionTitle}>Shared Goals</Text>
@@ -661,6 +752,11 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 16,
   },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
   copy: {
     color: colors.muted,
     lineHeight: 20,
@@ -705,6 +801,9 @@ const styles = StyleSheet.create({
   secondaryText: {
     color: colors.blue,
     fontWeight: "900",
+  },
+  disabledButton: {
+    opacity: 0.55,
   },
   activeToggle: {
     borderColor: colors.blue,
@@ -811,6 +910,24 @@ const styles = StyleSheet.create({
   memberProfile: {
     flex: 1,
     flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  companionCard: {
+    gap: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(174, 126, 55, 0.28)",
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.24)",
+  },
+  companionCardActive: {
+    borderColor: colors.gold,
+    backgroundColor: "rgba(217, 170, 93, 0.1)",
+  },
+  companionMetaRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     gap: 10,
   },
