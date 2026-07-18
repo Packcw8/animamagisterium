@@ -750,7 +750,6 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const activeBattleRouteRef = useRef<MapRoute | null>(null);
   const exitingMiniMapRef = useRef(false);
   const openingToastShownRef = useRef(false);
-  const chapterTransitionShownRef = useRef<Set<string>>(new Set());
   const adminMapWorkspaceLoadedRef = useRef(false);
   const movementStateRef = useRef<PlayerMovementState>("IDLE");
   const movementCandidateRef = useRef<{ state: PlayerMovementState; since: number } | null>(null);
@@ -1619,48 +1618,6 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       actionLabel: "Begin",
     }, { triggerKey: "fresh_start", seasonNumber: 1, chapterNumber: 1 });
   }, [actualIsAdmin, allMarkerRouteLinks, authoredToasts, mapReady, markers, routes, selectedChapter, selectedSeason, storyFlags]);
-
-  useEffect(() => {
-    if (!mapReady || actualIsAdmin) {
-      return;
-    }
-
-    const completedChapter = mapChapters.find((chapter) => {
-      const flagKey = chapter.completion_story_flag_key?.trim();
-      if (!flagKey) {
-        return false;
-      }
-      const toastKey = `${chapter.season_number}:${chapter.chapter_number}:${flagKey}`;
-      const seenFlagKey = `toast_seen_chapter_transition_${chapter.season_number}_${chapter.chapter_number}_${flagKey}`;
-      return !chapterTransitionShownRef.current.has(toastKey) && storyFlags.get(seenFlagKey) !== true && storyFlags.get(flagKey) === (chapter.completion_story_flag_value ?? true);
-    });
-
-    if (!completedChapter) {
-      return;
-    }
-
-    const flagKey = completedChapter.completion_story_flag_key?.trim() ?? "";
-    chapterTransitionShownRef.current.add(`${completedChapter.season_number}:${completedChapter.chapter_number}:${flagKey}`);
-    const seenFlagKey = `toast_seen_chapter_transition_${completedChapter.season_number}_${completedChapter.chapter_number}_${flagKey}`;
-    void setPlayerStoryFlag(character.id, seenFlagKey, true)
-      .then(() => {
-        setStoryFlags((current) => {
-          const next = new Map(current);
-          next.set(seenFlagKey, true);
-          return next;
-        });
-      })
-      .catch((error) => console.warn("[map] unable to save chapter transition seen flag", error));
-    showAuthoredToast("completing_chapter", {
-      title: completedChapter.transition_title || `${completedChapter.name} Complete`,
-      message: completedChapter.transition_body || "This chapter is complete. Look for the next story marker when the next chapter is available.",
-      actionLabel: "OK",
-    }, {
-      triggerKey: `season_${completedChapter.season_number}_chapter_${completedChapter.chapter_number}`,
-      seasonNumber: completedChapter.season_number,
-      chapterNumber: completedChapter.chapter_number,
-    });
-  }, [actualIsAdmin, authoredToasts, character.id, mapChapters, mapReady, selectedChapter, selectedSeason, storyFlags]);
 
   async function loadEnemies() {
     try {
@@ -5850,15 +5807,6 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           try {
             await savePlayerActiveChapter(unlockedChapter.season_number, unlockedChapter.chapter_number);
             applyActiveChapter(unlockedChapter.season_number, unlockedChapter.chapter_number);
-            showAuthoredToast("completing_chapter", {
-              title: unlockedChapter.transition_title || `${unlockedChapter.name} Unlocked`,
-              message: unlockedChapter.transition_body || unlockedChapter.unlock_message || "The next chapter is now available.",
-              actionLabel: "OK",
-            }, {
-              triggerKey: flagKey,
-              seasonNumber: unlockedChapter.season_number,
-              chapterNumber: unlockedChapter.chapter_number,
-            });
             void playTriggeredStoryDeck("completing_chapter", {
               triggerKey: flagKey,
               seasonNumber: unlockedChapter.season_number,
