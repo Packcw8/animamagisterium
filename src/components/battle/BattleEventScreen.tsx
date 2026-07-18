@@ -103,6 +103,7 @@ export function BattleEventScreen({
   const [enemyImageFailed, setEnemyImageFailed] = useState(false);
   const [playerImageFailed, setPlayerImageFailed] = useState(false);
   const [targetDetailsOpen, setTargetDetailsOpen] = useState(false);
+  const [teamDetailsOpen, setTeamDetailsOpen] = useState(false);
   const enemyImageUri = resolveEnemyImageUri(activeEnemy?.image_url ?? event.enemy_image_url);
   const backgroundUri = resolveSceneImageUri(event.background_image_url);
   const enemyMaxHp = Number(activeEnemy?.health ?? event.enemy_hp) || 30;
@@ -350,6 +351,19 @@ export function BattleEventScreen({
             attackBonus={Number(targetDetailsEnemy?.attack_bonus ?? 0) || 0}
             abilities={targetDetailsEnemy?.abilities?.map((entry) => entry.ability?.name).filter((name): name is string => Boolean(name)) ?? []}
           />
+          <BattleTeamDetailsCard
+            open={teamDetailsOpen}
+            onToggle={() => setTeamDetailsOpen((value) => !value)}
+            characterName={character.name}
+            characterImageUri={character.portrait_url}
+            playerHp={playerHp}
+            maxHp={resources.maxHp}
+            stamina={stamina}
+            maxStamina={resources.maxStamina}
+            mana={magicka}
+            maxMana={resources.maxMagicka}
+            companions={companions}
+          />
           <BattleTargetLockStrip
             name={targetDetailsName}
             type={targetDetailsType}
@@ -567,6 +581,105 @@ function BattleTargetDetailsCard({
   );
 }
 
+function BattleTeamDetailsCard({
+  open,
+  onToggle,
+  characterName,
+  characterImageUri,
+  playerHp,
+  maxHp,
+  stamina,
+  maxStamina,
+  mana,
+  maxMana,
+  companions,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  characterName: string;
+  characterImageUri: string | null;
+  playerHp: number;
+  maxHp: number;
+  stamina: number;
+  maxStamina: number;
+  mana: number;
+  maxMana: number;
+  companions: BattleCompanionState[];
+}) {
+  const livingCompanions = companions.filter((companion) => companion.hp > 0);
+  const teamCount = 1 + livingCompanions.length;
+
+  return (
+    <View style={styles.teamDetailsPanel}>
+      <Pressable style={styles.targetDetailsHeader} onPress={onToggle}>
+        <View style={styles.targetDetailsHeaderText}>
+          <Text style={styles.teamDetailsEyebrow}>Your Side</Text>
+          <Text style={styles.targetDetailsName} numberOfLines={1}>{teamCount === 1 ? characterName : `${teamCount} Allies Ready`}</Text>
+        </View>
+        <View style={styles.targetDetailsToggle}>
+          <Text style={styles.targetDetailsToggleText}>{open ? "Hide" : "View"}</Text>
+        </View>
+      </Pressable>
+      {open ? (
+        <View style={styles.teamDetailsBody}>
+          <TeamMemberRow
+            name={characterName}
+            role="Player"
+            imageUri={characterImageUri}
+            hp={playerHp}
+            maxHp={maxHp}
+            stamina={stamina}
+            maxStamina={maxStamina}
+            mana={mana}
+            maxMana={maxMana}
+          />
+          {livingCompanions.length > 0 ? livingCompanions.map((companion) => (
+            <TeamMemberRow
+              key={`team-${companion.key}`}
+              name={companion.ally.name || companion.combatant.label || "Companion"}
+              role={companion.summoned ? "Summoned Ally" : "Companion"}
+              imageUri={resolveEnemyImageUri(companion.ally.image_url)}
+              hp={companion.hp}
+              maxHp={Number(companion.ally.health ?? 30) || 30}
+              stamina={companion.stamina}
+              maxStamina={Number(companion.ally.stamina ?? 0) || 0}
+              mana={companion.magika}
+              maxMana={Number(companion.ally.magika ?? 0) || 0}
+            />
+          )) : (
+            <Text style={styles.teamEmptyText}>No companions are fighting beside you.</Text>
+          )}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function TeamMemberRow({ name, role, imageUri, hp, maxHp, stamina, maxStamina, mana, maxMana }: { name: string; role: string; imageUri: string | null; hp: number; maxHp: number; stamina: number; maxStamina: number; mana: number; maxMana: number }) {
+  return (
+    <View style={styles.teamMemberRow}>
+      <View style={styles.teamPortraitWrap}>
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={styles.teamPortrait} resizeMode="cover" />
+        ) : (
+          <Text style={styles.teamFallback}>{name.slice(0, 2).toUpperCase()}</Text>
+        )}
+      </View>
+      <View style={styles.teamMemberContent}>
+        <View style={styles.teamMemberHeader}>
+          <Text style={styles.teamMemberName} numberOfLines={1}>{name}</Text>
+          <Text style={styles.teamMemberRole} numberOfLines={1}>{role}</Text>
+        </View>
+        <View style={styles.teamMeterGrid}>
+          <CompactTargetMeter label="HP" value={hp} max={maxHp} color={colors.red} />
+          {maxStamina > 0 ? <CompactTargetMeter label="Stamina" value={stamina} max={maxStamina} color={colors.gold} /> : null}
+          {maxMana > 0 ? <CompactTargetMeter label="Mana" value={mana} max={maxMana} color={colors.blue} /> : null}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function CompactTargetMeter({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
   return (
     <View style={styles.compactTargetMeter}>
@@ -614,6 +727,12 @@ function getAbilityTargetCue(ability: AbilityDefinition | null, selectedTargetNa
 
   if (type === "summon" || type === "conjure") {
     return { label: "Summons ally", tone: "summon" };
+  }
+  if (type === "heal" && mode === "all_allies") {
+    return { label: "Heals allies", tone: "ally" };
+  }
+  if (type === "heal") {
+    return { label: "Heals self", tone: "self" };
   }
   if (mode === "self") {
     return { label: "Targets self", tone: "self" };
@@ -791,6 +910,13 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.42)",
     overflow: "hidden",
   },
+  teamDetailsPanel: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(54,171,224,0.22)",
+    backgroundColor: "rgba(0,0,0,0.38)",
+    overflow: "hidden",
+  },
   targetDetailsHeader: {
     minHeight: 48,
     flexDirection: "row",
@@ -806,6 +932,12 @@ const styles = StyleSheet.create({
   },
   targetDetailsEyebrow: {
     color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  teamDetailsEyebrow: {
+    color: "#42d77d",
     fontSize: 10,
     fontWeight: "900",
     textTransform: "uppercase",
@@ -955,6 +1087,73 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     lineHeight: 16,
+  },
+  teamDetailsBody: {
+    gap: 8,
+    padding: 10,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.07)",
+  },
+  teamMemberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    padding: 8,
+    backgroundColor: "rgba(0,0,0,0.26)",
+  },
+  teamPortraitWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    borderWidth: 1,
+    borderColor: "rgba(66,215,125,0.48)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "rgba(3,18,12,0.72)",
+  },
+  teamPortrait: {
+    width: "100%",
+    height: "100%",
+  },
+  teamFallback: {
+    color: "#42d77d",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  teamMemberContent: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  teamMemberHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  teamMemberName: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  teamMemberRole: {
+    color: colors.muted,
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  teamMeterGrid: {
+    gap: 5,
+  },
+  teamEmptyText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    lineHeight: 17,
   },
   targetLockStrip: {
     minHeight: 44,

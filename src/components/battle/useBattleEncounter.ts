@@ -763,6 +763,16 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       if (healthRestore > 0) {
         pushCombatIndicator("player", `+${healthRestore}`, "#42d77d", null, abilityIndicatorIcon);
         nextLog.push(`${ability.name} restores ${healthRestore} Health.`);
+        if (targetMode === "all_allies") {
+          battleCompanions.filter((companion) => companion.hp > 0).forEach((companion) => {
+            const maxHp = Number(companion.ally.health ?? 30) || 30;
+            updateCompanion(companion.key, { hp: Math.min(maxHp, companion.hp + healthRestore) });
+            pushCombatIndicator("companion", `+${healthRestore}`, "#42d77d", companion.key, abilityIndicatorIcon);
+          });
+          if (battleCompanions.some((companion) => companion.hp > 0)) {
+            nextLog.push(`${ability.name} also restores nearby allies.`);
+          }
+        }
       }
       if (staminaRestore > 0) {
         pushCombatIndicator("player", `+${staminaRestore} Stamina`, "#3b82f6", null, abilityIndicatorIcon);
