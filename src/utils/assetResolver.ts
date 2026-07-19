@@ -14,19 +14,47 @@ const bundledAssets: AssetRegistry = {
   "assets/pwa-icon-512.png": require("../../assets/pwa-icon-512.png"),
   "assets/splash-icon.png": require("../../assets/splash-icon.png"),
   "assets/TheForgottenMarches.png": require("../../assets/TheForgottenMarches.png"),
+  "assets/Reusable/Icons/AlchemyIcon.jpg": require("../../assets/Reusable/Icons/AlchemyIcon.jpg"),
+  "assets/Reusable/Icons/BankIcon.jpg": require("../../assets/Reusable/Icons/BankIcon.jpg"),
+  "assets/Reusable/Icons/BuorbonIcon.jpg": require("../../assets/Reusable/Icons/BuorbonIcon.jpg"),
+  "assets/Reusable/Icons/ExitIcon.jpg": require("../../assets/Reusable/Icons/ExitIcon.jpg"),
+  "assets/Reusable/Icons/Jeweryicon.jpg": require("../../assets/Reusable/Icons/Jeweryicon.jpg"),
+  "assets/Reusable/Icons/MarketIcon.jpg": require("../../assets/Reusable/Icons/MarketIcon.jpg"),
+  "assets/Reusable/Icons/RestIcon.jpg": require("../../assets/Reusable/Icons/RestIcon.jpg"),
+  "assets/Reusable/Icons/StabelIcon.jpg": require("../../assets/Reusable/Icons/StabelIcon.jpg"),
+  "assets/Reusable/Icons/StoryIcon.jpg": require("../../assets/Reusable/Icons/StoryIcon.jpg"),
+  "assets/Reusable/Icons/TravelHubIcon.jpg": require("../../assets/Reusable/Icons/TravelHubIcon.jpg"),
+  "assets/Reusable/Icons/TrophyHuntIcon.jpg": require("../../assets/Reusable/Icons/TrophyHuntIcon.jpg"),
+  "assets/Reusable/Icons/WeaponsIcon.jpg": require("../../assets/Reusable/Icons/WeaponsIcon.jpg"),
+  "assets/Reusable/Icons/WearsIcon.jpg": require("../../assets/Reusable/Icons/WearsIcon.jpg"),
+  "assets/Reusable/Icons/gpt-image-2_A_detailed_fantasy_weapons_store_background_for_a_dark_fantasy_RPG_shown_as_an_i-0.jpg": require("../../assets/Reusable/Icons/gpt-image-2_A_detailed_fantasy_weapons_store_background_for_a_dark_fantasy_RPG_shown_as_an_i-0.jpg"),
+  "assets/Season1/Chapter1/MiniMaps/RavensRest.jpg": require("../../assets/Season1/Chapter1/MiniMaps/RavensRest.jpg"),
+  "assets/Season1/Chapter1/MiniMaps/ravensrestinn.jpg": require("../../assets/Season1/Chapter1/MiniMaps/ravensrestinn.jpg"),
+  "assets/Season1/Chapter2/MiniMaps/GoblinCamp (1).jpg": require("../../assets/Season1/Chapter2/MiniMaps/GoblinCamp (1).jpg"),
+  "assets/Season1/Chapter2/MiniMaps/HearhguardCastleDistrict.jpg": require("../../assets/Season1/Chapter2/MiniMaps/HearhguardCastleDistrict.jpg"),
+  "assets/Season1/Chapter2/MiniMaps/HearthguardArenaDistrict.jpg": require("../../assets/Season1/Chapter2/MiniMaps/HearthguardArenaDistrict.jpg"),
+  "assets/Season1/Chapter2/MiniMaps/HearthguardMarketDistrict.jpg": require("../../assets/Season1/Chapter2/MiniMaps/HearthguardMarketDistrict.jpg"),
+  "assets/Season1/Chapter2/MiniMaps/HearthguardNobileDistrict.jpg": require("../../assets/Season1/Chapter2/MiniMaps/HearthguardNobileDistrict.jpg"),
+  "assets/Season1/Chapter2/MiniMaps/Hearthguardcentralplaza.jpg": require("../../assets/Season1/Chapter2/MiniMaps/Hearthguardcentralplaza.jpg"),
+  "assets/Season1/Chapter2/MiniMaps/MinePathWithDoor (1).jpg": require("../../assets/Season1/Chapter2/MiniMaps/MinePathWithDoor (1).jpg"),
+  "assets/Season1/Chapter2/MiniMaps/MinePathWithExittooutsideDoor (1).jpg": require("../../assets/Season1/Chapter2/MiniMaps/MinePathWithExittooutsideDoor (1).jpg"),
+  "assets/Season1/Chapter2/MiniMaps/Minepath1 (1).jpg": require("../../assets/Season1/Chapter2/MiniMaps/Minepath1 (1).jpg"),
+  "assets/Season1/Chapter2/MiniMaps/ResearchFacilityWpower (1).jpg": require("../../assets/Season1/Chapter2/MiniMaps/ResearchFacilityWpower (1).jpg"),
+  "assets/Season1/Chapter2/MiniMaps/ResearchfacilityNOpower (1).jpg": require("../../assets/Season1/Chapter2/MiniMaps/ResearchfacilityNOpower (1).jpg"),
+  "assets/Season1/Chapter2/MiniMaps/TheMines (1).jpg": require("../../assets/Season1/Chapter2/MiniMaps/TheMines (1).jpg"),
 };
 
 const kindBasePaths: Record<AssetKind, string[]> = {
-  ability: ["assets/Season1/Chapter1/Abilities", "assets/Reusable/Icons/Misc"],
-  deck: ["assets/Season1/Chapter1/DeckCards"],
-  enemy: ["assets/Season1/Chapter1/Enemies"],
-  icon: ["assets/Reusable/Icons", "assets/Reusable/Icons/Misc"],
-  item: ["assets/Season1/Chapter1/Items"],
-  map: ["assets", "assets/Season1/Chapter1/MiniMaps"],
-  minimap: ["assets/Season1/Chapter1/MiniMaps"],
-  mount: ["assets/Season1/Chapter1/Mounts"],
-  npc: ["assets/Season1/Chapter1/NPCs"],
-  scene: ["assets/Season1/Chapter1/Scenes"],
+  ability: getSeasonChapterBasePaths("Abilities").concat("assets/Reusable/Icons/Misc"),
+  deck: getSeasonChapterBasePaths("DeckCards"),
+  enemy: getSeasonChapterBasePaths("Enemies"),
+  icon: ["assets/Reusable/Icons", "assets/Reusable/Icons/Misc", "assets/Reusable/Icons/UI", "assets/Reusable/Icons/Markers", "assets/Reusable/Icons/Shops", "assets/Reusable/Icons/Travel", "assets/Reusable/Icons/Rest", "assets/Reusable/Icons/Story"],
+  item: getSeasonChapterBasePaths("Items"),
+  map: ["assets", ...getSeasonChapterBasePaths("MiniMaps")],
+  minimap: getSeasonChapterBasePaths("MiniMaps"),
+  mount: getSeasonChapterBasePaths("Mounts"),
+  npc: getSeasonChapterBasePaths("NPCs"),
+  scene: getSeasonChapterBasePaths("Scenes"),
   misc: ["assets"],
 };
 
@@ -105,4 +133,8 @@ function applyLegacyAliases(path: string) {
 
 function normalizeAssetKey(path: string) {
   return path.replaceAll("\\", "/").replace(/^\/+/, "").replace(/^\.\//, "");
+}
+
+function getSeasonChapterBasePaths(folder: string) {
+  return Array.from({ length: 8 }, (_value, index) => `assets/Season1/Chapter${index + 1}/${folder}`);
 }
