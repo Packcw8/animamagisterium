@@ -129,6 +129,27 @@ export function MarkerAccessRulesPanel({
         </View>
       ) : null}
 
+      {markerAccessRule === "story_flag_unset" ? (
+        <View style={styles.ruleBlock}>
+          <Text style={styles.subTitle}>2. Only Before Story Flag Exists</Text>
+          <Text style={styles.copy}>Use this for one-time entrances, temporary NPCs, or early story options. The marker appears only while the selected flag has never been set for that player.</Text>
+          <MarkerStoryFlagVisibilityEditor
+            storyFlagKeys={storyFlagKeys}
+            visibleStoryFlagKey={visibleStoryFlagKey}
+            visibleStoryFlagValue={visibleStoryFlagValue}
+            title="Visible While Flag Is Missing"
+            description="If the player has no row for this flag, the marker appears. Once dialogue or an event sets the flag to true or false, the marker hides."
+            placeholder="Hidden after this flag is created, example used_elder_tombs_exit"
+            clearLabel="Clear Missing Flag Gate"
+            emptyText="Choose a story flag key. Without a key, this marker will use normal visibility."
+            hideValueToggle
+            onChangeVisibleStoryFlagKey={onChangeVisibleStoryFlagKey}
+            onToggleVisibleStoryFlagValue={onToggleVisibleStoryFlagValue}
+            onClear={onClearVisibleStoryFlag}
+          />
+        </View>
+      ) : null}
+
       {markerAccessRule === "puzzle_unlock" ? (
         <View style={styles.ruleBlock}>
           <Text style={styles.subTitle}>2. Puzzle Unlock</Text>
@@ -176,7 +197,7 @@ export function MarkerAccessRulesPanel({
         </View>
       ) : null}
 
-      {markerAccessRule !== "story_flag" ? (
+      {markerAccessRule !== "story_flag" && markerAccessRule !== "story_flag_unset" ? (
         <View style={styles.ruleBlock}>
           <Text style={styles.subTitle}>Optional Story Flag</Text>
           <Text style={styles.copy}>Leave blank for the selected unlock type. Use only if you need an extra story gate.</Text>
@@ -264,6 +285,7 @@ export function MarkerAccessRulesPanel({
 const accessRuleOptions: Array<{ value: MapMarker["access_rule"]; label: string; description: string }> = [
   { value: "always", label: "Always", description: "Visible and usable by proximity." },
   { value: "story_flag", label: "Story Flag", description: "Hidden until dialogue/story sets a flag." },
+  { value: "story_flag_unset", label: "Flag Is Missing", description: "Visible only until a story flag exists." },
   { value: "puzzle_unlock", label: "Puzzle Unlock", description: "Hidden until a puzzle reveals it." },
   { value: "item_required", label: "Item Required", description: "Visible, but needs an item to open." },
   { value: "admin_only", label: "Admin Only", description: "Hidden from players." },

@@ -1039,7 +1039,7 @@ export type Tables = {
     marker_size: number;
     lock_type: "public" | "story_locked" | "quest_locked";
     lock_message: string | null;
-    access_rule: "always" | "story_flag" | "puzzle_unlock" | "item_required" | "admin_only";
+    access_rule: "always" | "story_flag" | "story_flag_unset" | "puzzle_unlock" | "item_required" | "admin_only";
     required_item_id: string | null;
     required_item_quantity: number;
     access_hint: string | null;

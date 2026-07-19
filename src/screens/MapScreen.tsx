@@ -1231,6 +1231,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return true;
     }
 
+    if (marker.access_rule === "story_flag_unset") {
+      return !storyFlags.has(flagKey);
+    }
+
     const expectedValue = marker.visible_story_flag_value ?? true;
     return storyFlags.get(flagKey) === expectedValue;
   }, [storyFlags]);

@@ -14,6 +14,7 @@ type MarkerStoryFlagVisibilityEditorProps = {
   valueLabel?: string;
   clearLabel?: string;
   emptyText?: string;
+  hideValueToggle?: boolean;
   onChangeVisibleStoryFlagKey: (value: string) => void;
   onToggleVisibleStoryFlagValue: () => void;
   onClear: () => void;
@@ -29,6 +30,7 @@ export function MarkerStoryFlagVisibilityEditor({
   valueLabel = "Required Flag Value",
   clearLabel = "Clear Story Flag Gate",
   emptyText = "No story flag gate. This marker uses normal visibility, proximity, and lock rules.",
+  hideValueToggle = false,
   onChangeVisibleStoryFlagKey,
   onToggleVisibleStoryFlagValue,
   onClear,
@@ -47,9 +49,11 @@ export function MarkerStoryFlagVisibilityEditor({
       />
       {visibleStoryFlagKey.trim() ? (
         <>
-          <Pressable style={[styles.secondaryButton, visibleStoryFlagValue && styles.typeSelected]} onPress={onToggleVisibleStoryFlagValue}>
-            <Text style={styles.secondaryText}>{valueLabel}: {visibleStoryFlagValue ? "True" : "False"}</Text>
-          </Pressable>
+          {hideValueToggle ? null : (
+            <Pressable style={[styles.secondaryButton, visibleStoryFlagValue && styles.typeSelected]} onPress={onToggleVisibleStoryFlagValue}>
+              <Text style={styles.secondaryText}>{valueLabel}: {visibleStoryFlagValue ? "True" : "False"}</Text>
+            </Pressable>
+          )}
           <Pressable style={styles.secondaryButton} onPress={onClear}>
             <Text style={styles.secondaryText}>{clearLabel}</Text>
           </Pressable>
