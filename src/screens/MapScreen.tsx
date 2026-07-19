@@ -7,6 +7,7 @@ import { AdminImageUploadButton } from "../components/admin/AdminImageUploadButt
 import { AdminCollapsibleSection } from "../components/admin/AdminCollapsibleSection";
 import { ActiveBattleView } from "../components/battle/ActiveBattleView";
 import { ArenaBattleBoardEditor } from "../components/battle/ArenaBattleBoardEditor";
+import { BattleBoardTemplatePanel } from "../components/battle/BattleBoardTemplatePanel";
 import { BattlefieldLayoutEditor } from "../components/battle/BattlefieldLayoutEditor";
 import { useBattleEncounter } from "../components/battle/useBattleEncounter";
 import { BrandLogo } from "../components/BrandLogo";
@@ -89,6 +90,7 @@ import { farmingActivities, getFarmingLootPools, rollFarmingLoot, type FarmingPo
 import { recoverPlayerMapPosition } from "../services/mapRecoveryService";
 import { claimOpenArena, completeArenaChallenge, getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
 import { buildArenaBattleLayout, deleteArenaBattleSlot, getArenaBattleSlots, saveArenaBattleSlot, type ArenaBattleSlot } from "../services/arenaBattleBoardService";
+import { applyBattleBoardTemplateToEvent, applyBattleBoardTemplateToMarker, getBattleBoardTemplates, type BattleBoardTemplateWithSlots } from "../services/battleBoardTemplateService";
 import { createCurrentPlayerBattleSnapshot } from "../services/battleSnapshotService";
 import { createArenaChallengeEvent, createArenaSnapshotOpponent } from "../services/arenaBattleService";
 import { equipPartyCompanion, getPartyCompanionBuildState, refreshOwnPartyAllySnapshot, unequipPartyCompanion, type EquippedPartyCompanion, type PartyCompanionBuildState } from "../services/partyCompanionService";
@@ -483,6 +485,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [selectedArena, setSelectedArena] = useState<ArenaWithLeaders | null>(null);
   const [activeArenaChallenge, setActiveArenaChallenge] = useState<{ arenaId: string; markerId: string; defenderSnapshotId: string | null } | null>(null);
   const [arenaBattleSlots, setArenaBattleSlots] = useState<ArenaBattleSlot[]>([]);
+  const [battleBoardTemplates, setBattleBoardTemplates] = useState<BattleBoardTemplateWithSlots[]>([]);
+  const [selectedBattleBoardTemplateId, setSelectedBattleBoardTemplateId] = useState<string | null>(null);
   const [activeMiniMap, setActiveMiniMap] = useState<MiniMap | null>(null);
   const [clickedPercent, setClickedPercent] = useState<{ x: number; y: number } | null>(null);
   const [adminSection, setAdminSection] = useState<(typeof adminSections)[number]>("World Markers");
@@ -1834,6 +1838,14 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
   }
 
+  async function loadBattleBoardTemplates() {
+    try {
+      setBattleBoardTemplates(await getBattleBoardTemplates());
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to load reusable battle boards. Confirm the Supabase migration has run."));
+    }
+  }
+
   function resolveMovementState(speedMph: number, sampleTime: number) {
     const current = movementStateRef.current;
     const desired: PlayerMovementState = speedMph > movementSpeedThresholdMph ? "MOVING" : "IDLE";
@@ -2203,7 +2215,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   async function loadMap() {
     setMapReady(false);
     void loadFarmingPoolsForAdmin();
-    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks, loadedToasts, loadedStoryDecks, loadedTravelModes, loadedMarkerChapterVisibility] = await Promise.all([
+    const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks, loadedToasts, loadedStoryDecks, loadedTravelModes, loadedMarkerChapterVisibility, loadedBattleBoardTemplates] = await Promise.all([
       getMapRoutes(),
       getMapMarkers(),
       getMiniMaps(),
@@ -2219,6 +2231,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       getStoryDecks(),
       getTravelModes(),
       getMarkerChapterVisibility(),
+      getBattleBoardTemplates().catch((error) => {
+        console.warn("[map] reusable battle boards unavailable", error);
+        return [] as BattleBoardTemplateWithSlots[];
+      }),
     ]);
     const nextRoutes = [...loadedRoutes].sort(compareRoutes);
     const [progressRows, playerMapState, markerUnlocks] = await Promise.all([
@@ -2275,6 +2291,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setAuthoredToasts(loadedToasts);
     setStoryDecks(loadedStoryDecks);
     setMarkerChapterVisibilityRows(loadedMarkerChapterVisibility);
+    setBattleBoardTemplates(loadedBattleBoardTemplates);
     const currentRoutePreservesChapter = shouldRoutePreservePlayerChapter(currentRoute);
     const playerActiveSeason = Math.max(1, Math.round(Number(currentRoutePreservesChapter ? playerMapState?.active_season_number ?? currentRoute?.season_number ?? 1 : currentRoute?.season_number ?? playerMapState?.active_season_number ?? 1) || 1));
     const playerActiveChapter = Math.max(1, Math.round(Number(currentRoutePreservesChapter ? playerMapState?.active_chapter_number ?? currentRoute?.chapter_number ?? 1 : currentRoute?.chapter_number ?? playerMapState?.active_chapter_number ?? 1) || 1));
@@ -6771,6 +6788,38 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
   }
 
+  async function applyTemplateToEditingEvent(template: BattleBoardTemplateWithSlots) {
+    if (!editingEvent || editingEvent.event_type !== "battle") {
+      setAdminMessage("Save or select a Battle Event before applying a reusable board.");
+      return;
+    }
+
+    try {
+      const saved = await applyBattleBoardTemplateToEvent(template, editingEvent.id, true);
+      setBattlefieldCombatants(saved);
+      setEventBackgroundImage((current) => current || template.background_image_url || "");
+      setAdminMessage(`Applied ${template.name} to ${editingEvent.title}. You can now swap scene actors.`);
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to apply reusable battle board to event."));
+    }
+  }
+
+  async function applyTemplateToSelectedMarker(template: BattleBoardTemplateWithSlots) {
+    if (!selectedMarker || !isBattleMarkerType(selectedMarker.type)) {
+      setAdminMessage("Select a Battle marker before applying a reusable board.");
+      return;
+    }
+
+    try {
+      const saved = await applyBattleBoardTemplateToMarker(template, selectedMarker.id, true);
+      setBattlefieldCombatants(saved);
+      setMarkerSceneBackground((current) => current || template.background_image_url || "");
+      setAdminMessage(`Applied ${template.name} to ${selectedMarker.title}. You can now swap scene actors.`);
+    } catch (error) {
+      setAdminMessage(getErrorMessage(error, "Unable to apply reusable battle board to marker."));
+    }
+  }
+
   async function removeMarkerBattlefieldCombatant(combatantId: string) {
     try {
       await deleteMarkerBattleCombatant(combatantId);
@@ -10298,6 +10347,23 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                     }}
                     battleOnly
                   />
+                  <BattleBoardTemplatePanel
+                    templates={battleBoardTemplates}
+                    selectedTemplateId={selectedBattleBoardTemplateId}
+                    seasonNumber={selectedSeason}
+                    chapterNumber={selectedChapter}
+                    enemies={enemyDefinitions}
+                    npcs={npcDefinitions}
+                    onTemplateSaved={(template) => setBattleBoardTemplates((current) => {
+                      const exists = current.some((item) => item.id === template.id);
+                      return (exists ? current.map((item) => item.id === template.id ? template : item) : [...current, template]).sort((a, b) => a.name.localeCompare(b.name));
+                    })}
+                    onTemplateSelected={setSelectedBattleBoardTemplateId}
+                    onTemplateSlotsChanged={loadBattleBoardTemplates}
+                    onApplyTemplate={applyTemplateToSelectedMarker}
+                    onMessage={setAdminMessage}
+                    applyLabel="Apply To This Marker Battle"
+                  />
                   <BattlefieldLayoutEditor
                     title="Marker Battle Board"
                     emptyText="Select or create this Battle marker first, then place enemies directly on its battleground. Use Enemy actors for trophy animals and leaderboards."
@@ -10665,6 +10731,23 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 <TextInput value={battleIntro} onChangeText={setBattleIntro} placeholder="Battle intro text" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={victoryText} onChangeText={setVictoryText} placeholder="Victory text" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={defeatText} onChangeText={setDefeatText} placeholder="Defeat text" placeholderTextColor={colors.muted} style={styles.input} />
+                <BattleBoardTemplatePanel
+                  templates={battleBoardTemplates}
+                  selectedTemplateId={selectedBattleBoardTemplateId}
+                  seasonNumber={selectedSeason}
+                  chapterNumber={selectedChapter}
+                  enemies={enemyDefinitions}
+                  npcs={npcDefinitions}
+                  onTemplateSaved={(template) => setBattleBoardTemplates((current) => {
+                    const exists = current.some((item) => item.id === template.id);
+                    return (exists ? current.map((item) => item.id === template.id ? template : item) : [...current, template]).sort((a, b) => a.name.localeCompare(b.name));
+                  })}
+                  onTemplateSelected={setSelectedBattleBoardTemplateId}
+                  onTemplateSlotsChanged={loadBattleBoardTemplates}
+                  onApplyTemplate={applyTemplateToEditingEvent}
+                  onMessage={setAdminMessage}
+                  applyLabel="Apply To This Event Battle"
+                />
                 <BattlefieldLayoutEditor
                   eventId={editingEvent?.event_type === "battle" ? editingEvent.id : null}
                   backgroundImageUrl={eventBackgroundImage}

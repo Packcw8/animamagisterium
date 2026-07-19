@@ -397,6 +397,36 @@ export type Tables = {
     created_at: string;
     updated_at: string;
   };
+  battle_board_templates: {
+    id: string;
+    name: string;
+    description: string | null;
+    background_image_url: string | null;
+    content_scope: "chapter" | "universal";
+    season_number: number;
+    chapter_number: number;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  battle_board_template_slots: {
+    id: string;
+    template_id: string;
+    side: "player" | "companion" | "enemy" | "player_summon" | "enemy_summon";
+    enemy_id: string | null;
+    npc_id: string | null;
+    label: string | null;
+    x_percent: number;
+    y_percent: number;
+    size_percent: number;
+    sort_order: number;
+    is_boss: boolean;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
   avatar_assets: {
     id: string;
     type: "base" | "face" | "hair" | "armor" | "weapon" | "cloak" | "background";
