@@ -4879,7 +4879,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
   }
 
-  function openMiniMap(miniMap: MiniMap, options?: { persistPlayerState?: boolean; spawnPosition?: { x: number; y: number }; stateSeasonNumber?: number; stateChapterNumber?: number }) {
+  async function openMiniMap(miniMap: MiniMap, options?: { persistPlayerState?: boolean; spawnPosition?: { x: number; y: number }; stateSeasonNumber?: number; stateChapterNumber?: number }) {
     const persistPlayerState = options?.persistPlayerState ?? !isAdmin;
     const nextFreeRoamPosition = options?.spawnPosition ?? getMiniMapSpawnPosition(miniMap.id);
     const stateSeasonNumber = Math.max(1, Math.round(Number(options?.stateSeasonNumber ?? selectedSeason) || 1));
@@ -4915,7 +4915,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     if (route.mini_map_id !== miniMap.id) {
       setSavedMiniMapPosition(nextFreeRoamPosition);
       if (persistPlayerState) {
-        void savePlayerMapState({
+        await savePlayerMapState({
           active_mini_map_id: miniMap.id,
           current_x_percent: nextFreeRoamPosition.x,
           current_y_percent: nextFreeRoamPosition.y,
@@ -5080,7 +5080,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         const spawnMarker = targetSpawnMarkerId
           ? markers.find((item) => item.id === targetSpawnMarkerId && item.mini_map_id === nextMiniMap.id && item.type === "Player Spawn")
           : null;
-        openMiniMap(nextMiniMap, {
+        await openMiniMap(nextMiniMap, {
           persistPlayerState: true,
           stateSeasonNumber: stateSeasonNumber ?? selectedSeason,
           stateChapterNumber: stateChapterNumber ?? selectedChapter,
@@ -5125,7 +5125,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return;
     }
 
-    openMiniMap(miniMap, {
+    await openMiniMap(miniMap, {
       persistPlayerState: true,
       stateSeasonNumber: marker.season_number,
       stateChapterNumber: marker.chapter_number,
@@ -10053,7 +10053,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               onCancelEdit={clearMiniMapEditForm}
               onOpen={(miniMap) => {
                 setSelectedMiniMapId(miniMap.id);
-                openMiniMap(miniMap);
+                void openMiniMap(miniMap);
               }}
               onDelete={(miniMapId) => void removeMiniMap(miniMapId)}
               onUploadMessage={setAdminMessage}
