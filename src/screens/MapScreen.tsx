@@ -254,6 +254,7 @@ const miniMapTypes = ["town", "forest", "dungeon", "area", "tutorial"] as const;
 const eventTypes = ["dialogue", "battle", "clue", "reward"] as const;
 const eventTriggerModes = ["fixed", "random"] as const;
 const routeKinds = ["story", "farming", "travel"] as const;
+const routeContentScopes = ["chapter", "universal"] as const;
 const eventRarities = ["common", "uncommon", "rare", "epic", "legendary"] as const;
 const lockTypes = ["public", "story_locked", "quest_locked"] as const;
 const rewardTimings = ["on_interact", "on_path_complete"] as const;
@@ -283,6 +284,10 @@ const routeKindLabels: Record<(typeof routeKinds)[number], string> = {
   story: "Story",
   farming: "Farming",
   travel: "Travel",
+};
+const routeContentScopeLabels: Record<(typeof routeContentScopes)[number], string> = {
+  chapter: "Chapter Specific",
+  universal: "Universal",
 };
 const eventRarityLabels: Record<(typeof eventRarities)[number], string> = {
   common: "Common",
@@ -633,6 +638,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [routeDanger, setRouteDanger] = useState("");
   const [routeKind, setRouteKind] = useState<(typeof routeKinds)[number]>("story");
   const [routeFarmingSummary, setRouteFarmingSummary] = useState("");
+  const [routeContentScope, setRouteContentScope] = useState<(typeof routeContentScopes)[number]>("chapter");
+  const [routePreservePlayerChapter, setRoutePreservePlayerChapter] = useState(false);
   const [routeDistance, setRouteDistance] = useState("");
   const [routeImage, setRouteImage] = useState("");
   const [routeJournalTitle, setRouteJournalTitle] = useState("");
@@ -1075,6 +1082,42 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setSelectedSeason(safeSeason);
     setSelectedChapter(safeChapter);
     onStoryChapterChanged?.(safeSeason, safeChapter);
+  }
+
+  function getCurrentPlayerChapterContext() {
+    return {
+      seasonNumber: Math.max(1, Math.round(Number(selectedSeason) || 1)),
+      chapterNumber: Math.max(1, Math.round(Number(selectedChapter) || 1)),
+    };
+  }
+
+  function shouldRoutePreservePlayerChapter(targetRoute: MapRoute | null | undefined) {
+    if (!targetRoute) {
+      return false;
+    }
+    return Boolean(targetRoute.preserve_player_chapter || targetRoute.content_scope === "universal" || targetRoute.route_kind === "farming" || targetRoute.route_kind === "travel");
+  }
+
+  function getRouteStateChapterPayload(targetRoute: MapRoute) {
+    if (shouldRoutePreservePlayerChapter(targetRoute)) {
+      const context = getCurrentPlayerChapterContext();
+      return {
+        active_season_number: context.seasonNumber,
+        active_chapter_number: context.chapterNumber,
+      };
+    }
+    return {
+      active_season_number: targetRoute.season_number,
+      active_chapter_number: targetRoute.chapter_number,
+    };
+  }
+
+  function setRouteKindDraft(nextKind: (typeof routeKinds)[number]) {
+    setRouteKind(nextKind);
+    if (nextKind === "farming" || nextKind === "travel") {
+      setRouteContentScope("universal");
+      setRoutePreservePlayerChapter(true);
+    }
   }
 
   function findChapterUnlockedByFlag(flagKey: string, flagValue: boolean, flagSource = storyFlags) {
@@ -1744,6 +1787,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         active_mini_map_id: activeRoute.mini_map_id,
         current_x_percent: nextMapPosition.x,
         current_y_percent: nextMapPosition.y,
+        ...getRouteStateChapterPayload(activeRoute),
       });
     }
     const mountNote = activeMountMultiplierRef.current > 1 ? ` Travel x${activeMountMultiplierRef.current.toFixed(2)} applied.` : "";
@@ -2100,8 +2144,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setAuthoredToasts(loadedToasts);
     setStoryDecks(loadedStoryDecks);
     setMarkerChapterVisibilityRows(loadedMarkerChapterVisibility);
-    const playerActiveSeason = Math.max(1, Math.round(Number(currentRoute?.season_number ?? playerMapState?.active_season_number ?? 1) || 1));
-    const playerActiveChapter = Math.max(1, Math.round(Number(currentRoute?.chapter_number ?? playerMapState?.active_chapter_number ?? 1) || 1));
+    const currentRoutePreservesChapter = shouldRoutePreservePlayerChapter(currentRoute);
+    const playerActiveSeason = Math.max(1, Math.round(Number(currentRoutePreservesChapter ? playerMapState?.active_season_number ?? currentRoute?.season_number ?? 1 : currentRoute?.season_number ?? playerMapState?.active_season_number ?? 1) || 1));
+    const playerActiveChapter = Math.max(1, Math.round(Number(currentRoutePreservesChapter ? playerMapState?.active_chapter_number ?? currentRoute?.chapter_number ?? 1 : currentRoute?.chapter_number ?? playerMapState?.active_chapter_number ?? 1) || 1));
     if (loadedRole !== "admin") {
       applyActiveChapter(playerActiveSeason, playerActiveChapter);
     }
@@ -2142,6 +2187,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setRouteDanger(firstRoute.danger_level);
       setRouteKind((firstRoute.route_kind ?? "story") as (typeof routeKinds)[number]);
       setRouteFarmingSummary(firstRoute.farming_summary ?? "");
+      setRouteContentScope((firstRoute.content_scope ?? "chapter") as (typeof routeContentScopes)[number]);
+      setRoutePreservePlayerChapter(Boolean(firstRoute.preserve_player_chapter));
       setRouteDistance(String(Math.round(firstRoute.distance_required_meters)));
       setRouteImage(firstRoute.image_url ?? "");
       setRouteJournalTitle(firstRoute.journal_title ?? "");
@@ -2331,6 +2378,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setRouteDanger(nextRoute.danger_level);
     setRouteKind((nextRoute.route_kind ?? "story") as (typeof routeKinds)[number]);
     setRouteFarmingSummary(nextRoute.farming_summary ?? "");
+    setRouteContentScope((nextRoute.content_scope ?? "chapter") as (typeof routeContentScopes)[number]);
+    setRoutePreservePlayerChapter(Boolean(nextRoute.preserve_player_chapter));
     setRouteDistance(String(Math.round(nextRoute.distance_required_meters)));
     setRouteImage(nextRoute.image_url ?? "");
     setRouteJournalTitle(nextRoute.journal_title ?? "");
@@ -2345,7 +2394,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setPathSegmentDraft([]);
     setRouteDirection("forward");
     setLastPosition(null);
-    if (!actualIsAdmin && !options?.skipActiveChapterSave) {
+    if (!actualIsAdmin && !options?.skipActiveChapterSave && !shouldRoutePreservePlayerChapter(nextRoute)) {
       applyActiveChapter(nextRoute.season_number, nextRoute.chapter_number);
       void savePlayerActiveChapter(nextRoute.season_number, nextRoute.chapter_number);
     }
@@ -3821,8 +3870,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           active_mini_map_id: targetMiniMap.id,
           current_x_percent: startPoint.x,
           current_y_percent: startPoint.y,
-          active_season_number: linkedRoute.season_number,
-          active_chapter_number: linkedRoute.chapter_number,
+          ...getRouteStateChapterPayload(linkedRoute),
         });
       } else {
         void clearPlayerMapState();
@@ -4166,8 +4214,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         active_mini_map_id: nextRoute.mini_map_id,
         current_x_percent: nextPoint.x,
         current_y_percent: nextPoint.y,
-        active_season_number: nextRoute.season_number,
-        active_chapter_number: nextRoute.chapter_number,
+        ...getRouteStateChapterPayload(nextRoute),
       });
     } else {
       setActiveMiniMap(null);
@@ -4467,6 +4514,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         active_mini_map_id: targetRoute.mini_map_id,
         current_x_percent: nextPoint.x,
         current_y_percent: nextPoint.y,
+        ...getRouteStateChapterPayload(targetRoute),
       });
     }
   }
@@ -4776,6 +4824,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         setRouteDanger(displayWorldRoute.danger_level);
         setRouteKind((displayWorldRoute.route_kind ?? "story") as (typeof routeKinds)[number]);
         setRouteFarmingSummary(displayWorldRoute.farming_summary ?? "");
+        setRouteContentScope((displayWorldRoute.content_scope ?? "chapter") as (typeof routeContentScopes)[number]);
+        setRoutePreservePlayerChapter(Boolean(displayWorldRoute.preserve_player_chapter));
         setRouteDistance(String(Math.round(displayWorldRoute.distance_required_meters)));
         setRouteImage(displayWorldRoute.image_url ?? "");
         setRouteJournalTitle(displayWorldRoute.journal_title ?? "");
@@ -5122,6 +5172,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return;
     }
 
+    const shouldPreserveChapter = routeKind === "farming" || routeKind === "travel" || routePreservePlayerChapter || routeContentScope === "universal";
+    const nextRouteContentScope = shouldPreserveChapter ? "universal" : routeContentScope;
+
     try {
       const updated = await updateMapRoute(route.id, {
         name: routeName.trim() || route.name,
@@ -5130,6 +5183,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         danger_level: routeDanger.trim() || route.danger_level,
         route_kind: routeKind,
         farming_summary: routeFarmingSummary.trim() || null,
+        content_scope: nextRouteContentScope,
+        preserve_player_chapter: shouldPreserveChapter,
         distance_required_meters: Number(routeDistance) || route.distance_required_meters,
         path_points: pathDraft,
         path_segments: normalizePathSegments(pathSegmentDraft, pathDraft.length),
@@ -5162,6 +5217,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return;
     }
 
+    const shouldPreserveChapter = routeKind === "farming" || routeKind === "travel" || routePreservePlayerChapter || routeContentScope === "universal";
+    const nextRouteContentScope = shouldPreserveChapter ? "universal" : routeContentScope;
+
     try {
       const created = await createMapRoute({
         name: routeName.trim() || "New Walking Path",
@@ -5170,6 +5228,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         danger_level: routeDanger.trim() || "Low",
         route_kind: routeKind,
         farming_summary: routeFarmingSummary.trim() || null,
+        content_scope: nextRouteContentScope,
+        preserve_player_chapter: shouldPreserveChapter,
         distance_required_meters: Number(routeDistance) || 1000,
         estimated_encounters: route.estimated_encounters,
         path_points: pathDraft,
@@ -5545,6 +5605,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         active_mini_map_id: targetRoute.mini_map_id,
         current_x_percent: currentPoint.x,
         current_y_percent: currentPoint.y,
+        ...getRouteStateChapterPayload(targetRoute),
       });
     }
   }
@@ -7238,6 +7299,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setRouteDanger("");
     setRouteKind("story");
     setRouteFarmingSummary("");
+    setRouteContentScope("chapter");
+    setRoutePreservePlayerChapter(false);
     setRouteDistance("");
     setRouteImage("");
     setRouteJournalTitle("");
@@ -9052,8 +9115,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 <TextInput value={routeOrder} onChangeText={setRouteOrder} placeholder="Route order" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={routeTerrain} onChangeText={setRouteTerrain} placeholder="Terrain" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={routeDanger} onChangeText={setRouteDanger} placeholder="Danger level" placeholderTextColor={colors.muted} style={styles.input} />
-                <ChoiceRow label="Path purpose" options={routeKinds} value={routeKind} labels={routeKindLabels} onSelect={(value) => setRouteKind(value as (typeof routeKinds)[number])} />
+                <ChoiceRow label="Path purpose" options={routeKinds} value={routeKind} labels={routeKindLabels} onSelect={setRouteKindDraft} />
                 {routeKind === "farming" ? <TextInput value={routeFarmingSummary} onChangeText={setRouteFarmingSummary} placeholder="Farming notes shown to players" placeholderTextColor={colors.muted} style={styles.input} /> : null}
+                <ChoiceRow label="Chapter behavior" options={routeContentScopes} value={routeContentScope} labels={routeContentScopeLabels} onSelect={setRouteContentScope} />
+                <Pressable style={[styles.secondaryButton, routePreservePlayerChapter && styles.typeSelected]} onPress={() => setRoutePreservePlayerChapter((value) => !value)}>
+                  <Text style={styles.secondaryText}>Preserve Player Chapter: {routePreservePlayerChapter ? "Yes" : "No"}</Text>
+                </Pressable>
+                <Text style={styles.debugLine}>Use Universal + Preserve for farming/travel paths so players keep their current chapter.</Text>
                 <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
                 <TextInput value={routeImage} onChangeText={setRouteImage} placeholder="Route image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
                 <AdminImageUploadButton folder="route-images" onUploaded={setRouteImage} onMessage={setAdminMessage} />
@@ -10107,8 +10175,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               <TextInput value={routeOrder} onChangeText={setRouteOrder} placeholder="Route order" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeTerrain} onChangeText={setRouteTerrain} placeholder="Terrain" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeDanger} onChangeText={setRouteDanger} placeholder="Danger level" placeholderTextColor={colors.muted} style={styles.input} />
-              <ChoiceRow label="Path purpose" options={routeKinds} value={routeKind} labels={routeKindLabels} onSelect={(value) => setRouteKind(value as (typeof routeKinds)[number])} />
+              <ChoiceRow label="Path purpose" options={routeKinds} value={routeKind} labels={routeKindLabels} onSelect={setRouteKindDraft} />
               {routeKind === "farming" ? <TextInput value={routeFarmingSummary} onChangeText={setRouteFarmingSummary} placeholder="Farming notes shown to players" placeholderTextColor={colors.muted} style={styles.input} /> : null}
+              <ChoiceRow label="Chapter behavior" options={routeContentScopes} value={routeContentScope} labels={routeContentScopeLabels} onSelect={setRouteContentScope} />
+              <Pressable style={[styles.secondaryButton, routePreservePlayerChapter && styles.typeSelected]} onPress={() => setRoutePreservePlayerChapter((value) => !value)}>
+                <Text style={styles.secondaryText}>Preserve Player Chapter: {routePreservePlayerChapter ? "Yes" : "No"}</Text>
+              </Pressable>
+              <Text style={styles.debugLine}>Use Universal + Preserve for farming/travel paths so players keep their current chapter.</Text>
               <TextInput value={routeDistance} onChangeText={setRouteDistance} placeholder="Required walking distance in meters" placeholderTextColor={colors.muted} style={styles.input} />
               <TextInput value={routeImage} onChangeText={setRouteImage} placeholder="Route image URL or asset path" placeholderTextColor={colors.muted} style={styles.input} />
               <AdminImageUploadButton folder="route-images" onUploaded={setRouteImage} onMessage={setAdminMessage} />

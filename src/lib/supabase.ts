@@ -390,6 +390,8 @@ export type Tables = {
     danger_level: string;
     route_kind?: "story" | "farming" | "travel";
     farming_summary?: string | null;
+    content_scope?: "chapter" | "universal";
+    preserve_player_chapter?: boolean;
     distance_required_meters: number;
     estimated_encounters: number;
     path_points: Array<{ x: number; y: number }>;
