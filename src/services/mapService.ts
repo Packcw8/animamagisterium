@@ -1461,7 +1461,7 @@ export async function deleteMarkerMarketItem(marketItemId: string) {
   }
 }
 
-export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number"> & Partial<Pick<MapRoute, "mini_map_id" | "image_url" | "path_segments" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id" | "travel_mode_id" | "route_kind" | "farming_summary" | "content_scope" | "preserve_player_chapter">>) {
+export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number"> & Partial<Pick<MapRoute, "mini_map_id" | "image_url" | "path_segments" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id" | "travel_mode_id" | "route_kind" | "farming_summary" | "content_scope" | "preserve_player_chapter" | "required_item_id" | "required_item_quantity" | "required_utility_activity" | "farming_loot_pool_id">>) {
   const { data, error } = await supabase
     .from("map_routes")
     .insert({
@@ -1478,7 +1478,7 @@ export async function createMapRoute(input: Pick<MapRoute, "name" | "sort_order"
   return data as MapRoute;
 }
 
-export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "path_segments" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number" | "mini_map_id" | "image_url" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id" | "travel_mode_id" | "route_kind" | "farming_summary" | "content_scope" | "preserve_player_chapter">>) {
+export async function updateMapRoute(routeId: string, values: Partial<Pick<MapRoute, "name" | "sort_order" | "terrain" | "danger_level" | "distance_required_meters" | "estimated_encounters" | "path_points" | "path_segments" | "is_active" | "lock_type" | "lock_message" | "season_number" | "chapter_number" | "mini_map_id" | "image_url" | "journal_title" | "journal_body" | "journal_image_url" | "journal_sort_order" | "story_deck_id" | "travel_mode_id" | "route_kind" | "farming_summary" | "content_scope" | "preserve_player_chapter" | "required_item_id" | "required_item_quantity" | "required_utility_activity" | "farming_loot_pool_id">>) {
   const { data, error } = await supabase
     .from("map_routes")
     .update({

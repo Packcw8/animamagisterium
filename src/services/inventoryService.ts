@@ -29,7 +29,8 @@ export type CarrySettings = {
   carryWeightPerStrengthLevel: number;
 };
 
-export const itemTypes: ItemDefinition["type"][] = ["weapon", "armor", "wearable", "potion", "revive potion", "consumable", "food", "scroll", "special", "material", "misc"];
+export const itemTypes: ItemDefinition["type"][] = ["weapon", "armor", "wearable", "potion", "revive potion", "consumable", "food", "scroll", "special", "material", "tool", "utility", "bait", "misc"];
+export const utilityActivities: NonNullable<ItemDefinition["utility_activity"]>[] = ["general", "fishing", "mining", "hunting", "foraging"];
 export const weaponEquipmentSlots: WeaponEquipmentSlot[] = ["main_hand", "off_hand", "weapon"];
 export const armorPieceSlots: ArmorPieceSlot[] = ["helmet", "chest", "gloves", "legs", "boots"];
 export const equipmentSlots: EquipmentSlot[] = ["main_hand", "off_hand", ...armorPieceSlots, "armor", "weapon", "necklace", "ring", "charm", "relic"];
@@ -99,6 +100,12 @@ export function blankItemDefinition(): Partial<ItemDefinition> {
     boost_target: null,
     boost_amount: 0,
     passive_mode: null,
+    utility_activity: null,
+    rarity_bonus_percent: 0,
+    extra_roll_chance_percent: 0,
+    loot_pool_key: null,
+    break_chance_percent: 0,
+    utility_uses: null,
     linked_ability_id: null,
     teaches_ability_id: null,
     season_number: 1,
@@ -835,6 +842,12 @@ function normalizeItemInput(input: Partial<ItemDefinition>, userId: string | nul
     boost_target: input.boost_target ?? null,
     boost_amount: Number(input.boost_amount) || 0,
     passive_mode: input.passive_mode ?? null,
+    utility_activity: input.utility_activity ?? null,
+    rarity_bonus_percent: Math.max(0, Number(input.rarity_bonus_percent) || 0),
+    extra_roll_chance_percent: Math.max(0, Number(input.extra_roll_chance_percent) || 0),
+    loot_pool_key: input.loot_pool_key?.trim() || null,
+    break_chance_percent: Math.max(0, Number(input.break_chance_percent) || 0),
+    utility_uses: input.utility_uses === null || input.utility_uses === undefined ? null : Math.max(0, Number(input.utility_uses) || 0),
     linked_ability_id: input.linked_ability_id ?? null,
     teaches_ability_id: input.teaches_ability_id ?? null,
     season_number: Number(input.season_number) || 1,

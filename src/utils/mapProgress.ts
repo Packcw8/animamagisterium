@@ -1,4 +1,5 @@
 import type { MapChapter, MapRoute, MapSeason, MarkerRouteLink, StoryDialogueChoice, StoryDialogueNode } from "../services/mapService";
+import type { InventoryItem, ItemDefinition } from "../services/inventoryService";
 
 export type ChapterAccessType = NonNullable<MapChapter["access_type"]>;
 
@@ -92,12 +93,41 @@ export function isRouteLocked(route: MapRoute) {
   return (route.lock_type ?? "public") !== "public";
 }
 
+export function getRouteRequiredItemStatus(route: MapRoute, inventoryItems: InventoryItem[] = [], itemDefinitions: ItemDefinition[] = []) {
+  if (!route.required_item_id) {
+    return { locked: false, message: "", ownedQuantity: 0, requiredQuantity: 0, itemName: "" };
+  }
+
+  const requiredQuantity = Math.max(1, Number(route.required_item_quantity ?? 1) || 1);
+  const ownedQuantity = inventoryItems
+    .filter((entry) => entry.item_id === route.required_item_id)
+    .reduce((total, entry) => total + Number(entry.quantity ?? 0), 0);
+  const itemName = itemDefinitions.find((item) => item.id === route.required_item_id)?.name ?? "required item";
+
+  return {
+    locked: ownedQuantity < requiredQuantity,
+    message: ownedQuantity < requiredQuantity ? `Requires ${requiredQuantity} ${itemName}.` : "",
+    ownedQuantity,
+    requiredQuantity,
+    itemName,
+  };
+}
+
+export function isRouteUnavailable(route: MapRoute, inventoryItems: InventoryItem[] = [], itemDefinitions: ItemDefinition[] = []) {
+  return isRouteLocked(route) || getRouteRequiredItemStatus(route, inventoryItems, itemDefinitions).locked;
+}
+
 export function getRouteLockLabel(route: MapRoute) {
   const lockType = route.lock_type ?? "public";
   return lockType === "quest_locked" ? "Quest Locked" : lockType === "story_locked" ? "Story Locked" : "Locked";
 }
 
-export function getRouteLockMessage(route: MapRoute) {
+export function getRouteLockMessage(route: MapRoute, inventoryItems: InventoryItem[] = [], itemDefinitions: ItemDefinition[] = []) {
+  const requiredItem = getRouteRequiredItemStatus(route, inventoryItems, itemDefinitions);
+  if (requiredItem.locked) {
+    return requiredItem.message;
+  }
+
   if (!isRouteLocked(route)) {
     return "Available";
   }

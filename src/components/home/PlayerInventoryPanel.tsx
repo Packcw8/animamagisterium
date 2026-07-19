@@ -15,7 +15,7 @@ import {
   resolveInventoryImageUri,
 } from "../../services/inventoryService";
 
-export const playerInventoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
+export const playerInventoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "Wearables", "Consumables", "Materials", "Tools", "Special", "Misc"] as const;
 export type PlayerInventoryTab = (typeof playerInventoryTabs)[number];
 type EquipmentSlot = (typeof equipmentSlots)[number];
 type InventorySort = "newest" | "rarity" | "equipped" | "set" | "name";
@@ -335,6 +335,7 @@ export function itemMatchesCategory(item: ItemDefinition, category: PlayerInvent
   if (category === "Wearables") return item.type === "wearable";
   if (category === "Consumables") return ["potion", "revive potion", "consumable", "food", "scroll"].includes(item.type);
   if (category === "Materials") return item.type === "material";
+  if (category === "Tools") return ["tool", "utility", "bait"].includes(item.type);
   if (category === "Special") return item.type === "special";
   return item.type === "misc";
 }

@@ -22,7 +22,7 @@ import {
   isStoryQuestMarker,
 } from "../../utils/mapVisibility";
 import { resolveGameAssetUri } from "../../utils/assetResolver";
-import { getRouteLockLabel, getRouteLockMessage, isRouteLocked } from "../../utils/mapProgress";
+import { getRouteLockLabel, getRouteLockMessage, isRouteUnavailable } from "../../utils/mapProgress";
 import type { ArenaLeaderboardEntry, ArenaWithLeaders } from "../../services/arenaService";
 
 const marketModes = ["Buy", "Sell"] as const;
@@ -102,7 +102,7 @@ export function MarkerSceneScreen({
     return progress < 100;
   });
   const nextStoryRoute = firstIncompleteStoryRoute?.route ?? null;
-  const nextStoryRouteLocked = nextStoryRoute ? isRouteLocked(nextStoryRoute) : false;
+  const nextStoryRouteLocked = nextStoryRoute ? isRouteUnavailable(nextStoryRoute, inventoryItems, itemDefinitions) : false;
   const storyRoutesComplete = storyLinkedRoutes.length > 0 && !firstIncompleteStoryRoute;
 
   return (
@@ -153,6 +153,8 @@ export function MarkerSceneScreen({
             routeLinks={orderedRouteLinks}
             routes={routes}
             routeProgressRows={routeProgressRows}
+            inventoryItems={inventoryItems}
+            itemDefinitions={itemDefinitions}
             onStartPath={onStartPath}
           />
         ) : marker.type === "NPC" ? (
@@ -193,7 +195,7 @@ export function MarkerSceneScreen({
                   <Text style={styles.copy}>Destination: {link.destination_label || route.terrain}</Text>
                   <Text style={styles.copy}>{metersToMiles(route.distance_required_meters)} mi / Progress {Math.round(progress)}%</Text>
                   <Text style={complete ? styles.unlockText : locked ? styles.lockText : styles.adminMessage}>
-                    {complete ? "Completed" : locked ? "Locked until earlier story paths are completed" : nextStoryRouteLocked ? getRouteLockMessage(route) : "Next path"}
+                    {complete ? "Completed" : locked ? "Locked until earlier story paths are completed" : nextStoryRouteLocked ? getRouteLockMessage(route, inventoryItems, itemDefinitions) : "Next path"}
                   </Text>
                 </View>
               );
@@ -431,11 +433,15 @@ function SignPostScene({
   routeLinks,
   routes,
   routeProgressRows,
+  inventoryItems,
+  itemDefinitions,
   onStartPath,
 }: {
   routeLinks: MarkerRouteLink[];
   routes: MapRoute[];
   routeProgressRows: Array<{ route_id: string; progress_percent: number; is_current?: boolean }>;
+  inventoryItems: InventoryItem[];
+  itemDefinitions: ItemDefinition[];
   onStartPath: (route: MapRoute, routeLink?: MarkerRouteLink) => void;
 }) {
   return (
@@ -449,7 +455,7 @@ function SignPostScene({
         if (!linkedRoute) {
           return null;
         }
-        const locked = isRouteLocked(linkedRoute);
+        const locked = isRouteUnavailable(linkedRoute, inventoryItems, itemDefinitions);
         const startDirection = link.start_direction ?? "forward";
         const directionLabel = startDirection === "reverse" ? "Reverse: 100% to 0%" : "Forward: 0% to 100%";
 
@@ -459,7 +465,7 @@ function SignPostScene({
             <Text style={styles.copy}>Destination: {link.destination_label || linkedRoute.terrain}</Text>
             <Text style={styles.copy}>{directionLabel}</Text>
             <Text style={styles.copy}>{metersToMiles(linkedRoute.distance_required_meters)} mi / Progress {Math.round(progress)}%</Text>
-            <Text style={locked ? styles.lockText : styles.unlockText}>{locked ? getRouteLockMessage(linkedRoute) : "Available"}</Text>
+            <Text style={locked ? styles.lockText : styles.unlockText}>{locked ? getRouteLockMessage(linkedRoute, inventoryItems, itemDefinitions) : "Available"}</Text>
             <Pressable style={[styles.primaryButton, locked && styles.disabledAction]} onPress={() => onStartPath(linkedRoute, link)} disabled={locked}>
               <Text style={styles.primaryText}>{locked ? getRouteLockLabel(linkedRoute) : "Start Path"}</Text>
             </Pressable>

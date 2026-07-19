@@ -112,7 +112,7 @@ export type Tables = {
   item_definitions: {
     id: string;
     name: string;
-    type: "weapon" | "armor" | "wearable" | "potion" | "revive potion" | "consumable" | "food" | "scroll" | "special" | "material" | "misc";
+    type: "weapon" | "armor" | "wearable" | "potion" | "revive potion" | "consumable" | "food" | "scroll" | "special" | "material" | "tool" | "utility" | "bait" | "misc";
     rarity: string;
     description: string | null;
     image_path: string | null;
@@ -151,12 +151,48 @@ export type Tables = {
     boost_target: "health" | "stamina" | "magika" | "strength" | "endurance" | "agility" | "intelligence" | "wisdom" | "charisma" | "spirit" | "damage" | "defense" | "gold gain" | "xp gain" | null;
     boost_amount: number;
     passive_mode: "owned" | "equipped" | null;
+    utility_activity: "general" | "fishing" | "mining" | "hunting" | "foraging" | null;
+    rarity_bonus_percent: number;
+    extra_roll_chance_percent: number;
+    loot_pool_key: string | null;
+    break_chance_percent: number;
+    utility_uses: number | null;
     linked_ability_id: string | null;
     teaches_ability_id: string | null;
     season_number: number;
     chapter_number: number;
     is_active: boolean;
     created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  farming_loot_pools: {
+    id: string;
+    name: string;
+    pool_key: string;
+    activity_type: "general" | "fishing" | "mining" | "hunting" | "foraging";
+    description: string | null;
+    required_item_id: string | null;
+    content_scope: "chapter" | "universal";
+    season_number: number;
+    chapter_number: number;
+    is_active: boolean;
+    created_by: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  farming_loot_pool_items: {
+    id: string;
+    pool_id: string;
+    item_id: string;
+    rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
+    drop_weight: number;
+    min_quantity: number;
+    max_quantity: number;
+    required_utility_item_id: string | null;
+    bonus_weight_if_utility: number;
+    sort_order: number;
+    is_active: boolean;
     created_at: string;
     updated_at: string;
   };
@@ -392,6 +428,10 @@ export type Tables = {
     farming_summary?: string | null;
     content_scope?: "chapter" | "universal";
     preserve_player_chapter?: boolean;
+    required_item_id?: string | null;
+    required_item_quantity?: number;
+    required_utility_activity?: "general" | "fishing" | "mining" | "hunting" | "foraging" | null;
+    farming_loot_pool_id?: string | null;
     distance_required_meters: number;
     estimated_encounters: number;
     path_points: Array<{ x: number; y: number }>;

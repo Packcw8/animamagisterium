@@ -4,6 +4,7 @@ import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { CraftingAdminPanel } from "../components/admin/CraftingAdminPanel";
+import { FarmingAdminPanel } from "../components/admin/FarmingAdminPanel";
 import { AdminContentScopeBar, isInAdminContentScope } from "../components/home/AdminContentScopeBar";
 import { JourneyJournalPage } from "../components/home/JourneyJournalPage";
 import { PlayerAbilitiesPanel } from "../components/home/PlayerAbilitiesPanel";
@@ -96,6 +97,7 @@ import {
   saveCarrySettings,
   saveItemDefinition,
   unequipInventorySlot,
+  utilityActivities,
   usageContexts as itemUsageContexts,
   ItemDefinition,
 } from "../services/inventoryService";
@@ -119,9 +121,9 @@ type HomeScreenProps = {
 
 const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Journal", "Abilities", "Inventory"] as const;
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
-const inventoryCategoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "Wearables", "Consumables", "Materials", "Special", "Misc"] as const;
+const inventoryCategoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "Wearables", "Consumables", "Materials", "Tools", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
-const adminToolTabs = ["Items", "Crafting", "Mounts", "Travel Modes", "Abilities", "Enemies", "NPCs"] as const;
+const adminToolTabs = ["Items", "Crafting", "Farming Pools", "Mounts", "Travel Modes", "Abilities", "Enemies", "NPCs"] as const;
 const adminRecordSortModes = ["newest", "name", "type", "chapter"] as const;
 const mountMultiplierPresets = ["1", "1.05", "1.10", "1.20", "1.35", "1.50", "1.70"] as const;
 const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
@@ -1837,6 +1839,18 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 <ToggleRow label="Usable outside battle" value={Boolean(itemForm.usable_outside_battle)} onPress={() => setItemForm((current) => ({ ...current, usable_outside_battle: !current.usable_outside_battle }))} />
                 <ChoiceRow label="Use context" options={itemUsageContexts} value={itemForm.usage_context ?? "battle_only"} onSelect={(value) => setItemForm((current) => ({ ...current, usage_context: value, usable_in_battle: value === "battle_only" || value === "both", usable_outside_battle: value === "outside_battle_only" || value === "both" }))} />
                 <ItemText label="Crafting value" value={String(itemForm.crafting_value ?? "")} onChange={(value) => setItemForm((current) => ({ ...current, crafting_value: value ? Number(value) || 0 : null }))} />
+                {["tool", "utility", "bait", "special", "material"].includes(itemForm.type ?? "") ? (
+                  <View style={styles.adminBuilder}>
+                    <Text style={styles.subTitle}>Utility / Farming</Text>
+                    <Text style={styles.muted}>Use this for fishing poles, bait, mining picks, hunting gear, and tools that improve rare finds.</Text>
+                    <ChoiceRow label="Utility activity" options={["", ...utilityActivities]} value={itemForm.utility_activity ?? ""} labels={{ "": "None", general: "General", fishing: "Fishing", mining: "Mining", hunting: "Hunting", foraging: "Foraging" }} onSelect={(value) => setItemForm((current) => ({ ...current, utility_activity: value || null }))} />
+                    <ItemText label="Rare find bonus %" value={String(itemForm.rarity_bonus_percent ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, rarity_bonus_percent: Number(value) || 0 }))} />
+                    <ItemText label="Extra roll chance %" value={String(itemForm.extra_roll_chance_percent ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, extra_roll_chance_percent: Number(value) || 0 }))} />
+                    <ItemText label="Loot pool key" value={itemForm.loot_pool_key ?? ""} onChange={(value) => setItemForm((current) => ({ ...current, loot_pool_key: value }))} />
+                    <ItemText label="Break chance %" value={String(itemForm.break_chance_percent ?? 0)} onChange={(value) => setItemForm((current) => ({ ...current, break_chance_percent: Number(value) || 0 }))} />
+                    <ItemText label="Utility uses" value={String(itemForm.utility_uses ?? "")} onChange={(value) => setItemForm((current) => ({ ...current, utility_uses: value ? Number(value) || null : null }))} />
+                  </View>
+                ) : null}
                 <NamedChoiceRow label="Linked ability" options={[{ id: "", label: "None" }, ...adminAbilities.map((ability) => ({ id: ability.id, label: ability.name }))]} value={itemForm.linked_ability_id ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, linked_ability_id: value || null }))} />
                 <NamedChoiceRow label="Scroll teaches ability" options={[{ id: "", label: "None" }, ...adminAbilities.map((ability) => ({ id: ability.id, label: ability.name }))]} value={itemForm.teaches_ability_id ?? ""} onSelect={(value) => setItemForm((current) => ({ ...current, teaches_ability_id: value || null }))} />
                 {(itemForm.type === "weapon" || itemForm.type === "armor" || itemForm.type === "wearable") ? (
@@ -1917,6 +1931,14 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 ) : null}
                 {adminToolTab === "Crafting" ? (
                   <CraftingAdminPanel
+                    itemDefinitions={itemDefinitions}
+                    seasonNumber={adminContentSeason}
+                    chapterNumber={adminContentChapter}
+                    onMessage={setInventoryMessage}
+                  />
+                ) : null}
+                {adminToolTab === "Farming Pools" ? (
+                  <FarmingAdminPanel
                     itemDefinitions={itemDefinitions}
                     seasonNumber={adminContentSeason}
                     chapterNumber={adminContentChapter}
@@ -2563,6 +2585,7 @@ function itemMatchesCategory(item: ItemDefinition, category: (typeof inventoryCa
   if (category === "Wearables") return item.type === "wearable";
   if (category === "Consumables") return ["potion", "revive potion", "consumable", "food", "scroll"].includes(item.type);
   if (category === "Materials") return item.type === "material";
+  if (category === "Tools") return ["tool", "utility", "bait"].includes(item.type);
   if (category === "Special") return item.type === "special";
   return item.type === "misc";
 }

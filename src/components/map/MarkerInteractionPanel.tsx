@@ -5,7 +5,7 @@ import { canMarketItemBeBought, canMarketItemBeSoldTo, type MapMarker, type MapR
 import type { InventoryItem, ItemDefinition } from "../../services/inventoryService";
 import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { getMarkerLockMessage } from "../../utils/mapVisibility";
-import { getRouteLockLabel, getRouteLockMessage, isRouteLocked } from "../../utils/mapProgress";
+import { getRouteLockLabel, getRouteLockMessage, isRouteUnavailable } from "../../utils/mapProgress";
 import { Frame } from "../Frame";
 import { colors, fonts } from "../theme";
 
@@ -98,7 +98,7 @@ export function MarkerInteractionPanel({
             if (!linkedRoute) {
               return null;
             }
-            const routeLocked = isRouteLocked(linkedRoute);
+            const routeLocked = isRouteUnavailable(linkedRoute, inventoryItems, itemDefinitions);
             const startDirection = link.start_direction ?? "forward";
             const directionLabel = startDirection === "reverse" ? "Reverse: 100% to 0%" : "Forward: 0% to 100%";
 
@@ -108,7 +108,7 @@ export function MarkerInteractionPanel({
                 <Text style={styles.copy}>Destination: {link.destination_label || linkedRoute.terrain}</Text>
                 <Text style={styles.copy}>{directionLabel}</Text>
                 <Text style={styles.copy}>{metersToMiles(linkedRoute.distance_required_meters)} mi / Progress {Math.round(progress)}%</Text>
-                <Text style={routeLocked ? styles.lockText : styles.unlockText}>{routeLocked ? getRouteLockMessage(linkedRoute) : "Available"}</Text>
+                <Text style={routeLocked ? styles.lockText : styles.unlockText}>{routeLocked ? getRouteLockMessage(linkedRoute, inventoryItems, itemDefinitions) : "Available"}</Text>
                 <Pressable style={[styles.primaryButton, routeLocked && styles.disabledAction]} onPress={() => onStartPath(linkedRoute, link)} disabled={routeLocked}>
                   <Text style={styles.primaryText}>{routeLocked ? getRouteLockLabel(linkedRoute) : "Start Path"}</Text>
                 </Pressable>

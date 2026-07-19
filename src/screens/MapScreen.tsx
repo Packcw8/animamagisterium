@@ -85,6 +85,7 @@ import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAsse
 import { getStoryCards, getStoryDeckView, getStoryDecks, markStoryDeckViewed, type StoryCard, type StoryDeck, type StoryDeckTriggerType } from "../services/storyDeckService";
 import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
 import { craftRecipe, getCraftingRecipesForChapter, type CraftingRecipeWithIngredients } from "../services/craftingService";
+import { farmingActivities, getFarmingLootPools, type FarmingPoolWithItems } from "../services/farmingService";
 import { recoverPlayerMapPosition } from "../services/mapRecoveryService";
 import { claimOpenArena, completeArenaChallenge, getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
 import { buildArenaBattleLayout, deleteArenaBattleSlot, getArenaBattleSlots, saveArenaBattleSlot, type ArenaBattleSlot } from "../services/arenaBattleBoardService";
@@ -122,7 +123,7 @@ import {
   getSeasonLabel,
   isInSelectedChapter,
   isMarkerRouteLinkUnlocked,
-  isRouteLocked,
+  isRouteUnavailable,
   mergeChapterRecords,
   mergeSeasonRecords,
   upsertRouteProgressRow,
@@ -649,6 +650,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [routeJournalSortOrder, setRouteJournalSortOrder] = useState("0");
   const [routeStoryDeckId, setRouteStoryDeckId] = useState<string | null>(null);
   const [routeTravelModeId, setRouteTravelModeId] = useState<string | null>(null);
+  const [routeRequiredItemId, setRouteRequiredItemId] = useState<string | null>(null);
+  const [routeRequiredItemQuantity, setRouteRequiredItemQuantity] = useState("1");
+  const [routeRequiredUtilityActivity, setRouteRequiredUtilityActivity] = useState<(typeof farmingActivities)[number] | "">("");
+  const [routeFarmingLootPoolId, setRouteFarmingLootPoolId] = useState<string | null>(null);
+  const [farmingLootPools, setFarmingLootPools] = useState<FarmingPoolWithItems[]>([]);
   const [routeLockType, setRouteLockType] = useState<MapRoute["lock_type"]>("public");
   const [routeLockMessage, setRouteLockMessage] = useState("");
   const [editingEvent, setEditingEvent] = useState<MapEvent | null>(null);
@@ -2073,6 +2079,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
   async function loadMap() {
     setMapReady(false);
+    void loadFarmingPoolsForAdmin();
     const [loadedRoutes, loadedMarkers, loadedMiniMaps, loadedTutorials, loadedLegendItems, loadedWorldMapSettings, loadedSeasons, loadedChapters, loadedRole, loadedEvents, loadedMarkerRouteLinks, loadedToasts, loadedStoryDecks, loadedTravelModes, loadedMarkerChapterVisibility] = await Promise.all([
       getMapRoutes(),
       getMapMarkers(),
@@ -2198,6 +2205,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setRouteJournalSortOrder(String(firstRoute.journal_sort_order ?? firstRoute.sort_order ?? 0));
       setRouteStoryDeckId(firstRoute.story_deck_id ?? null);
       setRouteTravelModeId(firstRoute.travel_mode_id ?? null);
+      setRouteRequiredItemId(firstRoute.required_item_id ?? null);
+      setRouteRequiredItemQuantity(String(firstRoute.required_item_quantity ?? 1));
+      setRouteRequiredUtilityActivity(firstRoute.required_utility_activity ?? "");
+      setRouteFarmingLootPoolId(firstRoute.farming_loot_pool_id ?? null);
       setRouteLockType(firstRoute.lock_type ?? "public");
       setRouteLockMessage(firstRoute.lock_message ?? "");
       setPathDraft([]);
@@ -2367,8 +2378,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   }, [actualIsAdmin, initialAdminSection]);
 
   async function selectRoute(nextRoute: MapRoute, force = false, options?: { skipActiveChapterSave?: boolean }) {
-    if (!force && !isAdmin && isRouteLocked(nextRoute)) {
-      setGpsMessage(getRouteLockMessage(nextRoute));
+    if (!force && !isAdmin && isRouteUnavailable(nextRoute, inventoryItems, itemDefinitions)) {
+      setGpsMessage(getRouteLockMessage(nextRoute, inventoryItems, itemDefinitions));
       return;
     }
 
@@ -2389,6 +2400,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setRouteJournalSortOrder(String(nextRoute.journal_sort_order ?? nextRoute.sort_order ?? 0));
     setRouteStoryDeckId(nextRoute.story_deck_id ?? null);
     setRouteTravelModeId(nextRoute.travel_mode_id ?? null);
+    setRouteRequiredItemId(nextRoute.required_item_id ?? null);
+    setRouteRequiredItemQuantity(String(nextRoute.required_item_quantity ?? 1));
+    setRouteRequiredUtilityActivity(nextRoute.required_utility_activity ?? "");
+    setRouteFarmingLootPoolId(nextRoute.farming_loot_pool_id ?? null);
     setRouteLockType(nextRoute.lock_type ?? "public");
     setRouteLockMessage(nextRoute.lock_message ?? "");
     setPathDraft([]);
@@ -2810,6 +2825,15 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setAdminMessage("Marker created.");
     } catch (error) {
       setAdminMessage(getErrorMessage(error, "Unable to create marker. Confirm the Supabase migration has run."));
+    }
+  }
+
+  async function loadFarmingPoolsForAdmin() {
+    try {
+      setFarmingLootPools(await getFarmingLootPools());
+    } catch (error) {
+      console.warn("[map] farming loot pools unavailable", error);
+      setFarmingLootPools([]);
     }
   }
 
@@ -4131,8 +4155,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return;
     }
 
-    if (!isAdmin && isRouteLocked(nextRoute)) {
-      setMarkerPanelMessage(getRouteLockMessage(nextRoute));
+    if (!isAdmin && isRouteUnavailable(nextRoute, inventoryItems, itemDefinitions)) {
+      setMarkerPanelMessage(getRouteLockMessage(nextRoute, inventoryItems, itemDefinitions));
       return;
     }
 
@@ -4833,6 +4857,12 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         setRouteJournalBody(displayWorldRoute.journal_body ?? "");
         setRouteJournalImageUrl(displayWorldRoute.journal_image_url ?? "");
         setRouteJournalSortOrder(String(displayWorldRoute.journal_sort_order ?? displayWorldRoute.sort_order ?? 0));
+        setRouteStoryDeckId(displayWorldRoute.story_deck_id ?? null);
+        setRouteTravelModeId(displayWorldRoute.travel_mode_id ?? null);
+        setRouteRequiredItemId(displayWorldRoute.required_item_id ?? null);
+        setRouteRequiredItemQuantity(String(displayWorldRoute.required_item_quantity ?? 1));
+        setRouteRequiredUtilityActivity(displayWorldRoute.required_utility_activity ?? "");
+        setRouteFarmingLootPoolId(displayWorldRoute.farming_loot_pool_id ?? null);
         setRouteLockType(displayWorldRoute.lock_type ?? "public");
         setRouteLockMessage(displayWorldRoute.lock_message ?? "");
         distanceWalkedRef.current = 0;
@@ -5196,6 +5226,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         journal_sort_order: Number(routeJournalSortOrder) || Number(routeOrder) || 0,
         story_deck_id: routeStoryDeckId,
         travel_mode_id: routeTravelModeId,
+        required_item_id: routeRequiredItemId,
+        required_item_quantity: Math.max(1, Number(routeRequiredItemQuantity) || 1),
+        required_utility_activity: routeRequiredUtilityActivity || null,
+        farming_loot_pool_id: routeFarmingLootPoolId,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
         mini_map_id: activeMiniMap?.id ?? route.mini_map_id ?? null,
@@ -5242,6 +5276,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         journal_sort_order: Number(routeJournalSortOrder) || Number(routeOrder) || getNextRouteOrder(activeRouteScopeRoutes.length > 0 ? activeRouteScopeRoutes : routes),
         story_deck_id: routeStoryDeckId,
         travel_mode_id: routeTravelModeId,
+        required_item_id: routeRequiredItemId,
+        required_item_quantity: Math.max(1, Number(routeRequiredItemQuantity) || 1),
+        required_utility_activity: routeRequiredUtilityActivity || null,
+        farming_loot_pool_id: routeFarmingLootPoolId,
         is_active: true,
         lock_type: routeLockType,
         lock_message: routeLockMessage.trim() || null,
@@ -7310,6 +7348,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setRouteJournalSortOrder(String(getNextRouteOrder(routeSource)));
     setRouteStoryDeckId(null);
     setRouteTravelModeId(null);
+    setRouteRequiredItemId(null);
+    setRouteRequiredItemQuantity("1");
+    setRouteRequiredUtilityActivity("");
+    setRouteFarmingLootPoolId(null);
     setRouteLockType("public");
     setRouteLockMessage("");
     setPathDraft([]);
@@ -9152,6 +9194,21 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   selectedId={routeTravelModeId}
                   onSelect={setRouteTravelModeId}
                 />
+                <ItemPicker label="Required Tool / Item" items={itemDefinitions} selectedId={routeRequiredItemId} onSelect={setRouteRequiredItemId} />
+                {routeRequiredItemId ? <TextInput value={routeRequiredItemQuantity} onChangeText={setRouteRequiredItemQuantity} placeholder="Required item quantity" placeholderTextColor={colors.muted} style={styles.input} /> : null}
+                <ChoiceRow
+                  label="Utility activity"
+                  options={["", ...farmingActivities]}
+                  value={routeRequiredUtilityActivity}
+                  labels={{ "": "None", general: "General", fishing: "Fishing", mining: "Mining", hunting: "Hunting", foraging: "Foraging" }}
+                  onSelect={(value) => setRouteRequiredUtilityActivity(value)}
+                />
+                <FarmingLootPoolPicker
+                  label="Farming loot pool"
+                  pools={farmingLootPools}
+                  value={routeFarmingLootPoolId ?? ""}
+                  onSelect={(value) => setRouteFarmingLootPoolId(value || null)}
+                />
                 <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
                 {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
                 <Info label="Path Points" value={String(pathDraft.length)} />
@@ -10211,6 +10268,21 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 travelModes={travelModes}
                 selectedId={routeTravelModeId}
                 onSelect={setRouteTravelModeId}
+              />
+              <ItemPicker label="Required Tool / Item" items={itemDefinitions} selectedId={routeRequiredItemId} onSelect={setRouteRequiredItemId} />
+              {routeRequiredItemId ? <TextInput value={routeRequiredItemQuantity} onChangeText={setRouteRequiredItemQuantity} placeholder="Required item quantity" placeholderTextColor={colors.muted} style={styles.input} /> : null}
+              <ChoiceRow
+                label="Utility activity"
+                options={["", ...farmingActivities]}
+                value={routeRequiredUtilityActivity}
+                labels={{ "": "None", general: "General", fishing: "Fishing", mining: "Mining", hunting: "Hunting", foraging: "Foraging" }}
+                onSelect={(value) => setRouteRequiredUtilityActivity(value)}
+              />
+              <FarmingLootPoolPicker
+                label="Farming loot pool"
+                pools={farmingLootPools}
+                value={routeFarmingLootPoolId ?? ""}
+                onSelect={(value) => setRouteFarmingLootPoolId(value || null)}
               />
               <LockPicker label="Path lock" value={routeLockType} onSelect={setRouteLockType} />
               {routeLockType !== "public" ? <TextInput value={routeLockMessage} onChangeText={setRouteLockMessage} placeholder="Lock message shown on signposts" placeholderTextColor={colors.muted} style={styles.input} /> : null}
@@ -11720,6 +11792,34 @@ function MiniMapMarkerAdminForm({
   );
 }
 
+function FarmingLootPoolPicker({
+  label,
+  pools,
+  value,
+  onSelect,
+}: {
+  label: string;
+  pools: FarmingPoolWithItems[];
+  value: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={styles.infoLabel}>{label}</Text>
+      <View style={styles.storyRoutePicker}>
+        <Pressable style={[styles.routeChip, !value && styles.routeChipActive]} onPress={() => onSelect("")}>
+          <Text style={styles.routeChipText}>None</Text>
+        </Pressable>
+        {pools.map((pool) => (
+          <Pressable key={pool.id} style={[styles.routeChip, value === pool.id && styles.routeChipActive]} onPress={() => onSelect(pool.id)}>
+            <Text style={styles.routeChipText}>{pool.name} ({pool.activity_type})</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function ChoiceRow<T extends string>({
   label,
   options,
@@ -12788,6 +12888,9 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     flex: 1.2,
     textAlign: "right",
+  },
+  inputGroup: {
+    gap: 6,
   },
   feedItem: {
     color: colors.text,
