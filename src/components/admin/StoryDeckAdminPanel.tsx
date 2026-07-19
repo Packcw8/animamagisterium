@@ -1,7 +1,7 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Image, StyleSheet, Text, TextInput, View } from "react-native";
+import { Image, Modal, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   getMapEvents,
   getMapMarkers,
@@ -51,6 +51,7 @@ export function StoryDeckAdminPanel() {
   const [events, setEvents] = useState<MapEvent[]>([]);
   const [previewDeck, setPreviewDeck] = useState<StoryDeck | null>(null);
   const [previewCards, setPreviewCards] = useState<StoryCard[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [openSections, setOpenSections] = useState({
     decks: true,
     deckSettings: true,
@@ -255,34 +256,53 @@ export function StoryDeckAdminPanel() {
     }
   }
 
-  function previewCurrentDeck() {
+  async function openDeckPreview(deck: StoryDeck, fallbackCards?: StoryCard[]) {
+    setPreviewLoading(true);
+    try {
+      const loadedCards = fallbackCards ?? await getStoryCards(deck.id);
+      setPreviewDeck(deck);
+      setPreviewCards([...loadedCards].sort(sortCards));
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to preview story deck.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  async function previewCurrentDeck() {
     const deck = selectedDeck ?? toPreviewStoryDeck(deckDraft);
-    const savedCards = [...cards].sort(sortCards);
+    const savedCards = selectedDeck ? await getStoryCards(selectedDeck.id) : [...cards].sort(sortCards);
     const draftCard = cardDraft.body.trim() ? toPreviewStoryCard(cardDraft, deck.id) : null;
     const nextCards = savedCards.length > 0 ? savedCards : draftCard ? [draftCard] : [];
-    setPreviewDeck(deck);
-    setPreviewCards(nextCards);
+    await openDeckPreview(deck, nextCards);
+  }
+
+  function closeDeckPreview() {
+    setPreviewDeck(null);
+    setPreviewCards([]);
   }
 
   function toggleSection(section: keyof typeof openSections) {
     setOpenSections((current) => ({ ...current, [section]: !current[section] }));
   }
 
-  if (previewDeck) {
-    return (
-      <StoryDeckViewer
-        deck={previewDeck}
-        cards={previewCards}
-        onClose={() => {
-          setPreviewDeck(null);
-          setPreviewCards([]);
-        }}
-      />
-    );
-  }
-
   return (
     <View style={styles.panel}>
+      <Modal
+        animationType="fade"
+        visible={Boolean(previewDeck)}
+        presentationStyle="fullScreen"
+        onRequestClose={closeDeckPreview}
+      >
+        {previewDeck ? (
+          <StoryDeckViewer
+            deck={previewDeck}
+            cards={previewCards}
+            onClose={closeDeckPreview}
+          />
+        ) : null}
+      </Modal>
       <View style={styles.header}>
         <View>
           <Text style={styles.eyebrow}>Narrative Cards</Text>
@@ -309,10 +329,7 @@ export function StoryDeckAdminPanel() {
                 <Text style={styles.deckChipTitle}>{deck.title}</Text>
                 <Text style={styles.deckChipMeta}>S{deck.season_number} / C{deck.chapter_number} / {formatStoryDeckLabel(deck.trigger_type)}</Text>
               </Pressable>
-              <Pressable style={styles.rowButton} onPress={async () => {
-                setPreviewDeck(deck);
-                setPreviewCards(await getStoryCards(deck.id));
-              }}>
+              <Pressable style={styles.rowButton} onPress={() => void openDeckPreview(deck)}>
                 <Text style={styles.rowButtonText}>Preview</Text>
               </Pressable>
             </View>
@@ -389,8 +406,8 @@ export function StoryDeckAdminPanel() {
               <Text style={styles.deleteButtonText}>Delete</Text>
             </Pressable>
           ) : null}
-          <Pressable style={styles.smallButton} onPress={previewCurrentDeck}>
-            <Text style={styles.smallButtonText}>Preview Deck</Text>
+          <Pressable style={styles.smallButton} onPress={() => void previewCurrentDeck()}>
+            <Text style={styles.smallButtonText}>{previewLoading ? "Loading..." : "Preview Deck"}</Text>
           </Pressable>
         </View>
       </CollapsibleSection>
