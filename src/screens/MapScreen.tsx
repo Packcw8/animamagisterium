@@ -741,6 +741,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [choiceRewardItem, setChoiceRewardItem] = useState("");
   const [choiceRewardItemId, setChoiceRewardItemId] = useState<string | null>(null);
   const [choiceRewardItemQuantity, setChoiceRewardItemQuantity] = useState("1");
+  const [choiceConsumeRequiredItem, setChoiceConsumeRequiredItem] = useState(false);
   const [choiceUnlockMarkerId, setChoiceUnlockMarkerId] = useState<string | null>(null);
   const [choiceTravelTargetType, setChoiceTravelTargetType] = useState<MapMarker["exit_target_type"]>("world_marker");
   const [choiceTravelTargetMarkerId, setChoiceTravelTargetMarkerId] = useState<string | null>(null);
@@ -6262,6 +6263,87 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       }
     }
 
+    async function applyDialogueChoiceCosts() {
+      const requiredItemValue = choice.requirement_value?.trim() ?? "";
+      const shouldConsumeRequiredItem = Boolean(choice.consume_required_item && choice.requirement_type === "item" && requiredItemValue);
+      const goldCost = Math.max(0, Number(choice.consume_gold ?? 0) || 0);
+
+      if (!shouldConsumeRequiredItem && goldCost <= 0) {
+        return true;
+      }
+
+      if (adminPreviewMode) {
+        const previewCosts = [
+          shouldConsumeRequiredItem ? "would take required item" : null,
+          goldCost > 0 ? `would pay ${goldCost} gold` : null,
+        ].filter(Boolean);
+        setDialogueLog((current) => [`Admin preview: ${previewCosts.join(" and ")}.`, ...current].slice(0, 4));
+        return true;
+      }
+
+      try {
+        const alreadyPaid = claimedChoiceRewardIds.has(choice.id) || await hasClaimedDialogueChoiceEffect(choice.id);
+        if (alreadyPaid) {
+          return true;
+        }
+
+        if (goldCost > 0 && Number(character.gold ?? 0) < goldCost) {
+          throw new Error(`Requires ${goldCost} gold.`);
+        }
+
+        if (shouldConsumeRequiredItem) {
+          let remaining = Math.max(1, Number(choice.requirement_quantity ?? 1) || 1);
+          const matchingEntries = inventoryItems
+            .filter((entry) => entry.item_id === requiredItemValue || entry.item.name.toLowerCase() === requiredItemValue.toLowerCase())
+            .sort((a, b) => Number(a.quantity ?? 0) - Number(b.quantity ?? 0));
+          const totalOwned = matchingEntries.reduce((sum, entry) => sum + Math.max(0, Number(entry.quantity ?? 0) || 0), 0);
+
+          if (totalOwned < remaining) {
+            throw new Error("Required item is no longer in your inventory.");
+          }
+
+          for (const entry of matchingEntries) {
+            if (remaining <= 0) {
+              break;
+            }
+            const amount = Math.min(remaining, Math.max(0, Number(entry.quantity ?? 0) || 0));
+            if (amount > 0) {
+              await consumeInventoryItem(entry, amount);
+              remaining -= amount;
+            }
+          }
+        }
+
+        if (goldCost > 0) {
+          const updatedCharacter = await spendCharacterGold(character.id, goldCost);
+          if (updatedCharacter) {
+            onCharacterUpdated({ ...character, gold: updatedCharacter.gold });
+          }
+        }
+
+        if (goldCost > 0) {
+          await recordDialogueChoiceEffectClaim(character, choice.id);
+          setClaimedChoiceRewardIds((current) => new Set([...current, choice.id]));
+        }
+
+        const spentItemName = shouldConsumeRequiredItem ? getItemName(itemDefinitions, requiredItemValue) : null;
+        const costLines = [
+          shouldConsumeRequiredItem ? `Used ${Math.max(1, Number(choice.requirement_quantity ?? 1) || 1)} ${spentItemName}.` : null,
+          goldCost > 0 ? `Paid ${goldCost} gold.` : null,
+        ].filter((line): line is string => Boolean(line));
+        if (costLines.length > 0) {
+          setDialogueLog((current) => [...costLines, ...current].slice(0, 4));
+        }
+        if (shouldConsumeRequiredItem) {
+          await loadInventory();
+        }
+        return true;
+      } catch (error) {
+        setDialogueLog((current) => [getErrorMessage(error, "Unable to use the required cost for this choice."), ...current].slice(0, 4));
+        return false;
+      }
+    }
+
     async function applyStoryFlagEffect() {
       const flagKey = choice.set_story_flag_key?.trim();
       if (!flagKey) {
@@ -6304,6 +6386,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       }
     }
 
+    const didPayChoiceCosts = await applyDialogueChoiceCosts();
+    if (!didPayChoiceCosts) {
+      return;
+    }
+
     const didRestore = await applyResourceRest();
     if (!didRestore) {
       return;
@@ -6330,24 +6417,6 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         seasonNumber: unlockedMarker?.season_number ?? selectedSeason,
         chapterNumber: unlockedMarker?.chapter_number ?? selectedChapter,
       });
-    }
-
-    if (Number(choice.consume_gold ?? 0) > 0 && !adminPreviewMode) {
-      try {
-        const alreadyPaid = claimedChoiceRewardIds.has(choice.id) || await hasClaimedDialogueChoiceEffect(choice.id);
-        if (!alreadyPaid) {
-          const updatedCharacter = await spendCharacterGold(character.id, Number(choice.consume_gold));
-          if (updatedCharacter) {
-            onCharacterUpdated({ ...character, gold: updatedCharacter.gold });
-          }
-          await recordDialogueChoiceEffectClaim(character, choice.id);
-          setClaimedChoiceRewardIds((current) => new Set([...current, choice.id]));
-          setDialogueLog((current) => [`Paid ${choice.consume_gold} gold.`, ...current].slice(0, 4));
-        }
-      } catch (error) {
-        setDialogueLog((current) => [getErrorMessage(error, `Requires ${choice.consume_gold} gold.`), ...current].slice(0, 4));
-        return;
-      }
     }
 
     if (choice.check_enabled && choice.check_attribute) {
@@ -7299,6 +7368,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setChoiceRewardItem(choice.reward_item ?? "");
     setChoiceRewardItemId(choice.reward_item_id ?? null);
     setChoiceRewardItemQuantity(String(choice.reward_item_quantity ?? 1));
+    setChoiceConsumeRequiredItem(Boolean(choice.consume_required_item));
     setChoiceRequirementType(choice.requirement_type ?? "none");
     setChoiceRequirementValue(choice.requirement_value ?? "");
     setChoiceRequirementQuantity(String(choice.requirement_quantity ?? 1));
@@ -7357,6 +7427,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setChoiceRewardItem("");
     setChoiceRewardItemId(null);
     setChoiceRewardItemQuantity("1");
+    setChoiceConsumeRequiredItem(false);
     setChoiceRequirementType("none");
     setChoiceRequirementValue("");
     setChoiceRequirementQuantity("1");
@@ -7435,6 +7506,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         reward_item_id: choiceRewardItemId,
         reward_item_quantity: Math.max(1, Number(choiceRewardItemQuantity) || 1),
         consume_gold: editingChoice?.consume_gold ?? 0,
+        consume_required_item: choiceRequirementType === "item" && choiceConsumeRequiredItem,
         requirement_type: choiceRequirementType,
         requirement_value: choiceRequirementType === "none" ? null : choiceRequirementValue.trim() || null,
         requirement_quantity: Math.max(1, Number(choiceRequirementQuantity) || 1),
@@ -7679,6 +7751,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         hideIfUnmet={choiceHideIfUnmet}
         disableIfUnmet={choiceDisableIfUnmet}
         failureMessage={choiceRequirementFailureMessage}
+        consumeRequiredItem={choiceConsumeRequiredItem}
         itemDefinitions={itemDefinitions}
         markers={markers}
         events={allMapEvents}
@@ -7690,6 +7763,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         onChangeOperator={setChoiceRequirementOperator}
         onToggleHide={() => setChoiceHideIfUnmet((value) => !value)}
         onToggleDisable={() => setChoiceDisableIfUnmet((value) => !value)}
+        onToggleConsumeRequiredItem={() => setChoiceConsumeRequiredItem((value) => !value)}
         onChangeFailureMessage={setChoiceRequirementFailureMessage}
       />
     );

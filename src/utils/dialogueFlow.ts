@@ -212,7 +212,7 @@ export function getRequirementSummary(choice: StoryDialogueChoice, itemDefinitio
     return `Requires ${getRequirementAmount(choice)} Gold`;
   }
   if (type === "item") {
-    return `Requires ${label} x${getRequirementAmount(choice)}`;
+    return `${choice.consume_required_item ? "Takes" : "Requires"} ${label} x${getRequirementAmount(choice)}`;
   }
   if (type === "story_flag") {
     return `Requires Story Flag: ${label} = ${getRequiredStoryFlagValue(choice) ? "true" : "false"}`;

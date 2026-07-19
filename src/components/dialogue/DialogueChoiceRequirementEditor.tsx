@@ -19,6 +19,7 @@ type Props = {
   requirementOperator: StoryDialogueChoice["requirement_operator"];
   hideIfUnmet: boolean;
   disableIfUnmet: boolean;
+  consumeRequiredItem: boolean;
   failureMessage: string;
   itemDefinitions: ItemDefinition[];
   markers: MapMarker[];
@@ -31,6 +32,7 @@ type Props = {
   onChangeOperator: (value: StoryDialogueChoice["requirement_operator"]) => void;
   onToggleHide: () => void;
   onToggleDisable: () => void;
+  onToggleConsumeRequiredItem: () => void;
   onChangeFailureMessage: (value: string) => void;
 };
 
@@ -44,6 +46,7 @@ export function DialogueChoiceRequirementEditor({
   requirementOperator,
   hideIfUnmet,
   disableIfUnmet,
+  consumeRequiredItem,
   failureMessage,
   itemDefinitions,
   markers,
@@ -56,6 +59,7 @@ export function DialogueChoiceRequirementEditor({
   onChangeOperator,
   onToggleHide,
   onToggleDisable,
+  onToggleConsumeRequiredItem,
   onChangeFailureMessage,
 }: Props) {
   const showQuantity = requirementType === "gold" || requirementType === "item" || requirementType === "attribute_level";
@@ -110,6 +114,11 @@ export function DialogueChoiceRequirementEditor({
       ) : null}
       {showQuantity ? (
         <TextInput value={requirementQuantity} onChangeText={onChangeQuantity} placeholder={requirementType === "gold" ? "Required gold amount" : requirementType === "attribute_level" ? "Required attribute level" : "Required quantity"} placeholderTextColor={colors.muted} style={styles.input} />
+      ) : null}
+      {requirementType === "item" ? (
+        <Pressable style={[styles.secondaryButton, consumeRequiredItem && styles.typeSelected]} onPress={onToggleConsumeRequiredItem}>
+          <Text style={styles.secondaryText}>Take Required Item On Success: {consumeRequiredItem ? "Yes" : "No"}</Text>
+        </Pressable>
       ) : null}
       {showOperator ? (
         <View style={styles.storyRoutePicker}>
