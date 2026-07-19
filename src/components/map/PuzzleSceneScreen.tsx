@@ -6,6 +6,7 @@ import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
 import type { MapMarker } from "../../services/mapService";
 import type { PlayerPuzzleProgress, PuzzleDefinition, PuzzleTapZone } from "../../services/puzzleService";
+import { resolveGameAssetUri } from "../../utils/assetResolver";
 
 export type PuzzleTapResult = {
   zone: PuzzleTapZone;
@@ -124,15 +125,7 @@ export function PuzzleSceneScreen({
 }
 
 function resolvePuzzleImageUri(path?: string | null) {
-  const trimmed = path?.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-  const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(path, "scene");
 }
 
 const styles = StyleSheet.create({

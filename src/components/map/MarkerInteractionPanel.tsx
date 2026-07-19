@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { canMarketItemBeBought, canMarketItemBeSoldTo, type MapMarker, type MapRoute, type MarkerMarketItem, type MarkerRouteLink } from "../../services/mapService";
 import type { InventoryItem, ItemDefinition } from "../../services/inventoryService";
+import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { getMarkerLockMessage } from "../../utils/mapVisibility";
 import { getRouteLockLabel, getRouteLockMessage, isRouteLocked } from "../../utils/mapProgress";
 import { Frame } from "../Frame";
@@ -72,7 +73,7 @@ export function MarkerInteractionPanel({
     return (
       <PanelShell marker={marker} message={message} onClose={onClose}>
         <View style={styles.storyEditor}>
-          {marker.quest_image_url || marker.shop_image_url ? <Image source={{ uri: marker.shop_image_url || marker.quest_image_url || "" }} style={styles.eventImage} /> : null}
+          {resolvePanelImageUri(marker.shop_image_url || marker.quest_image_url) ? <Image source={{ uri: resolvePanelImageUri(marker.shop_image_url || marker.quest_image_url) ?? "" }} style={styles.eventImage} /> : null}
           <Text style={styles.selectedTitle}>Travel Required</Text>
           <Text style={styles.copy}>{unavailableReason ?? `You need to travel closer before entering. Distance: ${distance.toFixed(2)}% / Required: ${radius.toFixed(2)}%.`}</Text>
           <Pressable style={styles.primaryButton} onPress={isTracking ? undefined : onStartTracking}>
@@ -123,7 +124,7 @@ export function MarkerInteractionPanel({
     return (
       <PanelShell marker={marker} message={message} onClose={onClose}>
         <View style={styles.storyEditor}>
-          {marker.scene_background_image_url || marker.quest_image_url ? <Image source={{ uri: marker.scene_background_image_url || marker.quest_image_url || "" }} style={styles.eventImage} /> : null}
+          {resolvePanelImageUri(marker.scene_background_image_url || marker.quest_image_url) ? <Image source={{ uri: resolvePanelImageUri(marker.scene_background_image_url || marker.quest_image_url) ?? "" }} style={styles.eventImage} /> : null}
           <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
           {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
           <Pressable style={styles.primaryButton} onPress={onEnterArea}>
@@ -140,7 +141,7 @@ export function MarkerInteractionPanel({
     return (
       <PanelShell marker={marker} message={message} onClose={onClose}>
         <View style={styles.storyEditor}>
-          {marker.scene_npc_image_url || marker.quest_image_url ? <Image source={{ uri: marker.scene_npc_image_url || marker.quest_image_url || "" }} style={styles.eventImage} /> : null}
+          {resolvePanelImageUri(marker.scene_npc_image_url || marker.quest_image_url) ? <Image source={{ uri: resolvePanelImageUri(marker.scene_npc_image_url || marker.quest_image_url) ?? "" }} style={styles.eventImage} /> : null}
           <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
           {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
           <Text style={styles.copy}>{hasDirectOpponent ? "This marker starts a standalone battle." : "Start this battle marker. If no battle board enemy is placed yet, the marker will tell you what is missing."}</Text>
@@ -158,7 +159,7 @@ export function MarkerInteractionPanel({
     return (
       <PanelShell marker={marker} message={message} onClose={onClose}>
         <View style={styles.storyEditor}>
-          {marker.scene_npc_image_url || marker.quest_image_url ? <Image source={{ uri: marker.scene_npc_image_url || marker.quest_image_url || "" }} style={styles.eventImage} /> : null}
+          {resolvePanelImageUri(marker.scene_npc_image_url || marker.quest_image_url) ? <Image source={{ uri: resolvePanelImageUri(marker.scene_npc_image_url || marker.quest_image_url) ?? "" }} style={styles.eventImage} /> : null}
           <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
           {marker.quest_dialogue || marker.description ? <Text style={styles.dialogueText}>{marker.quest_dialogue || marker.description}</Text> : null}
           <Text style={styles.copy}>Open this NPC from the full marker scene to use its linked dialogue tree.</Text>
@@ -178,8 +179,8 @@ export function MarkerInteractionPanel({
 
     return (
       <PanelShell marker={marker} message={message} onClose={onClose}>
-        <View style={[styles.shopPanel, marker.shop_background_image_url ? ({ backgroundImage: `url(${marker.shop_background_image_url})` } as object) : null]}>
-          {marker.shop_image_url ? <Image source={{ uri: marker.shop_image_url }} style={styles.eventImage} /> : null}
+        <View style={[styles.shopPanel, resolvePanelImageUri(marker.shop_background_image_url) ? ({ backgroundImage: `url(${resolvePanelImageUri(marker.shop_background_image_url)})` } as object) : null]}>
+          {resolvePanelImageUri(marker.shop_image_url) ? <Image source={{ uri: resolvePanelImageUri(marker.shop_image_url) ?? "" }} style={styles.eventImage} /> : null}
           <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
           {marker.quest_dialogue ? <Text style={styles.dialogueText}>{marker.quest_dialogue}</Text> : null}
           <Text style={styles.selectedTitle}>Buy</Text>
@@ -216,7 +217,7 @@ export function MarkerInteractionPanel({
   return (
     <PanelShell marker={marker} message={message} onClose={onClose}>
       <View style={styles.storyEditor}>
-        {marker.quest_image_url ? <Image source={{ uri: marker.quest_image_url }} style={styles.eventImage} /> : null}
+        {resolvePanelImageUri(marker.quest_image_url) ? <Image source={{ uri: resolvePanelImageUri(marker.quest_image_url) ?? "" }} style={styles.eventImage} /> : null}
         <Text style={styles.selectedTitle}>{marker.quest_title || marker.title}</Text>
         {marker.quest_dialogue ? <Text style={styles.dialogueText}>{marker.quest_dialogue}</Text> : null}
         <Text style={styles.copy}>
@@ -234,6 +235,10 @@ export function MarkerInteractionPanel({
 
 function isBattleMarkerType(type: string) {
   return type === "Battle" || type === "Battle Zone";
+}
+
+function resolvePanelImageUri(path?: string | null) {
+  return resolveGameAssetUri(path, "scene");
 }
 
 function getMarkerTypeLabel(type: string) {

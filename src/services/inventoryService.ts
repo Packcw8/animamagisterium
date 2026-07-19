@@ -1,6 +1,7 @@
 import { supabase, Tables } from "../lib/supabase";
 import type { CharacterWithDetails } from "./characterService";
 import type { CharacterResources } from "./abilityService";
+import { resolveGameAssetUri } from "../utils/assetResolver";
 
 export type ItemDefinition = Tables["item_definitions"];
 export type PlayerInventoryRow = Tables["player_inventory"];
@@ -48,42 +49,12 @@ export const defaultCarrySettings: CarrySettings = {
   carryWeightPerStrengthLevel: 10,
 };
 
-function resolveAssetImageUri(imagePath: string | null | undefined, basePath: string, folderAliases: RegExp[] = []) {
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  const fixedFolder = folderAliases.reduce((current, alias) => current.replace(alias, basePath), normalized);
-
-  if (fixedFolder.startsWith(basePath)) {
-    return fixedFolder;
-  }
-
-  const relativeBasePath = basePath.replace(/^\//, "");
-  if (fixedFolder.startsWith(relativeBasePath)) {
-    return `/${fixedFolder}`;
-  }
-
-  if (!fixedFolder.includes("/")) {
-    return `${basePath}${fixedFolder}`;
-  }
-
-  return fixedFolder.startsWith("/") ? fixedFolder : `/${fixedFolder}`;
-}
-
 export function resolveInventoryImageUri(imagePath?: string | null) {
-  return resolveAssetImageUri(imagePath, inventoryAssetBasePath, [/^\/?assets\/inventory\//i]);
+  return resolveGameAssetUri(imagePath, "item");
 }
 
 export function resolveAbilityImageUri(imagePath?: string | null) {
-  return resolveAssetImageUri(imagePath, abilityAssetBasePath, [/^\/?assets\/ability\//i, /^\/?assets\/abilities\//i]);
+  return resolveGameAssetUri(imagePath, "ability");
 }
 
 export function blankItemDefinition(): Partial<ItemDefinition> {

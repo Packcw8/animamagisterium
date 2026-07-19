@@ -1,4 +1,5 @@
 import { Image, StyleSheet, Text, View } from "react-native";
+import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { colors } from "../theme";
 
 export type MarkerIconSource = {
@@ -34,18 +35,7 @@ export function MarkerIcon({ marker, compact = false, mini = false }: { marker: 
 }
 
 function resolveMapImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(imagePath, "icon");
 }
 
 function getDefaultMarkerIconLabel(type: string) {

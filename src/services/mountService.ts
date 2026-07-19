@@ -1,4 +1,5 @@
 import { supabase, type Tables } from "../lib/supabase";
+import { resolveGameAssetUri } from "../utils/assetResolver";
 
 export type MountDefinition = Tables["mount_definitions"];
 export type PlayerMount = Tables["player_mounts"];
@@ -27,18 +28,7 @@ export function normalizeMountMultiplier(value?: number | string | null) {
 }
 
 export function resolveMountImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(imagePath, "mount");
 }
 
 export function getActiveMountMultiplier(activeMount: PlayerMountWithDefinition | null) {

@@ -2,6 +2,7 @@ import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { colors, fonts } from "../theme";
 import type { MapMarker } from "../../services/mapService";
+import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { MarkerIcon } from "./MarkerIcon";
 
 export type GameToastReward = {
@@ -139,18 +140,7 @@ function resolveToastMarkerImageUri(marker: MapMarker) {
     marker.shop_image_url ||
     marker.scene_npc_image_url ||
     marker.icon_image_url;
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(imagePath, "scene");
 }
 
 const styles = StyleSheet.create({

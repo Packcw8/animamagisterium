@@ -2,6 +2,7 @@ import { supabase, Tables } from "../lib/supabase";
 import type { AttributeKey } from "./trainingService";
 import type { CharacterWithDetails } from "./characterService";
 import { getAttributeLevelFromXp, getAttributeLevelProgress, seasonOneAttributeLevelCap } from "./progressionService";
+import { resolveGameAssetUri } from "../utils/assetResolver";
 
 export type ClassKey =
   | "warrior"
@@ -303,21 +304,7 @@ export function formatAttributeName(attribute: AttributeKey) {
 }
 
 export function resolveClassImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-  const normalized = trimmed.replaceAll("\\", "/").replace(/^\/?assets\/classes\//i, classAssetBasePath);
-  if (normalized.startsWith(classAssetBasePath)) {
-    return normalized;
-  }
-  if (!normalized.includes("/")) {
-    return `${classAssetBasePath}${normalized}`;
-  }
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(imagePath, "misc");
 }
 
 function isMissingClassTableError(error: { message?: string; code?: string }) {

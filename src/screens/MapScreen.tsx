@@ -92,6 +92,7 @@ import { createCurrentPlayerBattleSnapshot } from "../services/battleSnapshotSer
 import { createArenaChallengeEvent, createArenaSnapshotOpponent } from "../services/arenaBattleService";
 import { equipPartyCompanion, getPartyCompanionBuildState, refreshOwnPartyAllySnapshot, unequipPartyCompanion, type EquippedPartyCompanion, type PartyCompanionBuildState } from "../services/partyCompanionService";
 import { classifyMovement, metersPerSecondToMph, movementSpeedThresholdMph } from "../utils/combatMath";
+import { resolveGameAssetUri } from "../utils/assetResolver";
 import { getMarkerAvailability } from "../utils/markerAvailability";
 import { adminSections, editorModes, getDefaultDraftTypeForAdminSection, getEditorModeForAdminSection, isMapAdminSection, type MapAdminSection } from "../utils/mapAdminSections";
 import { getAdminSectionMarkers, getAdminSectionSummary, getAdminSectionWarningCount } from "../utils/mapAdminStatus";
@@ -10469,18 +10470,7 @@ function getRouteSegmentVisibility(route: MapRoute, index: number) {
 }
 
 function resolveSceneImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(imagePath, "scene");
 }
 
 function metersToMiles(meters: number) {
@@ -11767,18 +11757,7 @@ function Info({ label, value }: { label: string; value: string }) {
 }
 
 function resolveMapImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(imagePath, "map");
 }
 
 function formatToastTriggerLabel(triggerType: string) {

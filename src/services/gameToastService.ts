@@ -1,4 +1,5 @@
 import { supabase, type Tables } from "../lib/supabase";
+import { resolveGameAssetUri } from "../utils/assetResolver";
 
 export type GameToastDefinition = Tables["game_toasts"];
 export type GameToastTriggerType = GameToastDefinition["trigger_type"];
@@ -118,15 +119,5 @@ export function getToastSeenFlagKey(toast: Pick<GameToastDefinition, "id" | "tri
 }
 
 export function resolveToastAssetUri(path?: string | null) {
-  const trimmed = path?.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(path, "icon");
 }

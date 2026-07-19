@@ -1,5 +1,6 @@
 import { supabase, Tables } from "../lib/supabase";
 import { classCombinations } from "./classService";
+import { resolveGameAssetUri } from "../utils/assetResolver";
 
 export type CombatAbility = Tables["combat_abilities"];
 export type EnemyDefinition = Tables["enemy_definitions"];
@@ -42,31 +43,7 @@ export type TrophyHarvestRoll = {
 };
 
 export function resolveEnemyImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/").replace(/^\/?assets\/enemy\//i, enemyAssetBasePath).replace(/^\/?assets\/enemies\//i, enemyAssetBasePath);
-
-  if (normalized.startsWith(enemyAssetBasePath)) {
-    return normalized;
-  }
-
-  if (normalized.startsWith("assets/Enemies/")) {
-    return `/${normalized}`;
-  }
-
-  if (!normalized.includes("/")) {
-    return `${enemyAssetBasePath}${normalized}`;
-  }
-
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(imagePath, "enemy");
 }
 
 export function blankCombatAbility(): Partial<CombatAbility> {

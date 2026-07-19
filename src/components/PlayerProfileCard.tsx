@@ -4,6 +4,7 @@ import { Frame } from "./Frame";
 import { colors, fonts } from "./theme";
 import type { BadgeDefinition, EarnedBadgeSummary } from "../services/badgeService";
 import type { LeaderboardRow } from "../services/leaderboardService";
+import { resolveGameAssetUri } from "../utils/assetResolver";
 
 type PlayerProfileCardProps = {
   profile: LeaderboardRow;
@@ -93,32 +94,7 @@ function formatDistance(meters: number) {
 }
 
 function resolveBadgeImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  const fixedFolder = normalized.replace(/^\/?assets\/badges\//i, "/assets/badges/");
-
-  if (fixedFolder.startsWith("/assets/badges/")) {
-    return fixedFolder;
-  }
-
-  if (fixedFolder.startsWith("assets/badges/")) {
-    return `/${fixedFolder}`;
-  }
-
-  if (!fixedFolder.includes("/")) {
-    return `/assets/badges/${fixedFolder}`;
-  }
-
-  return fixedFolder.startsWith("/") ? fixedFolder : `/${fixedFolder}`;
+  return resolveGameAssetUri(imagePath, "icon");
 }
 
 const styles = StyleSheet.create({

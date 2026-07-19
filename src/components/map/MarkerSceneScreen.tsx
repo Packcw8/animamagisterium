@@ -21,6 +21,7 @@ import {
   isExitMarker,
   isStoryQuestMarker,
 } from "../../utils/mapVisibility";
+import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { getRouteLockLabel, getRouteLockMessage, isRouteLocked } from "../../utils/mapProgress";
 import type { ArenaLeaderboardEntry, ArenaWithLeaders } from "../../services/arenaService";
 
@@ -782,18 +783,7 @@ function MarketItemDetail({
 }
 
 function resolveSceneImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(imagePath, "scene");
 }
 
 function metersToMiles(meters: number) {

@@ -8,6 +8,7 @@ import { EnemyWithLoadout, NpcWithLoadout, resolveEnemyImageUri } from "../../se
 import { InventoryItem, ItemDefinition, isReviveBattleItem, resolveInventoryImageUri } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
 import { BattleEventCombatant, MarkerBattleCombatant } from "../../services/battlefieldService";
+import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
@@ -496,18 +497,7 @@ export function BattleEventScreen({
 }
 
 function resolveSceneImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  return encodeURI(normalized.startsWith("/") ? normalized : `/${normalized}`);
+  return resolveGameAssetUri(imagePath, "scene");
 }
 
 function CombatIndicatorStackOverlay({ indicators }: { indicators: CombatIndicator[] }) {

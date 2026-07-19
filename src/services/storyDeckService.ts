@@ -1,4 +1,5 @@
 import { supabase, type Tables } from "../lib/supabase";
+import { resolveGameAssetUri } from "../utils/assetResolver";
 
 export type StoryDeck = Tables["story_decks"];
 export type StoryCard = Tables["story_cards"];
@@ -259,11 +260,7 @@ export async function markStoryDeckViewed(deckId: string, characterId?: string |
 }
 
 export function resolveStoryDeckAssetUri(path?: string | null) {
-  const trimmed = path?.trim();
-  if (!trimmed) return null;
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) return trimmed;
-  const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(path, "deck");
 }
 
 export function formatStoryDeckLabel(value: string) {

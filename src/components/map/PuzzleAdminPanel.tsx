@@ -4,6 +4,7 @@ import { Image, Platform, StyleSheet, Text, TextInput, View } from "react-native
 import { AdminImageUploadButton } from "../admin/AdminImageUploadButton";
 import { colors, fonts } from "../theme";
 import type { MapMarker } from "../../services/mapService";
+import { resolveGameAssetUri } from "../../utils/assetResolver";
 import {
   blankPuzzleDefinition,
   blankPuzzleZone,
@@ -250,15 +251,7 @@ function roundPercent(value: number) {
 }
 
 function resolvePuzzleImageUri(path?: string | null) {
-  const trimmed = path?.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-  const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(path, "scene");
 }
 
 const styles = StyleSheet.create({

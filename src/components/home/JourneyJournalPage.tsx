@@ -1,6 +1,7 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { Image, StyleSheet, Text, View } from "react-native";
 import type { JourneyJournalEntry } from "../../services/journeyJournalService";
+import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { colors, fonts } from "../theme";
 
 type JourneyJournalPageProps = {
@@ -62,11 +63,7 @@ function getEntryTypeLabel(entry: JourneyJournalEntry) {
 }
 
 function resolveJournalImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-  if (!trimmed) return null;
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) return trimmed;
-  const normalized = trimmed.replaceAll("\\", "/");
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(imagePath, "deck");
 }
 
 const styles = StyleSheet.create({

@@ -12,6 +12,7 @@ import { CombatAbility, getCombatAbilities } from "../services/combatAdminServic
 import { resolveAbilityImageUri } from "../services/inventoryService";
 import { AttributeKey, completeTrainingSession, getTrainingLevelProgress, getTrainingState, TrainingCardState } from "../services/trainingService";
 import { getCurrentRole, Role } from "../services/mapService";
+import { resolveGameAssetUri } from "../utils/assetResolver";
 import {
   defaultProgressionSettings,
   GameProgressionSettings,
@@ -739,21 +740,7 @@ function TrainingHeroIcon({ name, imageUrl }: { name: string; imageUrl: string |
 }
 
 function resolveTrainingImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-  if (!trimmed) {
-    return null;
-  }
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-  const normalized = trimmed.replaceAll("\\", "/").replace(/^\/?assets\/training\//i, "/assets/training/");
-  if (normalized.startsWith("/assets/training/")) {
-    return normalized;
-  }
-  if (!normalized.includes("/")) {
-    return `/assets/training/${normalized}`;
-  }
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+  return resolveGameAssetUri(imagePath, "misc");
 }
 
 function BalanceText({ label, value, onChange, grid = false }: { label: string; value: string; onChange: (value: string) => void; grid?: boolean }) {

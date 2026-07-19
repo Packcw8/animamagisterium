@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import { ArenaBattleSlot, ArenaBattleSlotType, arenaBattleSlotTypes, getArenaSlotLabel } from "../../services/arenaBattleBoardService";
 import { ArenaSpot } from "../../services/arenaService";
+import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { colors, fonts } from "../theme";
 
 type ArenaBattleBoardEditorProps = {
@@ -205,18 +206,7 @@ export function ArenaBattleBoardEditor({
 }
 
 function resolveBattlefieldImageUri(imagePath?: string | null) {
-  const trimmed = imagePath?.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  if (/^(https?:|data:|blob:)/i.test(trimmed)) {
-    return trimmed;
-  }
-
-  const normalized = trimmed.replaceAll("\\", "/");
-  return encodeURI(normalized.startsWith("/") ? normalized : `/${normalized}`);
+  return resolveGameAssetUri(imagePath, "scene");
 }
 
 function formatPercent(value: number) {
