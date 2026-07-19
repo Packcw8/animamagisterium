@@ -6589,7 +6589,15 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         return;
       }
 
-      await maybeClearActiveRouteForMarkerId(activeMarkerIdForChoice);
+      if (activeMarkerIdForChoice) {
+        await maybeClearActiveRouteForMarkerId(activeMarkerIdForChoice);
+      } else {
+        await completeMapEvent(activeEvent.id);
+        setCompletedEventIds((current) => new Set([...current, activeEvent.id]));
+        await clearCurrentRoute();
+        setHasActiveRoute(false);
+        setRouteProgressRows((current) => current.map((row) => ({ ...row, is_current: false })));
+      }
       setActiveEvent(null);
       setActiveMarkerEventId(null);
       return;
