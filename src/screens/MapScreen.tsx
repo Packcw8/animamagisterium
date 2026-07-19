@@ -374,6 +374,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [activeEvent, setActiveEvent] = useState<MapEvent | null>(null);
   const [activeMarkerEventId, setActiveMarkerEventId] = useState<string | null>(null);
   const [adminPreviewMode, setAdminPreviewMode] = useState<"story" | "battle" | null>(null);
+  const [dialogueLoading, setDialogueLoading] = useState(false);
   const [dialogueNodes, setDialogueNodes] = useState<StoryDialogueNode[]>([]);
   const [dialogueChoices, setDialogueChoices] = useState<StoryDialogueChoice[]>([]);
   const [dialogueChoiceRewards, setDialogueChoiceRewards] = useState<DialogueChoiceReward[]>([]);
@@ -382,6 +383,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [pendingRewardChoice, setPendingRewardChoice] = useState<StoryDialogueChoice | null>(null);
   const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
   const [dialogueLog, setDialogueLog] = useState<string[]>([]);
+  const dialogueLoadTokenRef = useRef(0);
   const {
     activeBattle,
     setActiveBattle,
@@ -2060,6 +2062,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
   useEffect(() => {
     if (!activeEvent || activeEvent.event_type === "battle") {
+      dialogueLoadTokenRef.current += 1;
+      setDialogueLoading(false);
       setDialogueNodes([]);
       setDialogueChoices([]);
       setDialogueChoiceRewards([]);
@@ -5317,6 +5321,18 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   }
 
   async function loadDialogueForEvent(event: MapEvent) {
+    const loadToken = dialogueLoadTokenRef.current + 1;
+    dialogueLoadTokenRef.current = loadToken;
+    setDialogueLoading(true);
+    setDialogueNodes([]);
+    setDialogueChoices([]);
+    setDialogueChoiceRewards([]);
+    setClaimedChoiceRewardIds(new Set());
+    setSelectedDialogueChoiceIds(new Set());
+    setPendingRewardChoice(null);
+    setActiveNodeId(null);
+    setDialogueLog([]);
+
     try {
       const nodes = await getDialogueNodes(event.id, { seasonNumber: selectedSeason, chapterNumber: selectedChapter });
       const choices = await getDialogueChoices(nodes.map((node) => node.id));
@@ -5326,6 +5342,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         getPlayerDialogueChoiceHistory(choices.map((choice) => choice.id)),
       ]);
       const startNode = getDialogueStartNode(nodes, choices, selectedChoices);
+      if (loadToken !== dialogueLoadTokenRef.current) {
+        return;
+      }
       setDialogueNodes(nodes);
       setDialogueChoices(choices);
       setDialogueChoiceRewards(rewards);
@@ -5334,7 +5353,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setPendingRewardChoice(null);
       setActiveNodeId(startNode?.id ?? null);
       setDialogueLog([]);
+      setDialogueLoading(false);
     } catch (error) {
+      if (loadToken !== dialogueLoadTokenRef.current) {
+        return;
+      }
       console.warn("[map] unable to load event dialogue", error);
       setDialogueNodes([]);
       setDialogueChoices([]);
@@ -5344,11 +5367,24 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setPendingRewardChoice(null);
       setActiveNodeId(null);
       setDialogueLog([]);
+      setDialogueLoading(false);
       setGpsMessage(getErrorMessage(error, "This event could not load. Continue or reopen the map."));
     }
   }
 
   async function loadDialogueForMarker(markerId: string, existingNodes?: StoryDialogueNode[]) {
+    const loadToken = dialogueLoadTokenRef.current + 1;
+    dialogueLoadTokenRef.current = loadToken;
+    setDialogueLoading(true);
+    setDialogueNodes([]);
+    setDialogueChoices([]);
+    setDialogueChoiceRewards([]);
+    setClaimedChoiceRewardIds(new Set());
+    setSelectedDialogueChoiceIds(new Set());
+    setPendingRewardChoice(null);
+    setActiveNodeId(null);
+    setDialogueLog([]);
+
     try {
       const packs = await getDialoguePacksForMarker(markerId);
       const selectedPack = chooseDialoguePackForMarker(packs, { seasonNumber: selectedSeason, chapterNumber: selectedChapter }, storyFlags);
@@ -5360,6 +5396,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         getPlayerDialogueChoiceHistory(choices.map((choice) => choice.id)),
       ]);
       const startNode = getDialogueStartNode(nodes, choices, selectedChoices);
+      if (loadToken !== dialogueLoadTokenRef.current) {
+        return;
+      }
       setDialogueNodes(nodes);
       setDialogueChoices(choices);
       setDialogueChoiceRewards(rewards);
@@ -5368,7 +5407,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setPendingRewardChoice(null);
       setActiveNodeId(startNode?.id ?? null);
       setDialogueLog([]);
+      setDialogueLoading(false);
     } catch (error) {
+      if (loadToken !== dialogueLoadTokenRef.current) {
+        return;
+      }
       console.warn("[map] unable to load marker dialogue", error);
       setDialogueNodes([]);
       setDialogueChoices([]);
@@ -5378,6 +5421,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setPendingRewardChoice(null);
       setActiveNodeId(null);
       setDialogueLog([]);
+      setDialogueLoading(false);
       setMarkerPanelMessage(getErrorMessage(error, "This marker dialogue could not load."));
     }
   }
@@ -7812,6 +7856,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           npcs={npcDefinitions}
           activeNodeId={activeNodeId}
           dialogueLog={dialogueLog}
+          loading={dialogueLoading}
           previewMode={adminPreviewMode === "story"}
           choiceAvailability={dialogueChoiceAvailability}
           choiceRewards={dialogueChoiceRewards}

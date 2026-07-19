@@ -17,6 +17,7 @@ type DialogueSceneScreenProps = {
   npcs: NpcDefinition[];
   activeNodeId: string | null;
   dialogueLog: string[];
+  loading?: boolean;
   previewMode?: boolean;
   onLegacyChoice: (action: MapEvent["choices"][number]["action"]) => void;
   onChoice: (choice: StoryDialogueChoice) => void;
@@ -36,6 +37,7 @@ export function DialogueSceneScreen({
   npcs,
   activeNodeId,
   dialogueLog,
+  loading = false,
   previewMode = false,
   onLegacyChoice,
   onChoice,
@@ -86,6 +88,19 @@ export function DialogueSceneScreen({
       Animated.timing(restoredPulse, { toValue: 0, duration: 280, useNativeDriver: true }),
     ]).start();
   }, [restoredLine, restoredPulse]);
+
+  if (loading) {
+    return (
+      <Screen>
+        <Frame style={styles.eventScreen}>
+          <View style={styles.loadingPanel}>
+            <Text style={styles.loadingTitle}>Opening Conversation</Text>
+            <Text style={styles.loadingText}>...</Text>
+          </View>
+        </Frame>
+      </Screen>
+    );
+  }
 
   return (
     <Screen>
@@ -352,6 +367,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(0,0,0,0.32)",
+  },
+  loadingPanel: {
+    minHeight: 360,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    backgroundColor: "rgba(3, 5, 5, 0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: 18,
+  },
+  loadingTitle: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 22,
+    textAlign: "center",
+  },
+  loadingText: {
+    color: colors.blue,
+    fontSize: 22,
+    fontWeight: "900",
   },
   sceneHero: {
     position: "relative",
