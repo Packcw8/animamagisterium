@@ -487,47 +487,103 @@ function CraftingScene({
   itemDefinitions: ItemDefinition[];
   onCraft: (recipe: CraftingRecipeWithIngredients) => void;
 }) {
+  const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(recipes[0]?.id ?? null);
+  const selectedRecipe = recipes.find((recipe) => recipe.id === selectedRecipeId) ?? recipes[0] ?? null;
+  const selectedStatus = selectedRecipe ? getCraftingStatus(selectedRecipe, inventoryItems) : null;
+  const selectedOutputItem = selectedRecipe ? itemDefinitions.find((item) => item.id === selectedRecipe.output_item_id) ?? null : null;
+  const selectedOutputImageUri = resolveInventoryImageUri(selectedOutputItem?.image_path);
+  const getOwnedQuantity = (itemId: string) => inventoryItems.find((entry) => entry.item_id === itemId)?.quantity ?? 0;
+  const getItemDefinition = (itemId: string) => itemDefinitions.find((item) => item.id === itemId) ?? null;
+
   return (
-    <View style={styles.storyEditor}>
+    <View style={styles.craftingShell}>
       <Text style={styles.selectedTitle}>Crafting</Text>
       <Text style={styles.copy}>Create items from materials you have collected.</Text>
-      {recipes.length === 0 ? <Text style={styles.copy}>No recipes are available here yet.</Text> : null}
-      {recipes.map((recipe) => {
-        const status = getCraftingStatus(recipe, inventoryItems);
-        const outputItem = itemDefinitions.find((item) => item.id === recipe.output_item_id) ?? null;
-        const imageUri = resolveInventoryImageUri(outputItem?.image_path);
 
-        return (
-          <View key={recipe.id} style={styles.craftingCard}>
-            <View style={styles.craftingHeader}>
-              <View style={styles.craftingImageBox}>
-                {imageUri ? <Image source={{ uri: imageUri }} style={styles.craftingImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{recipe.name.slice(0, 1).toUpperCase()}</Text>}
-              </View>
-              <View style={styles.craftingInfo}>
-                <Text style={styles.markerName}>{recipe.name}</Text>
-                <Text style={styles.copy}>Creates {recipe.output_quantity} {getCraftingItemName(itemDefinitions, recipe.output_item_id)}</Text>
-                {recipe.description ? <Text style={styles.copy}>{recipe.description}</Text> : null}
-              </View>
+      {recipes.length === 0 ? (
+        <View style={styles.emptyCraftingCard}>
+          <Text style={styles.markerName}>No recipes available</Text>
+          <Text style={styles.copy}>Add crafting recipes in admin, then link this marker to the chapter where they should appear.</Text>
+        </View>
+      ) : null}
+
+      {recipes.length > 0 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.craftingRecipeStrip}>
+          {recipes.map((recipe) => {
+            const outputItem = itemDefinitions.find((item) => item.id === recipe.output_item_id) ?? null;
+            const imageUri = resolveInventoryImageUri(outputItem?.image_path);
+            const isSelected = selectedRecipe?.id === recipe.id;
+
+            return (
+              <Pressable key={recipe.id} style={[styles.craftingRecipeChip, isSelected && styles.craftingRecipeChipActive]} onPress={() => setSelectedRecipeId(recipe.id)}>
+                <View style={styles.craftingRecipeThumb}>
+                  {imageUri ? (
+                    <Image source={{ uri: imageUri }} style={styles.craftingRecipeImage} resizeMode="contain" fadeDuration={0} />
+                  ) : (
+                    <Text style={styles.marketItemFallback}>{recipe.name.slice(0, 1).toUpperCase()}</Text>
+                  )}
+                </View>
+                <Text style={styles.craftingRecipeName} numberOfLines={2}>{recipe.name}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+
+      {selectedRecipe && selectedStatus ? (
+        <View style={styles.craftingDetailCard}>
+          <View style={styles.craftingDetailHeader}>
+            <View style={styles.craftingOutputImageBox}>
+              {selectedOutputImageUri ? (
+                <Image source={{ uri: selectedOutputImageUri }} style={styles.craftingOutputImage} resizeMode="contain" fadeDuration={0} />
+              ) : (
+                <Text style={styles.marketItemFallback}>{selectedRecipe.name.slice(0, 1).toUpperCase()}</Text>
+              )}
             </View>
-            <View style={styles.craftingRequirements}>
-              {recipe.ingredients.map((ingredient) => {
-                const owned = inventoryItems.find((entry) => entry.item_id === ingredient.item_id)?.quantity ?? 0;
+            <View style={styles.craftingInfo}>
+              <Text style={styles.craftingOutputName}>{selectedRecipe.name}</Text>
+              <Text style={styles.craftingDetailCopy}>
+                Creates {selectedRecipe.output_quantity} {getCraftingItemName(itemDefinitions, selectedRecipe.output_item_id)}
+              </Text>
+              {selectedRecipe.station_type ? <Text style={styles.craftingStationPill}>{selectedRecipe.station_type}</Text> : null}
+              {selectedRecipe.description ? <Text style={styles.craftingDetailCopy}>{selectedRecipe.description}</Text> : null}
+            </View>
+          </View>
+
+          <View style={styles.craftingMaterialList}>
+            <Text style={styles.craftingSectionLabel}>Materials</Text>
+            {selectedRecipe.ingredients.length === 0 ? <Text style={styles.lockText}>Recipe needs ingredients before players can craft it.</Text> : null}
+            {selectedRecipe.ingredients.map((ingredient) => {
+                const owned = getOwnedQuantity(ingredient.item_id);
                 const ready = owned >= ingredient.quantity;
+                const item = getItemDefinition(ingredient.item_id);
+                const materialImageUri = resolveInventoryImageUri(item?.image_path);
+
                 return (
-                  <View key={ingredient.id} style={styles.craftingRequirementRow}>
-                    <Text style={ready ? styles.unlockText : styles.lockText}>{getCraftingItemName(itemDefinitions, ingredient.item_id)}</Text>
-                    <Text style={ready ? styles.unlockText : styles.lockText}>{owned} / {ingredient.quantity}</Text>
+                  <View key={ingredient.id} style={styles.craftingMaterialRow}>
+                    <View style={styles.craftingMaterialImageBox}>
+                      {materialImageUri ? (
+                        <Image source={{ uri: materialImageUri }} style={styles.craftingMaterialImage} resizeMode="contain" fadeDuration={0} />
+                      ) : (
+                        <Text style={styles.marketItemFallback}>{getCraftingItemName(itemDefinitions, ingredient.item_id).slice(0, 1).toUpperCase()}</Text>
+                      )}
+                    </View>
+                    <View style={styles.craftingMaterialCopy}>
+                      <Text style={styles.craftingMaterialName} numberOfLines={1}>{getCraftingItemName(itemDefinitions, ingredient.item_id)}</Text>
+                      <Text style={styles.craftingMaterialMeta}>{ready ? "Ready" : "Needed"}</Text>
+                    </View>
+                    <Text style={ready ? styles.craftingReadyText : styles.craftingMissingText}>{owned} / {ingredient.quantity}</Text>
                   </View>
                 );
               })}
-            </View>
-            {status.missing.length > 0 ? <Text style={styles.lockText}>Missing materials.</Text> : null}
-            <Pressable style={[styles.primaryButton, !status.canCraft && styles.disabledAction]} onPress={() => onCraft(recipe)} disabled={!status.canCraft}>
-              <Text style={styles.primaryText}>{status.canCraft ? "Craft" : "Need Materials"}</Text>
-            </Pressable>
           </View>
-        );
-      })}
+
+          {selectedStatus.missing.length > 0 ? <Text style={styles.lockText}>Missing materials.</Text> : null}
+          <Pressable style={[styles.primaryButton, !selectedStatus.canCraft && styles.disabledAction]} onPress={() => onCraft(selectedRecipe)} disabled={!selectedStatus.canCraft}>
+            <Text style={styles.primaryText}>{selectedStatus.canCraft ? "Craft Item" : "Need Materials"}</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -980,6 +1036,169 @@ const styles = StyleSheet.create({
     borderColor: colors.borderSoft,
     padding: 10,
     backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  craftingShell: {
+    gap: 12,
+  },
+  emptyCraftingCard: {
+    backgroundColor: "rgba(0,0,0,0.22)",
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+    padding: 12,
+  },
+  craftingRecipeStrip: {
+    gap: 10,
+    paddingRight: 4,
+  },
+  craftingRecipeChip: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.28)",
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+    minHeight: 106,
+    padding: 8,
+    width: 88,
+  },
+  craftingRecipeChipActive: {
+    backgroundColor: "rgba(217, 170, 93, 0.16)",
+    borderColor: colors.gold,
+  },
+  craftingRecipeThumb: {
+    alignItems: "center",
+    aspectRatio: 1,
+    backgroundColor: "rgba(0,0,0,0.54)",
+    borderColor: "rgba(217, 170, 93, 0.28)",
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 56,
+  },
+  craftingRecipeImage: {
+    height: "86%",
+    width: "86%",
+  },
+  craftingRecipeName: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: "900",
+    lineHeight: 14,
+    textAlign: "center",
+  },
+  craftingDetailCard: {
+    backgroundColor: "rgba(0,0,0,0.22)",
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 12,
+  },
+  craftingDetailHeader: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 12,
+  },
+  craftingOutputImageBox: {
+    alignItems: "center",
+    aspectRatio: 1,
+    backgroundColor: "rgba(0,0,0,0.54)",
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 92,
+  },
+  craftingOutputImage: {
+    height: "88%",
+    width: "88%",
+  },
+  craftingOutputName: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 18,
+    fontWeight: "900",
+    lineHeight: 22,
+  },
+  craftingDetailCopy: {
+    color: colors.muted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  craftingStationPill: {
+    alignSelf: "flex-start",
+    borderColor: "rgba(28, 181, 246, 0.38)",
+    borderRadius: 999,
+    borderWidth: 1,
+    color: colors.blue,
+    fontSize: 11,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    textTransform: "uppercase",
+  },
+  craftingMaterialList: {
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 10,
+  },
+  craftingSectionLabel: {
+    color: colors.gold,
+    fontSize: 12,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  craftingMaterialRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 46,
+  },
+  craftingMaterialImageBox: {
+    alignItems: "center",
+    aspectRatio: 1,
+    backgroundColor: "rgba(0,0,0,0.54)",
+    borderColor: "rgba(217, 170, 93, 0.24)",
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    overflow: "hidden",
+    width: 38,
+  },
+  craftingMaterialImage: {
+    height: "84%",
+    width: "84%",
+  },
+  craftingMaterialCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  craftingMaterialName: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  craftingMaterialMeta: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  craftingReadyText: {
+    color: colors.blue,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  craftingMissingText: {
+    color: "#f0a0a0",
+    fontSize: 13,
+    fontWeight: "900",
   },
   craftingCard: {
     backgroundColor: "rgba(0,0,0,0.22)",

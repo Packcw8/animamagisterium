@@ -75,7 +75,7 @@ import { CharacterWithDetails, getCharacter, incrementCharacterDistanceWalked, s
 import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getCharacterResources, getCombatLoadout, getCurrentHealth, learnAbilityFromScroll } from "../services/abilityService";
 import { EnemyDefinition, getEnemies, getNpcs, NpcDefinition, resolveEnemyImageUri, rollAndSaveTrophyHarvest, type EnemyWithLoadout, type NpcWithLoadout } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
-import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, unequipInventorySlot } from "../services/inventoryService";
+import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri, unequipInventorySlot } from "../services/inventoryService";
 import { equipMount, getActiveMountMultiplier, getMountDefinitions, getPlayerMounts, resolveMountImageUri, unmountCharacter, type MountDefinition, type PlayerMountWithDefinition } from "../services/mountService";
 import { getTravelModes, normalizeTravelModeMultiplier, resolveTravelModeImageUri, type TravelMode } from "../services/travelModeService";
 import { isNativePedometerAvailable, requestPedometerPermission, startPedometerDistancePolling, type PedometerSubscription } from "../services/nativePedometerService";
@@ -3751,10 +3751,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     try {
       const result = await craftRecipe(character.id, recipe.id);
       const craftedName = getItemName(itemDefinitions, result.output_item_id);
+      const craftedItem = itemDefinitions.find((item) => item.id === result.output_item_id) ?? null;
+      const craftedImageUri = resolveInventoryImageUri(craftedItem?.image_path);
       setMarkerPanelMessage(`Crafted ${craftedName}.`);
       showAuthoredToast("receiving_reward", {
         title: "Item Crafted",
         message: `${craftedName} was added to your inventory.`,
+        iconImageUrl: craftedImageUri,
         rewards: [{ label: craftedName, quantity: result.output_quantity }],
         actionLabel: "OK",
       }, {
