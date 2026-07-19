@@ -94,9 +94,21 @@ export function resolveGameAssetUri(path?: string | null, kind: AssetKind = "mis
     return trimmed;
   }
 
-  const source = resolveBundledAssetSource(trimmed, kind);
+  const bundledKey = getBundledAssetKey(trimmed, kind);
+  const source = bundledKey ? bundledAssets[bundledKey] ?? null : null;
   if (source) {
-    return Image.resolveAssetSource(source)?.uri ?? null;
+    const resolver = typeof Image.resolveAssetSource === "function" ? Image.resolveAssetSource : null;
+    const resolvedSource = resolver?.(source);
+
+    if (resolvedSource?.uri) {
+      return resolvedSource.uri;
+    }
+
+    if (typeof source === "object" && source && "uri" in source && typeof source.uri === "string") {
+      return source.uri;
+    }
+
+    return `/${bundledKey}`;
   }
 
   const normalized = normalizeAssetKey(trimmed);
