@@ -1,4 +1,4 @@
-export const MAP_SIZE = { width: 1800, height: 1400 };
+export const MAP_SIZE = { width: 4096, height: 2763 };
 export type MapDimensions = typeof MAP_SIZE;
 
 export type PercentPoint = {
