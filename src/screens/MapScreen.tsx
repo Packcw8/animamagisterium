@@ -85,7 +85,7 @@ import { findAuthoredToast, getGameToasts, getToastSeenFlagKey, resolveToastAsse
 import { getStoryCards, getStoryDeckView, getStoryDecks, markStoryDeckViewed, type StoryCard, type StoryDeck, type StoryDeckTriggerType } from "../services/storyDeckService";
 import { getPuzzleForMarker, savePlayerPuzzleProgress, type PuzzleWithZones } from "../services/puzzleService";
 import { craftRecipe, getCraftingRecipesForChapter, type CraftingRecipeWithIngredients } from "../services/craftingService";
-import { farmingActivities, getFarmingLootPools, type FarmingPoolWithItems } from "../services/farmingService";
+import { farmingActivities, getFarmingLootPools, rollFarmingLoot, type FarmingPoolWithItems } from "../services/farmingService";
 import { recoverPlayerMapPosition } from "../services/mapRecoveryService";
 import { claimOpenArena, completeArenaChallenge, getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
 import { buildArenaBattleLayout, deleteArenaBattleSlot, getArenaBattleSlots, saveArenaBattleSlot, type ArenaBattleSlot } from "../services/arenaBattleBoardService";
@@ -795,6 +795,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const routeDirectionRef = useRef<"forward" | "reverse">("forward");
   const activeBattleRouteRef = useRef<MapRoute | null>(null);
   const randomEventCooldownsRef = useRef<Map<string, number>>(new Map());
+  const farmingEventInProgressRef = useRef(false);
   const exitingMiniMapRef = useRef(false);
   const openingToastShownRef = useRef(false);
   const adminMapWorkspaceLoadedRef = useRef(false);
@@ -1419,6 +1420,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         .sort((a, b) => Number(a.distance_marker_percent ?? 0) - Number(b.distance_marker_percent ?? 0) || Number(b.random_chance_percent ?? 0) - Number(a.random_chance_percent ?? 0)),
     [routeEvents],
   );
+  const activeFarmingLootPool = useMemo(
+    () => (route.farming_loot_pool_id ? farmingLootPools.find((pool) => pool.id === route.farming_loot_pool_id) ?? null : null),
+    [farmingLootPools, route.farming_loot_pool_id],
+  );
   const reusableMapEvents = useMemo(() => allMapEvents.filter((event) => isInSelectedChapter(event, selectedSeason, selectedChapter)), [allMapEvents, selectedChapter, selectedSeason]);
   const completedRouteEvents = useMemo(() => requiredRouteEvents.filter((event) => completedEventIds.has(event.id)).length, [completedEventIds, requiredRouteEvents]);
   const routePotentialXp = useMemo(() => requiredRouteEvents.reduce((total, event) => total + Number(event.reward_xp ?? 0), 0), [requiredRouteEvents]);
@@ -1533,6 +1538,48 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
 
     return [...rewards, ...extraRewards];
+  }
+
+  async function triggerFarmingLootEvent(event: MapEvent, lootPool: FarmingPoolWithItems) {
+    if (farmingEventInProgressRef.current) {
+      return;
+    }
+
+    farmingEventInProgressRef.current = true;
+    try {
+      const roll = rollFarmingLoot(lootPool, inventoryItems);
+      if (!roll) {
+        setGpsMessage(`${event.title}: nothing useful found this time.`);
+        if (!event.repeatable) {
+          await completeMapEvent(event.id);
+          setCompletedEventIds((current) => new Set([...current, event.id]));
+        }
+        return;
+      }
+
+      const itemName = getItemName(itemDefinitions, roll.poolItem.item_id);
+      await grantItemToCharacter(character.id, roll.poolItem.item_id, roll.quantity);
+      if (!event.repeatable) {
+        await completeMapEvent(event.id);
+        setCompletedEventIds((current) => new Set([...current, event.id]));
+      }
+      setGpsMessage(`${event.title}: found ${itemName} x${roll.quantity}.`);
+      showAuthoredToast("receiving_reward", {
+        title: event.title || "Trail Find",
+        message: `You found ${itemName}.`,
+        rewards: [{ label: itemName, quantity: roll.quantity }],
+        actionLabel: "Take",
+      }, {
+        triggerKey: event.id,
+        seasonNumber: event.season_number,
+        chapterNumber: event.chapter_number,
+      });
+      await refreshRewardState();
+    } catch (error) {
+      setGpsMessage(getErrorMessage(error, "Unable to save farming find."));
+    } finally {
+      farmingEventInProgressRef.current = false;
+    }
   }
 
   function showGameToast(toast: GameToastData) {
@@ -2057,8 +2104,18 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return;
     }
 
+    if (
+      randomEvent &&
+      nextEvent.id === randomEvent.id &&
+      (route.route_kind ?? "story") === "farming" &&
+      activeFarmingLootPool
+    ) {
+      void triggerFarmingLootEvent(nextEvent, activeFarmingLootPool);
+      return;
+    }
+
     setActiveEvent(nextEvent);
-  }, [activeBattle, activeEvent, completedEventIds, mapEvents, playerMovementState, progressPercent, route.id, routeDirection]);
+  }, [activeBattle, activeEvent, activeFarmingLootPool, completedEventIds, mapEvents, playerMovementState, progressPercent, route.id, route.route_kind, routeDirection]);
 
   useEffect(() => {
     if (!activeEvent || activeEvent.event_type === "battle") {
@@ -8231,7 +8288,26 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               <Text style={styles.journeyFarmingMeta}>Repeatable path</Text>
             </View>
             {route.farming_summary ? <Text style={styles.journeyQuestText}>{route.farming_summary}</Text> : null}
-            {farmingRouteEvents.length > 0 ? (
+            {activeFarmingLootPool ? (
+              <View style={styles.journeyFindList}>
+                {activeFarmingLootPool.items.filter((item) => item.is_active).slice(0, 6).map((poolItem) => (
+                  <View key={poolItem.id} style={styles.journeyFindRow}>
+                    <View style={styles.journeyFindText}>
+                      <Text style={styles.journeyFindTitle} numberOfLines={1}>{getItemName(itemDefinitions, poolItem.item_id)}</Text>
+                      <Text style={styles.journeyFindReward} numberOfLines={1}>
+                        {poolItem.min_quantity === poolItem.max_quantity ? `x${poolItem.min_quantity}` : `x${poolItem.min_quantity}-${poolItem.max_quantity}`}
+                        {poolItem.required_utility_item_id ? ` / ${getItemName(itemDefinitions, poolItem.required_utility_item_id)} helps` : ""}
+                      </Text>
+                    </View>
+                    <View style={styles.journeyFindMeta}>
+                      <Text style={styles.journeyFindRarity}>{String(poolItem.rarity ?? "common").toUpperCase()}</Text>
+                      <Text style={styles.journeyFindChance}>Wt {Number(poolItem.drop_weight ?? 0)}</Text>
+                    </View>
+                  </View>
+                ))}
+                {activeFarmingLootPool.items.filter((item) => item.is_active).length > 6 ? <Text style={styles.journeyFindMore}>+{activeFarmingLootPool.items.filter((item) => item.is_active).length - 6} more pool items</Text> : null}
+              </View>
+            ) : farmingRouteEvents.length > 0 ? (
               <View style={styles.journeyFindList}>
                 {farmingRouteEvents.slice(0, 5).map((event) => {
                   const rewardBits = [
