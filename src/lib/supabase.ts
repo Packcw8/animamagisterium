@@ -934,6 +934,26 @@ export type Tables = {
     active_travel_mode_id?: string | null;
     updated_at: string;
   };
+  player_route_findings: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    route_id: string;
+    route_progress_id: string | null;
+    event_id: string | null;
+    finding_type: "item" | "battle" | "dialogue" | "reward" | "discovery";
+    title: string;
+    message: string | null;
+    item_id: string | null;
+    item_name: string | null;
+    item_image_url: string | null;
+    quantity: number;
+    rarity: "common" | "uncommon" | "rare" | "epic" | "legendary";
+    progress_percent: number;
+    sequence_order: number;
+    metadata: Record<string, unknown>;
+    created_at: string;
+  };
   player_map_state: {
     user_id: string;
     active_mini_map_id: string | null;

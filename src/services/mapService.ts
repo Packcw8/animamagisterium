@@ -32,6 +32,7 @@ export const marketPurchaseTypes: MarketPurchaseType[] = ["item", "mount"];
 export type MapStoryInstance = Tables["map_story_instances"];
 export type MapEvent = Tables["map_events"];
 export type MapEventCompletion = Tables["map_event_completions"];
+export type PlayerRouteFinding = Tables["player_route_findings"];
 export type StoryMarkerCompletion = Tables["story_marker_completions"];
 export type StoryMarkerStart = Tables["story_marker_starts"];
 export type StoryDialogueNode = Tables["story_dialogue_nodes"];
@@ -81,6 +82,7 @@ let playerMapStateAvailable: boolean | null = null;
 let playerMarkerUnlocksAvailable: boolean | null = null;
 let playerDialogueChoiceHistoryAvailable: boolean | null = null;
 let miniMapMarkerNavigationAvailable: boolean | null = null;
+let playerRouteFindingsAvailable: boolean | null = null;
 
 function normalizeSeasonChapter<T extends { season_number?: number | null; chapter_number?: number | null }>(values: T, fillMissing = true) {
   const next = { ...values };
@@ -139,6 +141,15 @@ function markPlayerDialogueChoiceHistoryUnavailable(error: { code?: string; mess
 function markMiniMapMarkerNavigationUnavailable(error: { code?: string; message?: string } | null | undefined) {
   if (isMissingRelationError(error)) {
     miniMapMarkerNavigationAvailable = false;
+    return true;
+  }
+
+  return false;
+}
+
+function markPlayerRouteFindingsUnavailable(error: { code?: string; message?: string } | null | undefined) {
+  if (isMissingRelationError(error)) {
+    playerRouteFindingsAvailable = false;
     return true;
   }
 
@@ -644,6 +655,97 @@ export async function getRouteProgressForRoutes(routeIds: string[]) {
   }
 
   return (data ?? []) as RouteProgress[];
+}
+
+export async function getPlayerRouteFindings(routeId: string, characterId: string, limit = 50) {
+  if (playerRouteFindingsAvailable === false) {
+    return [];
+  }
+
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user || !routeId || !characterId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("player_route_findings")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("character_id", characterId)
+    .eq("route_id", routeId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    if (markPlayerRouteFindingsUnavailable(error)) {
+      console.warn("[map] route finding log unavailable", error.message);
+      return [];
+    }
+    console.warn("[map] could not load route findings", error.message);
+    return [];
+  }
+
+  playerRouteFindingsAvailable = true;
+  return ((data ?? []) as PlayerRouteFinding[]).reverse();
+}
+
+export async function recordPlayerRouteFinding(input: {
+  userId: string;
+  characterId: string;
+  routeId: string;
+  routeProgressId?: string | null;
+  eventId?: string | null;
+  findingType: PlayerRouteFinding["finding_type"];
+  title: string;
+  message?: string | null;
+  itemId?: string | null;
+  itemName?: string | null;
+  itemImageUrl?: string | null;
+  quantity?: number | null;
+  rarity?: PlayerRouteFinding["rarity"] | null;
+  progressPercent?: number | null;
+  metadata?: Record<string, unknown>;
+}) {
+  if (playerRouteFindingsAvailable === false) {
+    return null;
+  }
+
+  const values = {
+    user_id: input.userId,
+    character_id: input.characterId,
+    route_id: input.routeId,
+    route_progress_id: input.routeProgressId ?? null,
+    event_id: input.eventId ?? null,
+    finding_type: input.findingType,
+    title: input.title.trim() || "Trail Find",
+    message: input.message?.trim() || null,
+    item_id: input.itemId ?? null,
+    item_name: input.itemName?.trim() || null,
+    item_image_url: input.itemImageUrl?.trim() || null,
+    quantity: Math.max(1, Math.round(Number(input.quantity ?? 1) || 1)),
+    rarity: input.rarity ?? "common",
+    progress_percent: Math.max(0, Math.min(100, Number(input.progressPercent ?? 0) || 0)),
+    sequence_order: Date.now(),
+    metadata: input.metadata ?? {},
+  };
+
+  const { data, error } = await supabase.from("player_route_findings").insert(values).select("*").single();
+
+  if (error) {
+    if (markPlayerRouteFindingsUnavailable(error)) {
+      console.warn("[map] route finding log unavailable", error.message);
+      return null;
+    }
+    console.warn("[map] could not record route finding", error.message);
+    return null;
+  }
+
+  playerRouteFindingsAvailable = true;
+  return data as PlayerRouteFinding;
 }
 
 export async function getCurrentRouteProgress() {

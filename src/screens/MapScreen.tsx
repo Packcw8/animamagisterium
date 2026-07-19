@@ -168,6 +168,7 @@ import {
   getPlayerMapState,
   getPlayerMarkerUnlocks,
   getPlayerDialogueChoiceHistory,
+  getPlayerRouteFindings,
   getWorldMapSettings,
   getMarkerLegendItems,
   getMarkerRouteLinks,
@@ -202,6 +203,7 @@ import {
   MiniMap,
   PlayerMiniMapMarkerDiscovery,
   PlayerMiniMapMarkerState,
+  PlayerRouteFinding,
   Role,
   RouteProgress,
   WorldMapSetting,
@@ -229,6 +231,7 @@ import {
   recordDialogueChoiceEffectClaim,
   recordPlayerDialogueChoice,
   recordPlayerAttributeCheck,
+  recordPlayerRouteFinding,
   setCurrentRoute,
   sellMarketInventoryItem,
   TutorialStep,
@@ -464,6 +467,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     blockedReason: null,
   });
   const [routeProgressRows, setRouteProgressRows] = useState<RouteProgress[]>([]);
+  const [routeFindings, setRouteFindings] = useState<PlayerRouteFinding[]>([]);
   const [allMarkerRouteLinks, setAllMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [miniMapMarkerConnections, setMiniMapMarkerConnections] = useState<MiniMapMarkerConnection[]>([]);
   const [playerMiniMapMarkerState, setPlayerMiniMapMarkerState] = useState<PlayerMiniMapMarkerState | null>(null);
@@ -1540,6 +1544,44 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     return [...rewards, ...extraRewards];
   }
 
+  async function appendRouteFinding(input: {
+    routeId: string;
+    routeProgressId?: string | null;
+    eventId?: string | null;
+    findingType: PlayerRouteFinding["finding_type"];
+    title: string;
+    message?: string | null;
+    itemId?: string | null;
+    itemName?: string | null;
+    itemImageUrl?: string | null;
+    quantity?: number | null;
+    rarity?: PlayerRouteFinding["rarity"] | null;
+    progressPercent?: number | null;
+    metadata?: Record<string, unknown>;
+  }) {
+    const recorded = await recordPlayerRouteFinding({
+      userId: character.user_id,
+      characterId: character.id,
+      routeId: input.routeId,
+      routeProgressId: input.routeProgressId ?? currentRouteProgress?.id ?? null,
+      eventId: input.eventId ?? null,
+      findingType: input.findingType,
+      title: input.title,
+      message: input.message ?? null,
+      itemId: input.itemId ?? null,
+      itemName: input.itemName ?? null,
+      itemImageUrl: input.itemImageUrl ?? null,
+      quantity: input.quantity ?? 1,
+      rarity: input.rarity ?? "common",
+      progressPercent: input.progressPercent ?? progressPercent,
+      metadata: input.metadata ?? {},
+    });
+
+    if (recorded && input.routeId === routeRef.current.id) {
+      setRouteFindings((current) => [...current, recorded].slice(-60));
+    }
+  }
+
   async function triggerFarmingLootEvent(event: MapEvent, lootPool: FarmingPoolWithItems) {
     if (farmingEventInProgressRef.current) {
       return;
@@ -1558,7 +1600,26 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       }
 
       const itemName = getItemName(itemDefinitions, roll.poolItem.item_id);
+      const itemDefinition = itemDefinitions.find((item) => item.id === roll.poolItem.item_id) ?? null;
+      const itemImageUrl = itemDefinition?.image_path ? resolveGameAssetUri(itemDefinition.image_path) : null;
       await grantItemToCharacter(character.id, roll.poolItem.item_id, roll.quantity);
+      await appendRouteFinding({
+        routeId: event.route_id ?? route.id,
+        eventId: event.id,
+        findingType: "item",
+        title: event.title || "Trail Find",
+        message: `Found ${itemName} x${roll.quantity}`,
+        itemId: roll.poolItem.item_id,
+        itemName,
+        itemImageUrl,
+        quantity: roll.quantity,
+        rarity: roll.poolItem.rarity ?? event.rarity ?? "common",
+        progressPercent: progressPercent,
+        metadata: {
+          loot_pool_id: lootPool.id,
+          drop_weight: roll.poolItem.drop_weight,
+        },
+      });
       if (!event.repeatable) {
         await completeMapEvent(event.id);
         setCompletedEventIds((current) => new Set([...current, event.id]));
@@ -1567,6 +1628,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       showAuthoredToast("receiving_reward", {
         title: event.title || "Trail Find",
         message: `You found ${itemName}.`,
+        iconImageUrl: itemImageUrl,
         rewards: [{ label: itemName, quantity: roll.quantity }],
         actionLabel: "Take",
       }, {
@@ -2248,6 +2310,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       setHasActiveRoute(true);
       await selectRoute(currentRoute, true, { skipActiveChapterSave: loadedRole === "admin" });
     } else {
+      setRouteFindings([]);
       setHasActiveRoute(false);
       setRoute(firstRoute);
       setRouteName(firstRoute.name);
@@ -2476,8 +2539,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       void savePlayerActiveChapter(nextRoute.season_number, nextRoute.chapter_number);
     }
 
-    const [progress, events] = await Promise.all([getRouteProgress(nextRoute.id), getMapEvents(nextRoute.id)]);
+    const [progress, events, findings] = await Promise.all([getRouteProgress(nextRoute.id), getMapEvents(nextRoute.id), getPlayerRouteFindings(nextRoute.id, character.id, 60)]);
     setMapEvents(events);
+    setRouteFindings(findings);
     const completions = await getEventCompletions(events.map((event) => event.id));
     setCompletedEventIds((current) => new Set([...current, ...completions.map((completion) => completion.event_id)]));
 
@@ -5926,6 +5990,31 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         }
         trophyResult = battleFinished === "victory" ? await awardTrophyHarvest(event, completedMarker?.id ?? null) : trophyResult;
       }
+      if (!completedMarker && event.route_id && ((routeRef.current.route_kind ?? "story") === "farming" || event.repeatable)) {
+        const eventWon = event.event_type !== "battle" || battleFinished === "victory";
+        await appendRouteFinding({
+          routeId: event.route_id,
+          eventId: event.id,
+          findingType: event.event_type === "battle" ? "battle" : event.reward_item_id || Number(event.reward_gold ?? 0) > 0 || Number(event.reward_xp ?? 0) > 0 ? "reward" : "dialogue",
+          title: event.title,
+          message: event.event_type === "battle"
+            ? `${eventWon ? "Won" : "Lost"} ${activeEnemy?.name || event.enemy_name || "battle"}`
+            : rewardResult.message,
+          itemId: event.reward_item_id,
+          itemName: event.reward_item_id ? getItemName(itemDefinitions, event.reward_item_id) : null,
+          itemImageUrl: event.event_type === "battle" ? resolveEnemyImageUri(activeEnemy?.image_url ?? event.enemy_image_url) : resolveMapImageUri(event.background_image_url),
+          quantity: event.reward_item_quantity ?? 1,
+          rarity: event.rarity ?? "common",
+          progressPercent: event.distance_marker_percent,
+          metadata: {
+            battle_finished: event.event_type === "battle" ? battleFinished : null,
+            reward_xp: event.reward_xp,
+            reward_gold: event.reward_gold,
+            drops,
+            trophy_score: trophyResult.trophy?.score ?? null,
+          },
+        });
+      }
       if (!completedMarker) {
         await completeMapEvent(event.id);
         setCompletedEventIds((current) => new Set([...current, event.id]));
@@ -8333,6 +8422,30 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             ) : (
               <Text style={styles.journeyQuestText}>No random finds have been added to this path yet.</Text>
             )}
+          </View>
+        ) : null}
+
+        {routeFindings.length > 0 ? (
+          <View style={styles.journeyWalkLogCard}>
+            <View style={styles.journeyFarmingHeader}>
+              <Text style={styles.journeyFarmingLabel}>This Walk</Text>
+              <Text style={styles.journeyFarmingMeta}>{routeFindings.length} logged</Text>
+            </View>
+            <View style={styles.journeyWalkLogList}>
+              {routeFindings.slice(-8).map((finding) => (
+                <View key={finding.id} style={styles.journeyWalkLogRow}>
+                  {finding.item_image_url ? <Image source={{ uri: finding.item_image_url }} style={styles.journeyWalkLogImage} /> : <View style={styles.journeyWalkLogIcon}><Text style={styles.journeyWalkLogIconText}>{finding.finding_type === "battle" ? "!" : "+"}</Text></View>}
+                  <View style={styles.journeyWalkLogCopy}>
+                    <Text style={styles.journeyWalkLogTitle} numberOfLines={1}>{finding.title}</Text>
+                    <Text style={styles.journeyWalkLogMessage} numberOfLines={1}>{finding.message ?? finding.item_name ?? formatResourceName(finding.finding_type)}</Text>
+                  </View>
+                  <View style={styles.journeyWalkLogMeta}>
+                    <Text style={styles.journeyWalkLogPercent}>{Math.round(Number(finding.progress_percent ?? 0))}%</Text>
+                    {finding.quantity > 1 ? <Text style={styles.journeyWalkLogQuantity}>x{finding.quantity}</Text> : null}
+                  </View>
+                </View>
+              ))}
+            </View>
           </View>
         ) : null}
 
@@ -12738,6 +12851,81 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     textAlign: "center",
+  },
+  journeyWalkLogCard: {
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    backgroundColor: "rgba(0,0,0,0.22)",
+    padding: 10,
+    gap: 8,
+  },
+  journeyWalkLogList: {
+    gap: 6,
+  },
+  journeyWalkLogRow: {
+    minHeight: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.18)",
+    backgroundColor: "rgba(11, 10, 7, 0.72)",
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  journeyWalkLogImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.45)",
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  journeyWalkLogIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(24, 178, 242, 0.45)",
+    backgroundColor: "rgba(24, 178, 242, 0.12)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  journeyWalkLogIconText: {
+    color: colors.blue,
+    fontWeight: "900",
+    fontSize: 16,
+  },
+  journeyWalkLogCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  journeyWalkLogTitle: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  journeyWalkLogMessage: {
+    color: colors.muted,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  journeyWalkLogMeta: {
+    alignItems: "flex-end",
+    minWidth: 38,
+  },
+  journeyWalkLogPercent: {
+    color: colors.gold,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  journeyWalkLogQuantity: {
+    color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+    marginTop: 2,
   },
   journeyDestination: {
     marginTop: 6,
