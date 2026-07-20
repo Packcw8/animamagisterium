@@ -69,6 +69,8 @@ export type MarkerPayloadState = {
 export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "create" | "update") {
   const isExit = isExitType(state.draftType);
   const linkedMiniMapId = getLinkedMiniMapId(state);
+  const visibleStoryFlagKey = state.markerVisibleStoryFlagKey.trim();
+  const storyFlagAccessRule = state.markerAccessRule === "story_flag" || state.markerAccessRule === "story_flag_unset";
 
   return {
     type: state.draftType,
@@ -97,7 +99,7 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     required_item_id: state.markerAccessRule === "item_required" ? state.markerRequiredItemId : null,
     required_item_quantity: Math.max(1, Number(state.markerRequiredItemQuantity) || 1),
     access_hint: state.markerAccessHint.trim() || null,
-    visible_story_flag_key: state.markerVisibleStoryFlagKey.trim() || null,
+    visible_story_flag_key: storyFlagAccessRule ? visibleStoryFlagKey || null : null,
     visible_story_flag_value: state.markerVisibleStoryFlagValue,
     victory_story_flag_key: state.markerVictoryStoryFlagKey.trim() || null,
     victory_story_flag_value: state.markerVictoryStoryFlagValue,

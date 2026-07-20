@@ -2944,6 +2944,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return;
     }
 
+    if (!validateMarkerAccessRule()) {
+      return;
+    }
+
     try {
       const markerState = getMarkerPayloadState(activeMiniMapId);
       const created = await createMapMarker(buildCreateMarkerInput(markerState, clickedPercent));
@@ -3125,6 +3129,29 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
   function getMarkerSettingsPayload(mode: "create" | "update" = "update") {
     return buildMarkerSettingsPayload(getMarkerPayloadState(), mode);
+  }
+
+  function setMarkerAccessRuleSafely(nextRule: MapMarker["access_rule"]) {
+    setMarkerAccessRule(nextRule);
+
+    if (nextRule !== "story_flag" && nextRule !== "story_flag_unset") {
+      setMarkerVisibleStoryFlagKey("");
+      setMarkerVisibleStoryFlagValue(true);
+    }
+  }
+
+  function validateMarkerAccessRule() {
+    if ((markerAccessRule === "story_flag" || markerAccessRule === "story_flag_unset") && !markerVisibleStoryFlagKey.trim()) {
+      setAdminMessage("Choose or type a story flag key before saving this marker access rule.");
+      return false;
+    }
+
+    if (markerAccessRule === "item_required" && !markerRequiredItemId) {
+      setAdminMessage("Choose a required item before saving this marker access rule.");
+      return false;
+    }
+
+    return true;
   }
 
   function getChapterVisibilityKey(seasonNumber: number, chapterNumber: number) {
@@ -3581,6 +3608,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       markers.some((marker) => marker.id !== selectedMarker.id && !marker.mini_map_id && marker.type === "World Spawn")
     ) {
       setAdminMessage("The overworld already has a World Spawn marker. Move or edit that spawn instead.");
+      return;
+    }
+
+    if (!validateMarkerAccessRule()) {
       return;
     }
 
@@ -9202,7 +9233,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               markerLockMessage={markerLockMessage}
               setMarkerLockMessage={setMarkerLockMessage}
               markerAccessRule={markerAccessRule}
-              setMarkerAccessRule={setMarkerAccessRule}
+              setMarkerAccessRule={setMarkerAccessRuleSafely}
               markerRequiredItemId={markerRequiredItemId}
               setMarkerRequiredItemId={setMarkerRequiredItemId}
               markerRequiredItemQuantity={markerRequiredItemQuantity}
@@ -10171,7 +10202,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 }}
                 onChangeMarkerLockType={setMarkerLockType}
                 onChangeMarkerLockMessage={setMarkerLockMessage}
-                onChangeMarkerAccessRule={setMarkerAccessRule}
+                onChangeMarkerAccessRule={setMarkerAccessRuleSafely}
                 onChangeRequiredItemId={setMarkerRequiredItemId}
                 onChangeRequiredItemQuantity={setMarkerRequiredItemQuantity}
                 onChangeAccessHint={setMarkerAccessHint}

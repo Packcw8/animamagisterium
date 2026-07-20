@@ -197,21 +197,6 @@ export function MarkerAccessRulesPanel({
         </View>
       ) : null}
 
-      {markerAccessRule !== "story_flag" && markerAccessRule !== "story_flag_unset" ? (
-        <View style={styles.ruleBlock}>
-          <Text style={styles.subTitle}>Optional Story Flag</Text>
-          <Text style={styles.copy}>Leave blank for the selected unlock type. Use only if you need an extra story gate.</Text>
-          <MarkerStoryFlagVisibilityEditor
-            storyFlagKeys={storyFlagKeys}
-            visibleStoryFlagKey={visibleStoryFlagKey}
-            visibleStoryFlagValue={visibleStoryFlagValue}
-            onChangeVisibleStoryFlagKey={onChangeVisibleStoryFlagKey}
-            onToggleVisibleStoryFlagValue={onToggleVisibleStoryFlagValue}
-            onClear={onClearVisibleStoryFlag}
-          />
-        </View>
-      ) : null}
-
       {isBattleMarkerType(markerType) ? (
         <View style={styles.ruleBlock}>
           <Text style={styles.subTitle}>Battle Victory Result</Text>
