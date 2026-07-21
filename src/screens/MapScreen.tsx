@@ -35,6 +35,7 @@ import { MarkerLegend } from "../components/map/MarkerLegend";
 import { MarkerSceneScreen } from "../components/map/MarkerSceneScreen";
 import { MarkerStyleEditor } from "../components/map/MarkerStyleEditor";
 import { MarkerTypeSelector } from "../components/map/MarkerTypeSelector";
+import { RouteCompletionSummary } from "../components/map/RouteCompletionSummary";
 import { JourneyRecoveryAction } from "../components/map/JourneyRecoveryAction";
 import { PlayerMapTravelHeader } from "../components/map/PlayerMapTravelHeader";
 import { PuzzleAdminPanel } from "../components/map/PuzzleAdminPanel";
@@ -103,6 +104,7 @@ import { ADMIN_MAP_SCALE, PLAYER_MAP_SCALE, getCenteredMapScroll } from "../util
 import { clamp, getPathSegmentMetaAtProgress, getPointOnRoute, getRouteSegments, MAP_SIZE as mapSize, normalizePathSegments, roundPercent, type PathSegmentMeta } from "../utils/mapGeometry";
 import { evaluateDialogueChoiceRequirement, eventTriggerModeName, eventTypeName, formatResourceName, rollDialogueAttributeCheck } from "../utils/dialogueFlow";
 import { buildCreateMarkerInput, buildMarkerSettingsPayload, type MarkerPayloadState } from "../utils/markerPayload";
+import { buildRouteCompletionSummary, type RouteCompletionSummary as RouteCompletionSummaryData } from "../utils/routeFindings";
 import {
   canPlayerSeeStoryMarker,
   getOrderedMarkerRouteLinks,
@@ -272,25 +274,6 @@ const signPostRouteScopeLabels: Record<(typeof signPostRouteScopes)[number], str
   all_chapter: "All Chapter Routes",
 };
 type MarkerRouteAccessRuleDraft = Pick<MarkerRouteLink, "access_rule" | "required_story_flag_key" | "required_story_flag_value" | "lock_message">;
-type RouteCompletionSummaryItem = {
-  key: string;
-  title: string;
-  message: string;
-  quantity: number;
-  rarity: PlayerRouteFinding["rarity"];
-  imageUrl: string | null;
-  findingType: PlayerRouteFinding["finding_type"];
-  progressPercent: number;
-};
-type RouteCompletionSummary = {
-  key: string;
-  routeName: string;
-  subtitle: string;
-  iconUrl: string | null;
-  items: RouteCompletionSummaryItem[];
-  totalFindings: number;
-  battleCount: number;
-};
 const choiceActions = ["Continue", "Investigate", "Ask Questions", "Start Battle", "Complete Event"] as const;
 const dialogueRequirementTypes = ["none", "gold", "item", "story_flag", "completed_marker", "completed_event", "tutorial_step", "ability_known", "attribute_level"] as const;
 const dialogueRequirementOperators = [">=", ">", "=", "<=", "<"] as const;
@@ -489,7 +472,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   });
   const [routeProgressRows, setRouteProgressRows] = useState<RouteProgress[]>([]);
   const [routeFindings, setRouteFindings] = useState<PlayerRouteFinding[]>([]);
-  const [routeCompletionSummary, setRouteCompletionSummary] = useState<RouteCompletionSummary | null>(null);
+  const [routeCompletionSummary, setRouteCompletionSummary] = useState<RouteCompletionSummaryData | null>(null);
   const shownRouteCompletionSummaryKeysRef = useRef<Set<string>>(new Set());
   const [allMarkerRouteLinks, setAllMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [miniMapMarkerConnections, setMiniMapMarkerConnections] = useState<MiniMapMarkerConnection[]>([]);
@@ -1612,66 +1595,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
   }
 
-  function buildRouteCompletionSummary(): RouteCompletionSummary | null {
-    if ((route.route_kind ?? "story") !== "farming") {
-      return null;
-    }
-
-    const routeProgressId = currentRouteProgress?.id ?? null;
-    const findingsForThisWalk = routeFindings
-      .filter((finding) => finding.route_id === route.id)
-      .filter((finding) => !routeProgressId || !finding.route_progress_id || finding.route_progress_id === routeProgressId);
-
-    if (findingsForThisWalk.length === 0) {
-      return null;
-    }
-
-    const summaryRows = new Map<string, RouteCompletionSummaryItem>();
-    for (const finding of findingsForThisWalk) {
-      const quantity = Math.max(1, Math.round(Number(finding.quantity ?? 1) || 1));
-      const isStackableItem = finding.finding_type === "item" || finding.item_id;
-      const key = isStackableItem
-        ? `item:${finding.item_id ?? finding.item_name ?? finding.title}`
-        : `${finding.finding_type}:${finding.event_id ?? finding.id}`;
-      const existing = summaryRows.get(key);
-
-      if (existing) {
-        existing.quantity += quantity;
-        existing.progressPercent = Math.max(existing.progressPercent, Number(finding.progress_percent ?? 0) || 0);
-        continue;
-      }
-
-      summaryRows.set(key, {
-        key,
-        title: finding.item_name ?? finding.title,
-        message: finding.message ?? formatResourceName(finding.finding_type),
-        quantity,
-        rarity: finding.rarity ?? "common",
-        imageUrl: finding.item_image_url ? resolveGameAssetUri(finding.item_image_url) : null,
-        findingType: finding.finding_type,
-        progressPercent: Number(finding.progress_percent ?? 0) || 0,
-      });
-    }
-
-    const items = Array.from(summaryRows.values()).sort(
-      (left, right) =>
-        left.progressPercent - right.progressPercent ||
-        left.title.localeCompare(right.title),
-    );
-
-    return {
-      key: `${route.id}:${routeProgressId ?? "route"}:${findingsForThisWalk.length}`,
-      routeName: route.name,
-      subtitle: `${findingsForThisWalk.length} trail record${findingsForThisWalk.length === 1 ? "" : "s"} gathered`,
-      iconUrl: resolveGameAssetUri("assets/Reusable/Icons/TrophyHuntIcon.jpg", "icon"),
-      items,
-      totalFindings: findingsForThisWalk.length,
-      battleCount: findingsForThisWalk.filter((finding) => finding.finding_type === "battle").length,
-    };
-  }
-
   function maybeShowRouteCompletionSummary() {
-    const summary = buildRouteCompletionSummary();
+    const summary = buildRouteCompletionSummary(route, routeFindings, currentRouteProgress);
     if (!summary || shownRouteCompletionSummaryKeysRef.current.has(summary.key)) {
       return;
     }
@@ -8418,73 +8343,6 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     );
   }
 
-  function renderRouteCompletionSummary() {
-    if (!routeCompletionSummary) {
-      return null;
-    }
-
-    const totalItemQuantity = routeCompletionSummary.items.reduce((total, item) => total + item.quantity, 0);
-
-    return (
-      <View style={styles.routeSummaryOverlay} pointerEvents="box-none">
-        <View style={styles.routeSummaryCard}>
-          <View style={styles.routeSummaryHeader}>
-            {routeCompletionSummary.iconUrl ? (
-              <Image source={{ uri: routeCompletionSummary.iconUrl }} style={styles.routeSummaryIcon} />
-            ) : null}
-            <View style={styles.routeSummaryHeaderCopy}>
-              <Text style={styles.routeSummaryOverline}>Route Summary</Text>
-              <Text style={styles.routeSummaryTitle}>{routeCompletionSummary.routeName}</Text>
-              <Text style={styles.routeSummarySubtitle}>{routeCompletionSummary.subtitle}</Text>
-            </View>
-          </View>
-
-          <View style={styles.routeSummaryStats}>
-            <View style={styles.routeSummaryStat}>
-              <Text style={styles.routeSummaryStatValue}>{routeCompletionSummary.totalFindings}</Text>
-              <Text style={styles.routeSummaryStatLabel}>Finds</Text>
-            </View>
-            <View style={styles.routeSummaryStat}>
-              <Text style={styles.routeSummaryStatValue}>{totalItemQuantity}</Text>
-              <Text style={styles.routeSummaryStatLabel}>Items</Text>
-            </View>
-            <View style={styles.routeSummaryStat}>
-              <Text style={styles.routeSummaryStatValue}>{routeCompletionSummary.battleCount}</Text>
-              <Text style={styles.routeSummaryStatLabel}>Battles</Text>
-            </View>
-          </View>
-
-          <ScrollView style={styles.routeSummaryList} contentContainerStyle={styles.routeSummaryListContent}>
-            {routeCompletionSummary.items.map((item) => (
-              <View key={item.key} style={styles.routeSummaryRow}>
-                {item.imageUrl ? (
-                  <Image source={{ uri: item.imageUrl }} style={styles.routeSummaryItemImage} />
-                ) : (
-                  <View style={styles.routeSummaryFallbackIcon}>
-                    <Text style={styles.routeSummaryFallbackText}>{item.findingType === "battle" ? "!" : "+"}</Text>
-                  </View>
-                )}
-                <View style={styles.routeSummaryItemCopy}>
-                  <Text style={styles.routeSummaryItemTitle} numberOfLines={1}>{item.title}</Text>
-                  <Text style={styles.routeSummaryItemMessage} numberOfLines={2}>{item.message}</Text>
-                </View>
-                <View style={styles.routeSummaryItemMeta}>
-                  <Text style={styles.routeSummaryPercent}>{Math.round(item.progressPercent)}%</Text>
-                  <Text style={styles.routeSummaryRarity}>{eventRarityLabels[item.rarity] ?? item.rarity}</Text>
-                  {item.quantity > 1 ? <Text style={styles.routeSummaryQuantity}>x{item.quantity}</Text> : null}
-                </View>
-              </View>
-            ))}
-          </ScrollView>
-
-          <Pressable style={styles.routeSummaryButton} onPress={() => setRouteCompletionSummary(null)}>
-            <Text style={styles.routeSummaryButtonText}>Continue</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
-
   if (selectedMarker?.type === "Puzzle" && selectedPuzzle && (previewMarkerScene || (!isAdmin && canUseSelectedMarker && !selectedMarkerLocked))) {
     return (
       <>
@@ -11125,7 +10983,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           ) : null}
         </Frame>
       ) : null}
-      {renderRouteCompletionSummary()}
+      <RouteCompletionSummary
+        summary={routeCompletionSummary}
+        rarityLabels={eventRarityLabels}
+        onDismiss={() => setRouteCompletionSummary(null)}
+      />
       <GameToast toast={gameToast} onDismiss={dismissGameToast} />
     </Screen>
   );
@@ -13224,186 +13086,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "800",
     textAlign: "center",
-  },
-  routeSummaryOverlay: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    left: 10,
-    right: 10,
-    zIndex: 998,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingTop: 74,
-    paddingBottom: 118,
-  },
-  routeSummaryCard: {
-    width: "100%",
-    maxWidth: 520,
-    maxHeight: "82%",
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "rgba(218, 164, 65, 0.55)",
-    backgroundColor: "rgba(5, 8, 9, 0.97)",
-    padding: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.48,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 12 },
-  },
-  routeSummaryHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
-  },
-  routeSummaryIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(218, 164, 65, 0.5)",
-    backgroundColor: "rgba(0,0,0,0.4)",
-  },
-  routeSummaryHeaderCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  routeSummaryOverline: {
-    color: colors.blue,
-    fontSize: 11,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    marginBottom: 3,
-  },
-  routeSummaryTitle: {
-    color: colors.gold,
-    fontFamily: fonts.title,
-    fontSize: 21,
-  },
-  routeSummarySubtitle: {
-    color: colors.muted,
-    fontSize: 12,
-    fontWeight: "800",
-    marginTop: 3,
-  },
-  routeSummaryStats: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 10,
-  },
-  routeSummaryStat: {
-    flex: 1,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(218, 164, 65, 0.22)",
-    backgroundColor: "rgba(217, 164, 65, 0.07)",
-    paddingVertical: 8,
-    alignItems: "center",
-  },
-  routeSummaryStatValue: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  routeSummaryStatLabel: {
-    color: colors.muted,
-    fontSize: 10,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    marginTop: 2,
-  },
-  routeSummaryList: {
-    maxHeight: 320,
-  },
-  routeSummaryListContent: {
-    gap: 8,
-    paddingBottom: 4,
-  },
-  routeSummaryRow: {
-    minHeight: 58,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "rgba(218, 164, 65, 0.24)",
-    backgroundColor: "rgba(11, 10, 7, 0.78)",
-    paddingHorizontal: 9,
-    paddingVertical: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 9,
-  },
-  routeSummaryItemImage: {
-    width: 42,
-    height: 42,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(218, 164, 65, 0.42)",
-    backgroundColor: "rgba(0,0,0,0.48)",
-  },
-  routeSummaryFallbackIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    borderWidth: 1,
-    borderColor: "rgba(24, 178, 242, 0.48)",
-    backgroundColor: "rgba(24, 178, 242, 0.14)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  routeSummaryFallbackText: {
-    color: colors.blue,
-    fontSize: 18,
-    fontWeight: "900",
-  },
-  routeSummaryItemCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  routeSummaryItemTitle: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: "900",
-  },
-  routeSummaryItemMessage: {
-    color: colors.muted,
-    fontSize: 11,
-    lineHeight: 15,
-    marginTop: 3,
-  },
-  routeSummaryItemMeta: {
-    alignItems: "flex-end",
-    minWidth: 58,
-  },
-  routeSummaryPercent: {
-    color: colors.blue,
-    fontSize: 11,
-    fontWeight: "900",
-  },
-  routeSummaryRarity: {
-    color: colors.gold,
-    fontSize: 9,
-    fontWeight: "900",
-    textTransform: "uppercase",
-    marginTop: 3,
-  },
-  routeSummaryQuantity: {
-    color: colors.text,
-    fontSize: 12,
-    fontWeight: "900",
-    marginTop: 3,
-  },
-  routeSummaryButton: {
-    marginTop: 12,
-    minHeight: 48,
-    borderRadius: 10,
-    backgroundColor: colors.gold,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  routeSummaryButtonText: {
-    color: "#080705",
-    fontSize: 15,
-    fontWeight: "900",
   },
   journeyWalkLogCard: {
     borderRadius: 10,
