@@ -156,6 +156,10 @@ export function CraftingAdminPanel({ itemDefinitions, seasonNumber, chapterNumbe
         <ChoiceRow label="Station" options={craftingStationTypes} value={(recipeForm.station_type || "all") as (typeof craftingStationTypes)[number]} labels={{ all: "Any", forge: "Forge", cooking: "Cooking", alchemy: "Alchemy", workbench: "Workbench", enchanting: "Enchanting" }} onSelect={(value) => setRecipeForm((current) => ({ ...current, station_type: value === "all" ? "" : value }))} />
         <ChoiceRow label="Category" options={craftingCategories} value={(recipeForm.category || "misc") as (typeof craftingCategories)[number]} labels={{ materials: "Materials", weapons: "Weapons", armor: "Armor", consumables: "Consumables", tools: "Tools", quest: "Quest", misc: "Misc" }} onSelect={(value) => setRecipeForm((current) => ({ ...current, category: value }))} />
         <Field label="Sort order" value={String(recipeForm.sort_order ?? 0)} keyboardType="numeric" onChange={(value) => setRecipeForm((current) => ({ ...current, sort_order: Number(value) || 0 }))} />
+        <ItemPicker label="Blueprint item required, optional" items={itemDefinitions} selectedId={recipeForm.required_blueprint_item_id || null} onSelect={(id) => setRecipeForm((current) => ({ ...current, required_blueprint_item_id: id, required_blueprint_quantity: id ? current.required_blueprint_quantity ?? 1 : 1 }))} />
+        {recipeForm.required_blueprint_item_id ? (
+          <Field label="Blueprint quantity" value={String(recipeForm.required_blueprint_quantity ?? 1)} keyboardType="numeric" onChange={(value) => setRecipeForm((current) => ({ ...current, required_blueprint_quantity: Number(value) || 1 }))} />
+        ) : null}
         <ToggleRow label="Active" value={recipeForm.is_active ?? true} onPress={() => setRecipeForm((current) => ({ ...current, is_active: !(current.is_active ?? true) }))} />
 
         <Text style={styles.subTitle}>Materials</Text>
@@ -199,6 +203,7 @@ export function CraftingAdminPanel({ itemDefinitions, seasonNumber, chapterNumbe
               <Text style={styles.recipeName}>{recipe.name}</Text>
               <Text style={styles.copy}>Creates {recipe.output_quantity} {getCraftingItemName(itemDefinitions, recipe.output_item_id)}</Text>
               <Text style={styles.copy}>{recipe.content_scope === "universal" ? "Universal" : `Season ${recipe.season_number} / Chapter ${recipe.chapter_number}`} / {recipe.station_type || "Any station"} / {recipe.category || "misc"}</Text>
+              {recipe.required_blueprint_item_id ? <Text style={styles.copy}>Blueprint: {getCraftingItemName(itemDefinitions, recipe.required_blueprint_item_id)} x{recipe.required_blueprint_quantity ?? 1}</Text> : null}
               <Text style={styles.copy}>{recipe.ingredients.map((ingredient) => `${getCraftingItemName(itemDefinitions, ingredient.item_id)} x${ingredient.quantity}`).join(" + ") || "No materials"}</Text>
             </View>
             <Text style={recipe.is_active ? styles.activePill : styles.inactivePill}>{recipe.is_active ? "Active" : "Inactive"}</Text>

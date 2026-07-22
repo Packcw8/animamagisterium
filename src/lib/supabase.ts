@@ -905,6 +905,8 @@ export type Tables = {
     content_scope?: "chapter" | "universal";
     category?: string | null;
     sort_order?: number;
+    required_blueprint_item_id?: string | null;
+    required_blueprint_quantity?: number;
     required_story_flag_key: string | null;
     required_story_flag_value: boolean;
     is_active: boolean;

@@ -489,7 +489,7 @@ function CraftingScene({
   onCraft: (recipe: CraftingRecipeWithIngredients) => void;
 }) {
   const [stationFilter, setStationFilter] = useState<(typeof craftingStationTypes)[number]>("all");
-  const [statusFilter, setStatusFilter] = useState<"can_craft" | "all" | "missing">("can_craft");
+  const [statusFilter, setStatusFilter] = useState<"can_craft" | "all" | "missing" | "locked">("can_craft");
   const [categoryFilter, setCategoryFilter] = useState<(typeof craftingCategories)[number] | "all">("all");
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(recipes[0]?.id ?? null);
   const filteredRecipes = useMemo(
@@ -502,7 +502,10 @@ function CraftingScene({
           return status.canCraft;
         }
         if (statusFilter === "missing") {
-          return !status.canCraft;
+          return status.hasBlueprint && !status.canCraft;
+        }
+        if (statusFilter === "locked") {
+          return !status.hasBlueprint;
         }
         return true;
       })
@@ -543,9 +546,9 @@ function CraftingScene({
         />
         <CraftingChipRow
           label="Status"
-          options={["can_craft", "all", "missing"] as const}
+          options={["can_craft", "all", "missing", "locked"] as const}
           value={statusFilter}
-          labels={{ can_craft: "Ready", all: "All", missing: "Missing" }}
+          labels={{ can_craft: "Ready", all: "All", missing: "Missing", locked: "Locked" }}
           onSelect={setStatusFilter}
         />
         <CraftingChipRow
@@ -589,7 +592,7 @@ function CraftingScene({
                   )}
                 </View>
                 <Text style={styles.craftingRecipeName} numberOfLines={2}>{recipe.name}</Text>
-                <Text style={status.canCraft ? styles.craftingReadyMini : styles.craftingMissingMini}>{status.canCraft ? "Ready" : "Missing"}</Text>
+                <Text style={status.canCraft ? styles.craftingReadyMini : styles.craftingMissingMini}>{status.canCraft ? "Ready" : status.hasBlueprint ? "Missing" : "Locked"}</Text>
               </Pressable>
             );
           })}
@@ -614,6 +617,13 @@ function CraftingScene({
               {selectedRecipe.station_type ? <Text style={styles.craftingStationPill}>{selectedRecipe.station_type}</Text> : null}
               {selectedRecipe.category ? <Text style={styles.craftingCategoryPill}>{selectedRecipe.category}</Text> : null}
               {selectedRecipe.description ? <Text style={styles.craftingDetailCopy}>{selectedRecipe.description}</Text> : null}
+              {selectedStatus.missingBlueprint ? (
+                <Text style={styles.lockText}>
+                  Requires blueprint: {getCraftingItemName(itemDefinitions, selectedStatus.missingBlueprint.itemId)} {selectedStatus.missingBlueprint.owned} / {selectedStatus.missingBlueprint.needed}
+                </Text>
+              ) : selectedRecipe.required_blueprint_item_id ? (
+                <Text style={styles.craftingReadyText}>Blueprint known.</Text>
+              ) : null}
             </View>
           </View>
 
@@ -645,9 +655,10 @@ function CraftingScene({
               })}
           </View>
 
-          {selectedStatus.missing.length > 0 ? <Text style={styles.lockText}>Missing materials.</Text> : null}
+          {selectedStatus.missingBlueprint ? <Text style={styles.lockText}>This recipe needs its blueprint before it can be crafted.</Text> : null}
+          {!selectedStatus.missingBlueprint && selectedStatus.missing.length > 0 ? <Text style={styles.lockText}>Missing materials.</Text> : null}
           <Pressable style={[styles.primaryButton, !selectedStatus.canCraft && styles.disabledAction]} onPress={() => onCraft(selectedRecipe)} disabled={!selectedStatus.canCraft}>
-            <Text style={styles.primaryText}>{selectedStatus.canCraft ? "Craft Item" : "Need Materials"}</Text>
+            <Text style={styles.primaryText}>{selectedStatus.canCraft ? "Craft Item" : selectedStatus.missingBlueprint ? "Need Blueprint" : "Need Materials"}</Text>
           </Pressable>
         </View>
       ) : null}

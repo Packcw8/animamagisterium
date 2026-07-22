@@ -13,6 +13,8 @@ export const craftingContentScopes = ["chapter", "universal"] as const;
 
 export type CraftingStatus = {
   canCraft: boolean;
+  hasBlueprint: boolean;
+  missingBlueprint: { itemId: string; needed: number; owned: number } | null;
   missing: Array<{ itemId: string; needed: number; owned: number }>;
 };
 
@@ -26,6 +28,8 @@ export function blankCraftingRecipe(): Partial<CraftingRecipe> {
     content_scope: "chapter",
     category: "materials",
     sort_order: 0,
+    required_blueprint_item_id: null,
+    required_blueprint_quantity: 1,
     required_story_flag_key: "",
     required_story_flag_value: true,
     is_active: true,
@@ -152,6 +156,12 @@ export async function craftRecipe(characterId: string, recipeId: string) {
 
 export function getCraftingStatus(recipe: CraftingRecipeWithIngredients, inventoryItems: InventoryItem[]): CraftingStatus {
   const ownedByItemId = new Map(inventoryItems.map((entry) => [entry.item_id, entry.quantity]));
+  const blueprintItemId = recipe.required_blueprint_item_id ?? null;
+  const blueprintNeeded = Math.max(1, Number(recipe.required_blueprint_quantity ?? 1) || 1);
+  const blueprintOwned = blueprintItemId ? ownedByItemId.get(blueprintItemId) ?? 0 : 0;
+  const missingBlueprint = blueprintItemId && blueprintOwned < blueprintNeeded
+    ? { itemId: blueprintItemId, needed: blueprintNeeded, owned: blueprintOwned }
+    : null;
   const missing = recipe.ingredients
     .map((ingredient) => ({
       itemId: ingredient.item_id,
@@ -161,7 +171,9 @@ export function getCraftingStatus(recipe: CraftingRecipeWithIngredients, invento
     .filter((entry) => entry.owned < entry.needed);
 
   return {
-    canCraft: recipe.ingredients.length > 0 && missing.length === 0,
+    canCraft: recipe.ingredients.length > 0 && !missingBlueprint && missing.length === 0,
+    hasBlueprint: !missingBlueprint,
+    missingBlueprint,
     missing,
   };
 }
@@ -194,6 +206,8 @@ function normalizeRecipeInput(input: Partial<CraftingRecipe>, userId: string | n
     content_scope: input.content_scope === "universal" ? "universal" : "chapter",
     category: input.category?.trim() || null,
     sort_order: Math.floor(Number(input.sort_order) || 0),
+    required_blueprint_item_id: input.required_blueprint_item_id || null,
+    required_blueprint_quantity: Math.max(1, Math.floor(Number(input.required_blueprint_quantity) || 1)),
     required_story_flag_key: input.required_story_flag_key?.trim() || null,
     required_story_flag_value: input.required_story_flag_value ?? true,
     is_active: input.is_active ?? true,
