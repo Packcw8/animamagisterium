@@ -1598,8 +1598,14 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
   }
 
-  function maybeShowRouteCompletionSummary() {
-    const summary = buildRouteCompletionSummary(route, routeFindings, currentRouteProgress);
+  async function maybeShowRouteCompletionSummary(options: { refreshFindings?: boolean } = {}) {
+    let findings = routeFindings;
+    if (options.refreshFindings && (route.route_kind ?? "story") === "farming") {
+      findings = await getPlayerRouteFindings(route.id, character.id, 60);
+      setRouteFindings(findings);
+    }
+
+    const summary = buildRouteCompletionSummary(route, findings, currentRouteProgress);
     if (!summary || shownRouteCompletionSummaryKeysRef.current.has(summary.key)) {
       return;
     }
@@ -2222,7 +2228,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
     setCompletedRouteId(route.id);
     setGpsMessage(`${route.name} completed. Return to a Travel Hub to choose your next path.`);
-    maybeShowRouteCompletionSummary();
+    void maybeShowRouteCompletionSummary({ refreshFindings: true });
     if (!route.mini_map_id && (route.route_kind ?? "story") !== "farming") {
       showAuthoredToast("completing_path", {
         title: "Trail Complete",
@@ -2248,7 +2254,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return;
     }
 
-    maybeShowRouteCompletionSummary();
+    void maybeShowRouteCompletionSummary({ refreshFindings: true });
   }, [completedRouteId, currentRouteProgress?.id, progressPercent, route, routeDirection, routeFindings]);
 
   useEffect(() => {
