@@ -144,8 +144,11 @@ function AppShell() {
         setIsBooting(false);
         await loadMvpState(data.session);
 
-        const { data: listener } = supabaseModule.supabase.auth.onAuthStateChange((_event, nextSession) => {
+        const { data: listener } = supabaseModule.supabase.auth.onAuthStateChange((event, nextSession) => {
           setSession(nextSession);
+          if (event === "TOKEN_REFRESHED") {
+            return;
+          }
           void loadMvpState(nextSession);
         });
         authListener = listener;
