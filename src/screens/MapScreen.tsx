@@ -444,7 +444,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [travelModes, setTravelModes] = useState<TravelMode[]>([]);
   const [knownAbilities, setKnownAbilities] = useState<AbilityDefinition[]>([]);
   const [totalInventoryWeight, setTotalInventoryWeight] = useState(0);
-  const [carryCapacity, setCarryCapacity] = useState(50);
+  const [carryCapacity, setCarryCapacity] = useState(100);
   const [activeMapSheet, setActiveMapSheet] = useState<"inventory" | "abilities" | "mounts" | "companions" | null>(null);
   const [mapInventoryTab, setMapInventoryTab] = useState<PlayerInventoryTab>("Consumables");
   const [selectedMapInventoryItemId, setSelectedMapInventoryItemId] = useState<string | null>(null);

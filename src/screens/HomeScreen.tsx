@@ -239,8 +239,8 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   const [adminItemTypeFilter, setAdminItemTypeFilter] = useState<"all" | ItemDefinition["type"]>("all");
   const [equippedItems, setEquippedItems] = useState<Record<string, ItemDefinition | null>>({});
   const [totalInventoryWeight, setTotalInventoryWeight] = useState(0);
-  const [carryCapacity, setCarryCapacity] = useState(50);
-  const [baseCarryWeight, setBaseCarryWeight] = useState("50");
+  const [carryCapacity, setCarryCapacity] = useState(100);
+  const [baseCarryWeight, setBaseCarryWeight] = useState("100");
   const [carryWeightPerStrength, setCarryWeightPerStrength] = useState("10");
   const [itemForm, setItemForm] = useState<Partial<ItemDefinition>>(blankItemDefinition());
   const [editingItemId, setEditingItemId] = useState<string | null>(null);

@@ -46,7 +46,7 @@ export const usageContexts: ItemDefinition["usage_context"][] = ["battle_only", 
 export const inventoryAssetBasePath = "/assets/InventoryItems/";
 export const abilityAssetBasePath = "/assets/Abilities/";
 export const defaultCarrySettings: CarrySettings = {
-  baseCarryWeight: 50,
+  baseCarryWeight: 100,
   carryWeightPerStrengthLevel: 10,
 };
 
