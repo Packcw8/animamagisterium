@@ -1,6 +1,7 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Anvil, Beaker, Boxes, ChefHat, Gem, Hammer, Minus, Package, Pickaxe, Plus, ScrollText, Shirt, Sparkles, Swords, type LucideIcon } from "lucide-react-native";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
@@ -570,7 +571,7 @@ function CraftingScene({
           options={craftingStationTypes}
           value={stationFilter}
           labels={{ all: "All", forge: "Forge", cooking: "Cooking", alchemy: "Alchemy", workbench: "Workbench", enchanting: "Enchanting" }}
-          icons={craftingStationIconPaths}
+          icons={craftingStationLucideIcons}
           onSelect={setStationFilter}
         />
         <CraftingChipRow
@@ -585,7 +586,7 @@ function CraftingScene({
           options={["all", ...craftingCategories] as const}
           value={categoryFilter}
           labels={{ all: "All", materials: "Materials", weapons: "Weapons", armor: "Armor", consumables: "Consumables", tools: "Tools", quest: "Quest", misc: "Misc" }}
-          icons={craftingCategoryIconPaths}
+          icons={craftingCategoryLucideIcons}
           onSelect={setCategoryFilter}
         />
       </View>
@@ -712,14 +713,14 @@ function CraftingScene({
               <Text style={styles.craftingSectionLabel}>Craft Quantity</Text>
               <View style={styles.craftingBatchRow}>
                 <Pressable style={styles.craftingQuantityButton} onPress={() => setCraftQuantity((current) => Math.max(1, current - 1))}>
-                  <Text style={styles.craftingQuantityText}>-</Text>
+                  <Minus size={18} color={colors.gold} strokeWidth={2.7} />
                 </Pressable>
                 <View style={styles.craftingQuantityValue}>
                   <Text style={styles.craftingQuantityNumber}>{safeCraftQuantity}</Text>
                   <Text style={styles.craftingMaterialMeta}>Max {maxCraftableCount}</Text>
                 </View>
                 <Pressable style={styles.craftingQuantityButton} onPress={() => setCraftQuantity((current) => Math.min(maxCraftableCount, current + 1))}>
-                  <Text style={styles.craftingQuantityText}>+</Text>
+                  <Plus size={18} color={colors.gold} strokeWidth={2.7} />
                 </Pressable>
                 <Pressable style={styles.craftingMaxButton} onPress={() => setCraftQuantity(maxCraftableCount)}>
                   <Text style={styles.craftingMaxText}>Max</Text>
@@ -756,6 +757,26 @@ const craftingCategoryIconPaths: Partial<Record<(typeof craftingCategories)[numb
   misc: "assets/Reusable/Icons/TravelHubIcon.jpg",
 };
 
+const craftingStationLucideIcons: Partial<Record<(typeof craftingStationTypes)[number], LucideIcon>> = {
+  all: Package,
+  forge: Anvil,
+  cooking: ChefHat,
+  alchemy: Beaker,
+  workbench: Hammer,
+  enchanting: Sparkles,
+};
+
+const craftingCategoryLucideIcons: Partial<Record<(typeof craftingCategories)[number] | "all", LucideIcon>> = {
+  all: Boxes,
+  materials: Pickaxe,
+  weapons: Swords,
+  armor: Shirt,
+  consumables: Beaker,
+  tools: Hammer,
+  quest: ScrollText,
+  misc: Gem,
+};
+
 function getCraftingRecipeSymbolUri(recipe: CraftingRecipeWithIngredients) {
   const stationIcon = recipe.station_type ? craftingStationIconPaths[recipe.station_type as (typeof craftingStationTypes)[number]] : null;
   const categoryIcon = recipe.category ? craftingCategoryIconPaths[recipe.category as (typeof craftingCategories)[number]] : null;
@@ -770,18 +791,18 @@ function getCraftingRecipeCategoryLabel(recipe: CraftingRecipeWithIngredients) {
   return recipe.category ? recipe.category.replace(/_/g, " ") : "misc";
 }
 
-function CraftingChipRow<T extends string>({ label, options, value, labels, icons, onSelect }: { label: string; options: readonly T[]; value: T; labels: Partial<Record<T, string>>; icons?: Partial<Record<T, string>>; onSelect: (value: T) => void }) {
+function CraftingChipRow<T extends string>({ label, options, value, labels, icons, onSelect }: { label: string; options: readonly T[]; value: T; labels: Partial<Record<T, string>>; icons?: Partial<Record<T, LucideIcon>>; onSelect: (value: T) => void }) {
   return (
     <View style={styles.craftingChipGroup}>
       <Text style={styles.craftingChipLabel}>{label}</Text>
       <View style={styles.craftingChipScroll}>
         {options.map((option) => {
-          const iconUri = resolveGameAssetUri(icons?.[option], "icon");
+          const Icon = icons?.[option] as LucideIcon | undefined;
           return (
             <Pressable key={option} style={[styles.craftingFilterChip, value === option && styles.craftingFilterChipActive]} onPress={() => onSelect(option)}>
-              {iconUri ? (
+              {Icon ? (
                 <View style={styles.craftingFilterIconBox}>
-                  <CachedGameImage uri={iconUri} style={styles.craftingFilterIcon} resizeMode="cover" />
+                  <Icon size={14} color={value === option ? colors.blue : colors.goldSoft} strokeWidth={2.4} />
                 </View>
               ) : null}
               <Text style={[styles.craftingFilterChipText, value === option && styles.craftingFilterChipTextActive]}>{labels[option] ?? option}</Text>
@@ -1314,11 +1335,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 44,
   },
-  craftingQuantityText: {
-    color: colors.gold,
-    fontSize: 18,
-    fontWeight: "900",
-  },
   craftingQuantityValue: {
     alignItems: "center",
     borderColor: "rgba(24, 178, 242, 0.45)",
@@ -1352,10 +1368,12 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   craftingFilterIconBox: {
+    alignItems: "center",
     borderColor: "rgba(218, 164, 65, 0.45)",
     borderRadius: 999,
     borderWidth: 1,
     height: 22,
+    justifyContent: "center",
     overflow: "hidden",
     width: 22,
   },
