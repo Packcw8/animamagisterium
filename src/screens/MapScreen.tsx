@@ -306,6 +306,8 @@ const eventRarityLabels: Record<(typeof eventRarities)[number], string> = {
   legendary: "Legendary",
 };
 const randomEventCooldownMs = 120000;
+const farmingRandomEventCooldownMs = 3000;
+const farmingRandomEventProgressStepPercent = 10;
 const movementStateDebounceMs = 5000;
 
 type MapScreenProps = {
@@ -809,6 +811,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const routeDirectionRef = useRef<"forward" | "reverse">("forward");
   const activeBattleRouteRef = useRef<MapRoute | null>(null);
   const randomEventCooldownsRef = useRef<Map<string, number>>(new Map());
+  const farmingRandomEventAttemptBucketsRef = useRef<Map<string, number>>(new Map());
   const farmingEventInProgressRef = useRef(false);
   const exitingMiniMapRef = useRef(false);
   const openingToastShownRef = useRef(false);
@@ -2208,6 +2211,13 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   }, [routeDirection]);
 
   useEffect(() => {
+    if ((route.route_kind ?? "story") === "farming" && progressPercent <= 0.5) {
+      farmingRandomEventAttemptBucketsRef.current.clear();
+      randomEventCooldownsRef.current.clear();
+    }
+  }, [progressPercent, route.id, route.route_kind]);
+
+  useEffect(() => {
     if (routeDirection === "reverse" || progressPercent < 100 || completedRouteId === route.id) {
       return;
     }
@@ -2272,16 +2282,32 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     );
     const fixedEvent = eligibleFixedEvents.find((event) => (event.trigger_mode ?? "fixed") !== "random");
     const now = Date.now();
+    const isFarmingRoute = (route.route_kind ?? "story") === "farming";
+    const farmingProgressBucket = Math.floor(progressPercent / farmingRandomEventProgressStepPercent);
     const randomEvents = playerMovementState === "MOVING"
       ? eligibleFixedEvents.filter((event) => {
           if ((event.trigger_mode ?? "fixed") !== "random") {
             return false;
           }
+          if (isFarmingRoute && event.repeatable) {
+            const lastAttemptBucket = farmingRandomEventAttemptBucketsRef.current.get(event.id) ?? -1;
+            const lastTriggeredAt = randomEventCooldownsRef.current.get(event.id) ?? 0;
+            return farmingProgressBucket > lastAttemptBucket && now - lastTriggeredAt >= farmingRandomEventCooldownMs;
+          }
           const lastTriggeredAt = randomEventCooldownsRef.current.get(event.id) ?? 0;
           return now - lastTriggeredAt >= randomEventCooldownMs;
         })
       : [];
-    const randomEvent = randomEvents.find((event) => Math.random() * 100 < Number(event.random_chance_percent ?? 0));
+    let randomEvent: MapEvent | undefined;
+    for (const event of randomEvents) {
+      if (isFarmingRoute && event.repeatable) {
+        farmingRandomEventAttemptBucketsRef.current.set(event.id, farmingProgressBucket);
+      }
+      if (Math.random() * 100 < Number(event.random_chance_percent ?? 0)) {
+        randomEvent = event;
+        break;
+      }
+    }
     const nextEvent = fixedEvent ?? randomEvent;
 
     if (!nextEvent) {
