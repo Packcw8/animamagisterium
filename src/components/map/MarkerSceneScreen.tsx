@@ -5,8 +5,8 @@ import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
 import { CachedGameImage } from "../ui/CachedGameImage";
-import { canUseItemInContext, type InventoryItem, type ItemDefinition, resolveInventoryImageUri } from "../../services/inventoryService";
-import { normalizeMountMultiplier, resolveMountImageUri, type MountDefinition } from "../../services/mountService";
+import { canUseItemInContext, type InventoryItem, type ItemDefinition, resolveInventoryImageUri, resolveInventoryThumbnailUri } from "../../services/inventoryService";
+import { normalizeMountMultiplier, resolveMountImageUri, resolveMountThumbnailUri, type MountDefinition } from "../../services/mountService";
 import { getCraftingItemName, getCraftingStatus, type CraftingRecipeWithIngredients } from "../../services/craftingService";
 import {
   canMarketItemBeBought,
@@ -492,7 +492,7 @@ function CraftingScene({
   const selectedRecipe = recipes.find((recipe) => recipe.id === selectedRecipeId) ?? recipes[0] ?? null;
   const selectedStatus = selectedRecipe ? getCraftingStatus(selectedRecipe, inventoryItems) : null;
   const selectedOutputItem = selectedRecipe ? itemDefinitions.find((item) => item.id === selectedRecipe.output_item_id) ?? null : null;
-  const selectedOutputImageUri = resolveInventoryImageUri(selectedOutputItem?.image_path);
+  const selectedOutputImageUri = resolveInventoryThumbnailUri(selectedOutputItem);
   const getOwnedQuantity = (itemId: string) => inventoryItems.find((entry) => entry.item_id === itemId)?.quantity ?? 0;
   const getItemDefinition = (itemId: string) => itemDefinitions.find((item) => item.id === itemId) ?? null;
 
@@ -512,7 +512,7 @@ function CraftingScene({
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.craftingRecipeStrip}>
           {recipes.map((recipe) => {
             const outputItem = itemDefinitions.find((item) => item.id === recipe.output_item_id) ?? null;
-            const imageUri = resolveInventoryImageUri(outputItem?.image_path);
+            const imageUri = resolveInventoryThumbnailUri(outputItem);
             const isSelected = selectedRecipe?.id === recipe.id;
 
             return (
@@ -558,7 +558,7 @@ function CraftingScene({
                 const owned = getOwnedQuantity(ingredient.item_id);
                 const ready = owned >= ingredient.quantity;
                 const item = getItemDefinition(ingredient.item_id);
-                const materialImageUri = resolveInventoryImageUri(item?.image_path);
+                const materialImageUri = resolveInventoryThumbnailUri(item);
 
                 return (
                   <View key={ingredient.id} style={styles.craftingMaterialRow}>
@@ -713,7 +713,7 @@ function MarketScene({
 
 function MarketBuyCard({ marketItem, purchasedCount, item, mount, onBuy, onInspect }: { marketItem: MarkerMarketItem; purchasedCount: number; item: ItemDefinition | null; mount: MountDefinition | null; onBuy: () => void; onInspect: () => void }) {
   const isMount = marketItem.purchase_type === "mount";
-  const imageUri = isMount ? resolveMountImageUri(mount?.image_url) : resolveInventoryImageUri(item?.image_path);
+  const imageUri = isMount ? resolveMountThumbnailUri(mount) : resolveInventoryThumbnailUri(item);
   const remainingStock = getRemainingMarketStock(marketItem, { [marketItem.id]: purchasedCount });
   const outOfStock = remainingStock <= 0;
   const name = isMount ? mount?.name ?? "Unknown Mount" : item?.name ?? "Unknown Item";
@@ -749,7 +749,7 @@ function MarketBuyCard({ marketItem, purchasedCount, item, mount, onBuy, onInspe
 }
 
 function MarketSellCard({ entry, sellPrice, onSell, onInspect }: { entry: InventoryItem; sellPrice: number; onSell: () => void; onInspect: () => void }) {
-  const imageUri = resolveInventoryImageUri(entry.item.image_path);
+  const imageUri = resolveInventoryThumbnailUri(entry.item);
 
   return (
     <Pressable style={styles.marketCard} onPress={onInspect}>

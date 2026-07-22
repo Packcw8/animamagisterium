@@ -31,6 +31,10 @@ export function resolveMountImageUri(imagePath?: string | null) {
   return resolveGameAssetUri(imagePath, "mount");
 }
 
+export function resolveMountThumbnailUri(mount?: Pick<MountDefinition, "image_thumb_url" | "image_url"> | null) {
+  return resolveGameAssetUri(mount?.image_thumb_url || mount?.image_url, "mount");
+}
+
 export function getActiveMountMultiplier(activeMount: PlayerMountWithDefinition | null) {
   return normalizeMountMultiplier(activeMount?.mount?.progress_multiplier);
 }

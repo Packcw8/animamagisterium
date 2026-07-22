@@ -54,9 +54,19 @@ export function resolveInventoryImageUri(imagePath?: string | null) {
   return resolveGameAssetUri(imagePath, "item");
 }
 
+export function resolveInventoryThumbnailUri(item?: Pick<ItemDefinition, "thumbnail_path" | "image_path"> | null) {
+  return resolveGameAssetUri(item?.thumbnail_path || item?.image_path, "item");
+}
+
 export function resolveAbilityImageUri(imagePath?: string | null) {
   return resolveGameAssetUri(imagePath, "ability");
 }
+
+export function resolveAbilityThumbnailUri(ability?: Pick<CombatAbilityLike, "image_thumb_path" | "image_path"> | null) {
+  return resolveGameAssetUri(ability?.image_thumb_path || ability?.image_path, "ability");
+}
+
+type CombatAbilityLike = Tables["combat_abilities"];
 
 export function blankItemDefinition(): Partial<ItemDefinition> {
   return {

@@ -46,6 +46,14 @@ export function resolveEnemyImageUri(imagePath?: string | null) {
   return resolveGameAssetUri(imagePath, "enemy");
 }
 
+export function resolveEnemyThumbnailUri(enemy?: Pick<EnemyDefinition, "image_thumb_url" | "image_url"> | null) {
+  return resolveGameAssetUri(enemy?.image_thumb_url || enemy?.image_url, "enemy");
+}
+
+export function resolveNpcThumbnailUri(npc?: Pick<NpcDefinition, "image_thumb_url" | "image_url"> | null) {
+  return resolveGameAssetUri(npc?.image_thumb_url || npc?.image_url, "npc");
+}
+
 export function blankCombatAbility(): Partial<CombatAbility> {
   return {
     name: "",

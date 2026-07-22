@@ -48,6 +48,7 @@ export type Tables = {
     path: string | null;
     trait: string | null;
     portrait_url: string | null;
+    portrait_thumb_url: string | null;
     original_photo_url: string | null;
     current_health: number | null;
     total_distance_walked_meters: number;
@@ -116,6 +117,7 @@ export type Tables = {
     rarity: string;
     description: string | null;
     image_path: string | null;
+    thumbnail_path?: string | null;
     gold_value: number;
     weight: number;
     stackable: boolean;
@@ -1009,10 +1011,15 @@ export type Tables = {
     quest_title: string | null;
     quest_dialogue: string | null;
     quest_image_url: string | null;
+    quest_image_thumb_url?: string | null;
     shop_image_url: string | null;
+    shop_image_thumb_url?: string | null;
     shop_background_image_url: string | null;
+    shop_background_image_thumb_url?: string | null;
     scene_background_image_url: string | null;
+    scene_background_image_thumb_url?: string | null;
     scene_npc_image_url: string | null;
+    scene_npc_image_thumb_url?: string | null;
     interaction_radius_percent: number;
     reward_xp: number;
     reward_gold: number;
@@ -1035,6 +1042,7 @@ export type Tables = {
     clear_active_route_on_use: boolean;
     icon_label: string | null;
     icon_image_url: string | null;
+    icon_image_thumb_url?: string | null;
     icon_color: string | null;
     marker_size: number;
     lock_type: "public" | "story_locked" | "quest_locked";
@@ -1058,6 +1066,7 @@ export type Tables = {
     journal_title: string | null;
     journal_body: string | null;
     journal_image_url: string | null;
+    journal_image_thumb_url?: string | null;
     journal_sort_order: number;
     story_deck_id?: string | null;
     content_scope: "chapter" | "universal";
@@ -1158,7 +1167,9 @@ export type Tables = {
     chapter_number: number;
     name: string;
     image_url: string | null;
+    image_thumb_url?: string | null;
     draft_image_url: string | null;
+    draft_image_thumb_url?: string | null;
     notes: string | null;
     aspect_ratio: string;
     width: number;
@@ -1194,6 +1205,7 @@ export type Tables = {
     mode_type: string | null;
     description: string | null;
     image_url: string | null;
+    image_thumb_url?: string | null;
     progress_multiplier: number;
     is_active: boolean;
     season_number: number;
@@ -1260,6 +1272,7 @@ export type Tables = {
     breed: string | null;
     description: string | null;
     image_url: string | null;
+    image_thumb_url?: string | null;
     rarity: string;
     progress_multiplier: number;
     is_active: boolean;
@@ -1354,6 +1367,7 @@ export type Tables = {
     area_key: string | null;
     area_name: string | null;
     background_image_url: string | null;
+    background_image_thumb_url?: string | null;
     description: string | null;
     width: number;
     height: number;
@@ -1422,6 +1436,7 @@ export type Tables = {
     required_class_key: string | null;
     required_class_level: number;
     image_path: string | null;
+    image_thumb_path?: string | null;
     usage_context: "battle_only" | "outside_battle_only" | "both";
     attack_bonus: number;
     target_mode: "single_enemy" | "all_enemies" | "random_enemy" | "self" | "all_allies";
@@ -1442,6 +1457,7 @@ export type Tables = {
     name: string;
     type: string | null;
     image_url: string | null;
+    image_thumb_url?: string | null;
     health: number;
     stamina: number;
     magika: number;
@@ -1537,6 +1553,7 @@ export type Tables = {
     type: string | null;
     description: string | null;
     image_url: string | null;
+    image_thumb_url?: string | null;
     can_battle: boolean;
     health: number;
     stamina: number;

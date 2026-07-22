@@ -54,9 +54,10 @@ export function SocialScreen() {
 
   useEffect(() => {
     prefetchGameImages([
-      ...rows.map((row) => row.portrait_url),
-      ...searchResults.map((row) => row.portrait_url),
-      ...trophyRows.map((row) => row.enemy_image_url),
+      ...rows.map((row) => row.portrait_thumb_url ?? row.portrait_url),
+      ...searchResults.map((row) => row.portrait_thumb_url ?? row.portrait_url),
+      ...trophyRows.map((row) => row.portrait_thumb_url ?? row.portrait_url),
+      ...trophyRows.map((row) => row.enemy_image_thumb_url ?? row.enemy_image_url),
     ]);
   }, [rows, searchResults, trophyRows]);
 
@@ -313,7 +314,7 @@ function MiniProfile({ row, onPress }: { row: LeaderboardRow; onPress?: () => vo
   return (
     <Pressable style={styles.miniProfile} onPress={onPress}>
       <View style={styles.portraitWrap}>
-        {row.portrait_url ? <CachedGameImage uri={row.portrait_url} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
+        {row.portrait_thumb_url || row.portrait_url ? <CachedGameImage uri={row.portrait_thumb_url ?? row.portrait_url} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
       </View>
       <View style={styles.playerInfo}>
         <Text style={styles.name}>{row.character_name}</Text>
@@ -330,7 +331,7 @@ function LeaderboardCard({ row, rank, metric, onOpen }: { row: LeaderboardRow; r
         <Text style={styles.rankText}>{rank}</Text>
       </View>
       <View style={styles.portraitWrap}>
-        {row.portrait_url ? <CachedGameImage uri={row.portrait_url} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
+        {row.portrait_thumb_url || row.portrait_url ? <CachedGameImage uri={row.portrait_thumb_url ?? row.portrait_url} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
       </View>
       <View style={styles.playerInfo}>
         <Text style={styles.name}>{row.character_name}</Text>
@@ -351,7 +352,7 @@ function TrophyLeaderboardCard({ row, rank }: { row: TrophyLeaderboardRow; rank:
         <Text style={styles.rankText}>{rank}</Text>
       </View>
       <View style={styles.trophyImageWrap}>
-        {row.enemy_image_url ? <CachedGameImage uri={row.enemy_image_url} style={styles.trophyImage} /> : <Text style={styles.initial}>{(row.enemy_name ?? "T").slice(0, 1).toUpperCase()}</Text>}
+        {row.enemy_image_thumb_url || row.enemy_image_url ? <CachedGameImage uri={row.enemy_image_thumb_url ?? row.enemy_image_url} style={styles.trophyImage} /> : <Text style={styles.initial}>{(row.enemy_name ?? "T").slice(0, 1).toUpperCase()}</Text>}
       </View>
       <View style={styles.playerInfo}>
         <Text style={styles.name}>{row.enemy_name ?? row.species ?? "Trophy Animal"}</Text>

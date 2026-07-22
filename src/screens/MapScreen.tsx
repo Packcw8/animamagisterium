@@ -74,9 +74,9 @@ import { Screen } from "../components/Screen";
 import { colors, fonts } from "../components/theme";
 import { CharacterWithDetails, getCharacter, incrementCharacterDistanceWalked, spendCharacterGold, updateCharacter } from "../services/characterService";
 import { AbilityDefinition, canUseAbilityInContext, clampHealth, equipAbility, getCharacterResources, getCombatLoadout, getCurrentHealth, learnAbilityFromScroll } from "../services/abilityService";
-import { EnemyDefinition, getEnemies, getNpcs, NpcDefinition, resolveEnemyImageUri, rollAndSaveTrophyHarvest, type EnemyWithLoadout, type NpcWithLoadout } from "../services/combatAdminService";
+import { EnemyDefinition, getEnemies, getNpcs, NpcDefinition, resolveEnemyImageUri, resolveEnemyThumbnailUri, rollAndSaveTrophyHarvest, type EnemyWithLoadout, type NpcWithLoadout } from "../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, deleteBattleEventCombatant, deleteMarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants, saveBattleEventCombatant, saveMarkerBattleCombatant } from "../services/battlefieldService";
-import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri, unequipInventorySlot } from "../services/inventoryService";
+import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, EquipmentSlot, getInventoryResourceBonuses, getInventoryState, grantItemToCharacter, InventoryItem, ItemDefinition, resolveInventoryImageUri, resolveInventoryThumbnailUri, unequipInventorySlot } from "../services/inventoryService";
 import { equipMount, getActiveMountMultiplier, getMountDefinitions, getPlayerMounts, resolveMountImageUri, unmountCharacter, type MountDefinition, type PlayerMountWithDefinition } from "../services/mountService";
 import { getTravelModes, normalizeTravelModeMultiplier, resolveTravelModeImageUri, type TravelMode } from "../services/travelModeService";
 import { isNativePedometerAvailable, requestPedometerPermission, startPedometerDistancePolling, type PedometerSubscription } from "../services/nativePedometerService";
@@ -1624,7 +1624,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
 
       const itemName = getItemName(itemDefinitions, roll.poolItem.item_id);
       const itemDefinition = itemDefinitions.find((item) => item.id === roll.poolItem.item_id) ?? null;
-      const itemImageUrl = itemDefinition?.image_path ? resolveGameAssetUri(itemDefinition.image_path) : null;
+      const itemImageUrl = itemDefinition ? resolveInventoryThumbnailUri(itemDefinition) : null;
       await grantItemToCharacter(character.id, roll.poolItem.item_id, roll.quantity);
       await appendRouteFinding({
         routeId: event.route_id ?? route.id,
@@ -6085,7 +6085,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             : rewardResult.message,
           itemId: event.reward_item_id,
           itemName: event.reward_item_id ? getItemName(itemDefinitions, event.reward_item_id) : null,
-          itemImageUrl: event.event_type === "battle" ? resolveEnemyImageUri(activeEnemy?.image_url ?? event.enemy_image_url) : resolveMapImageUri(event.background_image_url),
+          itemImageUrl: event.event_type === "battle" ? activeEnemy ? resolveEnemyThumbnailUri(activeEnemy) : resolveEnemyImageUri(event.enemy_image_url) : resolveMapImageUri(event.background_image_url),
           quantity: event.reward_item_quantity ?? 1,
           rarity: event.rarity ?? "common",
           progressPercent: event.distance_marker_percent,
@@ -8847,7 +8847,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 markers={visibleMiniMapMarkers}
                 playerPosition={miniMapPlayerPosition}
                 playerName={character.name}
-                playerPortraitUrl={activeJourneyImageUri ?? character.portrait_url}
+                playerPortraitUrl={activeJourneyImageUri ?? character.portrait_thumb_url ?? character.portrait_url}
                 playerScale={Math.max(0.35, Math.min(2, Number(activePlayerMiniMap.player_avatar_scale) || 1))}
                 markerScale={Math.max(0.35, Math.min(2, Number(activePlayerMiniMap.marker_scale) || 1))}
                 markerDisplayStates={miniMapMarkerDisplayStates}
@@ -8876,7 +8876,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 markers={visibleMarkers}
                 playerPosition={playerPosition}
                 playerName={character.name}
-                playerPortraitUrl={activeJourneyImageUri ?? character.portrait_url}
+                playerPortraitUrl={activeJourneyImageUri ?? character.portrait_thumb_url ?? character.portrait_url}
                 playerPathVisibility={!route.mini_map_id ? playerPathVisibility : "visible"}
                 onSelectMarker={(marker) => void selectMarker(marker)}
               />
@@ -9017,7 +9017,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             markers={visibleMiniMapMarkers}
             playerPosition={miniMapPlayerPosition}
             playerName={character.name}
-            playerPortraitUrl={!isAdmin ? activeJourneyImageUri ?? character.portrait_url : character.portrait_url}
+            playerPortraitUrl={!isAdmin ? activeJourneyImageUri ?? character.portrait_thumb_url ?? character.portrait_url : character.portrait_thumb_url ?? character.portrait_url}
             playerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.player_avatar_scale) || 1))}
             markerScale={Math.max(0.35, Math.min(2, Number(activeMiniMap.marker_scale) || 1))}
             markerDisplayStates={!isAdmin || openAdminPanels.movementGraph || editorMode === "Movement Grid" ? miniMapMarkerDisplayStates : {}}
@@ -9873,7 +9873,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         markers={visibleMarkers}
         playerPosition={playerPosition}
         playerName={character.name}
-        playerPortraitUrl={!isAdmin ? activeJourneyImageUri ?? character.portrait_url : character.portrait_url}
+        playerPortraitUrl={!isAdmin ? activeJourneyImageUri ?? character.portrait_thumb_url ?? character.portrait_url : character.portrait_thumb_url ?? character.portrait_url}
         playerPathVisibility={!route.mini_map_id ? playerPathVisibility : "visible"}
         onSelectMarker={(marker) => void selectMarker(marker)}
       />

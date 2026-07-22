@@ -19,7 +19,7 @@ export function PlayerProfileCard({ profile, badges = [], title = "Player Profil
       <Text style={styles.eyebrow}>{title}</Text>
       <View style={styles.hero}>
         <View style={styles.portraitWrap}>
-          {profile.portrait_url ? <CachedGameImage uri={profile.portrait_url} style={styles.portrait} /> : <Text style={styles.initial}>{profile.character_name.slice(0, 1).toUpperCase()}</Text>}
+          {profile.portrait_thumb_url || profile.portrait_url ? <CachedGameImage uri={profile.portrait_thumb_url ?? profile.portrait_url} style={styles.portrait} /> : <Text style={styles.initial}>{profile.character_name.slice(0, 1).toUpperCase()}</Text>}
         </View>
         <View style={styles.heroInfo}>
           <Text style={styles.name} numberOfLines={1}>{profile.character_name}</Text>

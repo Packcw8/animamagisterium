@@ -135,6 +135,12 @@ function ToastMarkerPreview({ marker, imageUri: overrideImageUri }: { marker: Ma
 
 function resolveToastMarkerImageUri(marker: MapMarker) {
   const imagePath =
+    marker.scene_background_image_thumb_url ||
+    marker.quest_image_thumb_url ||
+    marker.shop_background_image_thumb_url ||
+    marker.shop_image_thumb_url ||
+    marker.scene_npc_image_thumb_url ||
+    marker.icon_image_thumb_url ||
     marker.scene_background_image_url ||
     marker.quest_image_url ||
     marker.shop_background_image_url ||

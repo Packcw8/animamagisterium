@@ -1,6 +1,6 @@
 import { supabase } from "../lib/supabase";
-import type { PlayerTrophyHarvest } from "./combatAdminService";
-import { resolveEnemyImageUri } from "./combatAdminService";
+import type { EnemyDefinition, PlayerTrophyHarvest } from "./combatAdminService";
+import { resolveEnemyThumbnailUri } from "./combatAdminService";
 
 export type LeaderboardMetric =
   | "total_distance_walked_meters"
@@ -18,6 +18,7 @@ export type LeaderboardRow = {
   display_name: string;
   character_name: string;
   portrait_url: string | null;
+  portrait_thumb_url?: string | null;
   level: number;
   xp: number;
   gold: number;
@@ -39,7 +40,9 @@ export type TrophyLeaderboardRow = PlayerTrophyHarvest & {
   character_name: string;
   display_name: string;
   portrait_url: string | null;
+  portrait_thumb_url?: string | null;
   enemy_image_url: string | null;
+  enemy_image_thumb_url?: string | null;
 };
 
 export const leaderboardMetrics: Array<{ key: LeaderboardMetric; label: string }> = [
@@ -214,7 +217,7 @@ async function hydrateTrophyRows(harvests: PlayerTrophyHarvest[]): Promise<Troph
   const enemyIds = [...new Set(harvests.map((row) => row.enemy_id).filter(Boolean) as string[])];
   const [profilesResult, enemiesResult] = await Promise.all([
     supabase.from("player_leaderboards").select("*").in("character_id", characterIds),
-    enemyIds.length ? supabase.from("enemy_definitions").select("id,image_url").in("id", enemyIds) : Promise.resolve({ data: [], error: null }),
+    enemyIds.length ? supabase.from("enemy_definitions").select("*").in("id", enemyIds) : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (profilesResult.error) {
@@ -225,7 +228,7 @@ async function hydrateTrophyRows(harvests: PlayerTrophyHarvest[]): Promise<Troph
   }
 
   const profiles = new Map(((profilesResult.data ?? []) as LeaderboardRow[]).map((row) => [row.character_id, row]));
-  const enemyImages = new Map(((enemiesResult.data ?? []) as Array<{ id: string; image_url: string | null }>).map((row) => [row.id, resolveEnemyImageUri(row.image_url)]));
+  const enemyImages = new Map(((enemiesResult.data ?? []) as EnemyDefinition[]).map((row) => [row.id, resolveEnemyThumbnailUri(row)]));
 
   return harvests.map((harvest) => {
     const profile = profiles.get(harvest.character_id);
@@ -235,7 +238,9 @@ async function hydrateTrophyRows(harvests: PlayerTrophyHarvest[]): Promise<Troph
       character_name: profile?.character_name ?? "Unknown Character",
       display_name: profile?.display_name ?? "Unknown Player",
       portrait_url: profile?.portrait_url ?? null,
+      portrait_thumb_url: profile?.portrait_thumb_url ?? null,
       enemy_image_url: harvest.enemy_id ? enemyImages.get(harvest.enemy_id) ?? null : null,
+      enemy_image_thumb_url: harvest.enemy_id ? enemyImages.get(harvest.enemy_id) ?? null : null,
     };
   });
 }

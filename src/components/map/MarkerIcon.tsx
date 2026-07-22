@@ -6,13 +6,14 @@ import { CachedGameImage } from "../ui/CachedGameImage";
 export type MarkerIconSource = {
   type: string;
   icon_label?: string | null;
+  icon_image_thumb_url?: string | null;
   icon_image_url?: string | null;
   icon_color?: string | null;
   marker_size?: number | null;
 };
 
 export function MarkerIcon({ marker, compact = false, mini = false }: { marker: MarkerIconSource; compact?: boolean; mini?: boolean }) {
-  const iconUri = resolveMapImageUri(marker.icon_image_url);
+  const iconUri = resolveMapImageUri(marker.icon_image_thumb_url || marker.icon_image_url);
   const iconText = (marker.icon_label?.trim() || getDefaultMarkerIconLabel(marker.type)).slice(0, 3).toUpperCase();
   const iconColor = marker.icon_color?.trim() || getDefaultMarkerIconColor(marker.type);
   const isMovement = marker.type === "Movement";
