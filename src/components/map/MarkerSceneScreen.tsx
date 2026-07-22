@@ -542,6 +542,7 @@ function CraftingScene({
           options={craftingStationTypes}
           value={stationFilter}
           labels={{ all: "All", forge: "Forge", cooking: "Cooking", alchemy: "Alchemy", workbench: "Workbench", enchanting: "Enchanting" }}
+          icons={craftingStationIconPaths}
           onSelect={setStationFilter}
         />
         <CraftingChipRow
@@ -556,6 +557,7 @@ function CraftingScene({
           options={["all", ...craftingCategories] as const}
           value={categoryFilter}
           labels={{ all: "All", materials: "Materials", weapons: "Weapons", armor: "Armor", consumables: "Consumables", tools: "Tools", quest: "Quest", misc: "Misc" }}
+          icons={craftingCategoryIconPaths}
           onSelect={setCategoryFilter}
         />
       </View>
@@ -579,11 +581,17 @@ function CraftingScene({
           {filteredRecipes.map((recipe) => {
             const outputItem = itemDefinitions.find((item) => item.id === recipe.output_item_id) ?? null;
             const imageUri = resolveInventoryThumbnailUri(outputItem);
+            const badgeIconUri = getCraftingRecipeSymbolUri(recipe);
             const isSelected = selectedRecipe?.id === recipe.id;
             const status = getCraftingStatus(recipe, inventoryItems);
 
             return (
               <Pressable key={recipe.id} style={[styles.craftingRecipeChip, isSelected && styles.craftingRecipeChipActive]} onPress={() => setSelectedRecipeId(recipe.id)}>
+                {badgeIconUri ? (
+                  <View style={styles.craftingRecipeBadge}>
+                    <CachedGameImage uri={badgeIconUri} style={styles.craftingRecipeBadgeIcon} resizeMode="cover" />
+                  </View>
+                ) : null}
                 <View style={styles.craftingRecipeThumb}>
                   {imageUri ? (
                     <CachedGameImage uri={imageUri} style={styles.craftingRecipeImage} resizeMode="contain" />
@@ -601,6 +609,20 @@ function CraftingScene({
 
       {selectedRecipe && selectedStatus ? (
         <View style={styles.craftingDetailCard}>
+          <View style={styles.craftingDetailBanner}>
+            {getCraftingRecipeSymbolUri(selectedRecipe) ? (
+              <View style={styles.craftingDetailSymbol}>
+                <CachedGameImage uri={getCraftingRecipeSymbolUri(selectedRecipe)} style={styles.craftingDetailSymbolImage} resizeMode="cover" />
+              </View>
+            ) : null}
+            <View style={styles.craftingBannerCopy}>
+              <Text style={styles.craftingBannerEyebrow}>{getCraftingRecipeStationLabel(selectedRecipe)}</Text>
+              <Text style={styles.craftingBannerTitle}>{getCraftingRecipeCategoryLabel(selectedRecipe)}</Text>
+            </View>
+            <Text style={selectedStatus.canCraft ? styles.craftingReadyPill : selectedStatus.hasBlueprint ? styles.craftingMissingPill : styles.craftingLockedPill}>
+              {selectedStatus.canCraft ? "Ready" : selectedStatus.hasBlueprint ? "Missing" : "Locked"}
+            </Text>
+          </View>
           <View style={styles.craftingDetailHeader}>
             <View style={styles.craftingOutputImageBox}>
               {selectedOutputImageUri ? (
@@ -666,16 +688,58 @@ function CraftingScene({
   );
 }
 
-function CraftingChipRow<T extends string>({ label, options, value, labels, onSelect }: { label: string; options: readonly T[]; value: T; labels: Partial<Record<T, string>>; onSelect: (value: T) => void }) {
+const craftingStationIconPaths: Partial<Record<(typeof craftingStationTypes)[number], string>> = {
+  all: "assets/Reusable/Icons/MarketIcon.jpg",
+  forge: "assets/Reusable/Icons/WeaponsIcon.jpg",
+  cooking: "assets/Reusable/Icons/RestIcon.jpg",
+  alchemy: "assets/Reusable/Icons/AlchemyIcon.jpg",
+  workbench: "assets/Reusable/Items/Mining/MiningPick.jpg",
+  enchanting: "assets/Reusable/Icons/Jeweryicon.jpg",
+};
+
+const craftingCategoryIconPaths: Partial<Record<(typeof craftingCategories)[number] | "all", string>> = {
+  all: "assets/Reusable/Icons/MarketIcon.jpg",
+  materials: "assets/Reusable/Items/Mining/IronOre.jpg",
+  weapons: "assets/Reusable/Icons/WeaponsIcon.jpg",
+  armor: "assets/Reusable/Icons/WearsIcon.jpg",
+  consumables: "assets/Reusable/Icons/AlchemyIcon.jpg",
+  tools: "assets/Reusable/Items/Mining/MiningPick.jpg",
+  quest: "assets/Reusable/Icons/StoryIcon.jpg",
+  misc: "assets/Reusable/Icons/TravelHubIcon.jpg",
+};
+
+function getCraftingRecipeSymbolUri(recipe: CraftingRecipeWithIngredients) {
+  const stationIcon = recipe.station_type ? craftingStationIconPaths[recipe.station_type as (typeof craftingStationTypes)[number]] : null;
+  const categoryIcon = recipe.category ? craftingCategoryIconPaths[recipe.category as (typeof craftingCategories)[number]] : null;
+  return resolveGameAssetUri(stationIcon ?? categoryIcon ?? "assets/Reusable/Icons/MarketIcon.jpg", "icon");
+}
+
+function getCraftingRecipeStationLabel(recipe: CraftingRecipeWithIngredients) {
+  return recipe.station_type ? recipe.station_type.replace(/_/g, " ") : "Any Station";
+}
+
+function getCraftingRecipeCategoryLabel(recipe: CraftingRecipeWithIngredients) {
+  return recipe.category ? recipe.category.replace(/_/g, " ") : "misc";
+}
+
+function CraftingChipRow<T extends string>({ label, options, value, labels, icons, onSelect }: { label: string; options: readonly T[]; value: T; labels: Partial<Record<T, string>>; icons?: Partial<Record<T, string>>; onSelect: (value: T) => void }) {
   return (
     <View style={styles.craftingChipGroup}>
       <Text style={styles.craftingChipLabel}>{label}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.craftingChipScroll}>
-        {options.map((option) => (
-          <Pressable key={option} style={[styles.craftingFilterChip, value === option && styles.craftingFilterChipActive]} onPress={() => onSelect(option)}>
-            <Text style={[styles.craftingFilterChipText, value === option && styles.craftingFilterChipTextActive]}>{labels[option] ?? option}</Text>
-          </Pressable>
-        ))}
+        {options.map((option) => {
+          const iconUri = resolveGameAssetUri(icons?.[option], "icon");
+          return (
+            <Pressable key={option} style={[styles.craftingFilterChip, value === option && styles.craftingFilterChipActive]} onPress={() => onSelect(option)}>
+              {iconUri ? (
+                <View style={styles.craftingFilterIconBox}>
+                  <CachedGameImage uri={iconUri} style={styles.craftingFilterIcon} resizeMode="cover" />
+                </View>
+              ) : null}
+              <Text style={[styles.craftingFilterChipText, value === option && styles.craftingFilterChipTextActive]}>{labels[option] ?? option}</Text>
+            </Pressable>
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -1154,12 +1218,16 @@ const styles = StyleSheet.create({
     paddingRight: 6,
   },
   craftingFilterChip: {
+    alignItems: "center",
     borderColor: colors.borderSoft,
     borderRadius: 999,
     borderWidth: 1,
+    flexDirection: "row",
+    gap: 6,
     minHeight: 34,
     justifyContent: "center",
-    paddingHorizontal: 10,
+    paddingLeft: 6,
+    paddingRight: 10,
   },
   craftingFilterChipActive: {
     backgroundColor: "rgba(24, 178, 242, 0.15)",
@@ -1172,6 +1240,18 @@ const styles = StyleSheet.create({
   },
   craftingFilterChipTextActive: {
     color: colors.blue,
+  },
+  craftingFilterIcon: {
+    height: "100%",
+    width: "100%",
+  },
+  craftingFilterIconBox: {
+    borderColor: "rgba(218, 164, 65, 0.45)",
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 22,
+    overflow: "hidden",
+    width: 22,
   },
   emptyCraftingCard: {
     backgroundColor: "rgba(0,0,0,0.22)",
@@ -1194,11 +1274,29 @@ const styles = StyleSheet.create({
     gap: 6,
     minHeight: 106,
     padding: 8,
+    position: "relative",
     width: 88,
   },
   craftingRecipeChipActive: {
     backgroundColor: "rgba(217, 170, 93, 0.16)",
     borderColor: colors.gold,
+  },
+  craftingRecipeBadge: {
+    backgroundColor: "#050403",
+    borderColor: colors.gold,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 26,
+    overflow: "hidden",
+    position: "absolute",
+    right: 4,
+    top: 4,
+    width: 26,
+    zIndex: 2,
+  },
+  craftingRecipeBadgeIcon: {
+    height: "100%",
+    width: "100%",
   },
   craftingRecipeThumb: {
     alignItems: "center",
@@ -1241,6 +1339,82 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 12,
     padding: 12,
+  },
+  craftingDetailBanner: {
+    alignItems: "center",
+    backgroundColor: "rgba(2, 172, 231, 0.08)",
+    borderColor: "rgba(218, 164, 65, 0.22)",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    minHeight: 58,
+    padding: 8,
+  },
+  craftingDetailSymbol: {
+    borderColor: colors.gold,
+    borderRadius: 999,
+    borderWidth: 1,
+    height: 42,
+    overflow: "hidden",
+    width: 42,
+  },
+  craftingDetailSymbolImage: {
+    height: "100%",
+    width: "100%",
+  },
+  craftingBannerCopy: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0,
+  },
+  craftingBannerEyebrow: {
+    color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  craftingBannerTitle: {
+    color: colors.text,
+    fontFamily: fonts.title,
+    fontSize: 18,
+    textTransform: "capitalize",
+  },
+  craftingReadyPill: {
+    borderColor: "rgba(81, 214, 139, 0.45)",
+    borderRadius: 999,
+    borderWidth: 1,
+    color: colors.green,
+    fontSize: 10,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    textTransform: "uppercase",
+  },
+  craftingMissingPill: {
+    borderColor: "rgba(240, 160, 160, 0.45)",
+    borderRadius: 999,
+    borderWidth: 1,
+    color: "#f0a0a0",
+    fontSize: 10,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    textTransform: "uppercase",
+  },
+  craftingLockedPill: {
+    borderColor: "rgba(218, 164, 65, 0.45)",
+    borderRadius: 999,
+    borderWidth: 1,
+    color: colors.gold,
+    fontSize: 10,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    textTransform: "uppercase",
   },
   craftingDetailHeader: {
     alignItems: "flex-start",
