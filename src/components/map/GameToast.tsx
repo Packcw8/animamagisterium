@@ -1,6 +1,7 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { colors, fonts } from "../theme";
+import { CachedGameImage } from "../ui/CachedGameImage";
 import type { MapMarker } from "../../services/mapService";
 import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { MarkerIcon } from "./MarkerIcon";
@@ -49,7 +50,7 @@ export function GameToast({ toast, onDismiss }: GameToastProps) {
     <View style={styles.overlay} pointerEvents="box-none">
       <View style={styles.card}>
         <View style={styles.header}>
-          {toast.iconImageUrl ? <Image source={{ uri: toast.iconImageUrl }} style={styles.toastIconImage} /> : null}
+          {toast.iconImageUrl ? <CachedGameImage uri={toast.iconImageUrl} style={styles.toastIconImage} /> : null}
           <View style={styles.headerCopy}>
             <Text style={styles.overline}>{toast.overline ?? (toast.nextMarker ? "Next Step" : "Notice")}</Text>
             <Text style={styles.title}>{toast.title}</Text>
@@ -97,7 +98,7 @@ function TrophyToastCard({ trophy }: { trophy: NonNullable<GameToastData["trophy
 
   return (
     <View style={styles.trophyCard}>
-      {trophy.imageUrl ? <Image source={{ uri: trophy.imageUrl }} style={styles.trophyImage} /> : <View style={styles.trophyFallback}><Text style={styles.trophyFallbackText}>{trophy.name.slice(0, 1).toUpperCase()}</Text></View>}
+      {trophy.imageUrl ? <CachedGameImage uri={trophy.imageUrl} style={styles.trophyImage} /> : <View style={styles.trophyFallback}><Text style={styles.trophyFallbackText}>{trophy.name.slice(0, 1).toUpperCase()}</Text></View>}
       <View style={styles.trophyCopy}>
         <Text style={styles.trophyOverline}>Trophy Recorded</Text>
         <Text style={styles.trophyName}>{trophy.name}</Text>
@@ -124,7 +125,7 @@ function ToastMarkerPreview({ marker, imageUri: overrideImageUri }: { marker: Ma
 
   return (
     <View style={styles.markerImageFrame}>
-      <Image source={{ uri: imageUri }} style={styles.markerImage} />
+      <CachedGameImage uri={imageUri} style={styles.markerImage} />
       <View style={styles.markerImageIcon}>
         <MarkerIcon marker={marker} compact />
       </View>

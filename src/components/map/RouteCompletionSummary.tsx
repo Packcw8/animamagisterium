@@ -1,6 +1,7 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
-import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { colors, fonts } from "../theme";
+import { CachedGameImage } from "../ui/CachedGameImage";
 import type { RouteCompletionSummary as RouteCompletionSummaryData } from "../../utils/routeFindings";
 
 type RouteCompletionSummaryProps = {
@@ -21,7 +22,7 @@ export function RouteCompletionSummary({ summary, rarityLabels, onDismiss }: Rou
       <View style={styles.card}>
         <View style={styles.header}>
           {summary.iconUrl ? (
-            <Image source={{ uri: summary.iconUrl }} style={styles.icon} />
+            <CachedGameImage uri={summary.iconUrl} style={styles.icon} />
           ) : null}
           <View style={styles.headerCopy}>
             <Text style={styles.overline}>Route Summary</Text>
@@ -49,7 +50,7 @@ export function RouteCompletionSummary({ summary, rarityLabels, onDismiss }: Rou
           {summary.items.map((item) => (
             <View key={item.key} style={styles.row}>
               {item.imageUrl ? (
-                <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
+                <CachedGameImage uri={item.imageUrl} style={styles.itemImage} />
               ) : (
                 <View style={styles.fallbackIcon}>
                   <Text style={styles.fallbackText}>{item.findingType === "battle" ? "!" : "+"}</Text>

@@ -6,6 +6,7 @@ import type { MapMarker } from "../../services/mapService";
 import { getCenteredMapOffset } from "../../utils/mapCamera";
 import { getMarkerRenderStyle } from "../../utils/mapVisibility";
 import { colors, fonts } from "../theme";
+import { CachedGameImage } from "../ui/CachedGameImage";
 import { MarkerIcon } from "./MarkerIcon";
 
 export type MapViewportRef = {
@@ -501,7 +502,7 @@ function MapCanvasLayers({
         </View>
         <View style={[styles.playerPortraitFrame, mini && styles.miniMapPlayerPortraitFrame]}>
           {playerPortraitUrl ? (
-            <Image source={{ uri: playerPortraitUrl }} style={styles.playerPortrait} />
+            <CachedGameImage uri={playerPortraitUrl} style={styles.playerPortrait} />
           ) : (
             <Text style={[styles.playerInitial, mini && styles.miniMapPlayerInitial]}>{playerName.slice(0, 1).toUpperCase()}</Text>
           )}

@@ -1,6 +1,7 @@
-import { Image, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { colors } from "../theme";
+import { CachedGameImage } from "../ui/CachedGameImage";
 
 export type MarkerIconSource = {
   type: string;
@@ -26,7 +27,7 @@ export function MarkerIcon({ marker, compact = false, mini = false }: { marker: 
   return (
     <View style={[iconStyle, { borderColor: iconColor, width: iconSize, height: iconSize, borderRadius: iconSize / 2 } as object]}>
       {iconUri ? (
-        <Image source={{ uri: iconUri }} style={imageStyle} />
+        <CachedGameImage uri={iconUri} style={imageStyle} />
       ) : (
         <Text style={[textStyle, { color: iconColor, fontSize: Math.max(6, Math.round(baseFontSize * sizeScale)) } as object]}>{iconText}</Text>
       )}

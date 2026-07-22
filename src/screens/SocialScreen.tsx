@@ -1,12 +1,13 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useEffect, useMemo, useState } from "react";
-import { Image, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { PlayerProfileCard } from "../components/PlayerProfileCard";
 import { Screen } from "../components/Screen";
 import { PartyGuildPanel } from "../components/social/PartyGuildPanel";
 import { colors, fonts } from "../components/theme";
+import { CachedGameImage, prefetchGameImages } from "../components/ui/CachedGameImage";
 import { getEarnedBadgesForCharacter, EarnedBadgeSummary } from "../services/badgeService";
 import { getLeaderboardWithRank, getTrophyLeaderboardWithRank, LeaderboardMetric, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, type TrophyLeaderboardRow } from "../services/leaderboardService";
 import { FriendWithProfile, getCurrentUserId, getFriendRows, removeFriend, sendFriendRequest, updateFriendRequest } from "../services/socialService";
@@ -50,6 +51,14 @@ export function SocialScreen() {
   useEffect(() => {
     void loadLeaderboard();
   }, [activeMetric, scope, acceptedFriendIds.join("|")]);
+
+  useEffect(() => {
+    prefetchGameImages([
+      ...rows.map((row) => row.portrait_url),
+      ...searchResults.map((row) => row.portrait_url),
+      ...trophyRows.map((row) => row.enemy_image_url),
+    ]);
+  }, [rows, searchResults, trophyRows]);
 
   async function loadSocial() {
     setIsLoading(true);
@@ -304,7 +313,7 @@ function MiniProfile({ row, onPress }: { row: LeaderboardRow; onPress?: () => vo
   return (
     <Pressable style={styles.miniProfile} onPress={onPress}>
       <View style={styles.portraitWrap}>
-        {row.portrait_url ? <Image source={{ uri: row.portrait_url }} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
+        {row.portrait_url ? <CachedGameImage uri={row.portrait_url} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
       </View>
       <View style={styles.playerInfo}>
         <Text style={styles.name}>{row.character_name}</Text>
@@ -321,7 +330,7 @@ function LeaderboardCard({ row, rank, metric, onOpen }: { row: LeaderboardRow; r
         <Text style={styles.rankText}>{rank}</Text>
       </View>
       <View style={styles.portraitWrap}>
-        {row.portrait_url ? <Image source={{ uri: row.portrait_url }} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
+        {row.portrait_url ? <CachedGameImage uri={row.portrait_url} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
       </View>
       <View style={styles.playerInfo}>
         <Text style={styles.name}>{row.character_name}</Text>
@@ -342,7 +351,7 @@ function TrophyLeaderboardCard({ row, rank }: { row: TrophyLeaderboardRow; rank:
         <Text style={styles.rankText}>{rank}</Text>
       </View>
       <View style={styles.trophyImageWrap}>
-        {row.enemy_image_url ? <Image source={{ uri: row.enemy_image_url }} style={styles.trophyImage} /> : <Text style={styles.initial}>{(row.enemy_name ?? "T").slice(0, 1).toUpperCase()}</Text>}
+        {row.enemy_image_url ? <CachedGameImage uri={row.enemy_image_url} style={styles.trophyImage} /> : <Text style={styles.initial}>{(row.enemy_name ?? "T").slice(0, 1).toUpperCase()}</Text>}
       </View>
       <View style={styles.playerInfo}>
         <Text style={styles.name}>{row.enemy_name ?? row.species ?? "Trophy Animal"}</Text>

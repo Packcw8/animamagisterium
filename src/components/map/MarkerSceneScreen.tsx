@@ -1,9 +1,10 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useMemo, useState } from "react";
-import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
+import { CachedGameImage } from "../ui/CachedGameImage";
 import { canUseItemInContext, type InventoryItem, type ItemDefinition, resolveInventoryImageUri } from "../../services/inventoryService";
 import { normalizeMountMultiplier, resolveMountImageUri, type MountDefinition } from "../../services/mountService";
 import { getCraftingItemName, getCraftingStatus, type CraftingRecipeWithIngredients } from "../../services/craftingService";
@@ -108,7 +109,7 @@ export function MarkerSceneScreen({
   return (
     <Screen>
       <Frame style={backgroundUri ? [styles.eventScreen, ({ backgroundImage: `url(${backgroundUri})`, backgroundSize: "cover", backgroundPosition: "center" } as never)] : styles.eventScreen}>
-        {backgroundUri ? <Image source={{ uri: backgroundUri }} style={styles.sceneBackgroundImage} resizeMode="cover" fadeDuration={0} /> : null}
+        {backgroundUri ? <CachedGameImage uri={backgroundUri} style={styles.sceneBackgroundImage} /> : null}
         <View style={styles.sceneIntro}>
           <View style={styles.panelHeader}>
             <View style={styles.titleBlock}>
@@ -123,7 +124,7 @@ export function MarkerSceneScreen({
           </View>
           {npcUri ? (
             <View style={marker.type === "Market" ? styles.sceneImageWrap : styles.portraitSceneWrap}>
-              <Image source={{ uri: npcUri }} style={marker.type === "Market" ? styles.eventImage : styles.npcPortrait} resizeMode="cover" fadeDuration={0} />
+              <CachedGameImage uri={npcUri} style={marker.type === "Market" ? styles.eventImage : styles.npcPortrait} />
             </View>
           ) : null}
           {marker.description ? <Text style={styles.copy}>{marker.description}</Text> : null}
@@ -354,7 +355,7 @@ function ArenaHolderCard({ currentHolder, currentSnapshot }: { currentHolder: Ar
       {currentHolder && currentSnapshot ? (
         <View style={styles.holderRow}>
           <View style={styles.holderPortrait}>
-            {currentSnapshot.portrait_url ? <Image source={{ uri: currentSnapshot.portrait_url }} style={styles.holderImage} /> : <Text style={styles.marketItemFallback}>{currentSnapshot.character_name.slice(0, 1)}</Text>}
+            {currentSnapshot.portrait_url ? <CachedGameImage uri={currentSnapshot.portrait_url} style={styles.holderImage} /> : <Text style={styles.marketItemFallback}>{currentSnapshot.character_name.slice(0, 1)}</Text>}
           </View>
           <View style={styles.holderBody}>
             <Text style={styles.marketItemName}>{currentSnapshot.character_name}</Text>
@@ -518,7 +519,7 @@ function CraftingScene({
               <Pressable key={recipe.id} style={[styles.craftingRecipeChip, isSelected && styles.craftingRecipeChipActive]} onPress={() => setSelectedRecipeId(recipe.id)}>
                 <View style={styles.craftingRecipeThumb}>
                   {imageUri ? (
-                    <Image source={{ uri: imageUri }} style={styles.craftingRecipeImage} resizeMode="contain" fadeDuration={0} />
+                    <CachedGameImage uri={imageUri} style={styles.craftingRecipeImage} resizeMode="contain" />
                   ) : (
                     <Text style={styles.marketItemFallback}>{recipe.name.slice(0, 1).toUpperCase()}</Text>
                   )}
@@ -535,7 +536,7 @@ function CraftingScene({
           <View style={styles.craftingDetailHeader}>
             <View style={styles.craftingOutputImageBox}>
               {selectedOutputImageUri ? (
-                <Image source={{ uri: selectedOutputImageUri }} style={styles.craftingOutputImage} resizeMode="contain" fadeDuration={0} />
+                <CachedGameImage uri={selectedOutputImageUri} style={styles.craftingOutputImage} resizeMode="contain" />
               ) : (
                 <Text style={styles.marketItemFallback}>{selectedRecipe.name.slice(0, 1).toUpperCase()}</Text>
               )}
@@ -563,7 +564,7 @@ function CraftingScene({
                   <View key={ingredient.id} style={styles.craftingMaterialRow}>
                     <View style={styles.craftingMaterialImageBox}>
                       {materialImageUri ? (
-                        <Image source={{ uri: materialImageUri }} style={styles.craftingMaterialImage} resizeMode="contain" fadeDuration={0} />
+                        <CachedGameImage uri={materialImageUri} style={styles.craftingMaterialImage} resizeMode="contain" />
                       ) : (
                         <Text style={styles.marketItemFallback}>{getCraftingItemName(itemDefinitions, ingredient.item_id).slice(0, 1).toUpperCase()}</Text>
                       )}
@@ -722,7 +723,7 @@ function MarketBuyCard({ marketItem, purchasedCount, item, mount, onBuy, onInspe
   return (
     <Pressable style={[styles.marketCard, outOfStock && styles.lockedCard]} onPress={onInspect}>
       <View style={styles.marketImageBox}>
-        {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
+        {imageUri ? <CachedGameImage uri={imageUri} style={styles.marketItemImage} /> : <Text style={styles.marketItemFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
       </View>
       <View style={styles.marketCardBody}>
         <Text style={styles.marketItemName} numberOfLines={1}>{name}</Text>
@@ -753,7 +754,7 @@ function MarketSellCard({ entry, sellPrice, onSell, onInspect }: { entry: Invent
   return (
     <Pressable style={styles.marketCard} onPress={onInspect}>
       <View style={styles.marketImageBox}>
-        {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{entry.item.name.slice(0, 1).toUpperCase()}</Text>}
+        {imageUri ? <CachedGameImage uri={imageUri} style={styles.marketItemImage} /> : <Text style={styles.marketItemFallback}>{entry.item.name.slice(0, 1).toUpperCase()}</Text>}
       </View>
       <View style={styles.marketCardBody}>
         <Text style={styles.marketItemName} numberOfLines={1}>{entry.item.name}</Text>
@@ -804,7 +805,7 @@ function MarketItemDetail({
     <View style={styles.marketDetailPanel}>
       <View style={styles.marketDetailHeader}>
         <View style={styles.marketDetailImageBox}>
-          {imageUri ? <Image source={{ uri: imageUri }} style={styles.marketItemImage} resizeMode="cover" fadeDuration={0} /> : <Text style={styles.marketItemFallback}>{displayName.slice(0, 1).toUpperCase()}</Text>}
+          {imageUri ? <CachedGameImage uri={imageUri} style={styles.marketItemImage} /> : <Text style={styles.marketItemFallback}>{displayName.slice(0, 1).toUpperCase()}</Text>}
         </View>
         <View style={styles.marketDetailBody}>
           <Text style={styles.marketItemName} numberOfLines={2}>{displayName}</Text>
