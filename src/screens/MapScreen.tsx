@@ -8664,21 +8664,27 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             {route.farming_summary ? <Text style={styles.journeyQuestText}>{route.farming_summary}</Text> : null}
             {activeFarmingLootPool ? (
               <View style={styles.journeyFindList}>
-                {activeFarmingLootPool.items.filter((item) => item.is_active).slice(0, 6).map((poolItem) => (
+                {activeFarmingLootPool.items.filter((item) => item.is_active).slice(0, 6).map((poolItem) => {
+                  const poolItemDefinition = itemDefinitions.find((item) => item.id === poolItem.item_id) ?? null;
+                  const poolItemImageUri = resolveInventoryThumbnailUri(poolItemDefinition);
+                  const utilityName = poolItem.required_utility_item_id ? getItemName(itemDefinitions, poolItem.required_utility_item_id) : null;
+                  return (
                   <View key={poolItem.id} style={styles.journeyFindRow}>
+                    {poolItemImageUri ? <Image source={{ uri: poolItemImageUri }} style={styles.journeyFindImage} /> : <View style={styles.journeyFindImageFallback}><Text style={styles.journeyFindImageText}>{getItemName(itemDefinitions, poolItem.item_id).slice(0, 1).toUpperCase()}</Text></View>}
                     <View style={styles.journeyFindText}>
                       <Text style={styles.journeyFindTitle} numberOfLines={1}>{getItemName(itemDefinitions, poolItem.item_id)}</Text>
                       <Text style={styles.journeyFindReward} numberOfLines={1}>
                         {poolItem.min_quantity === poolItem.max_quantity ? `x${poolItem.min_quantity}` : `x${poolItem.min_quantity}-${poolItem.max_quantity}`}
-                        {poolItem.required_utility_item_id ? ` / ${getItemName(itemDefinitions, poolItem.required_utility_item_id)} helps` : ""}
+                        {utilityName ? ` / ${utilityName} helps` : ""}
                       </Text>
                     </View>
                     <View style={styles.journeyFindMeta}>
-                      <Text style={styles.journeyFindRarity}>{String(poolItem.rarity ?? "common").toUpperCase()}</Text>
-                      <Text style={styles.journeyFindChance}>Wt {Number(poolItem.drop_weight ?? 0)}</Text>
+                      <Text style={styles.journeyFindRarity}>{eventRarityLabels[poolItem.rarity ?? "common"] ?? formatResourceName(poolItem.rarity ?? "common")}</Text>
+                      <Text style={styles.journeyFindChance}>Possible</Text>
                     </View>
                   </View>
-                ))}
+                  );
+                })}
                 {activeFarmingLootPool.items.filter((item) => item.is_active).length > 6 ? <Text style={styles.journeyFindMore}>+{activeFarmingLootPool.items.filter((item) => item.is_active).length - 6} more pool items</Text> : null}
               </View>
             ) : farmingRouteEvents.length > 0 ? (
@@ -13135,7 +13141,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   journeyFindRow: {
-    minHeight: 46,
+    minHeight: 54,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.07)",
@@ -13145,6 +13151,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+  },
+  journeyFindImage: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.38)",
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  journeyFindImageFallback: {
+    width: 38,
+    height: 38,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(24, 178, 242, 0.32)",
+    backgroundColor: "rgba(24, 178, 242, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  journeyFindImageText: {
+    color: colors.blue,
+    fontSize: 14,
+    fontWeight: "900",
   },
   journeyFindText: {
     flex: 1,
