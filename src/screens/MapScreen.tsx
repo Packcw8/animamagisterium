@@ -461,6 +461,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [savedMiniMapPosition, setSavedMiniMapPosition] = useState<{ x: number; y: number } | null>(null);
   const [lastPosition, setLastPosition] = useState<Coordinate | null>(null);
   const [isTracking, setIsTracking] = useState(false);
+  const [desktopWalkBusy, setDesktopWalkBusy] = useState(false);
   const [gpsMessage, setGpsMessage] = useState(Platform.OS === "web" ? "GPS is off. Start tracking to count real-world walking distance." : "Pedometer is off. Start tracking to count steps toward your path.");
   const [isRecoveringPosition, setIsRecoveringPosition] = useState(false);
   const [playerMovementState, setPlayerMovementState] = useState<PlayerMovementState>("IDLE");
@@ -814,6 +815,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const adminMapWorkspaceLoadedRef = useRef(false);
   const movementStateRef = useRef<PlayerMovementState>("IDLE");
   const movementCandidateRef = useRef<{ state: PlayerMovementState; since: number } | null>(null);
+  const desktopWalkBusyRef = useRef(false);
+  const desktopWalkMovementResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCaptureRef = useRef<{ time: number; x: number; y: number } | null>(null);
   const actualIsAdmin = role === "admin";
   const isAdmin = actualIsAdmin && adminMapViewMode === "admin";
@@ -1888,7 +1891,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     return { state: desired, changed: true };
   }
 
-  async function advanceActiveRouteByMeters(cleanMeters: number, telemetry?: { last_lat?: number | null; last_lng?: number | null }) {
+  async function advanceActiveRouteByMeters(cleanMeters: number, telemetry?: { last_lat?: number | null; last_lng?: number | null; simulated?: boolean }) {
     if (cleanMeters <= 0) {
       return;
     }
@@ -1917,20 +1920,22 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       is_current: true,
       active_travel_mode_id: activeProgressTravelModeId ?? activeRoute.travel_mode_id ?? null,
     });
-    const nextTotal = await incrementCharacterDistanceWalked(character.id, cleanMeters);
-    if (nextTotal !== null) {
-      onCharacterUpdated({
-        ...character,
-        total_distance_walked_meters: nextTotal,
+    if (!telemetry?.simulated) {
+      const nextTotal = await incrementCharacterDistanceWalked(character.id, cleanMeters);
+      if (nextTotal !== null) {
+        onCharacterUpdated({
+          ...character,
+          total_distance_walked_meters: nextTotal,
+        });
+      }
+      void recordSocialContribution({
+        userId: character.user_id,
+        metricType: "distance_walked_meters",
+        amount: cleanMeters,
+        sourceType: "route",
+        sourceId: activeRoute.id,
       });
     }
-    void recordSocialContribution({
-      userId: character.user_id,
-      metricType: "distance_walked_meters",
-      amount: cleanMeters,
-      sourceType: "route",
-      sourceId: activeRoute.id,
-    });
     if (activeRoute.mini_map_id) {
       void savePlayerMapState({
         active_mini_map_id: activeRoute.mini_map_id,
@@ -1942,8 +1947,86 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     const mountNote = activeMountMultiplierRef.current > 1 ? ` Travel x${activeMountMultiplierRef.current.toFixed(2)} applied.` : "";
     setGpsMessage(direction === "reverse" && nextDistance <= 0
       ? "You returned to the starting Travel Hub."
-      : `${Platform.OS === "web" ? "GPS" : "Pedometer"} counted ${Math.round(cleanMeters)}m.${mountNote} Route progress is saved.`);
+      : telemetry?.simulated
+        ? `Admin test walked ${Math.round(cleanMeters)}m.${mountNote} Route progress is saved. Leaderboard mileage was not changed.`
+        : `${Platform.OS === "web" ? "GPS" : "Pedometer"} counted ${Math.round(cleanMeters)}m.${mountNote} Route progress is saved.`);
   }
+
+  function getDesktopWalkStepMeters() {
+    return Math.max(5, Math.min(50, Number(routeRef.current.distance_required_meters || 0) * 0.05));
+  }
+
+  async function simulateDesktopWalkStep() {
+    if (!actualIsAdmin || Platform.OS !== "web" || !hasActiveRoute || desktopWalkBusyRef.current || activeEvent || activeBattle) {
+      return;
+    }
+
+    desktopWalkBusyRef.current = true;
+    setDesktopWalkBusy(true);
+    movementStateRef.current = "MOVING";
+    movementCandidateRef.current = null;
+    setPlayerMovementState("MOVING");
+    const meters = getDesktopWalkStepMeters();
+    setMovementStatus({
+      label: "MOVING",
+      speedMph: 0,
+      countedMeters: meters,
+      blockedReason: null,
+    });
+
+    if (desktopWalkMovementResetRef.current) {
+      clearTimeout(desktopWalkMovementResetRef.current);
+    }
+
+    try {
+      await advanceActiveRouteByMeters(meters, { simulated: true });
+    } catch (error) {
+      setGpsMessage(getErrorMessage(error, "Unable to simulate walking."));
+    } finally {
+      desktopWalkBusyRef.current = false;
+      setDesktopWalkBusy(false);
+      desktopWalkMovementResetRef.current = setTimeout(() => {
+        if (isTracking || activeEvent || activeBattle) {
+          return;
+        }
+        movementStateRef.current = "IDLE";
+        setPlayerMovementState("IDLE");
+        setMovementStatus((current) => ({ ...current, label: "IDLE", speedMph: 0, countedMeters: 0 }));
+      }, 900);
+    }
+  }
+
+  useEffect(() => {
+    if (!actualIsAdmin || Platform.OS !== "web") {
+      return;
+    }
+
+    const isEditableTarget = (target: EventTarget | null) => {
+      const element = target as HTMLElement | null;
+      if (!element) {
+        return false;
+      }
+      const tagName = element.tagName?.toLowerCase();
+      return tagName === "input" || tagName === "textarea" || tagName === "select" || element.isContentEditable;
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || event.repeat || isEditableTarget(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      void simulateDesktopWalkStep();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [actualIsAdmin, activeBattle, activeEvent, hasActiveRoute, isTracking]);
+
+  useEffect(() => () => {
+    if (desktopWalkMovementResetRef.current) {
+      clearTimeout(desktopWalkMovementResetRef.current);
+    }
+  }, []);
 
   async function createSeasonFromAdmin() {
     const nextNumber = Math.max(0, ...availableSeasons.map((season) => season.season_number)) + 1;
@@ -8689,6 +8772,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         </View>
 
         <View style={styles.journeyActions}>
+          {actualIsAdmin && Platform.OS === "web" ? (
+            <Pressable style={[styles.journeySecondary, desktopWalkBusy && styles.disabledAction]} onPress={() => void simulateDesktopWalkStep()} disabled={desktopWalkBusy || Boolean(activeEvent) || Boolean(activeBattle)}>
+              <Text style={styles.journeySecondaryText}>{desktopWalkBusy ? "Testing..." : `Test Walk +${Math.round(getDesktopWalkStepMeters())}m`}</Text>
+            </Pressable>
+          ) : null}
           <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("inventory")}>
             <Text style={styles.journeySecondaryText}>Inventory ({inventoryItems.length})</Text>
           </Pressable>
@@ -8710,6 +8798,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           <Text style={styles.journeyDebug}>{route.terrain}</Text>
         </View>
         <Text style={styles.gpsMessage}>{gpsMessage}</Text>
+        {actualIsAdmin && Platform.OS === "web" ? <Text style={styles.gpsMessage}>Desktop admin test: press Space to advance this path without adding leaderboard mileage.</Text> : null}
       </Frame>
     );
   }
