@@ -1,5 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
@@ -7,7 +7,7 @@ import { colors, fonts } from "../theme";
 import { CachedGameImage } from "../ui/CachedGameImage";
 import { canUseItemInContext, type InventoryItem, type ItemDefinition, resolveInventoryImageUri, resolveInventoryThumbnailUri } from "../../services/inventoryService";
 import { normalizeMountMultiplier, resolveMountImageUri, resolveMountThumbnailUri, type MountDefinition } from "../../services/mountService";
-import { getCraftingItemName, getCraftingStatus, type CraftingRecipeWithIngredients } from "../../services/craftingService";
+import { craftingCategories, craftingStationTypes, getCraftingItemName, getCraftingStatus, type CraftingRecipeWithIngredients } from "../../services/craftingService";
 import {
   canMarketItemBeBought,
   canMarketItemBeSoldTo,
@@ -488,18 +488,74 @@ function CraftingScene({
   itemDefinitions: ItemDefinition[];
   onCraft: (recipe: CraftingRecipeWithIngredients) => void;
 }) {
+  const [stationFilter, setStationFilter] = useState<(typeof craftingStationTypes)[number]>("all");
+  const [statusFilter, setStatusFilter] = useState<"can_craft" | "all" | "missing">("can_craft");
+  const [categoryFilter, setCategoryFilter] = useState<(typeof craftingCategories)[number] | "all">("all");
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(recipes[0]?.id ?? null);
-  const selectedRecipe = recipes.find((recipe) => recipe.id === selectedRecipeId) ?? recipes[0] ?? null;
+  const filteredRecipes = useMemo(
+    () => recipes
+      .filter((recipe) => stationFilter === "all" || !recipe.station_type || recipe.station_type === stationFilter)
+      .filter((recipe) => categoryFilter === "all" || (recipe.category ?? "misc") === categoryFilter)
+      .filter((recipe) => {
+        const status = getCraftingStatus(recipe, inventoryItems);
+        if (statusFilter === "can_craft") {
+          return status.canCraft;
+        }
+        if (statusFilter === "missing") {
+          return !status.canCraft;
+        }
+        return true;
+      })
+      .sort((left, right) => {
+        const leftStatus = getCraftingStatus(left, inventoryItems);
+        const rightStatus = getCraftingStatus(right, inventoryItems);
+        return Number(rightStatus.canCraft) - Number(leftStatus.canCraft)
+          || Number(left.sort_order ?? 0) - Number(right.sort_order ?? 0)
+          || left.name.localeCompare(right.name);
+      }),
+    [categoryFilter, inventoryItems, recipes, stationFilter, statusFilter],
+  );
+  const selectedRecipe = filteredRecipes.find((recipe) => recipe.id === selectedRecipeId) ?? filteredRecipes[0] ?? null;
   const selectedStatus = selectedRecipe ? getCraftingStatus(selectedRecipe, inventoryItems) : null;
   const selectedOutputItem = selectedRecipe ? itemDefinitions.find((item) => item.id === selectedRecipe.output_item_id) ?? null : null;
   const selectedOutputImageUri = resolveInventoryThumbnailUri(selectedOutputItem);
   const getOwnedQuantity = (itemId: string) => inventoryItems.find((entry) => entry.item_id === itemId)?.quantity ?? 0;
   const getItemDefinition = (itemId: string) => itemDefinitions.find((item) => item.id === itemId) ?? null;
 
+  useEffect(() => {
+    if (!selectedRecipe || selectedRecipe.id !== selectedRecipeId) {
+      setSelectedRecipeId(selectedRecipe?.id ?? null);
+    }
+  }, [selectedRecipe, selectedRecipeId]);
+
   return (
     <View style={styles.craftingShell}>
       <Text style={styles.selectedTitle}>Crafting</Text>
       <Text style={styles.copy}>Create items from materials you have collected.</Text>
+
+      <View style={styles.craftingFilterBlock}>
+        <CraftingChipRow
+          label="Station"
+          options={craftingStationTypes}
+          value={stationFilter}
+          labels={{ all: "All", forge: "Forge", cooking: "Cooking", alchemy: "Alchemy", workbench: "Workbench", enchanting: "Enchanting" }}
+          onSelect={setStationFilter}
+        />
+        <CraftingChipRow
+          label="Status"
+          options={["can_craft", "all", "missing"] as const}
+          value={statusFilter}
+          labels={{ can_craft: "Ready", all: "All", missing: "Missing" }}
+          onSelect={setStatusFilter}
+        />
+        <CraftingChipRow
+          label="Category"
+          options={["all", ...craftingCategories] as const}
+          value={categoryFilter}
+          labels={{ all: "All", materials: "Materials", weapons: "Weapons", armor: "Armor", consumables: "Consumables", tools: "Tools", quest: "Quest", misc: "Misc" }}
+          onSelect={setCategoryFilter}
+        />
+      </View>
 
       {recipes.length === 0 ? (
         <View style={styles.emptyCraftingCard}>
@@ -508,12 +564,20 @@ function CraftingScene({
         </View>
       ) : null}
 
-      {recipes.length > 0 ? (
+      {recipes.length > 0 && filteredRecipes.length === 0 ? (
+        <View style={styles.emptyCraftingCard}>
+          <Text style={styles.markerName}>No matching recipes</Text>
+          <Text style={styles.copy}>Try All, Missing, or another station/category filter.</Text>
+        </View>
+      ) : null}
+
+      {filteredRecipes.length > 0 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.craftingRecipeStrip}>
-          {recipes.map((recipe) => {
+          {filteredRecipes.map((recipe) => {
             const outputItem = itemDefinitions.find((item) => item.id === recipe.output_item_id) ?? null;
             const imageUri = resolveInventoryThumbnailUri(outputItem);
             const isSelected = selectedRecipe?.id === recipe.id;
+            const status = getCraftingStatus(recipe, inventoryItems);
 
             return (
               <Pressable key={recipe.id} style={[styles.craftingRecipeChip, isSelected && styles.craftingRecipeChipActive]} onPress={() => setSelectedRecipeId(recipe.id)}>
@@ -525,6 +589,7 @@ function CraftingScene({
                   )}
                 </View>
                 <Text style={styles.craftingRecipeName} numberOfLines={2}>{recipe.name}</Text>
+                <Text style={status.canCraft ? styles.craftingReadyMini : styles.craftingMissingMini}>{status.canCraft ? "Ready" : "Missing"}</Text>
               </Pressable>
             );
           })}
@@ -547,6 +612,7 @@ function CraftingScene({
                 Creates {selectedRecipe.output_quantity} {getCraftingItemName(itemDefinitions, selectedRecipe.output_item_id)}
               </Text>
               {selectedRecipe.station_type ? <Text style={styles.craftingStationPill}>{selectedRecipe.station_type}</Text> : null}
+              {selectedRecipe.category ? <Text style={styles.craftingCategoryPill}>{selectedRecipe.category}</Text> : null}
               {selectedRecipe.description ? <Text style={styles.craftingDetailCopy}>{selectedRecipe.description}</Text> : null}
             </View>
           </View>
@@ -585,6 +651,21 @@ function CraftingScene({
           </Pressable>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function CraftingChipRow<T extends string>({ label, options, value, labels, onSelect }: { label: string; options: readonly T[]; value: T; labels: Partial<Record<T, string>>; onSelect: (value: T) => void }) {
+  return (
+    <View style={styles.craftingChipGroup}>
+      <Text style={styles.craftingChipLabel}>{label}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.craftingChipScroll}>
+        {options.map((option) => (
+          <Pressable key={option} style={[styles.craftingFilterChip, value === option && styles.craftingFilterChipActive]} onPress={() => onSelect(option)}>
+            <Text style={[styles.craftingFilterChipText, value === option && styles.craftingFilterChipTextActive]}>{labels[option] ?? option}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
     </View>
   );
 }
@@ -1041,6 +1122,46 @@ const styles = StyleSheet.create({
   craftingShell: {
     gap: 12,
   },
+  craftingFilterBlock: {
+    borderColor: "rgba(218, 164, 65, 0.18)",
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 8,
+  },
+  craftingChipGroup: {
+    gap: 5,
+  },
+  craftingChipLabel: {
+    color: colors.gold,
+    fontSize: 10,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  craftingChipScroll: {
+    gap: 6,
+    paddingRight: 6,
+  },
+  craftingFilterChip: {
+    borderColor: colors.borderSoft,
+    borderRadius: 999,
+    borderWidth: 1,
+    minHeight: 34,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  craftingFilterChipActive: {
+    backgroundColor: "rgba(24, 178, 242, 0.15)",
+    borderColor: colors.blue,
+  },
+  craftingFilterChipText: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  craftingFilterChipTextActive: {
+    color: colors.blue,
+  },
   emptyCraftingCard: {
     backgroundColor: "rgba(0,0,0,0.22)",
     borderColor: colors.borderSoft,
@@ -1090,6 +1211,18 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     textAlign: "center",
   },
+  craftingReadyMini: {
+    color: colors.blue,
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  craftingMissingMini: {
+    color: "#f0a0a0",
+    fontSize: 9,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
   craftingDetailCard: {
     backgroundColor: "rgba(0,0,0,0.22)",
     borderColor: colors.borderSoft,
@@ -1136,6 +1269,19 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     color: colors.blue,
+    fontSize: 11,
+    fontWeight: "900",
+    overflow: "hidden",
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    textTransform: "uppercase",
+  },
+  craftingCategoryPill: {
+    alignSelf: "flex-start",
+    borderColor: "rgba(218, 164, 65, 0.38)",
+    borderRadius: 999,
+    borderWidth: 1,
+    color: colors.gold,
     fontSize: 11,
     fontWeight: "900",
     overflow: "hidden",

@@ -7,6 +7,10 @@ export type CraftingRecipeWithIngredients = CraftingRecipe & {
   ingredients: CraftingRecipeIngredient[];
 };
 
+export const craftingStationTypes = ["all", "forge", "cooking", "alchemy", "workbench", "enchanting"] as const;
+export const craftingCategories = ["materials", "weapons", "armor", "consumables", "tools", "quest", "misc"] as const;
+export const craftingContentScopes = ["chapter", "universal"] as const;
+
 export type CraftingStatus = {
   canCraft: boolean;
   missing: Array<{ itemId: string; needed: number; owned: number }>;
@@ -19,6 +23,9 @@ export function blankCraftingRecipe(): Partial<CraftingRecipe> {
     output_item_id: "",
     output_quantity: 1,
     station_type: "",
+    content_scope: "chapter",
+    category: "materials",
+    sort_order: 0,
     required_story_flag_key: "",
     required_story_flag_value: true,
     is_active: true,
@@ -34,6 +41,7 @@ export async function getCraftingRecipes() {
       .select("*")
       .order("season_number", { ascending: true })
       .order("chapter_number", { ascending: true })
+      .order("sort_order", { ascending: true })
       .order("name", { ascending: true }),
     supabase
       .from("crafting_recipe_ingredients")
@@ -60,6 +68,9 @@ export async function getCraftingRecipesForChapter(seasonNumber: number, chapter
   return recipes.filter((recipe) => {
     if (!recipe.is_active) {
       return false;
+    }
+    if ((recipe.content_scope ?? "chapter") === "universal") {
+      return true;
     }
     return Number(recipe.season_number ?? 1) === seasonNumber && Number(recipe.chapter_number ?? 1) === chapterNumber;
   });
@@ -180,6 +191,9 @@ function normalizeRecipeInput(input: Partial<CraftingRecipe>, userId: string | n
     output_item_id: input.output_item_id || null,
     output_quantity: Math.max(1, Math.floor(Number(input.output_quantity) || 1)),
     station_type: input.station_type?.trim() || null,
+    content_scope: input.content_scope === "universal" ? "universal" : "chapter",
+    category: input.category?.trim() || null,
+    sort_order: Math.floor(Number(input.sort_order) || 0),
     required_story_flag_key: input.required_story_flag_key?.trim() || null,
     required_story_flag_value: input.required_story_flag_value ?? true,
     is_active: input.is_active ?? true,

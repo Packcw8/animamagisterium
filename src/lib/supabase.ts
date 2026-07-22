@@ -902,6 +902,9 @@ export type Tables = {
     output_item_id: string;
     output_quantity: number;
     station_type: string | null;
+    content_scope?: "chapter" | "universal";
+    category?: string | null;
+    sort_order?: number;
     required_story_flag_key: string | null;
     required_story_flag_value: boolean;
     is_active: boolean;

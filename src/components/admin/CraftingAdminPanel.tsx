@@ -5,6 +5,9 @@ import { ItemPicker } from "../map/MarkerEditorControls";
 import { colors, fonts } from "../theme";
 import {
   blankCraftingRecipe,
+  craftingCategories,
+  craftingContentScopes,
+  craftingStationTypes,
   deleteCraftingRecipe,
   getCraftingItemName,
   getCraftingRecipes,
@@ -35,7 +38,7 @@ export function CraftingAdminPanel({ itemDefinitions, seasonNumber, chapterNumbe
   const [localMessage, setLocalMessage] = useState<string | null>(null);
 
   const scopedRecipes = useMemo(
-    () => recipes.filter((recipe) => Number(recipe.season_number ?? 1) === seasonNumber && Number(recipe.chapter_number ?? 1) === chapterNumber),
+    () => recipes.filter((recipe) => (recipe.content_scope ?? "chapter") === "universal" || (Number(recipe.season_number ?? 1) === seasonNumber && Number(recipe.chapter_number ?? 1) === chapterNumber)),
     [chapterNumber, recipes, seasonNumber],
   );
   const materialItems = useMemo(() => {
@@ -98,8 +101,8 @@ export function CraftingAdminPanel({ itemDefinitions, seasonNumber, chapterNumbe
       const saved = await saveCraftingRecipe({
         ...recipeForm,
         id: editingRecipeId ?? undefined,
-        season_number: seasonNumber,
-        chapter_number: chapterNumber,
+        season_number: recipeForm.content_scope === "universal" ? 1 : seasonNumber,
+        chapter_number: recipeForm.content_scope === "universal" ? 1 : chapterNumber,
       });
       await saveCraftingRecipeIngredients(saved.id, ingredientDrafts);
       resetForm();
@@ -140,7 +143,7 @@ export function CraftingAdminPanel({ itemDefinitions, seasonNumber, chapterNumbe
   return (
     <View style={styles.wrap}>
       <Text style={styles.title}>Crafting Admin</Text>
-      <Text style={styles.copy}>Create recipes from material items. A Crafting marker will show active recipes for the player's current chapter.</Text>
+      <Text style={styles.copy}>Create recipes from material items. Universal recipes appear anywhere; chapter recipes appear in the selected season/chapter.</Text>
       {localMessage ? <Text style={styles.message}>{localMessage}</Text> : null}
 
       <View style={styles.builder}>
@@ -149,7 +152,10 @@ export function CraftingAdminPanel({ itemDefinitions, seasonNumber, chapterNumbe
         <Field label="Description" value={recipeForm.description ?? ""} onChange={(value) => setRecipeForm((current) => ({ ...current, description: value }))} />
         <ItemPicker label="Creates item" items={itemDefinitions} selectedId={recipeForm.output_item_id || null} onSelect={(id) => setRecipeForm((current) => ({ ...current, output_item_id: id ?? "" }))} />
         <Field label="Creates quantity" value={String(recipeForm.output_quantity ?? 1)} keyboardType="numeric" onChange={(value) => setRecipeForm((current) => ({ ...current, output_quantity: Number(value) || 1 }))} />
-        <Field label="Station label, optional" value={recipeForm.station_type ?? ""} onChange={(value) => setRecipeForm((current) => ({ ...current, station_type: value }))} />
+        <ChoiceRow label="Scope" options={craftingContentScopes} value={(recipeForm.content_scope ?? "chapter") as (typeof craftingContentScopes)[number]} labels={{ chapter: "This Chapter", universal: "Universal" }} onSelect={(value) => setRecipeForm((current) => ({ ...current, content_scope: value }))} />
+        <ChoiceRow label="Station" options={craftingStationTypes} value={(recipeForm.station_type || "all") as (typeof craftingStationTypes)[number]} labels={{ all: "Any", forge: "Forge", cooking: "Cooking", alchemy: "Alchemy", workbench: "Workbench", enchanting: "Enchanting" }} onSelect={(value) => setRecipeForm((current) => ({ ...current, station_type: value === "all" ? "" : value }))} />
+        <ChoiceRow label="Category" options={craftingCategories} value={(recipeForm.category || "misc") as (typeof craftingCategories)[number]} labels={{ materials: "Materials", weapons: "Weapons", armor: "Armor", consumables: "Consumables", tools: "Tools", quest: "Quest", misc: "Misc" }} onSelect={(value) => setRecipeForm((current) => ({ ...current, category: value }))} />
+        <Field label="Sort order" value={String(recipeForm.sort_order ?? 0)} keyboardType="numeric" onChange={(value) => setRecipeForm((current) => ({ ...current, sort_order: Number(value) || 0 }))} />
         <ToggleRow label="Active" value={recipeForm.is_active ?? true} onPress={() => setRecipeForm((current) => ({ ...current, is_active: !(current.is_active ?? true) }))} />
 
         <Text style={styles.subTitle}>Materials</Text>
@@ -192,6 +198,7 @@ export function CraftingAdminPanel({ itemDefinitions, seasonNumber, chapterNumbe
             <View style={styles.recipeBody}>
               <Text style={styles.recipeName}>{recipe.name}</Text>
               <Text style={styles.copy}>Creates {recipe.output_quantity} {getCraftingItemName(itemDefinitions, recipe.output_item_id)}</Text>
+              <Text style={styles.copy}>{recipe.content_scope === "universal" ? "Universal" : `Season ${recipe.season_number} / Chapter ${recipe.chapter_number}`} / {recipe.station_type || "Any station"} / {recipe.category || "misc"}</Text>
               <Text style={styles.copy}>{recipe.ingredients.map((ingredient) => `${getCraftingItemName(itemDefinitions, ingredient.item_id)} x${ingredient.quantity}`).join(" + ") || "No materials"}</Text>
             </View>
             <Text style={recipe.is_active ? styles.activePill : styles.inactivePill}>{recipe.is_active ? "Active" : "Inactive"}</Text>
@@ -206,6 +213,21 @@ export function CraftingAdminPanel({ itemDefinitions, seasonNumber, chapterNumbe
           </View>
         </View>
       ))}
+    </View>
+  );
+}
+
+function ChoiceRow<T extends string>({ label, options, value, labels, onSelect }: { label: string; options: readonly T[]; value: T; labels?: Partial<Record<T, string>>; onSelect: (value: T) => void }) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.choiceWrap}>
+        {options.map((option) => (
+          <Pressable key={option} style={[styles.choice, value === option && styles.choiceActive]} onPress={() => onSelect(option)}>
+            <Text style={[styles.choiceText, value === option && styles.choiceTextActive]}>{labels?.[option] ?? option}</Text>
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
 }
@@ -244,6 +266,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 10,
     padding: 12,
+  },
+  choice: {
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 38,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+  },
+  choiceActive: {
+    backgroundColor: "rgba(2, 172, 231, 0.18)",
+    borderColor: colors.blue,
+  },
+  choiceText: {
+    color: colors.muted,
+    fontWeight: "900",
+  },
+  choiceTextActive: {
+    color: colors.blue,
+  },
+  choiceWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   copy: {
     color: colors.muted,
