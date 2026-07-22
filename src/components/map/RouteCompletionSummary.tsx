@@ -47,6 +47,12 @@ export function RouteCompletionSummary({ summary, rarityLabels, onDismiss }: Rou
         </View>
 
         <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+          {summary.items.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyTitle}>No Finds</Text>
+              <Text style={styles.emptyMessage}>{summary.emptyMessage ?? "Nothing useful turned up this time."}</Text>
+            </View>
+          ) : null}
           {summary.items.map((item) => (
             <View key={item.key} style={styles.row}>
               {item.imageUrl ? (
@@ -184,6 +190,31 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 9,
+  },
+  emptyState: {
+    minHeight: 92,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(218, 164, 65, 0.24)",
+    backgroundColor: "rgba(11, 10, 7, 0.78)",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  emptyTitle: {
+    color: colors.gold,
+    fontSize: 14,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  emptyMessage: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "700",
+    lineHeight: 17,
+    marginTop: 6,
+    textAlign: "center",
   },
   itemImage: {
     width: 42,

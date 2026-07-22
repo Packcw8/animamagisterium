@@ -21,6 +21,7 @@ export type RouteCompletionSummary = {
   items: RouteCompletionSummaryItem[];
   totalFindings: number;
   battleCount: number;
+  emptyMessage?: string;
 };
 
 export function buildRouteCompletionSummary(
@@ -34,12 +35,7 @@ export function buildRouteCompletionSummary(
 
   const routeProgressId = currentRouteProgress?.id ?? null;
   const findingsForThisWalk = routeFindings
-    .filter((finding) => finding.route_id === route.id)
-    .filter((finding) => !routeProgressId || !finding.route_progress_id || finding.route_progress_id === routeProgressId);
-
-  if (findingsForThisWalk.length === 0) {
-    return null;
-  }
+    .filter((finding) => finding.route_id === route.id);
 
   const summaryRows = new Map<string, RouteCompletionSummaryItem>();
   for (const finding of findingsForThisWalk) {
@@ -77,10 +73,13 @@ export function buildRouteCompletionSummary(
   return {
     key: `${route.id}:${routeProgressId ?? "route"}:${findingsForThisWalk.length}`,
     routeName: route.name,
-    subtitle: `${findingsForThisWalk.length} trail record${findingsForThisWalk.length === 1 ? "" : "s"} gathered`,
+    subtitle: findingsForThisWalk.length > 0
+      ? `${findingsForThisWalk.length} trail record${findingsForThisWalk.length === 1 ? "" : "s"} gathered`
+      : "No trail finds were recorded this walk",
     iconUrl: resolveGameAssetUri("assets/Reusable/Icons/TrophyHuntIcon.jpg", "icon"),
     items,
     totalFindings: findingsForThisWalk.length,
     battleCount: findingsForThisWalk.filter((finding) => finding.finding_type === "battle").length,
+    emptyMessage: findingsForThisWalk.length === 0 ? "Nothing useful turned up this time. Try the route again for another roll." : undefined,
   };
 }
