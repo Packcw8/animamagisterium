@@ -29,7 +29,7 @@ export type CarrySettings = {
   carryWeightPerStrengthLevel: number;
 };
 
-export const itemTypes: ItemDefinition["type"][] = ["weapon", "armor", "wearable", "potion", "revive potion", "consumable", "food", "scroll", "special", "material", "tool", "utility", "bait", "misc"];
+export const itemTypes: ItemDefinition["type"][] = ["weapon", "armor", "wearable", "potion", "revive potion", "consumable", "food", "scroll", "special", "material", "tool", "utility", "bait", "throwable", "misc"];
 export const utilityActivities: NonNullable<ItemDefinition["utility_activity"]>[] = ["general", "fishing", "mining", "hunting", "foraging"];
 export const weaponEquipmentSlots: WeaponEquipmentSlot[] = ["main_hand", "off_hand", "weapon"];
 export const armorPieceSlots: ArmorPieceSlot[] = ["helmet", "chest", "gloves", "legs", "boots"];
@@ -760,6 +760,16 @@ export function getBattleUsableItems(items: InventoryItem[], isDefeated: boolean
 
     return !isReviveBattleItem(entry.item) || entry.item.usable_in_battle;
   });
+}
+
+export function isOffensiveBattleItem(item: ItemDefinition) {
+  if (!canUseItemInContext(item, "battle")) {
+    return false;
+  }
+
+  const hasDamage = Number(item.damage_amount ?? 0) > 0 || Number(item.elemental_damage_amount ?? 0) > 0;
+  const hasEnemyEffect = item.on_hit_effect === "burn enemy" || item.on_hit_effect === "poison enemy" || item.on_hit_effect === "weaken enemy";
+  return ["throwable", "consumable", "special", "tool", "utility"].includes(item.type) && (hasDamage || hasEnemyEffect);
 }
 
 export function canUseItemInContext(item: ItemDefinition, context: "battle" | "outside") {

@@ -3,7 +3,7 @@ import { AbilityDefinition, CharacterResources, clampHealth, getCharacterResourc
 import { CharacterWithDetails, updateCharacterHealth } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout, getEnemyLoadout, getNpcLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
 import { BattleEventCombatant, MarkerBattleCombatant, getBattleEventCombatants, getMarkerBattleCombatants } from "../../services/battlefieldService";
-import { EquipmentSlot, InventoryItem, ItemDefinition, consumeInventoryItem, getInventoryResourceBonuses, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../../services/inventoryService";
+import { EquipmentSlot, InventoryItem, ItemDefinition, consumeInventoryItem, getInventoryResourceBonuses, isOffensiveBattleItem, isReviveBattleItem, resolveAbilityImageUri, resolveInventoryImageUri } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
 import { createCompanionFromSnapshot, getEquippedPartyCompanion } from "../../services/partyCompanionService";
 import { chooseWeightedEnemyAbility, getD20StatBonus, rollD20Attack } from "../../utils/combatMath";
@@ -1852,14 +1852,25 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
   async function useBattleItem(entry: InventoryItem, context: BattleActionContext) {
     const item = entry.item;
     const defeated = battlePlayerHp <= 0 || battleFinished === "defeat";
+    const offensiveItem = isOffensiveBattleItem(item);
 
     if (defeated && !isReviveBattleItem(item)) {
       setBattleLog((current) => ["Only Revive Scrolls can be used after defeat.", ...current].slice(0, 8));
       return;
     }
 
-    if (item.type !== "potion" && !isReviveBattleItem(item)) {
+    if (!defeated && battleTurnPhase !== "player") {
+      setBattleLog((current) => ["Wait for your turn before using an item.", ...current].slice(0, 8));
+      return;
+    }
+
+    if (item.type !== "potion" && !isReviveBattleItem(item) && !offensiveItem) {
       setBattleLog((current) => [`${item.name} has no battle use yet.`, ...current].slice(0, 8));
+      return;
+    }
+
+    if (offensiveItem && !defeated) {
+      await useOffensiveBattleItem(entry, context);
       return;
     }
 
@@ -1889,7 +1900,144 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     }
 
     setBattleInventoryOpen(false);
-    setBattleLog((current) => [`Used ${item.name}. Restored ${amount} ${target}.`, ...current].slice(0, 8));
+    const nextLog = [`Used ${item.name}. Restored ${amount} ${target}.`];
+
+    if (defeated) {
+      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+      return;
+    }
+
+    setBattleTurnPhase("enemy");
+    await delayEnemyTurn();
+    const allies = await resolveCompanionRound(battleEnemyHp, context);
+    nextLog.push(...allies.log);
+    if (allOpponentsDefeated(allies.selectedHp)) {
+      setBattleFinished("victory");
+      setBattleTurnPhase("finished");
+      setBattleLog((current) => [...nextLog, activeBattle?.victory_text || "Victory.", ...current].slice(0, 8));
+      return;
+    }
+    const counter = await resolveEnemyRound(context, allies.selectedHp);
+    const nextPlayerHp = Math.max(0, Math.min(combatResources.maxHp, battlePlayerHp + (target === "health" ? amount : 0)) - counter.damage);
+    nextLog.push(...counter.log);
+    setSelectedOpponentSnapshotHp(getSelectedOpponentSnapshot() ?? { key: selectedOpponentKey ?? "primary", combatant: null, enemy: activeEnemy, hp: battleEnemyHp, stamina: battleEnemyStamina, magika: battleEnemyMagika }, allies.selectedHp);
+    await savePlayerHealth(nextPlayerHp, context.previewMode);
+
+    if (nextPlayerHp <= 0) {
+      await resolvePlayerDefeat(nextLog, context);
+    } else {
+      finishEnemyExchange();
+    }
+
+    setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+  }
+
+  async function useOffensiveBattleItem(entry: InventoryItem, context: BattleActionContext) {
+    const item = entry.item;
+    const activeTarget = getSelectedOpponentSnapshot();
+
+    if (!activeBattle || battleFinished || battleTurnPhase !== "player") {
+      return;
+    }
+
+    if (!activeTarget || activeTarget.hp <= 0) {
+      setBattleLog((current) => [`${item.name} needs a target.`, ...current].slice(0, 8));
+      return;
+    }
+
+    const iconUri = item.image_path ? resolveInventoryImageUri(item.image_path) : null;
+    const enemyDefense = getOpponentDefense(activeTarget);
+    const attackRoll = rollD20Attack(getD20StatBonus(character.attributes?.agility ?? 0), Number(item.attack_bonus ?? 0) || 0, enemyDefense, 0, 2);
+    const nextLog = [`${item.name}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
+
+    if (!context.previewMode) {
+      await consumeInventoryItem(entry, 1);
+      await context.loadInventory();
+    }
+
+    setBattleInventoryOpen(false);
+
+    if (!attackRoll.hit) {
+      pushCombatIndicator("enemy", "MISS", "#9ca3af", activeTarget.key, iconUri);
+      nextLog.push(attackRoll.roll === 1 ? "Natural 1. The item misses." : `${item.name} misses ${activeTarget.enemy?.name || "the target"}.`);
+      setBattleTurnPhase("enemy");
+      await delayEnemyTurn();
+      const allies = await resolveCompanionRound(battleEnemyHp, context);
+      nextLog.push(...allies.log);
+      if (allOpponentsDefeated(allies.selectedHp)) {
+        setBattleFinished("victory");
+        setBattleTurnPhase("finished");
+        setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+        return;
+      }
+      const counter = await resolveEnemyRound(context, allies.selectedHp);
+      const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
+      nextLog.push(...counter.log);
+      await savePlayerHealth(nextPlayerHp, context.previewMode);
+      if (nextPlayerHp <= 0) {
+        await resolvePlayerDefeat(nextLog, context);
+      } else {
+        finishEnemyExchange();
+      }
+      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+      return;
+    }
+
+    const itemDamage = Number(item.damage_amount ?? 0) + Number(item.elemental_damage_amount ?? 0);
+    const totalDamage = itemDamage > 0 ? Math.max(1, itemDamage - getOpponentArmorReduction(activeTarget)) : 0;
+    const nextEnemyHp = Math.max(0, activeTarget.hp - totalDamage);
+    if (totalDamage > 0) {
+      pushCombatIndicator("enemy", `-${totalDamage}`, "#ff8a5c", activeTarget.key, iconUri);
+      nextLog.push(`${item.name} hits ${activeTarget.enemy?.name || "the target"} for ${totalDamage} damage${item.elemental_damage_type !== "none" ? ` with ${item.elemental_damage_type}` : ""}.`);
+    } else {
+      pushCombatIndicator("enemy", "HIT", "#f6d365", activeTarget.key, iconUri);
+      nextLog.push(`${item.name} hits ${activeTarget.enemy?.name || "the target"}.`);
+    }
+
+    if (item.on_hit_effect) {
+      applyWeaponOnHitEffect(item, activeTarget, nextLog, iconUri);
+    }
+
+    if (nextEnemyHp <= 0) {
+      setSelectedOpponentSnapshotHp(activeTarget, 0);
+      if (allOpponentsDefeated(nextEnemyHp)) {
+        setBattleFinished("victory");
+        setBattleTurnPhase("finished");
+        setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+        return;
+      }
+      const nextTarget = chooseNextLivingOpponent(battleOpponents, activeTarget.key, nextEnemyHp);
+      if (nextTarget) {
+        selectBattleTarget(nextTarget.key);
+        nextLog.push(`${activeTarget.enemy?.name || "Target"} falls. Choose the next target.`);
+      }
+      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+      return;
+    }
+
+    setBattleTurnPhase("enemy");
+    await delayEnemyTurn();
+    const allies = await resolveCompanionRound(nextEnemyHp, context);
+    nextLog.push(...allies.log);
+    if (allOpponentsDefeated(allies.selectedHp)) {
+      setBattleFinished("victory");
+      setBattleTurnPhase("finished");
+      setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+      return;
+    }
+    const counter = await resolveEnemyRound(context, allies.selectedHp);
+    const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
+    nextLog.push(...counter.log);
+    setSelectedOpponentSnapshotHp(activeTarget, allies.selectedHp);
+    await savePlayerHealth(nextPlayerHp, context.previewMode);
+
+    if (nextPlayerHp <= 0) {
+      await resolvePlayerDefeat(nextLog, context);
+    } else {
+      finishEnemyExchange();
+    }
+
+    setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
   }
 
   async function resolveOpeningEnemyTurn(context: BattleActionContext) {

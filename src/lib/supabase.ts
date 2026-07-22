@@ -113,7 +113,7 @@ export type Tables = {
   item_definitions: {
     id: string;
     name: string;
-    type: "weapon" | "armor" | "wearable" | "potion" | "revive potion" | "consumable" | "food" | "scroll" | "special" | "material" | "tool" | "utility" | "bait" | "misc";
+    type: "weapon" | "armor" | "wearable" | "potion" | "revive potion" | "consumable" | "food" | "scroll" | "special" | "material" | "tool" | "utility" | "bait" | "throwable" | "misc";
     rarity: string;
     description: string | null;
     image_path: string | null;

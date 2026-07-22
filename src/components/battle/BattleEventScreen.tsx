@@ -5,7 +5,7 @@ import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AbilityDefinition, CharacterResources } from "../../services/abilityService";
 import { CharacterWithDetails } from "../../services/characterService";
 import { EnemyWithLoadout, NpcWithLoadout, resolveEnemyImageUri } from "../../services/combatAdminService";
-import { InventoryItem, ItemDefinition, isReviveBattleItem, resolveInventoryImageUri } from "../../services/inventoryService";
+import { InventoryItem, ItemDefinition, isOffensiveBattleItem, isReviveBattleItem, resolveInventoryImageUri } from "../../services/inventoryService";
 import { MapEvent } from "../../services/mapService";
 import { BattleEventCombatant, MarkerBattleCombatant } from "../../services/battlefieldService";
 import { resolveGameAssetUri } from "../../utils/assetResolver";
@@ -692,8 +692,11 @@ function BattleInventorySheet({ battleItems, onUseItem }: { battleItems: Invento
 
 function BattleInventoryItem({ entry, onUse }: { entry: InventoryItem; onUse: () => void }) {
   const imageUri = resolveInventoryImageUri(entry.item.image_path);
+  const isOffensive = isOffensiveBattleItem(entry.item);
   const restoreValue = entry.item.restore_percent ? `${entry.item.restore_percent}%` : `${entry.item.restore_amount || 0}`;
   const target = formatResourceName(entry.item.potion_target ?? "health");
+  const damage = Number(entry.item.damage_amount ?? 0) + Number(entry.item.elemental_damage_amount ?? 0);
+  const effect = entry.item.on_hit_effect ? ` / ${entry.item.on_hit_effect.replace(" enemy", "")}` : "";
 
   return (
     <Pressable style={styles.battleItemCard} onPress={onUse}>
@@ -709,7 +712,9 @@ function BattleInventoryItem({ entry, onUse }: { entry: InventoryItem; onUse: ()
       </View>
       <View style={styles.battleItemContent}>
         <Text style={styles.battleItemName} numberOfLines={1}>{entry.item.name}</Text>
-        <Text style={styles.battleItemMeta} numberOfLines={1}>{entry.item.type} / restores {restoreValue} {target}</Text>
+        <Text style={styles.battleItemMeta} numberOfLines={1}>
+          {isOffensive ? `${entry.item.type} / ${damage > 0 ? `${damage} damage` : "effect"}${effect}` : `${entry.item.type} / restores ${restoreValue} ${target}`}
+        </Text>
         {entry.item.description ? <Text style={styles.battleItemDescription} numberOfLines={2}>{entry.item.description}</Text> : null}
       </View>
       <View style={styles.battleItemUsePill}>
