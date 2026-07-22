@@ -3925,18 +3925,26 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
   }
 
-  async function craftAtMarker(recipe: CraftingRecipeWithIngredients) {
+  async function craftAtMarker(recipe: CraftingRecipeWithIngredients, quantity = 1) {
     try {
-      const result = await craftRecipe(character.id, recipe.id);
+      const craftCount = Math.max(1, Math.floor(Number(quantity) || 1));
+      let result: Awaited<ReturnType<typeof craftRecipe>> | null = null;
+      for (let index = 0; index < craftCount; index += 1) {
+        result = await craftRecipe(character.id, recipe.id);
+      }
+      if (!result) {
+        return;
+      }
       const craftedName = getItemName(itemDefinitions, result.output_item_id);
       const craftedItem = itemDefinitions.find((item) => item.id === result.output_item_id) ?? null;
       const craftedImageUri = resolveInventoryImageUri(craftedItem?.image_path);
-      setMarkerPanelMessage(`Crafted ${craftedName}.`);
+      const totalOutputQuantity = Number(result.output_quantity ?? 1) * craftCount;
+      setMarkerPanelMessage(`Crafted ${craftedName} x${totalOutputQuantity}.`);
       showAuthoredToast("receiving_reward", {
         title: "Item Crafted",
-        message: `${craftedName} was added to your inventory.`,
+        message: `${craftedName} x${totalOutputQuantity} was added to your inventory.`,
         iconImageUrl: craftedImageUri,
-        rewards: [{ label: craftedName, quantity: result.output_quantity }],
+        rewards: [{ label: craftedName, quantity: totalOutputQuantity }],
         actionLabel: "OK",
       }, {
         triggerKey: selectedMarker?.id,
@@ -3948,6 +3956,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         await loadMarkerCraftingState(selectedMarker);
       }
     } catch (error) {
+      await loadInventory();
+      if (selectedMarker) {
+        await loadMarkerCraftingState(selectedMarker);
+      }
       setMarkerPanelMessage(getErrorMessage(error, "Unable to craft item."));
     }
   }
@@ -8496,7 +8508,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           onExit={closeMarkerScene}
           onBuy={(marketItem) => void buyFromMarker(marketItem)}
           onSell={(entry) => void sellToMarker(entry)}
-          onCraft={(recipe) => void craftAtMarker(recipe)}
+          onCraft={(recipe, quantity) => void craftAtMarker(recipe, quantity)}
           onClaimReward={() => void claimSelectedMarkerReward()}
           onAcceptQuest={() => void acceptSelectedMarkerQuest()}
           onStartPath={(nextRoute, routeLink) => void startPathFromSignPost(nextRoute, routeLink)}

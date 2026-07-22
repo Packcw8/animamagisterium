@@ -178,6 +178,20 @@ export function getCraftingStatus(recipe: CraftingRecipeWithIngredients, invento
   };
 }
 
+export function getMaxCraftableCount(recipe: CraftingRecipeWithIngredients, inventoryItems: InventoryItem[]) {
+  const status = getCraftingStatus(recipe, inventoryItems);
+  if (!status.hasBlueprint || recipe.ingredients.length === 0) {
+    return 0;
+  }
+
+  const ownedByItemId = new Map(inventoryItems.map((entry) => [entry.item_id, entry.quantity]));
+  return recipe.ingredients.reduce((maxCount, ingredient) => {
+    const needed = Math.max(1, Number(ingredient.quantity) || 1);
+    const owned = ownedByItemId.get(ingredient.item_id) ?? 0;
+    return Math.min(maxCount, Math.floor(owned / needed));
+  }, Number.MAX_SAFE_INTEGER);
+}
+
 export function getCraftingItemName(items: ItemDefinition[], itemId: string | null | undefined) {
   return items.find((item) => item.id === itemId)?.name ?? "Unknown Item";
 }

@@ -7,7 +7,7 @@ import { colors, fonts } from "../theme";
 import { CachedGameImage } from "../ui/CachedGameImage";
 import { canUseItemInContext, type InventoryItem, type ItemDefinition, resolveInventoryImageUri, resolveInventoryThumbnailUri } from "../../services/inventoryService";
 import { normalizeMountMultiplier, resolveMountImageUri, resolveMountThumbnailUri, type MountDefinition } from "../../services/mountService";
-import { craftingCategories, craftingStationTypes, getCraftingItemName, getCraftingStatus, type CraftingRecipeWithIngredients } from "../../services/craftingService";
+import { craftingCategories, craftingStationTypes, getCraftingItemName, getCraftingStatus, getMaxCraftableCount, type CraftingRecipeWithIngredients } from "../../services/craftingService";
 import {
   canMarketItemBeBought,
   canMarketItemBeSoldTo,
@@ -78,7 +78,7 @@ export function MarkerSceneScreen({
   onExit: () => void;
   onBuy: (marketItem: MarkerMarketItem) => void;
   onSell: (item: InventoryItem) => void;
-  onCraft: (recipe: CraftingRecipeWithIngredients) => void;
+  onCraft: (recipe: CraftingRecipeWithIngredients, quantity?: number) => void | Promise<void>;
   onClaimReward: () => void;
   onAcceptQuest: () => void;
   onStartPath: (route: MapRoute, routeLink?: MarkerRouteLink) => void;
@@ -486,12 +486,14 @@ function CraftingScene({
   recipes: CraftingRecipeWithIngredients[];
   inventoryItems: InventoryItem[];
   itemDefinitions: ItemDefinition[];
-  onCraft: (recipe: CraftingRecipeWithIngredients) => void;
+  onCraft: (recipe: CraftingRecipeWithIngredients, quantity?: number) => void | Promise<void>;
 }) {
   const [stationFilter, setStationFilter] = useState<(typeof craftingStationTypes)[number]>("all");
   const [statusFilter, setStatusFilter] = useState<"can_craft" | "all" | "missing" | "locked">("can_craft");
   const [categoryFilter, setCategoryFilter] = useState<(typeof craftingCategories)[number] | "all">("all");
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(recipes[0]?.id ?? null);
+  const [craftQuantity, setCraftQuantity] = useState(1);
+  const [craftingNow, setCraftingNow] = useState(false);
   const filteredRecipes = useMemo(
     () => recipes
       .filter((recipe) => stationFilter === "all" || !recipe.station_type || recipe.station_type === stationFilter)
@@ -520,6 +522,8 @@ function CraftingScene({
   );
   const selectedRecipe = filteredRecipes.find((recipe) => recipe.id === selectedRecipeId) ?? filteredRecipes[0] ?? null;
   const selectedStatus = selectedRecipe ? getCraftingStatus(selectedRecipe, inventoryItems) : null;
+  const maxCraftableCount = selectedRecipe ? getMaxCraftableCount(selectedRecipe, inventoryItems) : 0;
+  const safeCraftQuantity = selectedStatus?.canCraft ? Math.min(craftQuantity, Math.max(1, maxCraftableCount)) : 1;
   const selectedOutputItem = selectedRecipe ? itemDefinitions.find((item) => item.id === selectedRecipe.output_item_id) ?? null : null;
   const selectedOutputImageUri = resolveInventoryThumbnailUri(selectedOutputItem);
   const getOwnedQuantity = (itemId: string) => inventoryItems.find((entry) => entry.item_id === itemId)?.quantity ?? 0;
@@ -530,6 +534,30 @@ function CraftingScene({
       setSelectedRecipeId(selectedRecipe?.id ?? null);
     }
   }, [selectedRecipe, selectedRecipeId]);
+
+  useEffect(() => {
+    setCraftQuantity(1);
+  }, [selectedRecipeId]);
+
+  useEffect(() => {
+    if (maxCraftableCount > 0 && craftQuantity > maxCraftableCount) {
+      setCraftQuantity(maxCraftableCount);
+    }
+  }, [craftQuantity, maxCraftableCount]);
+
+  async function craftSelectedRecipe(recipe: CraftingRecipeWithIngredients) {
+    if (!selectedStatus?.canCraft || craftingNow) {
+      return;
+    }
+
+    setCraftingNow(true);
+    try {
+      await onCraft(recipe, safeCraftQuantity);
+      setCraftQuantity(1);
+    } finally {
+      setCraftingNow(false);
+    }
+  }
 
   return (
     <View style={styles.craftingShell}>
@@ -679,8 +707,28 @@ function CraftingScene({
 
           {selectedStatus.missingBlueprint ? <Text style={styles.lockText}>This recipe needs its blueprint before it can be crafted.</Text> : null}
           {!selectedStatus.missingBlueprint && selectedStatus.missing.length > 0 ? <Text style={styles.lockText}>Missing materials.</Text> : null}
-          <Pressable style={[styles.primaryButton, !selectedStatus.canCraft && styles.disabledAction]} onPress={() => onCraft(selectedRecipe)} disabled={!selectedStatus.canCraft}>
-            <Text style={styles.primaryText}>{selectedStatus.canCraft ? "Craft Item" : selectedStatus.missingBlueprint ? "Need Blueprint" : "Need Materials"}</Text>
+          {selectedStatus.canCraft ? (
+            <View style={styles.craftingBatchPanel}>
+              <Text style={styles.craftingSectionLabel}>Craft Quantity</Text>
+              <View style={styles.craftingBatchRow}>
+                <Pressable style={styles.craftingQuantityButton} onPress={() => setCraftQuantity((current) => Math.max(1, current - 1))}>
+                  <Text style={styles.craftingQuantityText}>-</Text>
+                </Pressable>
+                <View style={styles.craftingQuantityValue}>
+                  <Text style={styles.craftingQuantityNumber}>{safeCraftQuantity}</Text>
+                  <Text style={styles.craftingMaterialMeta}>Max {maxCraftableCount}</Text>
+                </View>
+                <Pressable style={styles.craftingQuantityButton} onPress={() => setCraftQuantity((current) => Math.min(maxCraftableCount, current + 1))}>
+                  <Text style={styles.craftingQuantityText}>+</Text>
+                </Pressable>
+                <Pressable style={styles.craftingMaxButton} onPress={() => setCraftQuantity(maxCraftableCount)}>
+                  <Text style={styles.craftingMaxText}>Max</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          <Pressable style={[styles.primaryButton, (!selectedStatus.canCraft || craftingNow) && styles.disabledAction]} onPress={() => void craftSelectedRecipe(selectedRecipe)} disabled={!selectedStatus.canCraft || craftingNow}>
+            <Text style={styles.primaryText}>{craftingNow ? "Crafting..." : selectedStatus.canCraft ? `Craft x${safeCraftQuantity}` : selectedStatus.missingBlueprint ? "Need Blueprint" : "Need Materials"}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -726,7 +774,7 @@ function CraftingChipRow<T extends string>({ label, options, value, labels, icon
   return (
     <View style={styles.craftingChipGroup}>
       <Text style={styles.craftingChipLabel}>{label}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.craftingChipScroll}>
+      <View style={styles.craftingChipScroll}>
         {options.map((option) => {
           const iconUri = resolveGameAssetUri(icons?.[option], "icon");
           return (
@@ -740,7 +788,7 @@ function CraftingChipRow<T extends string>({ label, options, value, labels, icon
             </Pressable>
           );
         })}
-      </ScrollView>
+      </View>
     </View>
   );
 }
@@ -1214,6 +1262,8 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   craftingChipScroll: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 6,
     paddingRight: 6,
   },
@@ -1240,6 +1290,62 @@ const styles = StyleSheet.create({
   },
   craftingFilterChipTextActive: {
     color: colors.blue,
+  },
+  craftingBatchPanel: {
+    backgroundColor: "rgba(0,0,0,0.22)",
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+    padding: 10,
+  },
+  craftingBatchRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  craftingQuantityButton: {
+    alignItems: "center",
+    borderColor: colors.borderSoft,
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: "center",
+    width: 44,
+  },
+  craftingQuantityText: {
+    color: colors.gold,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  craftingQuantityValue: {
+    alignItems: "center",
+    borderColor: "rgba(24, 178, 242, 0.45)",
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 40,
+    minWidth: 82,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  craftingQuantityNumber: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  craftingMaxButton: {
+    alignItems: "center",
+    borderColor: colors.blue,
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 40,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+  },
+  craftingMaxText: {
+    color: colors.blue,
+    fontWeight: "900",
   },
   craftingFilterIcon: {
     height: "100%",
