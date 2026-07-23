@@ -1,4 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { Frame } from "../Frame";
@@ -14,6 +15,7 @@ type PlayerMapTravelHeaderProps = {
   canTurnBack: boolean;
   turnActive: boolean;
   onTurnBack: () => void;
+  children?: ReactNode;
 };
 
 export function PlayerMapTravelHeader({
@@ -26,6 +28,7 @@ export function PlayerMapTravelHeader({
   canTurnBack,
   turnActive,
   onTurnBack,
+  children,
 }: PlayerMapTravelHeaderProps) {
   return (
     <Frame style={styles.shell}>
@@ -52,6 +55,8 @@ export function PlayerMapTravelHeader({
           <Text style={styles.secondaryText}>{turnLabel}</Text>
         </Pressable>
       </View>
+
+      {children}
     </Frame>
   );
 }

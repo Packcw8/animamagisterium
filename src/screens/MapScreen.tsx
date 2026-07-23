@@ -471,6 +471,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [stepBank, setStepBank] = useState<PlayerStepBank | null>(null);
   const [stepBankMessage, setStepBankMessage] = useState<string | null>(null);
   const [stepBankBusy, setStepBankBusy] = useState(false);
+  const [stepBankExpanded, setStepBankExpanded] = useState(false);
   const [isRecoveringPosition, setIsRecoveringPosition] = useState(false);
   const [playerMovementState, setPlayerMovementState] = useState<PlayerMovementState>("IDLE");
   const [movementStatus, setMovementStatus] = useState<MovementStatus>({
@@ -8878,6 +8879,12 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       return null;
     }
 
+    const bankedSteps = Number(stepBank?.available_steps ?? 0) || 0;
+    const bankedMeters = stepsToMeters(bankedSteps);
+    const bankProgressMax = Math.max(1, journey.remainingMeters);
+    const bankProgressPercent = Math.min(100, (bankedMeters / bankProgressMax) * 100);
+    const canSpendBank = bankedSteps > 0 && !stepBankBusy && !activeEvent && !activeBattle;
+
     return (
       <View style={styles.playerWalkingOverlayDock}>
         <PlayerMapTravelHeader
@@ -8898,7 +8905,45 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           canTurnBack={progressPercent > 0}
           turnActive={routeDirection === "reverse"}
           onTurnBack={() => void turnBackOnCurrentPath()}
-        />
+        >
+          <Pressable style={styles.stepBankCompact} onPress={() => setStepBankExpanded((value) => !value)}>
+            <View style={styles.stepBankCompactHeader}>
+              <View style={styles.stepBankCompactTitleBlock}>
+                <Text style={styles.stepBankLabel}>Step Bank</Text>
+                <Text style={styles.stepBankCompactValue}>{bankedSteps.toLocaleString()} steps saved</Text>
+              </View>
+              <View style={styles.stepBankCompactMeta}>
+                <Text style={styles.stepBankMeta}>{Math.round(bankProgressPercent)}%</Text>
+                <Text style={styles.playerJourneyOverlayToggle}>{stepBankExpanded ? "Hide" : "Open"}</Text>
+              </View>
+            </View>
+            <ProgressBar value={bankedMeters} max={bankProgressMax} color={colors.blue} height={6} />
+          </Pressable>
+          {stepBankExpanded ? (
+            <View style={styles.stepBankExpanded}>
+              <Text style={styles.stepBankMessage}>
+                {metersToMiles(bankedMeters)} mi banked toward {metersToMiles(journey.remainingMeters)} mi remaining.
+              </Text>
+              <View style={styles.stepBankActions}>
+                <Pressable
+                  style={[styles.stepBankButton, (stepBankBusy || Platform.OS === "web") && styles.disabledAction]}
+                  onPress={() => void importStepsToJourneyBank()}
+                  disabled={stepBankBusy || Platform.OS === "web"}
+                >
+                  <Text style={styles.stepBankButtonText}>{stepBankBusy ? "Syncing" : "Import Steps"}</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.stepBankButton, styles.stepBankSpendButton, !canSpendBank && styles.disabledAction]}
+                  onPress={() => void spendJourneyBankSteps()}
+                  disabled={!canSpendBank}
+                >
+                  <Text style={styles.stepBankSpendText}>Use on Path</Text>
+                </Pressable>
+              </View>
+              {stepBankMessage ? <Text style={styles.stepBankMessage}>{stepBankMessage}</Text> : null}
+            </View>
+          ) : null}
+        </PlayerMapTravelHeader>
         <Pressable style={styles.playerOverlayHideButton} onPress={() => setWalkingOverlayHidden(true)}>
           <Text style={styles.playerOverlayHideText}>Hide</Text>
         </Pressable>
@@ -8961,33 +9006,6 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             <ProgressBar value={progressPercent} max={100} color={colors.gold} height={8} />
           </View>
           <Text style={styles.journeyPercent}>{Math.round(progressPercent)}%</Text>
-        </View>
-
-        <View style={styles.stepBankCard}>
-          <View style={styles.stepBankHeader}>
-            <View>
-              <Text style={styles.stepBankLabel}>Step Bank</Text>
-              <Text style={styles.stepBankValue}>{Number(stepBank?.available_steps ?? 0).toLocaleString()} steps</Text>
-            </View>
-            <Text style={styles.stepBankMeta}>{metersToMiles(stepsToMeters(Number(stepBank?.available_steps ?? 0)))} mi</Text>
-          </View>
-          <View style={styles.stepBankActions}>
-            <Pressable
-              style={[styles.stepBankButton, (stepBankBusy || Platform.OS === "web") && styles.disabledAction]}
-              onPress={() => void importStepsToJourneyBank()}
-              disabled={stepBankBusy || Platform.OS === "web"}
-            >
-              <Text style={styles.stepBankButtonText}>{stepBankBusy ? "Syncing" : "Import Steps"}</Text>
-            </Pressable>
-            <Pressable
-              style={[styles.stepBankButton, styles.stepBankSpendButton, (stepBankBusy || Number(stepBank?.available_steps ?? 0) <= 0) && styles.disabledAction]}
-              onPress={() => void spendJourneyBankSteps()}
-              disabled={stepBankBusy || Number(stepBank?.available_steps ?? 0) <= 0}
-            >
-              <Text style={styles.stepBankSpendText}>Use on Path</Text>
-            </Pressable>
-          </View>
-          {stepBankMessage ? <Text style={styles.stepBankMessage}>{stepBankMessage}</Text> : null}
         </View>
 
         {(route.route_kind ?? "story") === "farming" ? (
@@ -13786,6 +13804,42 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(2, 24, 31, 0.62)",
     padding: 10,
     gap: 9,
+  },
+  stepBankCompact: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(24, 178, 242, 0.24)",
+    backgroundColor: "rgba(2, 24, 31, 0.5)",
+    padding: 9,
+    gap: 7,
+  },
+  stepBankCompactHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  stepBankCompactTitleBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+  stepBankCompactValue: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+  stepBankCompactMeta: {
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  stepBankExpanded: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(0,0,0,0.22)",
+    padding: 9,
+    gap: 8,
   },
   stepBankHeader: {
     flexDirection: "row",
