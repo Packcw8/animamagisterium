@@ -242,13 +242,13 @@ export function SocialScreen() {
           <Frame style={styles.heroCard}>
             <Text style={styles.eyebrow}>{scope === "friends" ? "Friends" : "All Players"}</Text>
             <Text style={styles.title}>{activeLabel} Leaderboard</Text>
-            <Text style={styles.copy}>{period === "weekly" ? "Weekly boards run Tuesday to Tuesday. Rewards arrive by mail after the week closes." : "All-time boards preserve lifetime progress and never reset."}</Text>
+            <Text style={styles.copy}>{period === "weekly" ? "Climb this week’s board before rewards go out on Tuesday." : "A record of every mile, victory, and lesson earned across your journey."}</Text>
           </Frame>
           {period === "weekly" ? (
             <Frame style={styles.claimPanel}>
               <View style={styles.claimCopy}>
                 <Text style={styles.sectionTitle}>Weekly Rewards</Text>
-                <Text style={styles.copy}>Top 3 rewards are delivered by mail after each Tuesday-to-Tuesday board closes.</Text>
+                <Text style={styles.copy}>Top 3 adventurers receive their prize by mail every Tuesday.</Text>
               </View>
             </Frame>
           ) : null}
