@@ -1,4 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { CircleDot, Footprints, Gem, Hand, HardHat, Package, Shield, Shirt, Sparkles, Sword, Watch } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ProgressBar } from "../ProgressBar";
@@ -247,7 +248,7 @@ function EquipmentSlotCard({ slot, item, selected, onSelect, onUnequip }: {
     <Pressable style={[styles.slotCard, item && styles.slotFilled, selected && styles.selectedSlotCard]} onPress={onSelect}>
       <Text style={styles.slotLabel}>{formatEquipmentSlotLabel(slot)}</Text>
       <View style={styles.slotIcon}>
-        {uri ? <CachedGameImage uri={uri} style={styles.slotImage} /> : <Text style={styles.slotInitial}>{slot.slice(0, 1).toUpperCase()}</Text>}
+        {uri ? <CachedGameImage uri={uri} style={styles.slotImage} /> : <EquipmentSlotIcon slot={slot} />}
       </View>
       <Text style={styles.slotName} numberOfLines={2}>{item?.name ?? "Empty"}</Text>
       {item ? (
@@ -257,6 +258,40 @@ function EquipmentSlotCard({ slot, item, selected, onSelect, onUnequip }: {
       ) : null}
     </Pressable>
   );
+}
+
+function EquipmentSlotIcon({ slot }: { slot: EquipmentSlot }) {
+  const iconProps = { size: 24, color: colors.goldSoft, strokeWidth: 2.2 };
+
+  if (slot === "main_hand" || slot === "weapon") {
+    return <Sword {...iconProps} />;
+  }
+  if (slot === "off_hand") {
+    return <Shield {...iconProps} />;
+  }
+  if (slot === "helmet") {
+    return <HardHat {...iconProps} />;
+  }
+  if (slot === "chest" || slot === "armor") {
+    return <Shirt {...iconProps} />;
+  }
+  if (slot === "gloves") {
+    return <Hand {...iconProps} />;
+  }
+  if (slot === "legs" || slot === "boots") {
+    return <Footprints {...iconProps} />;
+  }
+  if (slot === "necklace" || slot === "ring" || slot === "charm") {
+    return <Gem {...iconProps} />;
+  }
+  if (slot === "relic") {
+    return <Sparkles {...iconProps} />;
+  }
+  if (slot === "watch") {
+    return <Watch {...iconProps} />;
+  }
+
+  return slot ? <CircleDot {...iconProps} /> : <Package {...iconProps} />;
 }
 
 function ItemDetail({ entry, currentHealth, maxHealth, onEquipItem, onUnequipSlot, onUseItem, onUseScroll, onDropItem, onClose }: {
