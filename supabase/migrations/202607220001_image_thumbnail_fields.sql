@@ -35,7 +35,9 @@ alter table public.travel_modes
 alter table public.mount_definitions
   add column if not exists image_thumb_url text;
 
-create or replace view public.player_leaderboards as
+drop view if exists public.player_leaderboards;
+
+create view public.player_leaderboards as
 with training_totals as (
   select
     character_id,

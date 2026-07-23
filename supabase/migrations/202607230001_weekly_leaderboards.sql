@@ -100,7 +100,12 @@ $$;
 
 grant execute on function public.increment_character_distance_walked(uuid, numeric) to authenticated;
 
-create or replace view public.player_weekly_leaderboards as
+alter table public.characters
+  add column if not exists portrait_thumb_url text;
+
+drop view if exists public.player_weekly_leaderboards;
+
+create view public.player_weekly_leaderboards as
 with current_week as (
   select date_trunc('week', now())::date as week_start
 ),
