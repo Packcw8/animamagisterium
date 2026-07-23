@@ -9,6 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "prebuild": "node scripts/write-runtime-env.cjs",
+    "eas-build-post-install": "node scripts/write-runtime-env.cjs",
     "build": "expo export -p web && node scripts/patch-web-icons.cjs",
     "supabase:login": "supabase login",
     "supabase:link": "supabase link --project-ref xasccgfbwluyommimqis",

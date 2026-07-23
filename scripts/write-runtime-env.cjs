@@ -22,11 +22,21 @@ if (fs.existsSync(localEnvPath)) {
   }
 }
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || "";
-const supabasePublishableKey =
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
-
 const targetPath = path.join(__dirname, "..", "src", "lib", "runtimeEnv.generated.ts");
+const existing = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, "utf8") : "";
+
+function readExistingValue(key) {
+  const match = existing.match(new RegExp(`${key}:\\s*["']([^"']*)["']`));
+  return match?.[1] ?? "";
+}
+
+const supabaseUrl =
+  process.env.VITE_SUPABASE_URL || process.env.EXPO_PUBLIC_SUPABASE_URL || readExistingValue("supabaseUrl");
+const supabasePublishableKey =
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  readExistingValue("supabasePublishableKey");
+
 const contents = `export const runtimeEnv = {
   supabaseUrl: ${JSON.stringify(supabaseUrl)},
   supabasePublishableKey: ${JSON.stringify(supabasePublishableKey)},
