@@ -39,6 +39,7 @@ export function SocialScreen() {
   const [selectedBadges, setSelectedBadges] = useState<EarnedBadgeSummary[]>([]);
   const [weeklyRewards, setWeeklyRewards] = useState<WeeklyLeaderboardReward[]>([]);
   const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
+  const [showWeeklyPrizes, setShowWeeklyPrizes] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -259,26 +260,35 @@ export function SocialScreen() {
           </Frame>
           {period === "weekly" ? (
             <Frame style={styles.claimPanel}>
-              <View style={styles.prizeHeader}>
+              <Pressable style={styles.prizeHeader} onPress={() => setShowWeeklyPrizes((value) => !value)}>
                 <View style={styles.claimCopy}>
                   <Text style={styles.prizeEyebrow}>Weekly Prizes</Text>
                   <Text style={styles.prizeTitle}>Claim the Crown</Text>
                   <Text style={styles.copy}>Top 3 adventurers receive their prize by mail every Tuesday.</Text>
                 </View>
                 <View style={styles.prizeSeal}>
-                  <Text style={styles.prizeSealText}>Top 3</Text>
+                  <Text style={styles.prizeSealText}>{showWeeklyPrizes ? "Hide" : "View"}</Text>
                 </View>
-              </View>
-              <View style={styles.prizeGrid}>
-                {selectedWeeklyRewards.map((reward, index) => (
+              </Pressable>
+              {showWeeklyPrizes ? (
+                <View style={styles.prizePodium}>
                   <WeeklyPrizeCard
-                    key={`${selectedWeeklyRewardMetric}-${index + 1}`}
-                    rank={index + 1}
-                    reward={reward}
-                    item={itemDefinitions.find((item) => item.id === reward?.reward_item_id) ?? null}
+                    rank={2}
+                    reward={selectedWeeklyRewards[1]}
+                    item={itemDefinitions.find((item) => item.id === selectedWeeklyRewards[1]?.reward_item_id) ?? null}
                   />
-                ))}
-              </View>
+                  <WeeklyPrizeCard
+                    rank={1}
+                    reward={selectedWeeklyRewards[0]}
+                    item={itemDefinitions.find((item) => item.id === selectedWeeklyRewards[0]?.reward_item_id) ?? null}
+                  />
+                  <WeeklyPrizeCard
+                    rank={3}
+                    reward={selectedWeeklyRewards[2]}
+                    item={itemDefinitions.find((item) => item.id === selectedWeeklyRewards[2]?.reward_item_id) ?? null}
+                  />
+                </View>
+              ) : null}
             </Frame>
           ) : null}
 
@@ -524,7 +534,7 @@ function WeeklyPrizeCard({ rank, reward, item }: { rank: number; reward: WeeklyL
   ].filter(Boolean);
 
   return (
-    <View style={[styles.prizeCard, getPodiumStyle(rank)]}>
+    <View style={[styles.prizeCard, getPodiumStyle(rank), rank === 1 && styles.firstPrizeCard]}>
       <Text style={styles.prizeRank}>#{rank}</Text>
       <View style={styles.prizeImageWrap}>
         {itemUri ? <CachedGameImage uri={itemUri} style={styles.prizeImage} /> : <Text style={styles.prizeInitial}>{hasPrize ? "$" : "-"}</Text>}
@@ -746,6 +756,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    minHeight: 58,
   },
   prizeEyebrow: {
     color: colors.blue,
@@ -773,19 +784,25 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     fontSize: 12,
   },
-  prizeGrid: {
+  prizePodium: {
     flexDirection: "row",
     gap: 8,
-    alignItems: "stretch",
+    alignItems: "flex-end",
+    paddingTop: 8,
   },
   prizeCard: {
     flex: 1,
     minWidth: 0,
+    minHeight: 164,
     borderRadius: 8,
     borderWidth: 1,
     padding: 8,
     alignItems: "center",
     gap: 6,
+  },
+  firstPrizeCard: {
+    minHeight: 184,
+    paddingTop: 10,
   },
   prizeRank: {
     color: colors.gold,
