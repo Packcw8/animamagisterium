@@ -9,7 +9,7 @@ import { PartyGuildPanel } from "../components/social/PartyGuildPanel";
 import { colors, fonts } from "../components/theme";
 import { CachedGameImage, prefetchGameImages } from "../components/ui/CachedGameImage";
 import { getEarnedBadgesForCharacter, EarnedBadgeSummary } from "../services/badgeService";
-import { getLeaderboardWithRank, getTrophyLeaderboardWithRank, LeaderboardMetric, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, type TrophyLeaderboardRow } from "../services/leaderboardService";
+import { getLeaderboardWithRankForPeriod, getTrophyLeaderboardWithRankForPeriod, LeaderboardMetric, LeaderboardPeriod, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, weeklyLeaderboardMetrics, type TrophyLeaderboardRow } from "../services/leaderboardService";
 import { FriendWithProfile, getCurrentUserId, getFriendRows, removeFriend, sendFriendRequest, updateFriendRequest } from "../services/socialService";
 
 type SocialTab = "friends" | "partyGuild" | "leaderboard" | "profile";
@@ -19,6 +19,7 @@ type SocialLeaderboardMetric = LeaderboardMetric | "trophies";
 export function SocialScreen() {
   const [activeTab, setActiveTab] = useState<SocialTab>("leaderboard");
   const [activeMetric, setActiveMetric] = useState<SocialLeaderboardMetric>("total_distance_walked_meters");
+  const [period, setPeriod] = useState<LeaderboardPeriod>("all_time");
   const [scope, setScope] = useState<LeaderboardScope>("all");
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [currentPlayerRow, setCurrentPlayerRow] = useState<LeaderboardRow | null>(null);
@@ -35,7 +36,8 @@ export function SocialScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
-  const activeLabel = useMemo(() => activeMetric === "trophies" ? "Trophy Animals" : leaderboardMetrics.find((metric) => metric.key === activeMetric)?.label ?? "Leaderboard", [activeMetric]);
+  const visibleLeaderboardMetrics = period === "weekly" ? weeklyLeaderboardMetrics : leaderboardMetrics;
+  const activeLabel = useMemo(() => activeMetric === "trophies" ? "Trophy Animals" : visibleLeaderboardMetrics.find((metric) => metric.key === activeMetric)?.label ?? "Leaderboard", [activeMetric, visibleLeaderboardMetrics]);
   const acceptedFriendIds = useMemo(
     () => friends.filter((friend) => friend.status === "accepted").map((friend) => friend.friend_user_id),
     [friends],
@@ -50,7 +52,13 @@ export function SocialScreen() {
 
   useEffect(() => {
     void loadLeaderboard();
-  }, [activeMetric, scope, acceptedFriendIds.join("|")]);
+  }, [activeMetric, period, scope, acceptedFriendIds.join("|")]);
+
+  useEffect(() => {
+    if (activeMetric !== "trophies" && !visibleLeaderboardMetrics.some((metric) => metric.key === activeMetric)) {
+      setActiveMetric("total_distance_walked_meters");
+    }
+  }, [activeMetric, visibleLeaderboardMetrics]);
 
   useEffect(() => {
     prefetchGameImages([
@@ -80,7 +88,7 @@ export function SocialScreen() {
     try {
       const friendScopeIds = scope === "friends" ? [userId, ...acceptedFriendIds].filter(Boolean) as string[] : undefined;
       if (activeMetric === "trophies") {
-        const data = await getTrophyLeaderboardWithRank(friendScopeIds);
+        const data = await getTrophyLeaderboardWithRankForPeriod(friendScopeIds, period);
         setTrophyRows(data.rows);
         setCurrentTrophyRow(data.currentPlayerRow);
         setCurrentTrophyRank(data.currentPlayerRank);
@@ -90,7 +98,7 @@ export function SocialScreen() {
         return;
       }
 
-      const data = await getLeaderboardWithRank(activeMetric, friendScopeIds);
+      const data = await getLeaderboardWithRankForPeriod(activeMetric, friendScopeIds, period);
       setRows(data.rows);
       setCurrentPlayerRow(data.currentPlayerRow);
       setCurrentPlayerRank(data.currentPlayerRank);
@@ -220,11 +228,20 @@ export function SocialScreen() {
           <Frame style={styles.heroCard}>
             <Text style={styles.eyebrow}>{scope === "friends" ? "Friends" : "All Players"}</Text>
             <Text style={styles.title}>{activeLabel} Leaderboard</Text>
-            <Text style={styles.copy}>Showing top 100, plus your current rank when you are outside the top 100.</Text>
+            <Text style={styles.copy}>{period === "weekly" ? "This week resets Monday UTC. All-time boards stay untouched." : "Showing top 100, plus your current rank when you are outside the top 100."}</Text>
           </Frame>
 
+          <View style={styles.periodTabs}>
+            <Pressable style={[styles.periodButton, period === "all_time" && styles.periodActive]} onPress={() => setPeriod("all_time")}>
+              <Text style={[styles.periodText, period === "all_time" && styles.periodTextActive]}>All-Time</Text>
+            </Pressable>
+            <Pressable style={[styles.periodButton, period === "weekly" && styles.periodActive]} onPress={() => setPeriod("weekly")}>
+              <Text style={[styles.periodText, period === "weekly" && styles.periodTextActive]}>This Week</Text>
+            </Pressable>
+          </View>
+
           <View style={styles.metricTabs}>
-            {leaderboardMetrics.map((metric) => (
+            {visibleLeaderboardMetrics.map((metric) => (
               <Pressable key={metric.key} style={[styles.metricTab, activeMetric === metric.key && styles.metricTabActive]} onPress={() => setActiveMetric(metric.key)}>
                 <Text style={[styles.metricTabText, activeMetric === metric.key && styles.metricTabTextActive]}>{metric.label}</Text>
               </Pressable>
@@ -243,7 +260,7 @@ export function SocialScreen() {
             {isLoading ? <Text style={styles.copy}>Loading leaderboard...</Text> : null}
             {activeMetric === "trophies" ? (
               <>
-                {!isLoading && trophyRows.length === 0 ? <Text style={styles.copy}>No trophy animals have been recorded yet.</Text> : null}
+                {!isLoading && trophyRows.length === 0 ? <Text style={styles.copy}>{period === "weekly" ? "No trophy animals have been recorded this week yet." : "No trophy animals have been recorded yet."}</Text> : null}
                 {trophyRows.map((row, index) => (
                   <TrophyLeaderboardCard key={row.id} row={row} rank={index + 1} />
                 ))}
@@ -256,7 +273,7 @@ export function SocialScreen() {
               </>
             ) : (
               <>
-                {!isLoading && rows.length === 0 ? <Text style={styles.copy}>No leaderboard entries yet.</Text> : null}
+                {!isLoading && rows.length === 0 ? <Text style={styles.copy}>{period === "weekly" ? "No weekly leaderboard entries yet." : "No leaderboard entries yet."}</Text> : null}
                 {rows.map((row, index) => (
                   <LeaderboardCard key={row.character_id} row={row} rank={index + 1} metric={activeMetric} onOpen={() => void openProfile(row)} />
                 ))}
@@ -541,6 +558,32 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+  },
+  periodTabs: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  periodButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  periodActive: {
+    borderColor: colors.gold,
+    backgroundColor: "rgba(217, 170, 93, 0.14)",
+  },
+  periodText: {
+    color: colors.text,
+    fontWeight: "900",
+  },
+  periodTextActive: {
+    color: colors.gold,
   },
   metricTabs: {
     flexDirection: "row",

@@ -12,6 +12,8 @@ export type LeaderboardMetric =
   | "event_completions"
   | "total_enemy_kills";
 
+export type LeaderboardPeriod = "all_time" | "weekly";
+
 export type LeaderboardRow = {
   character_id: string;
   user_id: string;
@@ -56,9 +58,30 @@ export const leaderboardMetrics: Array<{ key: LeaderboardMetric; label: string }
   { key: "total_enemy_kills", label: "Enemy Kills" },
 ];
 
-export async function getLeaderboard(metric: LeaderboardMetric, limit = 100, userIds?: string[]) {
+export const weeklyLeaderboardMetrics: Array<{ key: LeaderboardMetric; label: string }> = [
+  { key: "total_distance_walked_meters", label: "Distance" },
+  { key: "training_sessions_completed", label: "Training" },
+  { key: "event_completions", label: "Events" },
+  { key: "total_enemy_kills", label: "Enemy Kills" },
+];
+
+function getLeaderboardView(period: LeaderboardPeriod) {
+  return period === "weekly" ? "player_weekly_leaderboards" : "player_leaderboards";
+}
+
+function getCurrentWeekStartIso() {
+  const now = new Date();
+  const day = now.getUTCDay();
+  const diffToMonday = (day + 6) % 7;
+  const monday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  monday.setUTCDate(monday.getUTCDate() - diffToMonday);
+  monday.setUTCHours(0, 0, 0, 0);
+  return monday.toISOString();
+}
+
+export async function getLeaderboard(metric: LeaderboardMetric, limit = 100, userIds?: string[], period: LeaderboardPeriod = "all_time") {
   let query = supabase
-    .from("player_leaderboards")
+    .from(getLeaderboardView(period))
     .select("*")
     .order(metric, { ascending: false })
     .order("xp", { ascending: false });
@@ -77,6 +100,10 @@ export async function getLeaderboard(metric: LeaderboardMetric, limit = 100, use
 }
 
 export async function getLeaderboardWithRank(metric: LeaderboardMetric, userIds?: string[]) {
+  return getLeaderboardWithRankForPeriod(metric, userIds, "all_time");
+}
+
+export async function getLeaderboardWithRankForPeriod(metric: LeaderboardMetric, userIds?: string[], period: LeaderboardPeriod = "all_time") {
   const {
     data: { user },
     error: userError,
@@ -87,7 +114,7 @@ export async function getLeaderboardWithRank(metric: LeaderboardMetric, userIds?
   }
 
   let query = supabase
-    .from("player_leaderboards")
+    .from(getLeaderboardView(period))
     .select("*")
     .order(metric, { ascending: false })
     .order("xp", { ascending: false });
@@ -149,11 +176,19 @@ export async function getLeaderboardProfileForCharacter(characterId: string) {
 }
 
 export async function getTrophyLeaderboard(limit = 100, userIds?: string[]) {
+  return getTrophyLeaderboardForPeriod(limit, userIds, "all_time");
+}
+
+export async function getTrophyLeaderboardForPeriod(limit = 100, userIds?: string[], period: LeaderboardPeriod = "all_time") {
   let query = supabase
     .from("player_trophy_harvests")
     .select("*")
     .order("trophy_score", { ascending: false })
     .order("created_at", { ascending: true });
+
+  if (period === "weekly") {
+    query = query.gte("created_at", getCurrentWeekStartIso());
+  }
 
   if (userIds?.length) {
     query = query.in("user_id", userIds);
@@ -170,6 +205,10 @@ export async function getTrophyLeaderboard(limit = 100, userIds?: string[]) {
 }
 
 export async function getTrophyLeaderboardWithRank(userIds?: string[]) {
+  return getTrophyLeaderboardWithRankForPeriod(userIds, "all_time");
+}
+
+export async function getTrophyLeaderboardWithRankForPeriod(userIds?: string[], period: LeaderboardPeriod = "all_time") {
   const {
     data: { user },
     error: userError,
@@ -184,6 +223,10 @@ export async function getTrophyLeaderboardWithRank(userIds?: string[]) {
     .select("*")
     .order("trophy_score", { ascending: false })
     .order("created_at", { ascending: true });
+
+  if (period === "weekly") {
+    query = query.gte("created_at", getCurrentWeekStartIso());
+  }
 
   if (userIds?.length) {
     query = query.in("user_id", userIds);
