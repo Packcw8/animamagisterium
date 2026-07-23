@@ -9,7 +9,7 @@ export type PedometerSubscription = {
   remove: () => void;
 };
 
-const averageStepLengthMeters = 0.762;
+export const averageStepLengthMeters = 0.762;
 
 type PedometerModule = typeof import("expo-sensors").Pedometer;
 
@@ -122,6 +122,29 @@ export async function getTodayPedometerDistance(): Promise<PedometerDistanceSamp
     };
   } catch (error) {
     console.warn("[pedometer] step count failed", error);
+    return { steps: 0, distanceMeters: 0 };
+  }
+}
+
+export async function getPedometerDistanceBetween(start: Date, end = new Date()): Promise<PedometerDistanceSample> {
+  if (Platform.OS === "web") {
+    return { steps: 0, distanceMeters: 0 };
+  }
+
+  const Pedometer = await loadPedometer();
+  if (!Pedometer) {
+    return { steps: 0, distanceMeters: 0 };
+  }
+
+  try {
+    const result = await Pedometer.getStepCountAsync(start, end);
+    const steps = Math.max(0, Number(result.steps) || 0);
+    return {
+      steps,
+      distanceMeters: steps * averageStepLengthMeters,
+    };
+  } catch (error) {
+    console.warn("[pedometer] ranged step count failed", error);
     return { steps: 0, distanceMeters: 0 };
   }
 }

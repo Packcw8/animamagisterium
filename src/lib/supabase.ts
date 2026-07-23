@@ -1636,6 +1636,17 @@ export type Tables = {
     reward_item_quantity: number;
     claimed_at: string;
   };
+  player_step_bank: {
+    user_id: string;
+    character_id: string;
+    available_steps: number;
+    lifetime_imported_steps: number;
+    lifetime_spent_steps: number;
+    last_imported_at: string | null;
+    import_window_started_at: string | null;
+    import_window_ended_at: string | null;
+    updated_at: string;
+  };
   npc_definitions: {
     id: string;
     name: string;

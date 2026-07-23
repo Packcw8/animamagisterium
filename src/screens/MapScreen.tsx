@@ -80,6 +80,7 @@ import { canUseItemInContext, consumeInventoryItem, equipInventoryItem, Equipmen
 import { equipMount, getActiveMountMultiplier, getMountDefinitions, getPlayerMounts, resolveMountImageUri, unmountCharacter, type MountDefinition, type PlayerMountWithDefinition } from "../services/mountService";
 import { getTravelModes, normalizeTravelModeMultiplier, resolveTravelModeImageUri, type TravelMode } from "../services/travelModeService";
 import { isNativePedometerAvailable, requestPedometerPermission, startPedometerDistancePolling, type PedometerSubscription } from "../services/nativePedometerService";
+import { getPlayerStepBank, importRecentStepsToBank, metersToSteps, spendStepsFromBank, stepsToMeters, type PlayerStepBank } from "../services/stepBankService";
 import { recordSocialContribution } from "../services/partyGuildService";
 import { recordEnemyKill } from "../services/progressionService";
 import { requestPushNotificationPermission } from "../services/pushNotificationService";
@@ -467,6 +468,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [isTracking, setIsTracking] = useState(false);
   const [desktopWalkBusy, setDesktopWalkBusy] = useState(false);
   const [gpsMessage, setGpsMessage] = useState(Platform.OS === "web" ? "GPS is off. Start tracking to count real-world walking distance." : "Pedometer is off. Start tracking to count steps toward your path.");
+  const [stepBank, setStepBank] = useState<PlayerStepBank | null>(null);
+  const [stepBankMessage, setStepBankMessage] = useState<string | null>(null);
+  const [stepBankBusy, setStepBankBusy] = useState(false);
   const [isRecoveringPosition, setIsRecoveringPosition] = useState(false);
   const [playerMovementState, setPlayerMovementState] = useState<PlayerMovementState>("IDLE");
   const [movementStatus, setMovementStatus] = useState<MovementStatus>({
@@ -1488,6 +1492,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     void loadInventory();
     void loadMounts();
     void loadPartyCompanions();
+    void loadStepBank();
     void loadEnemies();
 
     return () => {
@@ -1506,6 +1511,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     void loadInventory();
     void loadMounts();
     void loadPartyCompanions();
+    void loadStepBank();
   }, [character.id, character.attributes]);
 
   async function loadCombatLoadout() {
@@ -1571,6 +1577,11 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     }
 
     return [...rewards, ...extraRewards];
+  }
+
+  async function loadStepBank() {
+    const bank = await getPlayerStepBank(character.id);
+    setStepBank(bank);
   }
 
   async function appendRouteFinding(input: {
@@ -2009,6 +2020,82 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         setPlayerMovementState("IDLE");
         setMovementStatus((current) => ({ ...current, label: "IDLE", speedMph: 0, countedMeters: 0 }));
       }, 900);
+    }
+  }
+
+  async function importStepsToJourneyBank() {
+    if (stepBankBusy) {
+      return;
+    }
+
+    setStepBankBusy(true);
+    setStepBankMessage(null);
+    try {
+      const result = await importRecentStepsToBank(character.id);
+      if (result.bank) {
+        setStepBank(result.bank);
+      }
+      if (result.importedSteps > 0) {
+        const refreshedCharacter = await getCharacter();
+        if (refreshedCharacter) {
+          onCharacterUpdated(refreshedCharacter);
+        }
+      }
+      setStepBankMessage(
+        result.importedSteps > 0
+          ? `Imported ${result.importedSteps.toLocaleString()} steps into your bank.`
+          : "No new steps were found in the recent import window.",
+      );
+    } catch (error) {
+      setStepBankMessage(getErrorMessage(error, "Unable to import recent steps."));
+    } finally {
+      setStepBankBusy(false);
+    }
+  }
+
+  async function spendJourneyBankSteps() {
+    if (stepBankBusy || !hasActiveRoute || activeEvent || activeBattle) {
+      return;
+    }
+
+    const availableSteps = Number(stepBank?.available_steps ?? 0) || 0;
+    const remainingMeters = routeDirection === "reverse"
+      ? Math.max(0, distanceWalkedRef.current)
+      : Math.max(0, routeRef.current.distance_required_meters - distanceWalkedRef.current);
+    const neededSteps = metersToSteps(remainingMeters / Math.max(1, activeMountMultiplierRef.current));
+    const requestedSteps = Math.min(availableSteps, neededSteps);
+
+    if (requestedSteps <= 0) {
+      setStepBankMessage(availableSteps <= 0 ? "Your step bank is empty." : "This path is already at its destination.");
+      return;
+    }
+
+    setStepBankBusy(true);
+    setStepBankMessage(null);
+    try {
+      const result = await spendStepsFromBank(character.id, requestedSteps);
+      setStepBank((current) => current
+        ? {
+          ...current,
+          available_steps: result.available_steps,
+          lifetime_spent_steps: result.lifetime_spent_steps,
+          updated_at: result.updated_at,
+        }
+        : current);
+
+      if (result.spent_steps > 0) {
+        await advanceActiveRouteByMeters(stepsToMeters(result.spent_steps), { simulated: true });
+      }
+
+      setStepBankMessage(
+        result.spent_steps > 0
+          ? `Spent ${result.spent_steps.toLocaleString()} banked steps on this path.`
+          : "No banked steps were spent.",
+      );
+    } catch (error) {
+      setStepBankMessage(getErrorMessage(error, "Unable to spend banked steps."));
+    } finally {
+      setStepBankBusy(false);
     }
   }
 
@@ -8876,6 +8963,33 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           <Text style={styles.journeyPercent}>{Math.round(progressPercent)}%</Text>
         </View>
 
+        <View style={styles.stepBankCard}>
+          <View style={styles.stepBankHeader}>
+            <View>
+              <Text style={styles.stepBankLabel}>Step Bank</Text>
+              <Text style={styles.stepBankValue}>{Number(stepBank?.available_steps ?? 0).toLocaleString()} steps</Text>
+            </View>
+            <Text style={styles.stepBankMeta}>{metersToMiles(stepsToMeters(Number(stepBank?.available_steps ?? 0)))} mi</Text>
+          </View>
+          <View style={styles.stepBankActions}>
+            <Pressable
+              style={[styles.stepBankButton, (stepBankBusy || Platform.OS === "web") && styles.disabledAction]}
+              onPress={() => void importStepsToJourneyBank()}
+              disabled={stepBankBusy || Platform.OS === "web"}
+            >
+              <Text style={styles.stepBankButtonText}>{stepBankBusy ? "Syncing" : "Import Steps"}</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.stepBankButton, styles.stepBankSpendButton, (stepBankBusy || Number(stepBank?.available_steps ?? 0) <= 0) && styles.disabledAction]}
+              onPress={() => void spendJourneyBankSteps()}
+              disabled={stepBankBusy || Number(stepBank?.available_steps ?? 0) <= 0}
+            >
+              <Text style={styles.stepBankSpendText}>Use on Path</Text>
+            </Pressable>
+          </View>
+          {stepBankMessage ? <Text style={styles.stepBankMessage}>{stepBankMessage}</Text> : null}
+        </View>
+
         {(route.route_kind ?? "story") === "farming" ? (
           <View style={styles.journeyFarmingCard}>
             <View style={styles.journeyFarmingHeader}>
@@ -13664,6 +13778,67 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     textAlign: "right",
     fontWeight: "900",
+  },
+  stepBankCard: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(24, 178, 242, 0.24)",
+    backgroundColor: "rgba(2, 24, 31, 0.62)",
+    padding: 10,
+    gap: 9,
+  },
+  stepBankHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  stepBankLabel: {
+    color: colors.blue,
+    fontSize: 11,
+    fontWeight: "900",
+    textTransform: "uppercase",
+  },
+  stepBankValue: {
+    color: colors.text,
+    fontSize: 18,
+    fontFamily: fonts.title,
+  },
+  stepBankMeta: {
+    color: colors.gold,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  stepBankActions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  stepBankButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(24, 178, 242, 0.5)",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(24, 178, 242, 0.12)",
+  },
+  stepBankSpendButton: {
+    borderColor: "rgba(218, 164, 65, 0.58)",
+    backgroundColor: colors.gold,
+  },
+  stepBankButtonText: {
+    color: colors.blue,
+    fontWeight: "900",
+  },
+  stepBankSpendText: {
+    color: "#110e08",
+    fontWeight: "900",
+  },
+  stepBankMessage: {
+    color: colors.muted,
+    fontSize: 12,
+    lineHeight: 18,
   },
   journeyStats: {
     flexDirection: "row",
