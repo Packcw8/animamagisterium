@@ -1,7 +1,7 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { Anvil, Beaker, Boxes, ChefHat, Gem, Hammer, Minus, Package, Pickaxe, Plus, ScrollText, Shirt, Sparkles, Swords, type LucideIcon } from "lucide-react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Anvil, Banknote, Beaker, Boxes, ChefHat, Coins, Gem, Hammer, Landmark, Minus, Package, Pickaxe, Plus, ScrollText, Shirt, Sparkles, Swords, type LucideIcon } from "lucide-react-native";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
@@ -26,9 +26,12 @@ import {
 import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { getRouteLockLabel, getRouteLockMessage, isRouteUnavailable } from "../../utils/mapProgress";
 import type { ArenaLeaderboardEntry, ArenaWithLeaders } from "../../services/arenaService";
+import type { BankItem } from "../../services/bankService";
 
 const marketModes = ["Buy", "Sell"] as const;
 type MarketMode = (typeof marketModes)[number];
+const bankModes = ["Deposit", "Withdraw"] as const;
+type BankMode = (typeof bankModes)[number];
 type SelectedMarketItem =
   | { mode: "Buy"; marketItem: MarkerMarketItem; item: ItemDefinition | null; mount: MountDefinition | null; purchasedCount: number }
   | { mode: "Sell"; entry: InventoryItem; marketItem: MarkerMarketItem | undefined };
@@ -36,6 +39,8 @@ type SelectedMarketItem =
 export function MarkerSceneScreen({
   marker,
   characterGold,
+  bankGoldBalance,
+  bankItems,
   marketItems,
   craftingRecipes,
   marketPurchaseCounts,
@@ -51,6 +56,10 @@ export function MarkerSceneScreen({
   onExit,
   onBuy,
   onSell,
+  onDepositGold,
+  onWithdrawGold,
+  onDepositBankItem,
+  onWithdrawBankItem,
   onCraft,
   onClaimReward,
   onAcceptQuest,
@@ -64,6 +73,8 @@ export function MarkerSceneScreen({
 }: {
   marker: MapMarker;
   characterGold: number;
+  bankGoldBalance: number;
+  bankItems: BankItem[];
   marketItems: MarkerMarketItem[];
   craftingRecipes: CraftingRecipeWithIngredients[];
   marketPurchaseCounts: Record<string, number>;
@@ -79,6 +90,10 @@ export function MarkerSceneScreen({
   onExit: () => void;
   onBuy: (marketItem: MarkerMarketItem) => void;
   onSell: (item: InventoryItem) => void;
+  onDepositGold: (amount: number) => void;
+  onWithdrawGold: (amount: number) => void;
+  onDepositBankItem: (item: InventoryItem, quantity: number) => void;
+  onWithdrawBankItem: (item: BankItem, quantity: number) => void;
   onCraft: (recipe: CraftingRecipeWithIngredients, quantity?: number) => void | Promise<void>;
   onClaimReward: () => void;
   onAcceptQuest: () => void;
@@ -223,6 +238,17 @@ export function MarkerSceneScreen({
             mountDefinitions={mountDefinitions}
             onBuy={onBuy}
             onSell={onSell}
+          />
+        ) : marker.type === "Bank" ? (
+          <BankScene
+            characterGold={characterGold}
+            bankGoldBalance={bankGoldBalance}
+            bankItems={bankItems}
+            inventoryItems={inventoryItems}
+            onDepositGold={onDepositGold}
+            onWithdrawGold={onWithdrawGold}
+            onDepositBankItem={onDepositBankItem}
+            onWithdrawBankItem={onWithdrawBankItem}
           />
         ) : marker.type === "Crafting" ? (
           <CraftingScene
@@ -474,6 +500,154 @@ function SignPostScene({
           </View>
         );
       })}
+    </View>
+  );
+}
+
+function BankScene({
+  characterGold,
+  bankGoldBalance,
+  bankItems,
+  inventoryItems,
+  onDepositGold,
+  onWithdrawGold,
+  onDepositBankItem,
+  onWithdrawBankItem,
+}: {
+  characterGold: number;
+  bankGoldBalance: number;
+  bankItems: BankItem[];
+  inventoryItems: InventoryItem[];
+  onDepositGold: (amount: number) => void;
+  onWithdrawGold: (amount: number) => void;
+  onDepositBankItem: (item: InventoryItem, quantity: number) => void;
+  onWithdrawBankItem: (item: BankItem, quantity: number) => void;
+}) {
+  const [activeMode, setActiveMode] = useState<BankMode>("Deposit");
+  const [goldAmount, setGoldAmount] = useState("");
+  const safeGoldAmount = Math.max(1, Math.floor(Number(goldAmount) || 1));
+  const depositableItems = useMemo(() => inventoryItems.filter((entry) => !entry.equippedSlot && entry.quantity > 0), [inventoryItems]);
+
+  return (
+    <View style={styles.marketScene}>
+      <View style={styles.marketHeaderRow}>
+        <View style={styles.bankTitleRow}>
+          <View style={styles.bankIconBadge}>
+            <Landmark size={24} color={colors.gold} strokeWidth={2.2} />
+          </View>
+          <View>
+            <Text style={styles.marketTitle}>Bank</Text>
+            <Text style={styles.marketSubtitle}>Character storage</Text>
+          </View>
+        </View>
+      </View>
+      <View style={styles.bankSummaryGrid}>
+        <View style={styles.bankSummaryCard}>
+          <Coins size={18} color={colors.gold} strokeWidth={2.2} />
+          <Text style={styles.marketPriceLabel}>Carried Gold</Text>
+          <Text style={styles.marketBuyPrice}>{characterGold.toLocaleString()}</Text>
+        </View>
+        <View style={styles.bankSummaryCard}>
+          <Banknote size={18} color={colors.blue} strokeWidth={2.2} />
+          <Text style={styles.marketPriceLabel}>Banked Gold</Text>
+          <Text style={styles.marketBuyPrice}>{bankGoldBalance.toLocaleString()}</Text>
+        </View>
+      </View>
+      <View style={styles.marketCategoryTabs}>
+        {bankModes.map((mode) => (
+          <Pressable key={mode} style={[styles.marketCategoryButton, activeMode === mode && styles.marketCategoryActive]} onPress={() => setActiveMode(mode)}>
+            <Text style={[styles.marketCategoryText, activeMode === mode && styles.marketCategoryTextActive]}>{mode}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <View style={styles.bankGoldPanel}>
+        <Text style={styles.selectedTitle}>{activeMode} Gold</Text>
+        <View style={styles.bankGoldRow}>
+          <TextInput
+            value={goldAmount}
+            onChangeText={setGoldAmount}
+            keyboardType="numeric"
+            placeholder="Amount"
+            placeholderTextColor={colors.muted}
+            style={styles.bankGoldInput}
+          />
+          <Pressable
+            style={styles.marketActionButton}
+            onPress={() => activeMode === "Deposit" ? onDepositGold(Math.min(safeGoldAmount, characterGold)) : onWithdrawGold(Math.min(safeGoldAmount, bankGoldBalance))}
+          >
+            <Text style={styles.marketActionText}>{activeMode}</Text>
+          </Pressable>
+        </View>
+        <View style={styles.bankQuickRow}>
+          {[10, 50, 100].map((amount) => (
+            <Pressable key={amount} style={styles.marketCloseButton} onPress={() => setGoldAmount(String(amount))}>
+              <Text style={styles.secondaryText}>{amount}</Text>
+            </Pressable>
+          ))}
+          <Pressable style={styles.marketCloseButton} onPress={() => setGoldAmount(String(activeMode === "Deposit" ? characterGold : bankGoldBalance))}>
+            <Text style={styles.secondaryText}>All</Text>
+          </Pressable>
+        </View>
+      </View>
+      <ScrollView style={styles.marketListScroller} contentContainerStyle={styles.marketListContent} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+        {activeMode === "Deposit" ? (
+          <View style={styles.marketList}>
+            {depositableItems.length === 0 ? <Text style={styles.copy}>No unequipped items are available to deposit.</Text> : null}
+            {depositableItems.map((entry) => (
+              <BankInventoryRow
+                key={entry.id}
+                name={entry.item.name}
+                meta={`${entry.item.type} / owned x${entry.quantity}`}
+                imageUri={resolveInventoryThumbnailUri(entry.item)}
+                quantity={entry.quantity}
+                actionLabel="Deposit"
+                onMoveOne={() => onDepositBankItem(entry, 1)}
+                onMoveAll={() => onDepositBankItem(entry, entry.quantity)}
+              />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.marketList}>
+            {bankItems.length === 0 ? <Text style={styles.copy}>No items are stored in this bank yet.</Text> : null}
+            {bankItems.map((entry) => (
+              <BankInventoryRow
+                key={entry.id}
+                name={entry.item.name}
+                meta={`${entry.item.type} / stored x${entry.quantity}`}
+                imageUri={resolveInventoryThumbnailUri(entry.item)}
+                quantity={entry.quantity}
+                actionLabel="Withdraw"
+                onMoveOne={() => onWithdrawBankItem(entry, 1)}
+                onMoveAll={() => onWithdrawBankItem(entry, entry.quantity)}
+              />
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function BankInventoryRow({ name, meta, imageUri, quantity, actionLabel, onMoveOne, onMoveAll }: { name: string; meta: string; imageUri: string | null; quantity: number; actionLabel: string; onMoveOne: () => void; onMoveAll: () => void }) {
+  return (
+    <View style={styles.marketCard}>
+      <View style={styles.marketImageBox}>
+        {imageUri ? <CachedGameImage uri={imageUri} style={styles.marketItemImage} /> : <Text style={styles.marketItemFallback}>{name.slice(0, 1).toUpperCase()}</Text>}
+      </View>
+      <View style={styles.marketCardBody}>
+        <Text style={styles.marketItemName} numberOfLines={1}>{name}</Text>
+        <Text style={styles.marketItemType} numberOfLines={1}>{meta}</Text>
+      </View>
+      <View style={styles.marketBuyColumn}>
+        <Pressable style={styles.marketActionButton} onPress={onMoveOne}>
+          <Text style={styles.marketActionText}>{actionLabel} 1</Text>
+        </Pressable>
+        {quantity > 1 ? (
+          <Pressable style={styles.marketCloseButton} onPress={onMoveAll}>
+            <Text style={styles.secondaryText}>All</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -1738,6 +1912,64 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
+  },
+  bankTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  bankIconBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(217, 170, 93, 0.12)",
+  },
+  bankSummaryGrid: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  bankSummaryCard: {
+    flex: 1,
+    minHeight: 78,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(217, 170, 93, 0.22)",
+    padding: 10,
+    justifyContent: "center",
+    gap: 4,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  bankGoldPanel: {
+    gap: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    padding: 10,
+    backgroundColor: "rgba(0,0,0,0.22)",
+  },
+  bankGoldRow: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  bankGoldInput: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.borderSoft,
+    paddingHorizontal: 12,
+    color: colors.text,
+    backgroundColor: "rgba(0,0,0,0.35)",
+  },
+  bankQuickRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   marketTitle: {
     color: colors.gold,

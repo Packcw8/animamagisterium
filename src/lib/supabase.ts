@@ -208,6 +208,23 @@ export type Tables = {
     acquired_at: string;
     updated_at: string;
   };
+  player_bank_accounts: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    gold_balance: number;
+    created_at: string;
+    updated_at: string;
+  };
+  player_bank_items: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    item_id: string;
+    quantity: number;
+    created_at: string;
+    updated_at: string;
+  };
   equipped_items: {
     id: string;
     user_id: string;

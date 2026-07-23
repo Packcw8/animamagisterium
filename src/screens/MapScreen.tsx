@@ -92,6 +92,7 @@ import { recoverPlayerMapPosition } from "../services/mapRecoveryService";
 import { claimOpenArena, completeArenaChallenge, getArenaForMarker, saveArenaForMarker, type ArenaWithLeaders } from "../services/arenaService";
 import { buildArenaBattleLayout, deleteArenaBattleSlot, getArenaBattleSlots, saveArenaBattleSlot, type ArenaBattleSlot } from "../services/arenaBattleBoardService";
 import { applyBattleBoardTemplateToEvent, applyBattleBoardTemplateToMarker, getBattleBoardTemplates, type BattleBoardTemplateWithSlots } from "../services/battleBoardTemplateService";
+import { depositGoldToBank, depositItemToBank, getPlayerBankState, withdrawGoldFromBank, withdrawItemFromBank, type BankItem } from "../services/bankService";
 import { createCurrentPlayerBattleSnapshot } from "../services/battleSnapshotService";
 import { createArenaChallengeEvent, createArenaSnapshotOpponent } from "../services/arenaBattleService";
 import { equipPartyCompanion, getPartyCompanionBuildState, refreshOwnPartyAllySnapshot, unequipPartyCompanion, type EquippedPartyCompanion, type PartyCompanionBuildState } from "../services/partyCompanionService";
@@ -252,8 +253,8 @@ import {
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
-const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Crafting", "Arena", "Point of Interest", "Puzzle", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
-const miniMapMarkerTypes = ["Player Spawn", "Movement", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Crafting", "Arena", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
+const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Bank", "Crafting", "Arena", "Point of Interest", "Puzzle", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
+const miniMapMarkerTypes = ["Player Spawn", "Movement", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Bank", "Crafting", "Arena", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const miniMapContentMarkerTypes = miniMapMarkerTypes.filter((type) => type !== "Movement");
 const miniMapMovementMarkerTypes = ["Movement"] as const;
 const walkingPathEditorModes = editorModes.filter((mode) => mode !== "Movement Grid");
@@ -623,6 +624,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [markerNpcId, setMarkerNpcId] = useState<string | null>(null);
   const [markerMarketItems, setMarkerMarketItems] = useState<MarkerMarketItem[]>([]);
   const [markerCraftingRecipes, setMarkerCraftingRecipes] = useState<CraftingRecipeWithIngredients[]>([]);
+  const [bankGoldBalance, setBankGoldBalance] = useState(0);
+  const [bankItems, setBankItems] = useState<BankItem[]>([]);
   const [marketPurchaseCounts, setMarketPurchaseCounts] = useState<Record<string, number>>({});
   const [markerRouteLinks, setMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [selectedMarkerRouteIds, setSelectedMarkerRouteIds] = useState<string[]>([]);
@@ -3500,6 +3503,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       }
       await loadMarkerMarketState(marker.id);
       await loadMarkerCraftingState(marker);
+      await loadMarkerBankState(marker);
       if (isBattleMarkerType(marker.type)) {
         await loadMarkerBattlefieldCombatants(marker.id);
       } else {
@@ -3614,6 +3618,18 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerCraftingRecipes(recipes);
   }
 
+  async function loadMarkerBankState(marker: MapMarker) {
+    if (marker.type !== "Bank") {
+      setBankGoldBalance(0);
+      setBankItems([]);
+      return;
+    }
+
+    const state = await getPlayerBankState(character.id, itemDefinitions);
+    setBankGoldBalance(Number(state.account.gold_balance ?? 0));
+    setBankItems(state.items);
+  }
+
   async function previewMarker(marker: MapMarker) {
     await selectMarker(marker);
     setPreviewMarkerScene(true);
@@ -3628,6 +3644,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerPanelMessage(null);
     setMarketPurchaseCounts({});
     setMarkerCraftingRecipes([]);
+    setBankGoldBalance(0);
+    setBankItems([]);
   }
 
   async function syncArenaMarker(marker: MapMarker) {
@@ -3919,6 +3937,60 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       await loadInventory();
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to sell item."));
+    }
+  }
+
+  async function depositBankGold(amount: number) {
+    try {
+      const updated = await depositGoldToBank(character.id, amount);
+      onCharacterUpdated({ ...character, gold: updated.gold });
+      setMarkerPanelMessage(`Deposited ${amount} gold.`);
+      await loadInventory();
+      if (selectedMarker) {
+        await loadMarkerBankState(selectedMarker);
+      }
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to deposit gold."));
+    }
+  }
+
+  async function withdrawBankGold(amount: number) {
+    try {
+      const updated = await withdrawGoldFromBank(character.id, amount);
+      onCharacterUpdated({ ...character, gold: updated.gold });
+      setMarkerPanelMessage(`Withdrew ${amount} gold.`);
+      await loadInventory();
+      if (selectedMarker) {
+        await loadMarkerBankState(selectedMarker);
+      }
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to withdraw gold."));
+    }
+  }
+
+  async function depositBankItem(entry: InventoryItem, quantity: number) {
+    try {
+      await depositItemToBank(character.id, entry.item_id, quantity);
+      setMarkerPanelMessage(`Deposited ${entry.item.name} x${quantity}.`);
+      await loadInventory();
+      if (selectedMarker) {
+        await loadMarkerBankState(selectedMarker);
+      }
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to deposit item."));
+    }
+  }
+
+  async function withdrawBankItem(entry: BankItem, quantity: number) {
+    try {
+      await withdrawItemFromBank(character.id, entry.item_id, quantity);
+      setMarkerPanelMessage(`Withdrew ${entry.item.name} x${quantity}.`);
+      await loadInventory();
+      if (selectedMarker) {
+        await loadMarkerBankState(selectedMarker);
+      }
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to withdraw item."));
     }
   }
 
@@ -8490,6 +8562,8 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
         <MarkerSceneScreen
           marker={selectedMarker}
           characterGold={character.gold}
+          bankGoldBalance={bankGoldBalance}
+          bankItems={bankItems}
           marketItems={markerMarketItems}
           craftingRecipes={markerCraftingRecipes}
           marketPurchaseCounts={marketPurchaseCounts}
@@ -8505,6 +8579,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           onExit={closeMarkerScene}
           onBuy={(marketItem) => void buyFromMarker(marketItem)}
           onSell={(entry) => void sellToMarker(entry)}
+          onDepositGold={(amount) => void depositBankGold(amount)}
+          onWithdrawGold={(amount) => void withdrawBankGold(amount)}
+          onDepositBankItem={(entry, quantity) => void depositBankItem(entry, quantity)}
+          onWithdrawBankItem={(entry, quantity) => void withdrawBankItem(entry, quantity)}
           onCraft={(recipe, quantity) => void craftAtMarker(recipe, quantity)}
           onClaimReward={() => void claimSelectedMarkerReward()}
           onAcceptQuest={() => void acceptSelectedMarkerQuest()}
@@ -12602,7 +12680,7 @@ function getJourneyDestinationMarker(route: MapRoute, markers: MapMarker[], rout
       marker.type !== "Sign Post" &&
       !isStoryQuestMarker(marker),
   );
-  const rankedTypes = ["Area/Town Entrance", "Exit", "Exit/Leave", "Market", "Quest", "Side Quest", "Point of Interest", "Training", "Battle", "Battle Zone"];
+  const rankedTypes = ["Area/Town Entrance", "Exit", "Exit/Leave", "Market", "Bank", "Quest", "Side Quest", "Point of Interest", "Training", "Battle", "Battle Zone"];
 
   return candidates.sort((a, b) => {
     const aRank = rankedTypes.indexOf(a.type);
