@@ -1,7 +1,7 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
 import { useEffect, useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { Anvil, Banknote, Beaker, Boxes, ChefHat, Coins, Gem, Hammer, Landmark, Minus, Package, Pickaxe, Plus, ScrollText, Shirt, Sparkles, Swords, type LucideIcon } from "lucide-react-native";
+import { Anvil, Banknote, Beaker, Boxes, ChefHat, Coins, Gem, Hammer, Landmark, Minus, Package, Pickaxe, Plus, ScrollText, Shirt, Sparkles, Store, Swords, type LucideIcon } from "lucide-react-native";
 import { Frame } from "../Frame";
 import { Screen } from "../Screen";
 import { colors, fonts } from "../theme";
@@ -27,20 +27,27 @@ import { resolveGameAssetUri } from "../../utils/assetResolver";
 import { getRouteLockLabel, getRouteLockMessage, isRouteUnavailable } from "../../utils/mapProgress";
 import type { ArenaLeaderboardEntry, ArenaWithLeaders } from "../../services/arenaService";
 import type { BankItem } from "../../services/bankService";
+import type { HydratedPlayerMarketListing, PlayerMarketSpot } from "../../services/playerMarketService";
 
 const marketModes = ["Buy", "Sell"] as const;
 type MarketMode = (typeof marketModes)[number];
 const bankModes = ["Deposit", "Withdraw"] as const;
 type BankMode = (typeof bankModes)[number];
+const playerMarketModes = ["Shop", "My Stall"] as const;
+type PlayerMarketMode = (typeof playerMarketModes)[number];
 type SelectedMarketItem =
   | { mode: "Buy"; marketItem: MarkerMarketItem; item: ItemDefinition | null; mount: MountDefinition | null; purchasedCount: number }
   | { mode: "Sell"; entry: InventoryItem; marketItem: MarkerMarketItem | undefined };
 
 export function MarkerSceneScreen({
   marker,
+  characterId,
   characterGold,
   bankGoldBalance,
   bankItems,
+  playerMarketSpots,
+  playerMarketListings,
+  myPlayerMarketSpot,
   marketItems,
   craftingRecipes,
   marketPurchaseCounts,
@@ -60,6 +67,10 @@ export function MarkerSceneScreen({
   onWithdrawGold,
   onDepositBankItem,
   onWithdrawBankItem,
+  onClaimPlayerMarketSpot,
+  onListPlayerMarketItem,
+  onCancelPlayerMarketListing,
+  onBuyPlayerMarketListing,
   onCraft,
   onClaimReward,
   onAcceptQuest,
@@ -72,9 +83,13 @@ export function MarkerSceneScreen({
   onChallengeArena,
 }: {
   marker: MapMarker;
+  characterId: string;
   characterGold: number;
   bankGoldBalance: number;
   bankItems: BankItem[];
+  playerMarketSpots: PlayerMarketSpot[];
+  playerMarketListings: HydratedPlayerMarketListing[];
+  myPlayerMarketSpot: PlayerMarketSpot | null;
   marketItems: MarkerMarketItem[];
   craftingRecipes: CraftingRecipeWithIngredients[];
   marketPurchaseCounts: Record<string, number>;
@@ -94,6 +109,10 @@ export function MarkerSceneScreen({
   onWithdrawGold: (amount: number) => void;
   onDepositBankItem: (item: InventoryItem, quantity: number) => void;
   onWithdrawBankItem: (item: BankItem, quantity: number) => void;
+  onClaimPlayerMarketSpot: (stallName: string) => void;
+  onListPlayerMarketItem: (item: InventoryItem, quantity: number, pricePerItem: number) => void;
+  onCancelPlayerMarketListing: (listing: HydratedPlayerMarketListing) => void;
+  onBuyPlayerMarketListing: (listing: HydratedPlayerMarketListing, quantity: number) => void;
   onCraft: (recipe: CraftingRecipeWithIngredients, quantity?: number) => void | Promise<void>;
   onClaimReward: () => void;
   onAcceptQuest: () => void;
@@ -238,6 +257,20 @@ export function MarkerSceneScreen({
             mountDefinitions={mountDefinitions}
             onBuy={onBuy}
             onSell={onSell}
+          />
+        ) : marker.type === "Player Market" ? (
+          <PlayerMarketScene
+            marker={marker}
+            characterId={characterId}
+            characterGold={characterGold}
+            spots={playerMarketSpots}
+            listings={playerMarketListings}
+            mySpot={myPlayerMarketSpot}
+            inventoryItems={inventoryItems}
+            onClaimSpot={onClaimPlayerMarketSpot}
+            onListItem={onListPlayerMarketItem}
+            onCancelListing={onCancelPlayerMarketListing}
+            onBuyListing={onBuyPlayerMarketListing}
           />
         ) : marker.type === "Bank" ? (
           <BankScene
@@ -500,6 +533,178 @@ function SignPostScene({
           </View>
         );
       })}
+    </View>
+  );
+}
+
+function PlayerMarketScene({
+  marker,
+  characterId,
+  characterGold,
+  spots,
+  listings,
+  mySpot,
+  inventoryItems,
+  onClaimSpot,
+  onListItem,
+  onCancelListing,
+  onBuyListing,
+}: {
+  marker: MapMarker;
+  characterId: string;
+  characterGold: number;
+  spots: PlayerMarketSpot[];
+  listings: HydratedPlayerMarketListing[];
+  mySpot: PlayerMarketSpot | null;
+  inventoryItems: InventoryItem[];
+  onClaimSpot: (stallName: string) => void;
+  onListItem: (item: InventoryItem, quantity: number, pricePerItem: number) => void;
+  onCancelListing: (listing: HydratedPlayerMarketListing) => void;
+  onBuyListing: (listing: HydratedPlayerMarketListing, quantity: number) => void;
+}) {
+  const [activeMode, setActiveMode] = useState<PlayerMarketMode>("Shop");
+  const [stallName, setStallName] = useState("");
+  const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(null);
+  const [listQuantity, setListQuantity] = useState("1");
+  const [listPrice, setListPrice] = useState("1");
+  const ownedListings = useMemo(() => listings.filter((listing) => listing.seller_character_id === characterId), [characterId, listings]);
+  const shopListings = useMemo(() => listings.filter((listing) => listing.spot && listing.seller_character_id !== characterId), [characterId, listings]);
+  const depositableItems = useMemo(() => inventoryItems.filter((entry) => !entry.equippedSlot && entry.quantity > 0 && entry.item.sellable), [inventoryItems]);
+  const selectedInventoryItem = depositableItems.find((entry) => entry.id === selectedInventoryId) ?? depositableItems[0] ?? null;
+  const slotCount = Math.max(1, Number(marker.player_market_slot_count ?? 3) || 3);
+  const availableSlots = Math.max(0, slotCount - spots.length);
+  const rentGold = Math.max(0, Number(marker.player_market_rent_gold ?? 0) || 0);
+  const durationDays = Math.max(1, Number(marker.player_market_duration_days ?? 7) || 7);
+  const safeListQuantity = Math.min(Math.max(1, Math.floor(Number(listQuantity) || 1)), Math.max(1, selectedInventoryItem?.quantity ?? 1));
+  const safePrice = Math.max(0, Math.floor(Number(listPrice) || 0));
+
+  useEffect(() => {
+    if (!selectedInventoryId && selectedInventoryItem) {
+      setSelectedInventoryId(selectedInventoryItem.id);
+    }
+  }, [selectedInventoryId, selectedInventoryItem]);
+
+  return (
+    <View style={styles.marketScene}>
+      <View style={styles.marketHeaderRow}>
+        <View style={styles.bankTitleRow}>
+          <View style={styles.bankIconBadge}>
+            <Store size={24} color={colors.gold} strokeWidth={2.2} />
+          </View>
+          <View>
+            <Text style={styles.marketTitle}>Player Market</Text>
+            <Text style={styles.marketSubtitle}>{availableSlots} of {slotCount} spots open / {durationDays} day rental</Text>
+          </View>
+        </View>
+        <View style={styles.marketGoldPill}>
+          <Text style={styles.marketPriceLabel}>Gold</Text>
+          <Text style={styles.marketBuyPrice}>{characterGold.toLocaleString()}</Text>
+        </View>
+      </View>
+      <View style={styles.marketCategoryTabs}>
+        {playerMarketModes.map((mode) => (
+          <Pressable key={mode} style={[styles.marketCategoryButton, activeMode === mode && styles.marketCategoryActive]} onPress={() => setActiveMode(mode)}>
+            <Text style={[styles.marketCategoryText, activeMode === mode && styles.marketCategoryTextActive]}>{mode}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {activeMode === "Shop" ? (
+        <ScrollView style={styles.marketListScroller} contentContainerStyle={styles.marketListContent} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+          <View style={styles.marketList}>
+            {shopListings.length === 0 ? <Text style={styles.copy}>No player listings are available yet.</Text> : null}
+            {shopListings.map((listing) => (
+              <PlayerMarketListingCard
+                key={listing.id}
+                listing={listing}
+                owned={false}
+                onBuy={() => onBuyListing(listing, 1)}
+                onCancel={() => undefined}
+              />
+            ))}
+          </View>
+        </ScrollView>
+      ) : (
+        <ScrollView style={styles.marketListScroller} contentContainerStyle={styles.marketListContent} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+          <View style={styles.marketList}>
+            {mySpot ? (
+              <View style={styles.marketDetailPanel}>
+                <Text style={styles.selectedTitle}>{mySpot.stall_name}</Text>
+                <Text style={styles.copy}>Slot {mySpot.slot_number} / expires {formatDate(mySpot.rented_until)}</Text>
+              </View>
+            ) : (
+              <View style={styles.marketDetailPanel}>
+                <Text style={styles.selectedTitle}>Rent a Market Spot</Text>
+                <Text style={styles.copy}>{availableSlots > 0 ? `Rent costs ${rentGold} gold and lasts ${durationDays} days.` : "All spots are currently rented."}</Text>
+                <TextInput value={stallName} onChangeText={setStallName} placeholder="Stall name" placeholderTextColor={colors.muted} style={styles.bankGoldInput} />
+                <Pressable style={[styles.marketActionButton, availableSlots <= 0 && styles.disabledAction]} onPress={() => onClaimSpot(stallName)} disabled={availableSlots <= 0}>
+                  <Text style={styles.marketActionText}>{availableSlots > 0 ? "Rent Spot" : "No Spots Open"}</Text>
+                </Pressable>
+              </View>
+            )}
+            {mySpot ? (
+              <View style={styles.marketDetailPanel}>
+                <Text style={styles.selectedTitle}>Create Listing</Text>
+                {depositableItems.length === 0 ? <Text style={styles.copy}>No unequipped sellable items are available to list.</Text> : null}
+                {depositableItems.length > 0 ? (
+                  <>
+                    <View style={styles.marketCategoryTabs}>
+                      {depositableItems.slice(0, 8).map((entry) => (
+                        <Pressable key={entry.id} style={[styles.marketCategoryButton, selectedInventoryItem?.id === entry.id && styles.marketCategoryActive]} onPress={() => setSelectedInventoryId(entry.id)}>
+                          <Text style={[styles.marketCategoryText, selectedInventoryItem?.id === entry.id && styles.marketCategoryTextActive]} numberOfLines={1}>{entry.item.name}</Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                    <View style={styles.bankGoldRow}>
+                      <TextInput value={listQuantity} onChangeText={setListQuantity} keyboardType="numeric" placeholder="Qty" placeholderTextColor={colors.muted} style={styles.bankGoldInput} />
+                      <TextInput value={listPrice} onChangeText={setListPrice} keyboardType="numeric" placeholder="Price each" placeholderTextColor={colors.muted} style={styles.bankGoldInput} />
+                    </View>
+                    <Pressable style={styles.marketActionButton} onPress={() => selectedInventoryItem ? onListItem(selectedInventoryItem, safeListQuantity, safePrice) : undefined}>
+                      <Text style={styles.marketActionText}>List Item</Text>
+                    </Pressable>
+                  </>
+                ) : null}
+              </View>
+            ) : null}
+            <Text style={styles.selectedTitle}>Your Listings</Text>
+            {ownedListings.length === 0 ? <Text style={styles.copy}>You do not have any active listings at this marker.</Text> : null}
+            {ownedListings.map((listing) => (
+              <PlayerMarketListingCard
+                key={listing.id}
+                listing={listing}
+                owned
+                onBuy={() => undefined}
+                onCancel={() => onCancelListing(listing)}
+              />
+            ))}
+          </View>
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+function PlayerMarketListingCard({ listing, owned, onBuy, onCancel }: { listing: HydratedPlayerMarketListing; owned: boolean; onBuy: () => void; onCancel: () => void }) {
+  const imageUri = resolveInventoryThumbnailUri(listing.item);
+  return (
+    <View style={styles.marketCard}>
+      <View style={styles.marketImageBox}>
+        {imageUri ? <CachedGameImage uri={imageUri} style={styles.marketItemImage} /> : <Text style={styles.marketItemFallback}>{listing.item.name.slice(0, 1).toUpperCase()}</Text>}
+      </View>
+      <View style={styles.marketCardBody}>
+        <Text style={styles.marketItemName} numberOfLines={1}>{listing.item.name}</Text>
+        <Text style={styles.marketItemType} numberOfLines={1}>{listing.spot?.stall_name ?? (owned ? "Expired Stall" : "Player Stall")}</Text>
+        <Text style={styles.marketItemDescription} numberOfLines={2}>{listing.item.description || `${listing.item.type} / ${listing.item.rarity}`}</Text>
+        <Text style={styles.marketStockText}>Stock x{listing.quantity_available}</Text>
+      </View>
+      <View style={styles.marketBuyColumn}>
+        <View style={styles.marketPriceBox}>
+          <Text style={styles.marketPriceLabel}>Each</Text>
+          <Text style={styles.marketBuyPrice}>{listing.price_per_item}</Text>
+        </View>
+        <Pressable style={owned ? styles.marketCloseButton : styles.marketActionButton} onPress={owned ? onCancel : onBuy}>
+          <Text style={owned ? styles.secondaryText : styles.marketActionText}>{owned ? "Cancel" : "Buy 1"}</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -1250,6 +1455,13 @@ function resolveSceneImageUri(imagePath?: string | null) {
 
 function metersToMiles(meters: number) {
   return (meters / 1609.344).toFixed(2);
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return "soon";
+  }
+  return new Date(value).toLocaleDateString();
 }
 
 function getItemName(items: ItemDefinition[], itemId: string | null) {

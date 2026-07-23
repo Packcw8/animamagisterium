@@ -1052,6 +1052,9 @@ export type Tables = {
     reward_timing: "on_interact" | "on_path_complete";
     repeatable: boolean;
     reward_once_per_player: boolean;
+    player_market_slot_count: number;
+    player_market_rent_gold: number;
+    player_market_duration_days: number;
     linked_mini_map_id: string | null;
     mini_map_id: string | null;
     parent_marker_id: string | null;
@@ -1287,6 +1290,32 @@ export type Tables = {
     character_id: string;
     market_item_id: string;
     quantity_purchased: number;
+    updated_at: string;
+  };
+  player_market_spots: {
+    id: string;
+    marker_id: string;
+    slot_number: number;
+    owner_user_id: string;
+    owner_character_id: string;
+    stall_name: string;
+    rented_at: string;
+    rented_until: string;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  player_market_listings: {
+    id: string;
+    spot_id: string;
+    marker_id: string;
+    seller_user_id: string;
+    seller_character_id: string;
+    item_id: string;
+    quantity_available: number;
+    price_per_item: number;
+    is_active: boolean;
+    created_at: string;
     updated_at: string;
   };
   mount_definitions: {

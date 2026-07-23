@@ -61,6 +61,9 @@ export type MarkerPayloadState = {
   markerRewardTiming: MapMarker["reward_timing"];
   markerRepeatable: boolean;
   markerRewardOnce: boolean;
+  markerPlayerMarketSlotCount: string;
+  markerPlayerMarketRentGold: string;
+  markerPlayerMarketDurationDays: string;
   markerContentScope: MapMarker["content_scope"];
   selectedSeason: number;
   selectedChapter: number;
@@ -121,6 +124,9 @@ export function buildMarkerSettingsPayload(state: MarkerPayloadState, mode: "cre
     reward_timing: state.markerRewardTiming,
     repeatable: state.markerRepeatable,
     reward_once_per_player: state.markerRewardOnce,
+    player_market_slot_count: Math.max(1, Math.min(20, Math.floor(Number(state.markerPlayerMarketSlotCount) || 3))),
+    player_market_rent_gold: Math.max(0, Math.floor(Number(state.markerPlayerMarketRentGold) || 0)),
+    player_market_duration_days: Math.max(1, Math.min(30, Math.floor(Number(state.markerPlayerMarketDurationDays) || 7))),
     content_scope: state.markerContentScope,
     linked_mini_map_id: linkedMiniMapId,
     mini_map_id: state.activeMiniMapId ?? (mode === "update" ? state.selectedMarker?.mini_map_id ?? null : null),
@@ -188,6 +194,9 @@ export function buildCreateMarkerInput(state: MarkerPayloadState, point: { x: nu
     journal_image_url: settings.journal_image_url,
     journal_sort_order: settings.journal_sort_order,
     story_deck_id: settings.story_deck_id,
+    player_market_slot_count: settings.player_market_slot_count,
+    player_market_rent_gold: settings.player_market_rent_gold,
+    player_market_duration_days: settings.player_market_duration_days,
     content_scope: settings.content_scope,
     season_number: settings.season_number,
     chapter_number: settings.chapter_number,

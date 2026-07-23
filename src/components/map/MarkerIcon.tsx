@@ -42,6 +42,7 @@ function resolveMapImageUri(imagePath?: string | null) {
 
 function getDefaultMarkerIconLabel(type: string) {
   if (type === "Market") return "MKT";
+  if (type === "Player Market") return "PM";
   if (type === "Bank") return "BNK";
   if (type === "Sign Post") return "HUB";
   if (type === "World Spawn") return "WSP";
@@ -61,6 +62,7 @@ function getDefaultMarkerIconLabel(type: string) {
 
 function getDefaultMarkerIconColor(type: string) {
   if (type === "Market") return colors.gold;
+  if (type === "Player Market") return "#f0d28a";
   if (type === "Bank") return "#7fe7ff";
   if (type === "Sign Post") return "#f0d28a";
   if (type === "World Spawn") return "#7fe7ff";

@@ -93,6 +93,7 @@ import { claimOpenArena, completeArenaChallenge, getArenaForMarker, saveArenaFor
 import { buildArenaBattleLayout, deleteArenaBattleSlot, getArenaBattleSlots, saveArenaBattleSlot, type ArenaBattleSlot } from "../services/arenaBattleBoardService";
 import { applyBattleBoardTemplateToEvent, applyBattleBoardTemplateToMarker, getBattleBoardTemplates, type BattleBoardTemplateWithSlots } from "../services/battleBoardTemplateService";
 import { depositGoldToBank, depositItemToBank, getPlayerBankState, withdrawGoldFromBank, withdrawItemFromBank, type BankItem } from "../services/bankService";
+import { buyPlayerMarketListing, cancelPlayerMarketListing, claimPlayerMarketSpot, createPlayerMarketListing, getPlayerMarketState, type HydratedPlayerMarketListing, type PlayerMarketSpot } from "../services/playerMarketService";
 import { createCurrentPlayerBattleSnapshot } from "../services/battleSnapshotService";
 import { createArenaChallengeEvent, createArenaSnapshotOpponent } from "../services/arenaBattleService";
 import { equipPartyCompanion, getPartyCompanionBuildState, refreshOwnPartyAllySnapshot, unequipPartyCompanion, type EquippedPartyCompanion, type PartyCompanionBuildState } from "../services/partyCompanionService";
@@ -253,8 +254,8 @@ import {
 } from "../services/mapService";
 
 const forgottenMarches = require("../../assets/TheForgottenMarches.png");
-const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Bank", "Crafting", "Arena", "Point of Interest", "Puzzle", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
-const miniMapMarkerTypes = ["Player Spawn", "Movement", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Bank", "Crafting", "Arena", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
+const markerTypes = ["World Spawn", "Story", "Side Quest", "NPC", "Market", "Player Market", "Bank", "Crafting", "Arena", "Point of Interest", "Puzzle", "Battle Zone", "Training Spot", "Area/Town Entrance", "Sign Post"];
+const miniMapMarkerTypes = ["Player Spawn", "Movement", "Sign Post", "Story", "Quest", "Side Quest", "NPC", "Point of Interest", "Puzzle", "Market", "Player Market", "Bank", "Crafting", "Arena", "Battle", "Training", "Dungeon Room", "Exit", "Exit/Leave"];
 const miniMapContentMarkerTypes = miniMapMarkerTypes.filter((type) => type !== "Movement");
 const miniMapMovementMarkerTypes = ["Movement"] as const;
 const walkingPathEditorModes = editorModes.filter((mode) => mode !== "Movement Grid");
@@ -591,6 +592,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [markerRewardTiming, setMarkerRewardTiming] = useState<MapMarker["reward_timing"]>("on_interact");
   const [markerRepeatable, setMarkerRepeatable] = useState(false);
   const [markerRewardOnce, setMarkerRewardOnce] = useState(true);
+  const [markerPlayerMarketSlotCount, setMarkerPlayerMarketSlotCount] = useState("3");
+  const [markerPlayerMarketRentGold, setMarkerPlayerMarketRentGold] = useState("0");
+  const [markerPlayerMarketDurationDays, setMarkerPlayerMarketDurationDays] = useState("7");
   const [markerContentScope, setMarkerContentScope] = useState<MapMarker["content_scope"]>("chapter");
   const [markerChapterVisibilityRows, setMarkerChapterVisibilityRows] = useState<MarkerChapterVisibility[]>([]);
   const [markerChapterVisibilityKeys, setMarkerChapterVisibilityKeys] = useState<Set<string>>(new Set());
@@ -626,6 +630,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   const [markerCraftingRecipes, setMarkerCraftingRecipes] = useState<CraftingRecipeWithIngredients[]>([]);
   const [bankGoldBalance, setBankGoldBalance] = useState(0);
   const [bankItems, setBankItems] = useState<BankItem[]>([]);
+  const [playerMarketSpots, setPlayerMarketSpots] = useState<PlayerMarketSpot[]>([]);
+  const [playerMarketListings, setPlayerMarketListings] = useState<HydratedPlayerMarketListing[]>([]);
+  const [myPlayerMarketSpot, setMyPlayerMarketSpot] = useState<PlayerMarketSpot | null>(null);
   const [marketPurchaseCounts, setMarketPurchaseCounts] = useState<Record<string, number>>({});
   const [markerRouteLinks, setMarkerRouteLinks] = useState<MarkerRouteLink[]>([]);
   const [selectedMarkerRouteIds, setSelectedMarkerRouteIds] = useState<string[]>([]);
@@ -3186,6 +3193,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerRewardTiming("on_interact");
     setMarkerRepeatable(false);
     setMarkerRewardOnce(true);
+    setMarkerPlayerMarketSlotCount("3");
+    setMarkerPlayerMarketRentGold("0");
+    setMarkerPlayerMarketDurationDays("7");
     setMarkerContentScope("chapter");
     setMarkerChapterVisibilityKeys(new Set());
     setMarkerLinkedRouteId(null);
@@ -3263,6 +3273,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       markerRewardTiming,
       markerRepeatable,
       markerRewardOnce,
+      markerPlayerMarketSlotCount,
+      markerPlayerMarketRentGold,
+      markerPlayerMarketDurationDays,
       markerContentScope,
       selectedSeason,
       selectedChapter,
@@ -3463,6 +3476,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerRewardTiming(marker.reward_timing ?? "on_interact");
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
+    setMarkerPlayerMarketSlotCount(String(marker.player_market_slot_count ?? 3));
+    setMarkerPlayerMarketRentGold(String(marker.player_market_rent_gold ?? 0));
+    setMarkerPlayerMarketDurationDays(String(marker.player_market_duration_days ?? 7));
     setMarkerContentScope(marker.content_scope ?? "chapter");
     setMarkerChapterVisibilityKeys(getMarkerChapterKeys(marker.id));
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
@@ -3504,6 +3520,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       await loadMarkerMarketState(marker.id);
       await loadMarkerCraftingState(marker);
       await loadMarkerBankState(marker);
+      await loadMarkerPlayerMarketState(marker);
       if (isBattleMarkerType(marker.type)) {
         await loadMarkerBattlefieldCombatants(marker.id);
       } else {
@@ -3580,6 +3597,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerRewardTiming(marker.reward_timing ?? "on_interact");
     setMarkerRepeatable(Boolean(marker.repeatable));
     setMarkerRewardOnce(marker.reward_once_per_player ?? true);
+    setMarkerPlayerMarketSlotCount(String(marker.player_market_slot_count ?? 3));
+    setMarkerPlayerMarketRentGold(String(marker.player_market_rent_gold ?? 0));
+    setMarkerPlayerMarketDurationDays(String(marker.player_market_duration_days ?? 7));
     setMarkerContentScope(marker.content_scope ?? "chapter");
     setMarkerChapterVisibilityKeys(getMarkerChapterKeys(marker.id));
     setMarkerLinkedRouteId(marker.linked_route_id ?? null);
@@ -3630,6 +3650,20 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setBankItems(state.items);
   }
 
+  async function loadMarkerPlayerMarketState(marker: MapMarker) {
+    if (marker.type !== "Player Market") {
+      setPlayerMarketSpots([]);
+      setPlayerMarketListings([]);
+      setMyPlayerMarketSpot(null);
+      return;
+    }
+
+    const state = await getPlayerMarketState(marker.id, character.id, itemDefinitions);
+    setPlayerMarketSpots(state.spots);
+    setPlayerMarketListings(state.listings);
+    setMyPlayerMarketSpot(state.mySpot);
+  }
+
   async function previewMarker(marker: MapMarker) {
     await selectMarker(marker);
     setPreviewMarkerScene(true);
@@ -3646,6 +3680,9 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     setMarkerCraftingRecipes([]);
     setBankGoldBalance(0);
     setBankItems([]);
+    setPlayerMarketSpots([]);
+    setPlayerMarketListings([]);
+    setMyPlayerMarketSpot(null);
   }
 
   async function syncArenaMarker(marker: MapMarker) {
@@ -3991,6 +4028,69 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
       }
     } catch (error) {
       setMarkerPanelMessage(getErrorMessage(error, "Unable to withdraw item."));
+    }
+  }
+
+  async function claimPlayerMarketSpotAtMarker(stallName: string) {
+    if (!selectedMarker || selectedMarker.type !== "Player Market") {
+      return;
+    }
+
+    try {
+      const spot = await claimPlayerMarketSpot(selectedMarker.id, character, stallName);
+      setMyPlayerMarketSpot(spot);
+      setMarkerPanelMessage(`Rented ${spot.stall_name} until ${new Date(spot.rented_until).toLocaleDateString()}.`);
+      await loadInventory();
+      await loadMarkerPlayerMarketState(selectedMarker);
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to rent player market spot."));
+    }
+  }
+
+  async function listPlayerMarketItem(entry: InventoryItem, quantity: number, pricePerItem: number) {
+    if (!selectedMarker || !myPlayerMarketSpot) {
+      setMarkerPanelMessage("Rent a market spot before listing items.");
+      return;
+    }
+
+    try {
+      await createPlayerMarketListing(myPlayerMarketSpot.id, character.id, entry, quantity, pricePerItem);
+      setMarkerPanelMessage(`Listed ${entry.item.name} x${quantity}.`);
+      await loadInventory();
+      await loadMarkerPlayerMarketState(selectedMarker);
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to list item."));
+    }
+  }
+
+  async function cancelPlayerMarketListingAtMarker(listing: HydratedPlayerMarketListing) {
+    if (!selectedMarker) {
+      return;
+    }
+
+    try {
+      await cancelPlayerMarketListing(listing.id, character.id);
+      setMarkerPanelMessage(`Returned ${listing.item.name} to inventory.`);
+      await loadInventory();
+      await loadMarkerPlayerMarketState(selectedMarker);
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to cancel listing."));
+    }
+  }
+
+  async function buyPlayerMarketListingAtMarker(listing: HydratedPlayerMarketListing, quantity: number) {
+    if (!selectedMarker) {
+      return;
+    }
+
+    try {
+      const updated = await buyPlayerMarketListing(listing.id, character.id, quantity);
+      onCharacterUpdated({ ...character, gold: updated.gold });
+      setMarkerPanelMessage(`Bought ${listing.item.name} x${quantity}.`);
+      await loadInventory();
+      await loadMarkerPlayerMarketState(selectedMarker);
+    } catch (error) {
+      setMarkerPanelMessage(getErrorMessage(error, "Unable to buy listing."));
     }
   }
 
@@ -8559,11 +8659,15 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
   if (selectedMarker && (previewMarkerScene || (!isAdmin && canUseSelectedMarker && !selectedMarkerLocked))) {
     return (
       <>
-        <MarkerSceneScreen
-          marker={selectedMarker}
-          characterGold={character.gold}
+          <MarkerSceneScreen
+            marker={selectedMarker}
+            characterId={character.id}
+            characterGold={character.gold}
           bankGoldBalance={bankGoldBalance}
           bankItems={bankItems}
+          playerMarketSpots={playerMarketSpots}
+          playerMarketListings={playerMarketListings}
+          myPlayerMarketSpot={myPlayerMarketSpot}
           marketItems={markerMarketItems}
           craftingRecipes={markerCraftingRecipes}
           marketPurchaseCounts={marketPurchaseCounts}
@@ -8583,6 +8687,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
           onWithdrawGold={(amount) => void withdrawBankGold(amount)}
           onDepositBankItem={(entry, quantity) => void depositBankItem(entry, quantity)}
           onWithdrawBankItem={(entry, quantity) => void withdrawBankItem(entry, quantity)}
+          onClaimPlayerMarketSpot={(stallName) => void claimPlayerMarketSpotAtMarker(stallName)}
+          onListPlayerMarketItem={(entry, quantity, pricePerItem) => void listPlayerMarketItem(entry, quantity, pricePerItem)}
+          onCancelPlayerMarketListing={(listing) => void cancelPlayerMarketListingAtMarker(listing)}
+          onBuyPlayerMarketListing={(listing, quantity) => void buyPlayerMarketListingAtMarker(listing, quantity)}
           onCraft={(recipe, quantity) => void craftAtMarker(recipe, quantity)}
           onClaimReward={() => void claimSelectedMarkerReward()}
           onAcceptQuest={() => void acceptSelectedMarkerQuest()}
@@ -9535,6 +9643,12 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
               setMarkerShopImage={setMarkerShopImage}
               markerShopBackground={markerShopBackground}
               setMarkerShopBackground={setMarkerShopBackground}
+              markerPlayerMarketSlotCount={markerPlayerMarketSlotCount}
+              setMarkerPlayerMarketSlotCount={setMarkerPlayerMarketSlotCount}
+              markerPlayerMarketRentGold={markerPlayerMarketRentGold}
+              setMarkerPlayerMarketRentGold={setMarkerPlayerMarketRentGold}
+              markerPlayerMarketDurationDays={markerPlayerMarketDurationDays}
+              setMarkerPlayerMarketDurationDays={setMarkerPlayerMarketDurationDays}
               markerInteractionRadius={markerInteractionRadius}
               setMarkerInteractionRadius={setMarkerInteractionRadius}
               markerInteractable={markerInteractable}
@@ -9719,6 +9833,12 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                 setMarkerShopImage={setMarkerShopImage}
                 markerShopBackground={markerShopBackground}
                 setMarkerShopBackground={setMarkerShopBackground}
+                markerPlayerMarketSlotCount={markerPlayerMarketSlotCount}
+                setMarkerPlayerMarketSlotCount={setMarkerPlayerMarketSlotCount}
+                markerPlayerMarketRentGold={markerPlayerMarketRentGold}
+                setMarkerPlayerMarketRentGold={setMarkerPlayerMarketRentGold}
+                markerPlayerMarketDurationDays={markerPlayerMarketDurationDays}
+                setMarkerPlayerMarketDurationDays={setMarkerPlayerMarketDurationDays}
                 markerInteractionRadius={markerInteractionRadius}
                 setMarkerInteractionRadius={setMarkerInteractionRadius}
                 markerInteractable={markerInteractable}
@@ -10934,6 +11054,15 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
                   ))}
                 </View>
               ) : null}
+              {draftType === "Player Market" ? (
+                <View style={styles.storyEditor}>
+                  <Text style={styles.selectedTitle}>Player Market Settings</Text>
+                  <Text style={styles.copy}>Players rent one stall at this marker, list escrowed items, and other players can buy those listings until the rental expires.</Text>
+                  <TextInput value={markerPlayerMarketSlotCount} onChangeText={setMarkerPlayerMarketSlotCount} keyboardType="numeric" placeholder="Available stall spots, 1 to 20" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={markerPlayerMarketRentGold} onChangeText={setMarkerPlayerMarketRentGold} keyboardType="numeric" placeholder="Rent cost in gold" placeholderTextColor={colors.muted} style={styles.input} />
+                  <TextInput value={markerPlayerMarketDurationDays} onChangeText={setMarkerPlayerMarketDurationDays} keyboardType="numeric" placeholder="Rental duration in days, 1 to 30" placeholderTextColor={colors.muted} style={styles.input} />
+                </View>
+              ) : null}
               {selectedMarker ? (
                 <>
                   <Pressable style={styles.primaryButton} onPress={() => void saveSelectedMarkerSettings()}>
@@ -11670,6 +11799,12 @@ function MiniMapMarkerAdminForm({
   setMarkerShopImage,
   markerShopBackground,
   setMarkerShopBackground,
+  markerPlayerMarketSlotCount,
+  setMarkerPlayerMarketSlotCount,
+  markerPlayerMarketRentGold,
+  setMarkerPlayerMarketRentGold,
+  markerPlayerMarketDurationDays,
+  setMarkerPlayerMarketDurationDays,
   markerInteractionRadius,
   setMarkerInteractionRadius,
   markerInteractable,
@@ -11853,6 +11988,12 @@ function MiniMapMarkerAdminForm({
   setMarkerShopImage: (value: string) => void;
   markerShopBackground: string;
   setMarkerShopBackground: (value: string) => void;
+  markerPlayerMarketSlotCount: string;
+  setMarkerPlayerMarketSlotCount: (value: string) => void;
+  markerPlayerMarketRentGold: string;
+  setMarkerPlayerMarketRentGold: (value: string) => void;
+  markerPlayerMarketDurationDays: string;
+  setMarkerPlayerMarketDurationDays: (value: string) => void;
   markerInteractionRadius: string;
   setMarkerInteractionRadius: (value: string) => void;
   markerInteractable: boolean;
@@ -11999,6 +12140,7 @@ function MiniMapMarkerAdminForm({
 }) {
   const supportsQuest = isQuestMarkerType(draftType);
   const supportsMarket = draftType === "Market" || selectedMarker?.type === "Market";
+  const supportsPlayerMarket = draftType === "Player Market" || selectedMarker?.type === "Player Market";
   const supportsExit = isExitMarkerType(draftType);
   const supportsSignPost = draftType === "Sign Post";
   const supportsBattle = isBattleMarkerType(draftType);
@@ -12499,6 +12641,15 @@ function MiniMapMarkerAdminForm({
           ))}
         </View>
       ) : null}
+      {supportsPlayerMarket ? (
+        <View style={styles.storyEditor}>
+          <Text style={styles.selectedTitle}>Player Market Settings</Text>
+          <Text style={styles.copy}>Players rent one stall at this marker, list escrowed items, and other players can shop those listings until the rental expires.</Text>
+          <TextInput value={markerPlayerMarketSlotCount} onChangeText={setMarkerPlayerMarketSlotCount} keyboardType="numeric" placeholder="Available stall spots, 1 to 20" placeholderTextColor={colors.muted} style={styles.input} />
+          <TextInput value={markerPlayerMarketRentGold} onChangeText={setMarkerPlayerMarketRentGold} keyboardType="numeric" placeholder="Rent cost in gold" placeholderTextColor={colors.muted} style={styles.input} />
+          <TextInput value={markerPlayerMarketDurationDays} onChangeText={setMarkerPlayerMarketDurationDays} keyboardType="numeric" placeholder="Rental duration in days, 1 to 30" placeholderTextColor={colors.muted} style={styles.input} />
+        </View>
+      ) : null}
         </>
       ) : (
         <View style={styles.storyEditor}>
@@ -12680,7 +12831,7 @@ function getJourneyDestinationMarker(route: MapRoute, markers: MapMarker[], rout
       marker.type !== "Sign Post" &&
       !isStoryQuestMarker(marker),
   );
-  const rankedTypes = ["Area/Town Entrance", "Exit", "Exit/Leave", "Market", "Bank", "Quest", "Side Quest", "Point of Interest", "Training", "Battle", "Battle Zone"];
+  const rankedTypes = ["Area/Town Entrance", "Exit", "Exit/Leave", "Market", "Player Market", "Bank", "Quest", "Side Quest", "Point of Interest", "Training", "Battle", "Battle Zone"];
 
   return candidates.sort((a, b) => {
     const aRank = rankedTypes.indexOf(a.type);
