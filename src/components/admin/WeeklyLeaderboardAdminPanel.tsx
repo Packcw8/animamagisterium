@@ -24,7 +24,7 @@ type WeeklyLeaderboardAdminPanelProps = {
 const rankOptions = [1, 2, 3];
 
 export function WeeklyLeaderboardAdminPanel({ itemDefinitions, onMessage }: WeeklyLeaderboardAdminPanelProps) {
-  const [weekStartsOn, setWeekStartsOn] = useState(1);
+  const [weekStartsOn, setWeekStartsOn] = useState(2);
   const [rewards, setRewards] = useState<WeeklyLeaderboardReward[]>([]);
   const [editingRewardId, setEditingRewardId] = useState<string | null>(null);
   const [metric, setMetric] = useState<WeeklyLeaderboardMetric>("total_distance_walked_meters");
@@ -57,7 +57,7 @@ export function WeeklyLeaderboardAdminPanel({ itemDefinitions, onMessage }: Week
   async function loadWeeklyRewards() {
     try {
       const [settings, nextRewards] = await Promise.all([getWeeklyLeaderboardSettings(), getWeeklyLeaderboardRewards()]);
-      setWeekStartsOn(Number(settings.week_starts_on ?? 1));
+      setWeekStartsOn(Number(settings.week_starts_on ?? 2));
       setRewards(nextRewards);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load weekly leaderboard rewards.");
@@ -135,7 +135,7 @@ export function WeeklyLeaderboardAdminPanel({ itemDefinitions, onMessage }: Week
   return (
     <View style={styles.panel}>
       <Text style={styles.sectionTitle}>Weekly Leaderboard Rewards</Text>
-      <Text style={styles.copy}>Configure when the weekly contest starts, then set rewards for rank 1, 2, and 3. Rewards apply to the previous completed week so current rankings are never paid early.</Text>
+      <Text style={styles.copy}>Configure when the weekly contest starts, then set rewards for rank 1, 2, and 3. Rewards are delivered by mail for the previous completed week so current rankings are never paid early.</Text>
       {localMessage ? <Text style={styles.message}>{localMessage}</Text> : null}
 
       <Text style={styles.subTitle}>Week Starts On</Text>

@@ -33,6 +33,14 @@ export type WeeklyLeaderboardClaimResult = {
   week_end?: string;
 };
 
+export type WeeklyLeaderboardSettlementResult = {
+  settled?: boolean;
+  week_start?: string;
+  week_end?: string;
+  checked?: number;
+  awarded?: number;
+};
+
 export type LeaderboardRow = {
   character_id: string;
   user_id: string;
@@ -223,7 +231,7 @@ export async function getWeeklyLeaderboardSettings() {
     throw error;
   }
 
-  return (data ?? { id: true, week_starts_on: 1, updated_at: new Date().toISOString() }) as WeeklyLeaderboardSettings;
+  return (data ?? { id: true, week_starts_on: 2, updated_at: new Date().toISOString() }) as WeeklyLeaderboardSettings;
 }
 
 export async function saveWeeklyLeaderboardSettings(weekStartsOn: number) {
@@ -287,6 +295,18 @@ export async function deleteWeeklyLeaderboardReward(rewardId: string) {
   if (error) {
     throw error;
   }
+}
+
+export async function settleWeeklyLeaderboardRewards() {
+  const { data, error } = await supabase.rpc("settle_weekly_leaderboard_rewards", {
+    p_week_start: null,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? {}) as WeeklyLeaderboardSettlementResult;
 }
 
 export async function claimWeeklyLeaderboardReward(characterId: string, metric: WeeklyLeaderboardMetric) {

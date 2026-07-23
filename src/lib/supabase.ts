@@ -804,6 +804,9 @@ export type Tables = {
     is_claimed: boolean;
     seen_at: string | null;
     claimed_at: string | null;
+    source_type: string | null;
+    source_key: string | null;
+    source_metadata: Record<string, unknown>;
     created_at: string;
   };
   story_dialogue_nodes: {

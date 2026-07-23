@@ -109,7 +109,7 @@ export function InboxScreen({ character, onBack, onCharacterUpdated }: InboxScre
         {!isLoading && items.length === 0 ? (
           <Frame style={styles.emptyCard}>
             <Text style={styles.emptyTitle}>No messages yet</Text>
-            <Text style={styles.muted}>Friend requests and claimable game rewards will appear here.</Text>
+            <Text style={styles.muted}>Friend requests and reward messages will appear here.</Text>
           </Frame>
         ) : null}
 
@@ -131,6 +131,10 @@ export function InboxScreen({ character, onBack, onCharacterUpdated }: InboxScre
                 <Pressable style={styles.secondaryButton} onPress={() => handleDecline(item)}>
                   <Text style={styles.secondaryButtonText}>Decline</Text>
                 </Pressable>
+              </View>
+            ) : item.reward?.is_claimed ? (
+              <View style={styles.deliveredPill}>
+                <Text style={styles.deliveredText}>Delivered</Text>
               </View>
             ) : (
               <Pressable style={styles.primaryButton} onPress={() => handleClaim(item)}>
@@ -256,6 +260,18 @@ const styles = StyleSheet.create({
   },
   secondaryButtonText: {
     color: colors.text,
+    fontWeight: "900",
+  },
+  deliveredPill: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: "rgba(53,211,124,0.08)",
+  },
+  deliveredText: {
+    color: "#35d37c",
     fontWeight: "900",
   },
 });

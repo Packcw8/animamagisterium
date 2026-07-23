@@ -145,7 +145,7 @@ async function getInboxRewards(userId: string) {
     .from("player_inbox_rewards")
     .select("*, item:reward_item_id(id,name,image_path)")
     .eq("user_id", userId)
-    .eq("is_claimed", false)
+    .or("is_claimed.eq.false,seen_at.is.null")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -169,5 +169,6 @@ function getRewardBody(reward: InboxReward) {
     return reward.body ?? "A reward is waiting for you.";
   }
 
-  return `${reward.body ? `${reward.body} ` : ""}Reward: ${parts.join(", ")}.`;
+  const rewardPrefix = reward.is_claimed ? "Delivered" : "Reward";
+  return `${reward.body ? `${reward.body} ` : ""}${rewardPrefix}: ${parts.join(", ")}.`;
 }

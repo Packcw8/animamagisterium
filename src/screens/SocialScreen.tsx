@@ -9,12 +9,14 @@ import { PartyGuildPanel } from "../components/social/PartyGuildPanel";
 import { colors, fonts } from "../components/theme";
 import { CachedGameImage, prefetchGameImages } from "../components/ui/CachedGameImage";
 import { getEarnedBadgesForCharacter, EarnedBadgeSummary } from "../services/badgeService";
-import { claimWeeklyLeaderboardRewardForCurrentUser, getLeaderboardWithRankForPeriod, getTrophyLeaderboardWithRankForPeriod, LeaderboardMetric, LeaderboardPeriod, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, weeklyLeaderboardMetrics, type TrophyLeaderboardRow, type WeeklyLeaderboardMetric } from "../services/leaderboardService";
+import { getLeaderboardWithRankForPeriod, getTrophyLeaderboardWithRankForPeriod, LeaderboardMetric, LeaderboardPeriod, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, settleWeeklyLeaderboardRewards, weeklyLeaderboardMetrics, type TrophyLeaderboardRow } from "../services/leaderboardService";
 import { FriendWithProfile, getCurrentUserId, getFriendRows, removeFriend, sendFriendRequest, updateFriendRequest } from "../services/socialService";
 
 type SocialTab = "friends" | "partyGuild" | "leaderboard" | "profile";
 type LeaderboardScope = "all" | "friends";
 type SocialLeaderboardMetric = LeaderboardMetric | "trophies";
+
+let hasAttemptedWeeklyRewardSettlement = false;
 
 export function SocialScreen() {
   const [activeTab, setActiveTab] = useState<SocialTab>("leaderboard");
@@ -86,6 +88,14 @@ export function SocialScreen() {
   async function loadLeaderboard() {
     setMessage(null);
     try {
+      if (period === "weekly" && !hasAttemptedWeeklyRewardSettlement) {
+        hasAttemptedWeeklyRewardSettlement = true;
+        try {
+          await settleWeeklyLeaderboardRewards();
+        } catch {
+          // Older database builds may not have the settlement RPC yet. Leaderboards still load normally.
+        }
+      }
       const friendScopeIds = scope === "friends" ? [userId, ...acceptedFriendIds].filter(Boolean) as string[] : undefined;
       if (activeMetric === "trophies") {
         const data = await getTrophyLeaderboardWithRankForPeriod(friendScopeIds, period);
@@ -163,17 +173,6 @@ export function SocialScreen() {
     }
   }
 
-  async function claimWeeklyReward() {
-    const metric = activeMetric === "trophies" ? "trophies" : activeMetric;
-    try {
-      const result = await claimWeeklyLeaderboardRewardForCurrentUser(metric as WeeklyLeaderboardMetric);
-      setMessage(result.message ?? (result.claimed ? "Weekly reward claimed." : "No weekly reward available for that board."));
-      await loadLeaderboard();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Unable to claim weekly reward.");
-    }
-  }
-
   return (
     <Screen>
       <View style={styles.header}>
@@ -245,11 +244,8 @@ export function SocialScreen() {
             <Frame style={styles.claimPanel}>
               <View style={styles.claimCopy}>
                 <Text style={styles.sectionTitle}>Weekly Rewards</Text>
-                <Text style={styles.copy}>Top 3 rewards can be claimed after the weekly board closes.</Text>
+                <Text style={styles.copy}>Top 3 rewards are delivered by mail after each Tuesday-to-Tuesday board closes.</Text>
               </View>
-              <Pressable style={styles.smallButton} onPress={() => void claimWeeklyReward()}>
-                <Text style={styles.buttonText}>Claim</Text>
-              </Pressable>
             </Frame>
           ) : null}
 
