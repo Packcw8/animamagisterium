@@ -1,4 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { PackagePlus, Swords } from "lucide-react-native";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { colors, fonts } from "../theme";
 import { CachedGameImage } from "../ui/CachedGameImage";
@@ -59,7 +60,11 @@ export function RouteCompletionSummary({ summary, rarityLabels, onDismiss }: Rou
                 <CachedGameImage uri={item.imageUrl} style={styles.itemImage} />
               ) : (
                 <View style={styles.fallbackIcon}>
-                  <Text style={styles.fallbackText}>{item.findingType === "battle" ? "!" : "+"}</Text>
+                  {item.findingType === "battle" ? (
+                    <Swords size={20} color={colors.blue} strokeWidth={2.4} />
+                  ) : (
+                    <PackagePlus size={20} color={colors.blue} strokeWidth={2.4} />
+                  )}
                 </View>
               )}
               <View style={styles.itemCopy}>

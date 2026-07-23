@@ -1,4 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { ZoomIn, ZoomOut } from "lucide-react-native";
 import { useRef, useState } from "react";
 import type { MutableRefObject } from "react";
 import { Image, ImageSourcePropType, LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
@@ -271,10 +272,10 @@ export function MiniMapCanvas({
       {zoomEnabled && !canCapturePointer ? (
         <View style={styles.miniMapZoomControls}>
           <Pressable style={styles.miniMapZoomButton} onPress={() => setZoomScale((value) => Math.min(2, value + 0.15))}>
-            <Text style={styles.miniMapZoomText}>+</Text>
+            <ZoomIn size={18} color={colors.goldSoft} strokeWidth={2.4} />
           </Pressable>
           <Pressable style={styles.miniMapZoomButton} onPress={() => setZoomScale((value) => Math.max(0.75, value - 0.15))}>
-            <Text style={styles.miniMapZoomText}>-</Text>
+            <ZoomOut size={18} color={colors.goldSoft} strokeWidth={2.4} />
           </Pressable>
         </View>
       ) : null}

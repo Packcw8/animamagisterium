@@ -1,4 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { Footprints, Gem, Hand, HardHat, Mail, Menu, Package, Plus, Settings, Shield, Shirt, Sparkles, Sword } from "lucide-react-native";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, StyleSheet, Text, TextInput, View } from "react-native";
 import { BrandLogo } from "../components/BrandLogo";
@@ -1083,17 +1084,21 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
   return (
     <Screen>
       <View style={styles.homeChrome}>
-        <Pressable style={styles.chromeButton}><Text style={styles.chromeIcon}>☰</Text></Pressable>
+        <Pressable style={styles.chromeButton}>
+          <Menu size={20} color={colors.goldSoft} strokeWidth={2.4} />
+        </Pressable>
         <View style={styles.chromeActions}>
           <Pressable style={styles.chromeButton} onPress={onOpenInbox}>
-            <Text style={styles.chromeIcon}>✉</Text>
+            <Mail size={18} color={colors.goldSoft} strokeWidth={2.4} />
             {inboxUnreadCount > 0 ? (
               <View style={styles.inboxBadge}>
                 <Text style={styles.inboxBadgeText}>{inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}</Text>
               </View>
             ) : null}
           </Pressable>
-          <Pressable style={styles.chromeButton} onPress={onOpenSettings}><Text style={styles.chromeIcon}>⚙</Text></Pressable>
+          <Pressable style={styles.chromeButton} onPress={onOpenSettings}>
+            <Settings size={18} color={colors.goldSoft} strokeWidth={2.4} />
+          </Pressable>
         </View>
       </View>
 
@@ -2222,7 +2227,7 @@ function AbilitySlotCard({ slot, ability, selectedAbility, onEquip, onClear }: {
     <View style={[styles.monitoredSlot, ability && styles.monitoredSlotFilled]}>
       <Text style={styles.monitoredSlotLabel}>Slot {slot}</Text>
       <View style={styles.monitoredSlotIcon}>
-        {ability ? <AbilityIcon ability={ability} /> : <Text style={styles.monitoredSlotEmpty}>+</Text>}
+        {ability ? <AbilityIcon ability={ability} /> : <Plus size={20} color={colors.goldSoft} strokeWidth={2.4} />}
       </View>
       <Text style={styles.monitoredSlotName}>{ability?.name ?? "Empty"}</Text>
       <View style={styles.slotActions}>
@@ -2241,7 +2246,7 @@ function EquipmentSlotCard({ slot, item, onUnequip }: { slot: EquipmentSlot; ite
     <View style={[styles.monitoredSlot, item && styles.monitoredSlotFilled]}>
       <Text style={styles.monitoredSlotLabel}>{slot}</Text>
       <View style={styles.monitoredSlotIcon}>
-        {uri ? <Image source={{ uri }} style={styles.monitoredItemImage} /> : <Text style={styles.monitoredSlotEmpty}>{slot.slice(0, 1).toUpperCase()}</Text>}
+        {uri ? <Image source={{ uri }} style={styles.monitoredItemImage} /> : <EquipmentSlotIcon slot={slot} />}
       </View>
       <Text style={styles.monitoredSlotName}>{item?.name ?? "Empty"}</Text>
       {item ? <Pressable style={styles.smallButton} onPress={onUnequip}><Text style={styles.smallButtonText}>Unequip</Text></Pressable> : null}
@@ -2261,7 +2266,7 @@ function EquippedRow({ slot, item }: { slot: string; item: ItemDefinition | null
   const uri = resolveInventoryImageUri(item?.image_path);
   return (
     <View style={styles.equippedRow}>
-      {uri ? <Image source={{ uri }} style={styles.equippedImage} /> : <View style={styles.equippedPlaceholder}><Text style={styles.equippedPlaceholderText}>{slot.slice(0, 1).toUpperCase()}</Text></View>}
+      {uri ? <Image source={{ uri }} style={styles.equippedImage} /> : <View style={styles.equippedPlaceholder}><EquipmentSlotIcon slot={slot} /></View>}
       <View style={styles.equippedBody}>
         <Text style={styles.equippedName}>{item?.name ?? "Empty"}</Text>
         <Text style={styles.equippedDescription}>{item?.description ?? `No ${slot} equipped.`}</Text>
@@ -2270,6 +2275,37 @@ function EquippedRow({ slot, item }: { slot: string; item: ItemDefinition | null
       <Text style={styles.equippedChevron}>›</Text>
     </View>
   );
+}
+
+function EquipmentSlotIcon({ slot }: { slot: string }) {
+  const iconProps = { size: 22, color: colors.goldSoft, strokeWidth: 2.2 };
+
+  if (slot === "main_hand" || slot === "weapon") {
+    return <Sword {...iconProps} />;
+  }
+  if (slot === "off_hand") {
+    return <Shield {...iconProps} />;
+  }
+  if (slot === "helmet") {
+    return <HardHat {...iconProps} />;
+  }
+  if (slot === "chest" || slot === "armor") {
+    return <Shirt {...iconProps} />;
+  }
+  if (slot === "gloves") {
+    return <Hand {...iconProps} />;
+  }
+  if (slot === "legs" || slot === "boots") {
+    return <Footprints {...iconProps} />;
+  }
+  if (slot === "necklace" || slot === "ring" || slot === "charm") {
+    return <Gem {...iconProps} />;
+  }
+  if (slot === "relic") {
+    return <Sparkles {...iconProps} />;
+  }
+
+  return <Package {...iconProps} />;
 }
 
 function InventoryStripItem({ entry }: { entry: InventoryItem }) {

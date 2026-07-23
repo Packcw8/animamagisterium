@@ -1,4 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
+import { Plus } from "lucide-react-native";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { ProgressBar } from "../ProgressBar";
 import { colors, fonts } from "../theme";
@@ -133,7 +134,7 @@ function AbilitySlotCard({ slot, ability, canEquip, onEquip, onClear }: { slot: 
         <Text style={styles.slotLabel}>Slot {slot}</Text>
         {ability ? <Text style={styles.equippedPill}>Equipped</Text> : <Text style={styles.emptyPill}>Empty</Text>}
       </View>
-      <View style={styles.slotIcon}>{ability ? <AbilityIcon ability={ability} /> : <Text style={styles.plus}>+</Text>}</View>
+      <View style={styles.slotIcon}>{ability ? <AbilityIcon ability={ability} /> : <Plus size={20} color={colors.goldSoft} strokeWidth={2.4} />}</View>
       <Text style={styles.slotName} numberOfLines={2}>{ability?.name ?? "Open Slot"}</Text>
       <View style={styles.actionRow}>
         <Pressable style={[styles.smallButton, !canEquip && styles.disabledAction]} onPress={onEquip} disabled={!canEquip}>

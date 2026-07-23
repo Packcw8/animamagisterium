@@ -1,5 +1,5 @@
 import { GamePressable as Pressable } from "@/components/ui/GamePressable";
-import { CircleDot, Footprints, Gem, Hand, HardHat, Package, Shield, Shirt, Sparkles, Sword, Watch } from "lucide-react-native";
+import { CircleDot, Footprints, Gem, Hand, HardHat, Package, Shield, Shirt, Sparkles, Sword } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ProgressBar } from "../ProgressBar";
@@ -287,10 +287,6 @@ function EquipmentSlotIcon({ slot }: { slot: EquipmentSlot }) {
   if (slot === "relic") {
     return <Sparkles {...iconProps} />;
   }
-  if (slot === "watch") {
-    return <Watch {...iconProps} />;
-  }
-
   return slot ? <CircleDot {...iconProps} /> : <Package {...iconProps} />;
 }
 
