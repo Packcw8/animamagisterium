@@ -1714,10 +1714,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     });
 
     if (!authored) {
-      if (options?.requireAuthored) {
-        return null;
-      }
-      return fallback;
+      return null;
     }
 
     const seenFlagKey = authored.display_once ? getToastSeenFlagKey(authored) : null;
@@ -8903,6 +8900,78 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     );
   }
 
+  function renderPlayerMenuOverlay(activePlayerMiniMap: MiniMap | null) {
+    const currentAreaName = activePlayerMiniMap?.name ?? "Overworld";
+
+    return (
+      <View style={styles.playerJourneyOverlay}>
+        <Pressable style={styles.playerJourneyOverlayHeader} onPress={() => setJourneyOverlayExpanded((value) => !value)}>
+          <View style={styles.playerJourneyOverlayTitleBlock}>
+            <Text style={styles.playerJourneyOverlayLabel}>Map Menu</Text>
+            <Text style={styles.playerJourneyOverlayTitle}>{currentAreaName}</Text>
+          </View>
+          <View style={styles.playerJourneyOverlayMeta}>
+            <Text style={styles.playerJourneyOverlayPercent}>{character.gold}</Text>
+            <Text style={styles.playerJourneyOverlayToggle}>{journeyOverlayExpanded ? "Collapse" : "Menus"}</Text>
+          </View>
+        </Pressable>
+        <Pressable style={styles.playerJourneyOverlayHideButton} onPress={() => setJourneyOverlayHidden(true)}>
+          <Text style={styles.playerOverlayHideText}>Hide Panel</Text>
+        </Pressable>
+        <View style={styles.playerJourneyOverlaySummary}>
+          <Text style={styles.playerJourneyOverlayObjective} numberOfLines={2}>Manage your character, gear, mounts, and companion before choosing your next path.</Text>
+          <View style={styles.playerIdleMenuGrid}>
+            <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("inventory")}>
+              <Text style={styles.journeySecondaryText}>Inventory ({inventoryItems.length})</Text>
+            </Pressable>
+            <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("abilities")}>
+              <Text style={styles.journeySecondaryText}>Abilities</Text>
+            </Pressable>
+            <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("mounts")}>
+              <Text style={styles.journeySecondaryText}>{activeTravelMode ? `${activeTravelMode.name} x${activeTravelMultiplier.toFixed(2)}` : activeMount ? `Mount x${activeMountMultiplier.toFixed(2)}` : "Mounts"}</Text>
+            </Pressable>
+            <Pressable style={styles.journeySecondary} onPress={() => setActiveMapSheet("companions")}>
+              <Text style={styles.journeySecondaryText}>{activePartyCompanion?.snapshot?.character_name ? `Ally: ${activePartyCompanion.snapshot.character_name}` : "Companion"}</Text>
+            </Pressable>
+          </View>
+          {journeyOverlayExpanded ? (
+            <>
+              <View style={styles.journeyResources}>
+                <View style={styles.journeyResource}>
+                  <View style={styles.journeyResourceHeader}>
+                    <Text style={[styles.journeyResourceLabel, { color: colors.red }]}>HP</Text>
+                    <Text style={styles.journeyResourceValue}>{currentHealth} / {combatResources.maxHp}</Text>
+                  </View>
+                  <ProgressBar value={currentHealth} max={Math.max(1, combatResources.maxHp)} color={colors.red} height={6} />
+                </View>
+                <View style={styles.journeyResource}>
+                  <View style={styles.journeyResourceHeader}>
+                    <Text style={[styles.journeyResourceLabel, { color: colors.gold }]}>Stamina</Text>
+                    <Text style={styles.journeyResourceValue}>{combatResources.maxStamina} / {combatResources.maxStamina}</Text>
+                  </View>
+                  <ProgressBar value={combatResources.maxStamina} max={Math.max(1, combatResources.maxStamina)} color={colors.gold} height={6} />
+                </View>
+                <View style={styles.journeyResource}>
+                  <View style={styles.journeyResourceHeader}>
+                    <Text style={[styles.journeyResourceLabel, { color: colors.blue }]}>Mana</Text>
+                    <Text style={styles.journeyResourceValue}>{combatResources.maxMagicka} / {combatResources.maxMagicka}</Text>
+                  </View>
+                  <ProgressBar value={combatResources.maxMagicka} max={Math.max(1, combatResources.maxMagicka)} color={colors.blue} height={6} />
+                </View>
+              </View>
+              <JourneyRecoveryAction disabled={isRecoveringPosition} onRecover={() => void recoverJourneyPosition()} />
+            </>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
+
+  function renderPlayerBottomOverlay(activePlayerMiniMap: MiniMap | null) {
+    const journey = getJourneyViewModel();
+    return journey ? renderPlayerJourneyOverlay() : renderPlayerMenuOverlay(activePlayerMiniMap);
+  }
+
   function renderPlayerOverlayHandles() {
     const journey = getJourneyViewModel();
 
@@ -8913,10 +8982,10 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             <Text style={styles.playerOverlayHandleText}>Walk</Text>
           </Pressable>
         ) : null}
-        {journeyOverlayHidden && journey ? (
+        {journeyOverlayHidden ? (
           <Pressable style={[styles.playerOverlayHandle, styles.playerOverlayBottomHandle]} onPress={() => setJourneyOverlayHidden(false)}>
-            <Text style={styles.playerOverlayHandleText}>Journey</Text>
-            <Text style={styles.playerOverlayHandleMeta}>{Math.round(progressPercent)}%</Text>
+            <Text style={styles.playerOverlayHandleText}>{journey ? "Journey" : "Menu"}</Text>
+            {journey ? <Text style={styles.playerOverlayHandleMeta}>{Math.round(progressPercent)}%</Text> : null}
           </Pressable>
         ) : null}
       </>
@@ -9022,7 +9091,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
             )}
           </View>
           {!walkingOverlayHidden ? <View style={styles.playerMapTopOverlay}>{renderPlayerMapTravelHeader()}</View> : null}
-          {!journeyOverlayHidden ? <View style={styles.playerMapBottomOverlay}>{renderPlayerJourneyOverlay()}</View> : null}
+          {!journeyOverlayHidden ? <View style={styles.playerMapBottomOverlay}>{renderPlayerBottomOverlay(activePlayerMiniMap)}</View> : null}
           {renderPlayerOverlayHandles()}
           {renderSelectedMarkerPanel()}
           <GameToast toast={gameToast} onDismiss={dismissGameToast} />
@@ -12992,6 +13061,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 12,
     gap: 9,
+  },
+  playerIdleMenuGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
   playerJourneyOverlayObjective: {
     color: colors.goldSoft,
