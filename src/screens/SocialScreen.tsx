@@ -9,7 +9,7 @@ import { PartyGuildPanel } from "../components/social/PartyGuildPanel";
 import { colors, fonts } from "../components/theme";
 import { CachedGameImage, prefetchGameImages } from "../components/ui/CachedGameImage";
 import { getEarnedBadgesForCharacter, EarnedBadgeSummary } from "../services/badgeService";
-import { getLeaderboardWithRankForPeriod, getTrophyLeaderboardWithRankForPeriod, LeaderboardMetric, LeaderboardPeriod, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, settleWeeklyLeaderboardRewards, weeklyLeaderboardMetrics, type TrophyLeaderboardRow } from "../services/leaderboardService";
+import { getLeaderboardWithRankForPeriod, getTrophyLeaderboardWithRankForPeriod, LeaderboardMetric, LeaderboardPeriod, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, settleWeeklyLeaderboardRewards, weeklyLeaderboardMetrics, weeklyRewardMetrics, type TrophyLeaderboardRow } from "../services/leaderboardService";
 import { FriendWithProfile, getCurrentUserId, getFriendRows, removeFriend, sendFriendRequest, updateFriendRequest } from "../services/socialService";
 
 type SocialTab = "friends" | "partyGuild" | "leaderboard" | "profile";
@@ -21,7 +21,7 @@ let hasAttemptedWeeklyRewardSettlement = false;
 export function SocialScreen() {
   const [activeTab, setActiveTab] = useState<SocialTab>("leaderboard");
   const [activeMetric, setActiveMetric] = useState<SocialLeaderboardMetric>("total_distance_walked_meters");
-  const [period, setPeriod] = useState<LeaderboardPeriod>("all_time");
+  const [period, setPeriod] = useState<LeaderboardPeriod>("weekly");
   const [scope, setScope] = useState<LeaderboardScope>("all");
   const [rows, setRows] = useState<LeaderboardRow[]>([]);
   const [currentPlayerRow, setCurrentPlayerRow] = useState<LeaderboardRow | null>(null);
@@ -47,6 +47,10 @@ export function SocialScreen() {
   const incomingRequests = friends.filter((friend) => friend.status === "pending" && friend.addressee_id === userId);
   const outgoingRequests = friends.filter((friend) => friend.status === "pending" && friend.requester_id === userId);
   const acceptedFriends = friends.filter((friend) => friend.status === "accepted");
+  const topLeaderboardRows = rows.slice(0, 3);
+  const remainingLeaderboardRows = rows.slice(3);
+  const topTrophyRows = trophyRows.slice(0, 3);
+  const remainingTrophyRows = trophyRows.slice(3);
 
   useEffect(() => {
     void loadSocial();
@@ -238,7 +242,7 @@ export function SocialScreen() {
           <Frame style={styles.heroCard}>
             <Text style={styles.eyebrow}>{scope === "friends" ? "Friends" : "All Players"}</Text>
             <Text style={styles.title}>{activeLabel} Leaderboard</Text>
-            <Text style={styles.copy}>{period === "weekly" ? "This week follows the configured reset day. All-time boards stay untouched." : "Showing top 100, plus your current rank when you are outside the top 100."}</Text>
+            <Text style={styles.copy}>{period === "weekly" ? "Weekly boards run Tuesday to Tuesday. Rewards arrive by mail after the week closes." : "All-time boards preserve lifetime progress and never reset."}</Text>
           </Frame>
           {period === "weekly" ? (
             <Frame style={styles.claimPanel}>
@@ -250,11 +254,11 @@ export function SocialScreen() {
           ) : null}
 
           <View style={styles.periodTabs}>
+            <Pressable style={[styles.periodButton, period === "weekly" && styles.periodActive]} onPress={() => setPeriod("weekly")}>
+              <Text style={[styles.periodText, period === "weekly" && styles.periodTextActive]}>Weekly</Text>
+            </Pressable>
             <Pressable style={[styles.periodButton, period === "all_time" && styles.periodActive]} onPress={() => setPeriod("all_time")}>
               <Text style={[styles.periodText, period === "all_time" && styles.periodTextActive]}>All-Time</Text>
-            </Pressable>
-            <Pressable style={[styles.periodButton, period === "weekly" && styles.periodActive]} onPress={() => setPeriod("weekly")}>
-              <Text style={[styles.periodText, period === "weekly" && styles.periodTextActive]}>This Week</Text>
             </Pressable>
           </View>
 
@@ -274,13 +278,38 @@ export function SocialScreen() {
             <Pressable style={[styles.scopeButton, scope === "friends" && styles.scopeActive]} onPress={() => setScope("friends")}><Text style={styles.buttonText}>Friends Only</Text></Pressable>
           </View>
 
+          {activeMetric === "trophies" && currentTrophyRow && currentTrophyRank ? (
+            <CurrentRankPanel
+              rank={currentTrophyRank}
+              title={currentTrophyRow.enemy_name ?? currentTrophyRow.species ?? "Trophy Animal"}
+              subtitle={formatTrophyMeasurements(currentTrophyRow)}
+              value={Number(currentTrophyRow.trophy_score).toFixed(2)}
+              label="Score"
+            />
+          ) : activeMetric !== "trophies" && currentPlayerRow && currentPlayerRank ? (
+            <CurrentRankPanel
+              rank={currentPlayerRank}
+              title={currentPlayerRow.character_name}
+              subtitle={`${currentPlayerRow.display_name} / Lv ${currentPlayerRow.level}`}
+              value={formatMetricValue(currentPlayerRow, activeMetric)}
+              label={getMetricLabel(activeMetric)}
+            />
+          ) : null}
+
           <Frame style={styles.board}>
             {isLoading ? <Text style={styles.copy}>Loading leaderboard...</Text> : null}
             {activeMetric === "trophies" ? (
               <>
                 {!isLoading && trophyRows.length === 0 ? <Text style={styles.copy}>{period === "weekly" ? "No trophy animals have been recorded this week yet." : "No trophy animals have been recorded yet."}</Text> : null}
-                {trophyRows.map((row, index) => (
-                  <TrophyLeaderboardCard key={row.id} row={row} rank={index + 1} />
+                {topTrophyRows.length > 0 ? (
+                  <View style={styles.podiumWrap}>
+                    {topTrophyRows.map((row, index) => (
+                      <TrophyPodiumCard key={row.id} row={row} rank={index + 1} />
+                    ))}
+                  </View>
+                ) : null}
+                {remainingTrophyRows.map((row, index) => (
+                  <TrophyLeaderboardCard key={row.id} row={row} rank={index + 4} />
                 ))}
                 {currentTrophyRow && currentTrophyRank && currentTrophyRank > 100 && !trophyRows.some((row) => row.id === currentTrophyRow.id) ? (
                   <>
@@ -292,8 +321,15 @@ export function SocialScreen() {
             ) : (
               <>
                 {!isLoading && rows.length === 0 ? <Text style={styles.copy}>{period === "weekly" ? "No weekly leaderboard entries yet." : "No leaderboard entries yet."}</Text> : null}
-                {rows.map((row, index) => (
-                  <LeaderboardCard key={row.character_id} row={row} rank={index + 1} metric={activeMetric} onOpen={() => void openProfile(row)} />
+                {topLeaderboardRows.length > 0 ? (
+                  <View style={styles.podiumWrap}>
+                    {topLeaderboardRows.map((row, index) => (
+                      <LeaderboardPodiumCard key={row.character_id} row={row} rank={index + 1} metric={activeMetric} onOpen={() => void openProfile(row)} />
+                    ))}
+                  </View>
+                ) : null}
+                {remainingLeaderboardRows.map((row, index) => (
+                  <LeaderboardCard key={row.character_id} row={row} rank={index + 4} metric={activeMetric} onOpen={() => void openProfile(row)} />
                 ))}
                 {currentPlayerRow && currentPlayerRank && currentPlayerRank > 100 && !rows.some((row) => row.character_id === currentPlayerRow.character_id) ? (
                   <>
@@ -374,8 +410,22 @@ function LeaderboardCard({ row, rank, metric, onOpen }: { row: LeaderboardRow; r
       </View>
       <View style={styles.scoreBox}>
         <Text style={styles.score}>{formatMetricValue(row, metric)}</Text>
-        <Text style={styles.scoreLabel}>{leaderboardMetrics.find((item) => item.key === metric)?.label}</Text>
+        <Text style={styles.scoreLabel}>{getMetricLabel(metric)}</Text>
       </View>
+    </Pressable>
+  );
+}
+
+function LeaderboardPodiumCard({ row, rank, metric, onOpen }: { row: LeaderboardRow; rank: number; metric: LeaderboardMetric; onOpen: () => void }) {
+  return (
+    <Pressable style={[styles.podiumCard, getPodiumStyle(rank)]} onPress={onOpen}>
+      <Text style={styles.podiumRank}>#{rank}</Text>
+      <View style={styles.podiumPortraitWrap}>
+        {row.portrait_thumb_url || row.portrait_url ? <CachedGameImage uri={row.portrait_thumb_url ?? row.portrait_url} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
+      </View>
+      <Text style={styles.podiumName} numberOfLines={1}>{row.character_name}</Text>
+      <Text style={styles.podiumScore} numberOfLines={1}>{formatMetricValue(row, metric)}</Text>
+      <Text style={styles.podiumLabel} numberOfLines={1}>{getMetricLabel(metric)}</Text>
     </Pressable>
   );
 }
@@ -402,12 +452,61 @@ function TrophyLeaderboardCard({ row, rank }: { row: TrophyLeaderboardRow; rank:
   );
 }
 
+function TrophyPodiumCard({ row, rank }: { row: TrophyLeaderboardRow; rank: number }) {
+  return (
+    <View style={[styles.podiumCard, getPodiumStyle(rank)]}>
+      <Text style={styles.podiumRank}>#{rank}</Text>
+      <View style={styles.podiumTrophyWrap}>
+        {row.enemy_image_thumb_url || row.enemy_image_url ? <CachedGameImage uri={row.enemy_image_thumb_url ?? row.enemy_image_url} style={styles.trophyImage} /> : <Text style={styles.initial}>{(row.enemy_name ?? "T").slice(0, 1).toUpperCase()}</Text>}
+      </View>
+      <Text style={styles.podiumName} numberOfLines={1}>{row.enemy_name ?? row.species ?? "Trophy"}</Text>
+      <Text style={styles.podiumScore} numberOfLines={1}>{Number(row.trophy_score).toFixed(2)}</Text>
+      <Text style={styles.podiumLabel} numberOfLines={1}>Score</Text>
+    </View>
+  );
+}
+
+function CurrentRankPanel({ rank, title, subtitle, value, label }: { rank: number; title: string; subtitle: string; value: string; label: string }) {
+  return (
+    <Frame style={styles.currentRankPanel}>
+      <View style={styles.currentRankBadge}>
+        <Text style={styles.rankText}>#{rank}</Text>
+      </View>
+      <View style={styles.currentRankText}>
+        <Text style={styles.eyebrow}>Your Rank</Text>
+        <Text style={styles.name} numberOfLines={1}>{title}</Text>
+        <Text style={styles.copy} numberOfLines={1}>{subtitle}</Text>
+      </View>
+      <View style={styles.scoreBox}>
+        <Text style={styles.score}>{value}</Text>
+        <Text style={styles.scoreLabel}>{label}</Text>
+      </View>
+    </Frame>
+  );
+}
+
 function formatMetricValue(row: LeaderboardRow, metric: LeaderboardMetric) {
   if (metric === "total_distance_walked_meters") {
     return formatDistance(row.total_distance_walked_meters);
   }
 
   return Number(row[metric] ?? 0).toLocaleString();
+}
+
+function getMetricLabel(metric: LeaderboardMetric) {
+  return weeklyRewardMetrics.find((item) => item.key === metric)?.label
+    ?? leaderboardMetrics.find((item) => item.key === metric)?.label
+    ?? "Score";
+}
+
+function getPodiumStyle(rank: number) {
+  if (rank === 1) {
+    return styles.podiumFirst;
+  }
+  if (rank === 2) {
+    return styles.podiumSecond;
+  }
+  return styles.podiumThird;
 }
 
 function formatTrophyMeasurements(row: TrophyLeaderboardRow) {
@@ -588,6 +687,28 @@ const styles = StyleSheet.create({
     minWidth: 0,
     gap: 4,
   },
+  currentRankPanel: {
+    marginHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    backgroundColor: "rgba(20, 61, 86, 0.24)",
+  },
+  currentRankBadge: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    borderWidth: 1,
+    borderColor: colors.blue,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.38)",
+  },
+  currentRankText: {
+    flex: 1,
+    minWidth: 0,
+  },
   periodTabs: {
     flexDirection: "row",
     gap: 8,
@@ -664,6 +785,80 @@ const styles = StyleSheet.create({
     margin: 12,
     padding: 12,
     gap: 10,
+  },
+  podiumWrap: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "stretch",
+  },
+  podiumCard: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 8,
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(0,0,0,0.28)",
+  },
+  podiumFirst: {
+    borderColor: "rgba(239, 195, 95, 0.95)",
+    backgroundColor: "rgba(239, 195, 95, 0.13)",
+  },
+  podiumSecond: {
+    borderColor: "rgba(201, 207, 215, 0.72)",
+    backgroundColor: "rgba(201, 207, 215, 0.09)",
+  },
+  podiumThird: {
+    borderColor: "rgba(190, 124, 65, 0.74)",
+    backgroundColor: "rgba(190, 124, 65, 0.1)",
+  },
+  podiumRank: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  podiumPortraitWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    borderWidth: 2,
+    borderColor: colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "#061118",
+  },
+  podiumTrophyWrap: {
+    width: "100%",
+    height: 48,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "#061118",
+  },
+  podiumName: {
+    width: "100%",
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 12,
+    textAlign: "center",
+  },
+  podiumScore: {
+    width: "100%",
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 13,
+    textAlign: "center",
+  },
+  podiumLabel: {
+    width: "100%",
+    color: colors.muted,
+    fontSize: 10,
+    textAlign: "center",
   },
   rankCard: {
     flexDirection: "row",
