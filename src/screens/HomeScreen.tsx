@@ -6,6 +6,7 @@ import { BrandLogo } from "../components/BrandLogo";
 import { Frame } from "../components/Frame";
 import { CraftingAdminPanel } from "../components/admin/CraftingAdminPanel";
 import { FarmingAdminPanel } from "../components/admin/FarmingAdminPanel";
+import { WeeklyLeaderboardAdminPanel } from "../components/admin/WeeklyLeaderboardAdminPanel";
 import { AdminContentScopeBar, isInAdminContentScope } from "../components/home/AdminContentScopeBar";
 import { JourneyJournalPage } from "../components/home/JourneyJournalPage";
 import { PlayerAbilitiesPanel } from "../components/home/PlayerAbilitiesPanel";
@@ -125,7 +126,7 @@ const homeTabs = ["Overview", "Identity", "Attributes", "Battle Stats", "Journal
 const attributeKeys = ["strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit"] as const;
 const inventoryCategoryTabs = ["All", "Weapons", "Armor Sets", "Armor Pieces", "Wearables", "Consumables", "Materials", "Tools", "Special", "Misc"] as const;
 const abilityTypeTabs = ["Attack", "Heal", "Buff", "Debuff", "Defense", "Passive"] as const;
-const adminToolTabs = ["Items", "Crafting", "Farming Pools", "Mounts", "Travel Modes", "Abilities", "Enemies", "NPCs"] as const;
+const adminToolTabs = ["Items", "Crafting", "Farming Pools", "Weekly Rewards", "Mounts", "Travel Modes", "Abilities", "Enemies", "NPCs"] as const;
 const adminRecordSortModes = ["newest", "name", "type", "chapter"] as const;
 const mountMultiplierPresets = ["1", "1.05", "1.10", "1.20", "1.35", "1.50", "1.70"] as const;
 const abilityCostResources = ["none", "stamina", "mana", "health"] as const;
@@ -1759,6 +1760,7 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                   </>
                 ) : null}
                 {adminToolTab === "Items" ? <Text style={styles.muted}>Open the Inventory tab to manage item records by category.</Text> : null}
+                {adminToolTab === "Weekly Rewards" ? <Text style={styles.muted}>Open the Inventory tab to manage weekly leaderboard rewards.</Text> : null}
               </View>
             ) : null}
           </View>
@@ -1957,6 +1959,9 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                     chapterNumber={adminContentChapter}
                     onMessage={setInventoryMessage}
                   />
+                ) : null}
+                {adminToolTab === "Weekly Rewards" ? (
+                  <WeeklyLeaderboardAdminPanel itemDefinitions={itemDefinitions} onMessage={setInventoryMessage} />
                 ) : null}
                 {adminToolTab === "Mounts" ? (
                   <>

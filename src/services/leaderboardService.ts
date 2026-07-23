@@ -1,4 +1,4 @@
-import { supabase } from "../lib/supabase";
+import { supabase, type Tables } from "../lib/supabase";
 import type { EnemyDefinition, PlayerTrophyHarvest } from "./combatAdminService";
 import { resolveEnemyThumbnailUri } from "./combatAdminService";
 
@@ -13,6 +13,25 @@ export type LeaderboardMetric =
   | "total_enemy_kills";
 
 export type LeaderboardPeriod = "all_time" | "weekly";
+export type WeeklyLeaderboardReward = Tables["weekly_leaderboard_rewards"];
+export type WeeklyLeaderboardSettings = Tables["weekly_leaderboard_settings"];
+export type WeeklyLeaderboardMetric = WeeklyLeaderboardReward["metric"];
+
+export type WeeklyLeaderboardClaimResult = {
+  claimed?: boolean;
+  eligible?: boolean;
+  already_claimed?: boolean;
+  rank?: number;
+  score?: number;
+  reward_title?: string;
+  reward_xp?: number;
+  reward_gold?: number;
+  reward_item_id?: string | null;
+  reward_item_quantity?: number;
+  message?: string;
+  week_start?: string;
+  week_end?: string;
+};
 
 export type LeaderboardRow = {
   character_id: string;
@@ -63,6 +82,24 @@ export const weeklyLeaderboardMetrics: Array<{ key: LeaderboardMetric; label: st
   { key: "training_sessions_completed", label: "Training" },
   { key: "event_completions", label: "Events" },
   { key: "total_enemy_kills", label: "Enemy Kills" },
+];
+
+export const weeklyRewardMetrics: Array<{ key: WeeklyLeaderboardMetric; label: string }> = [
+  { key: "total_distance_walked_meters", label: "Distance" },
+  { key: "training_sessions_completed", label: "Training" },
+  { key: "event_completions", label: "Events" },
+  { key: "total_enemy_kills", label: "Enemy Kills" },
+  { key: "trophies", label: "Trophies" },
+];
+
+export const weekStartDays = [
+  { key: 0, label: "Sunday" },
+  { key: 1, label: "Monday" },
+  { key: 2, label: "Tuesday" },
+  { key: 3, label: "Wednesday" },
+  { key: 4, label: "Thursday" },
+  { key: 5, label: "Friday" },
+  { key: 6, label: "Saturday" },
 ];
 
 function getLeaderboardView(period: LeaderboardPeriod) {
@@ -173,6 +210,130 @@ export async function getLeaderboardProfileForCharacter(characterId: string) {
   }
 
   return data as LeaderboardRow | null;
+}
+
+export async function getWeeklyLeaderboardSettings() {
+  const { data, error } = await supabase
+    .from("weekly_leaderboard_settings")
+    .select("*")
+    .eq("id", true)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? { id: true, week_starts_on: 1, updated_at: new Date().toISOString() }) as WeeklyLeaderboardSettings;
+}
+
+export async function saveWeeklyLeaderboardSettings(weekStartsOn: number) {
+  const safeDay = Math.max(0, Math.min(6, Math.floor(Number(weekStartsOn) || 0)));
+  const { data, error } = await supabase
+    .from("weekly_leaderboard_settings")
+    .upsert({ id: true, week_starts_on: safeDay, updated_at: new Date().toISOString() }, { onConflict: "id" })
+    .select("*")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as WeeklyLeaderboardSettings;
+}
+
+export async function getWeeklyLeaderboardRewards() {
+  const { data, error } = await supabase
+    .from("weekly_leaderboard_rewards")
+    .select("*")
+    .order("metric", { ascending: true })
+    .order("rank", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as WeeklyLeaderboardReward[];
+}
+
+export async function saveWeeklyLeaderboardReward(input: Partial<WeeklyLeaderboardReward> & Pick<WeeklyLeaderboardReward, "metric" | "rank">) {
+  const payload = {
+    metric: input.metric,
+    rank: Math.max(1, Math.min(3, Math.floor(Number(input.rank) || 1))),
+    title: input.title?.trim() || `${weeklyRewardMetrics.find((metric) => metric.key === input.metric)?.label ?? input.metric} Rank ${input.rank}`,
+    reward_xp: Math.max(0, Math.floor(Number(input.reward_xp) || 0)),
+    reward_gold: Math.max(0, Math.floor(Number(input.reward_gold) || 0)),
+    reward_item_id: input.reward_item_id || null,
+    reward_item_quantity: Math.max(1, Math.floor(Number(input.reward_item_quantity) || 1)),
+    is_active: input.is_active ?? true,
+    updated_at: new Date().toISOString(),
+  };
+
+  const query = input.id
+    ? supabase.from("weekly_leaderboard_rewards").update(payload).eq("id", input.id).select("*").single()
+    : supabase.from("weekly_leaderboard_rewards").upsert(payload, { onConflict: "metric,rank" }).select("*").single();
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  return data as WeeklyLeaderboardReward;
+}
+
+export async function deleteWeeklyLeaderboardReward(rewardId: string) {
+  const { error } = await supabase.from("weekly_leaderboard_rewards").delete().eq("id", rewardId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function claimWeeklyLeaderboardReward(characterId: string, metric: WeeklyLeaderboardMetric) {
+  const { data, error } = await supabase.rpc("claim_weekly_leaderboard_reward", {
+    p_character_id: characterId,
+    p_metric: metric,
+  });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? {}) as WeeklyLeaderboardClaimResult;
+}
+
+export async function claimWeeklyLeaderboardRewardForCurrentUser(metric: WeeklyLeaderboardMetric) {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    throw userError;
+  }
+
+  if (!user) {
+    return { claimed: false, eligible: false, message: "Sign in to claim weekly rewards." } as WeeklyLeaderboardClaimResult;
+  }
+
+  const { data, error } = await supabase
+    .from("player_leaderboards")
+    .select("character_id")
+    .eq("user_id", user.id)
+    .order("level", { ascending: false })
+    .order("xp", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data?.character_id) {
+    return { claimed: false, eligible: false, message: "Create a character before claiming weekly rewards." } as WeeklyLeaderboardClaimResult;
+  }
+
+  return claimWeeklyLeaderboardReward(data.character_id, metric);
 }
 
 export async function getTrophyLeaderboard(limit = 100, userIds?: string[]) {

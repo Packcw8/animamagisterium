@@ -9,7 +9,7 @@ import { PartyGuildPanel } from "../components/social/PartyGuildPanel";
 import { colors, fonts } from "../components/theme";
 import { CachedGameImage, prefetchGameImages } from "../components/ui/CachedGameImage";
 import { getEarnedBadgesForCharacter, EarnedBadgeSummary } from "../services/badgeService";
-import { getLeaderboardWithRankForPeriod, getTrophyLeaderboardWithRankForPeriod, LeaderboardMetric, LeaderboardPeriod, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, weeklyLeaderboardMetrics, type TrophyLeaderboardRow } from "../services/leaderboardService";
+import { claimWeeklyLeaderboardRewardForCurrentUser, getLeaderboardWithRankForPeriod, getTrophyLeaderboardWithRankForPeriod, LeaderboardMetric, LeaderboardPeriod, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, weeklyLeaderboardMetrics, type TrophyLeaderboardRow, type WeeklyLeaderboardMetric } from "../services/leaderboardService";
 import { FriendWithProfile, getCurrentUserId, getFriendRows, removeFriend, sendFriendRequest, updateFriendRequest } from "../services/socialService";
 
 type SocialTab = "friends" | "partyGuild" | "leaderboard" | "profile";
@@ -163,6 +163,17 @@ export function SocialScreen() {
     }
   }
 
+  async function claimWeeklyReward() {
+    const metric = activeMetric === "trophies" ? "trophies" : activeMetric;
+    try {
+      const result = await claimWeeklyLeaderboardRewardForCurrentUser(metric as WeeklyLeaderboardMetric);
+      setMessage(result.message ?? (result.claimed ? "Weekly reward claimed." : "No weekly reward available for that board."));
+      await loadLeaderboard();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to claim weekly reward.");
+    }
+  }
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -228,8 +239,19 @@ export function SocialScreen() {
           <Frame style={styles.heroCard}>
             <Text style={styles.eyebrow}>{scope === "friends" ? "Friends" : "All Players"}</Text>
             <Text style={styles.title}>{activeLabel} Leaderboard</Text>
-            <Text style={styles.copy}>{period === "weekly" ? "This week resets Monday UTC. All-time boards stay untouched." : "Showing top 100, plus your current rank when you are outside the top 100."}</Text>
+            <Text style={styles.copy}>{period === "weekly" ? "This week follows the configured reset day. All-time boards stay untouched." : "Showing top 100, plus your current rank when you are outside the top 100."}</Text>
           </Frame>
+          {period === "weekly" ? (
+            <Frame style={styles.claimPanel}>
+              <View style={styles.claimCopy}>
+                <Text style={styles.sectionTitle}>Weekly Rewards</Text>
+                <Text style={styles.copy}>Top 3 rewards can be claimed after the weekly board closes.</Text>
+              </View>
+              <Pressable style={styles.smallButton} onPress={() => void claimWeeklyReward()}>
+                <Text style={styles.buttonText}>Claim</Text>
+              </Pressable>
+            </Frame>
+          ) : null}
 
           <View style={styles.periodTabs}>
             <Pressable style={[styles.periodButton, period === "all_time" && styles.periodActive]} onPress={() => setPeriod("all_time")}>
@@ -558,6 +580,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+  },
+  claimPanel: {
+    marginHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  claimCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 4,
   },
   periodTabs: {
     flexDirection: "row",

@@ -1553,6 +1553,40 @@ export type Tables = {
     drops: unknown[];
     created_at: string;
   };
+  weekly_leaderboard_settings: {
+    id: boolean;
+    week_starts_on: number;
+    updated_at: string;
+  };
+  weekly_leaderboard_rewards: {
+    id: string;
+    metric: "total_distance_walked_meters" | "training_sessions_completed" | "event_completions" | "total_enemy_kills" | "trophies";
+    rank: number;
+    title: string;
+    reward_xp: number;
+    reward_gold: number;
+    reward_item_id: string | null;
+    reward_item_quantity: number;
+    is_active: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+  weekly_leaderboard_reward_claims: {
+    id: string;
+    user_id: string;
+    character_id: string;
+    metric: string;
+    rank: number;
+    score: number;
+    week_start: string;
+    week_end: string;
+    reward_id: string | null;
+    reward_xp: number;
+    reward_gold: number;
+    reward_item_id: string | null;
+    reward_item_quantity: number;
+    claimed_at: string;
+  };
   npc_definitions: {
     id: string;
     name: string;
