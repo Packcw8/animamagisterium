@@ -9,7 +9,8 @@ import { PartyGuildPanel } from "../components/social/PartyGuildPanel";
 import { colors, fonts } from "../components/theme";
 import { CachedGameImage, prefetchGameImages } from "../components/ui/CachedGameImage";
 import { getEarnedBadgesForCharacter, EarnedBadgeSummary } from "../services/badgeService";
-import { getLeaderboardWithRankForPeriod, getTrophyLeaderboardWithRankForPeriod, LeaderboardMetric, LeaderboardPeriod, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, settleWeeklyLeaderboardRewards, weeklyLeaderboardMetrics, weeklyRewardMetrics, type TrophyLeaderboardRow } from "../services/leaderboardService";
+import { getItemDefinitions, resolveInventoryThumbnailUri, type ItemDefinition } from "../services/inventoryService";
+import { getLeaderboardWithRankForPeriod, getTrophyLeaderboardWithRankForPeriod, getWeeklyLeaderboardRewards, LeaderboardMetric, LeaderboardPeriod, LeaderboardRow, leaderboardMetrics, searchLeaderboardPlayers, settleWeeklyLeaderboardRewards, weeklyLeaderboardMetrics, weeklyRewardMetrics, type TrophyLeaderboardRow, type WeeklyLeaderboardReward } from "../services/leaderboardService";
 import { FriendWithProfile, getCurrentUserId, getFriendRows, removeFriend, sendFriendRequest, updateFriendRequest } from "../services/socialService";
 
 type SocialTab = "friends" | "partyGuild" | "leaderboard" | "profile";
@@ -17,6 +18,7 @@ type LeaderboardScope = "all" | "friends";
 type SocialLeaderboardMetric = LeaderboardMetric | "trophies";
 
 let hasAttemptedWeeklyRewardSettlement = false;
+const rankOptions = [1, 2, 3] as const;
 
 export function SocialScreen() {
   const [activeTab, setActiveTab] = useState<SocialTab>("leaderboard");
@@ -35,6 +37,8 @@ export function SocialScreen() {
   const [searchResults, setSearchResults] = useState<LeaderboardRow[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<LeaderboardRow | null>(null);
   const [selectedBadges, setSelectedBadges] = useState<EarnedBadgeSummary[]>([]);
+  const [weeklyRewards, setWeeklyRewards] = useState<WeeklyLeaderboardReward[]>([]);
+  const [itemDefinitions, setItemDefinitions] = useState<ItemDefinition[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -51,6 +55,11 @@ export function SocialScreen() {
   const remainingLeaderboardRows = rows.slice(3);
   const topTrophyRows = trophyRows.slice(0, 3);
   const remainingTrophyRows = trophyRows.slice(3);
+  const selectedWeeklyRewardMetric = activeMetric === "trophies" ? "trophies" : activeMetric;
+  const selectedWeeklyRewards = useMemo(
+    () => rankOptions.map((rank) => weeklyRewards.find((reward) => reward.metric === selectedWeeklyRewardMetric && reward.rank === rank && reward.is_active) ?? null),
+    [selectedWeeklyRewardMetric, weeklyRewards],
+  );
 
   useEffect(() => {
     void loadSocial();
@@ -72,8 +81,9 @@ export function SocialScreen() {
       ...searchResults.map((row) => row.portrait_thumb_url ?? row.portrait_url),
       ...trophyRows.map((row) => row.portrait_thumb_url ?? row.portrait_url),
       ...trophyRows.map((row) => row.enemy_image_thumb_url ?? row.enemy_image_url),
+      ...selectedWeeklyRewards.map((reward) => resolveInventoryThumbnailUri(itemDefinitions.find((item) => item.id === reward?.reward_item_id))),
     ]);
-  }, [rows, searchResults, trophyRows]);
+  }, [rows, searchResults, trophyRows, selectedWeeklyRewards, itemDefinitions]);
 
   async function loadSocial() {
     setIsLoading(true);
@@ -82,6 +92,9 @@ export function SocialScreen() {
       const [nextUserId, nextFriends] = await Promise.all([getCurrentUserId(), getFriendRows()]);
       setUserId(nextUserId);
       setFriends(nextFriends);
+      const [nextRewards, nextItems] = await Promise.all([getWeeklyLeaderboardRewards(), getItemDefinitions()]);
+      setWeeklyRewards(nextRewards);
+      setItemDefinitions(nextItems);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to load social data.");
     } finally {
@@ -246,9 +259,25 @@ export function SocialScreen() {
           </Frame>
           {period === "weekly" ? (
             <Frame style={styles.claimPanel}>
-              <View style={styles.claimCopy}>
-                <Text style={styles.sectionTitle}>Weekly Rewards</Text>
-                <Text style={styles.copy}>Top 3 adventurers receive their prize by mail every Tuesday.</Text>
+              <View style={styles.prizeHeader}>
+                <View style={styles.claimCopy}>
+                  <Text style={styles.prizeEyebrow}>Weekly Prizes</Text>
+                  <Text style={styles.prizeTitle}>Claim the Crown</Text>
+                  <Text style={styles.copy}>Top 3 adventurers receive their prize by mail every Tuesday.</Text>
+                </View>
+                <View style={styles.prizeSeal}>
+                  <Text style={styles.prizeSealText}>Top 3</Text>
+                </View>
+              </View>
+              <View style={styles.prizeGrid}>
+                {selectedWeeklyRewards.map((reward, index) => (
+                  <WeeklyPrizeCard
+                    key={`${selectedWeeklyRewardMetric}-${index + 1}`}
+                    rank={index + 1}
+                    reward={reward}
+                    item={itemDefinitions.find((item) => item.id === reward?.reward_item_id) ?? null}
+                  />
+                ))}
               </View>
             </Frame>
           ) : null}
@@ -485,6 +514,31 @@ function CurrentRankPanel({ rank, title, subtitle, value, label }: { rank: numbe
   );
 }
 
+function WeeklyPrizeCard({ rank, reward, item }: { rank: number; reward: WeeklyLeaderboardReward | null; item: ItemDefinition | null }) {
+  const itemUri = resolveInventoryThumbnailUri(item);
+  const hasPrize = Boolean(reward);
+  const rewardParts = [
+    reward && reward.reward_gold > 0 ? `${reward.reward_gold.toLocaleString()} gold` : null,
+    reward && reward.reward_xp > 0 ? `${reward.reward_xp.toLocaleString()} XP` : null,
+    item ? `${item.name} x${Math.max(1, reward?.reward_item_quantity ?? 1)}` : null,
+  ].filter(Boolean);
+
+  return (
+    <View style={[styles.prizeCard, getPodiumStyle(rank)]}>
+      <Text style={styles.prizeRank}>#{rank}</Text>
+      <View style={styles.prizeImageWrap}>
+        {itemUri ? <CachedGameImage uri={itemUri} style={styles.prizeImage} /> : <Text style={styles.prizeInitial}>{hasPrize ? "$" : "-"}</Text>}
+      </View>
+      <Text style={styles.prizeCardTitle} numberOfLines={1}>{reward?.title || "Prize Pending"}</Text>
+      <View style={styles.prizeStats}>
+        <Text style={styles.prizeStat}>{reward && reward.reward_gold > 0 ? `${reward.reward_gold.toLocaleString()}g` : "0g"}</Text>
+        <Text style={styles.prizeStat}>{reward && reward.reward_xp > 0 ? `${reward.reward_xp.toLocaleString()} XP` : "0 XP"}</Text>
+      </View>
+      <Text style={styles.prizeItemName} numberOfLines={2}>{rewardParts.length > 0 ? rewardParts.join(" / ") : "No prize set"}</Text>
+    </View>
+  );
+}
+
 function formatMetricValue(row: LeaderboardRow, metric: LeaderboardMetric) {
   if (metric === "total_distance_walked_meters") {
     return formatDistance(row.total_distance_walked_meters);
@@ -678,14 +732,110 @@ const styles = StyleSheet.create({
   },
   claimPanel: {
     marginHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    gap: 12,
+    padding: 12,
+    backgroundColor: "rgba(29, 18, 7, 0.72)",
+    borderColor: "rgba(239, 195, 95, 0.45)",
   },
   claimCopy: {
     flex: 1,
     minWidth: 0,
     gap: 4,
+  },
+  prizeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  prizeEyebrow: {
+    color: colors.blue,
+    fontWeight: "900",
+    textTransform: "uppercase",
+    fontSize: 11,
+  },
+  prizeTitle: {
+    color: colors.gold,
+    fontFamily: fonts.title,
+    fontSize: 22,
+  },
+  prizeSeal: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    borderWidth: 1,
+    borderColor: colors.gold,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(239, 195, 95, 0.12)",
+  },
+  prizeSealText: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  prizeGrid: {
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "stretch",
+  },
+  prizeCard: {
+    flex: 1,
+    minWidth: 0,
+    borderRadius: 8,
+    borderWidth: 1,
+    padding: 8,
+    alignItems: "center",
+    gap: 6,
+  },
+  prizeRank: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 12,
+  },
+  prizeImageWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(239, 195, 95, 0.72)",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    backgroundColor: "rgba(0,0,0,0.42)",
+  },
+  prizeImage: {
+    width: "100%",
+    height: "100%",
+  },
+  prizeInitial: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 18,
+  },
+  prizeCardTitle: {
+    width: "100%",
+    color: colors.text,
+    fontWeight: "900",
+    fontSize: 12,
+    textAlign: "center",
+  },
+  prizeStats: {
+    width: "100%",
+    gap: 3,
+  },
+  prizeStat: {
+    color: colors.gold,
+    fontWeight: "900",
+    fontSize: 11,
+    textAlign: "center",
+  },
+  prizeItemName: {
+    width: "100%",
+    minHeight: 28,
+    color: colors.muted,
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: "center",
   },
   currentRankPanel: {
     marginHorizontal: 12,
