@@ -120,7 +120,7 @@ function AppShell() {
           testSupabaseConnection: () => Promise<{ ok: boolean; message: string }>;
         }>("supabaseModule", () => require("./src/lib/supabase"));
 
-        setStartupMessage("Checking Supabase connection...");
+        setStartupMessage("Opening the gate...");
         supabaseModule.testSupabaseConnection().then((result) => {
           if (mounted) {
             setConnectionStatus(result);
@@ -129,7 +129,7 @@ function AppShell() {
           if (mounted) {
             setConnectionStatus({
               ok: false,
-              message: connectionError instanceof Error ? connectionError.message : "Unable to test Supabase connection.",
+              message: connectionError instanceof Error ? connectionError.message : "Unable to reach the game service.",
             });
           }
         });

@@ -2902,7 +2902,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     movementStateRef.current = "IDLE";
     movementCandidateRef.current = null;
     setPlayerMovementState("IDLE");
-    setGpsMessage(Platform.OS === "web" ? "GPS paused. Route progress is saved in Supabase." : "Pedometer paused. Route progress is saved in Supabase.");
+    setGpsMessage(Platform.OS === "web" ? "Tracking paused. Route progress is saved." : "Pedometer paused. Route progress is saved.");
     setMovementStatus((current) => ({ ...current, label: "IDLE", speedMph: 0, countedMeters: 0 }));
   }
 
@@ -3375,7 +3375,7 @@ export function MapScreen({ character, onCharacterUpdated, onStoryChapterChanged
     try {
       const movedState = await movePlayerMiniMapMarker(activeMiniMap.id, marker.id);
       if (!movedState) {
-        setMarkerPanelMessage("Mini-map movement is not ready yet. Run the mini-map marker navigation migration.");
+        setMarkerPanelMessage("Mini-map movement is not available here yet.");
         return;
       }
 

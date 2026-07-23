@@ -200,7 +200,7 @@ export function MarkerSceneScreen({
                 <Text style={styles.primaryText}>Talk</Text>
               </Pressable>
             ) : (
-              <Text style={styles.copy}>No dialogue tree is linked to this NPC yet.</Text>
+              <Text style={styles.copy}>They have nothing more to say right now.</Text>
             )}
             {marker.battle_event_id || marker.enemy_id ? (
               <Pressable style={styles.secondaryButton} onPress={onStartBattleEvent}>
@@ -973,7 +973,7 @@ function CraftingScene({
       {recipes.length === 0 ? (
         <View style={styles.emptyCraftingCard}>
           <Text style={styles.markerName}>No recipes available</Text>
-          <Text style={styles.copy}>Add crafting recipes in admin, then link this marker to the chapter where they should appear.</Text>
+          <Text style={styles.copy}>No recipes are available here yet.</Text>
         </View>
       ) : null}
 

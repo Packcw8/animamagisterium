@@ -441,7 +441,7 @@ export function PartyGuildPanel({ friends, onMessage }: PartyGuildPanelProps) {
           <Pressable style={styles.primaryButton} onPress={() => void handleCreate()}>
             <Text style={styles.primaryText}>Create {mode === "party" ? "Party" : "Guild"}</Text>
           </Pressable>
-          <Text style={styles.debugLine}>Limit: {maxMembers} members. Shared goals can be added by admin data later.</Text>
+          <Text style={styles.debugLine}>Limit: {maxMembers} members. Shared goals will appear here when available.</Text>
         </Frame>
       )}
     </View>

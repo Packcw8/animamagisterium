@@ -107,7 +107,7 @@ export function SocialScreen() {
       setCurrentTrophyRank(null);
     } catch (error) {
       setRows([]);
-      setMessage(error instanceof Error ? error.message : "Unable to load leaderboards. Confirm the Supabase leaderboard migration has run.");
+      setMessage(error instanceof Error ? error.message : "Unable to load leaderboards right now.");
     }
   }
 

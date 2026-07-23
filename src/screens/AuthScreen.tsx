@@ -14,7 +14,7 @@ type AuthScreenProps = {
   } | null;
 };
 
-export function AuthScreen({ connectionStatus }: AuthScreenProps) {
+export function AuthScreen({}: AuthScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
@@ -61,9 +61,6 @@ export function AuthScreen({ connectionStatus }: AuthScreenProps) {
             <BrandLogo size={70} />
             <Text style={styles.brand}>ANIMA MAGISTERIUM</Text>
             <Text style={styles.subtitle}>Enter the first gate</Text>
-            <View style={[styles.connection, connectionStatus?.ok ? styles.connected : styles.disconnected]}>
-              <Text style={styles.connectionText}>{connectionStatus?.message ?? "Testing Supabase..."}</Text>
-            </View>
           </View>
 
           <Frame style={styles.card}>
@@ -144,27 +141,6 @@ const styles = StyleSheet.create({
   subtitle: {
     color: colors.muted,
     marginTop: 5,
-  },
-  connection: {
-    marginTop: 12,
-    paddingHorizontal: 13,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    maxWidth: "100%",
-  },
-  connected: {
-    borderColor: "rgba(64, 210, 68, 0.55)",
-    backgroundColor: "rgba(20, 72, 34, 0.65)",
-  },
-  disconnected: {
-    borderColor: "rgba(221, 78, 64, 0.55)",
-    backgroundColor: "rgba(76, 24, 20, 0.65)",
-  },
-  connectionText: {
-    color: colors.text,
-    fontSize: 12,
-    textAlign: "center",
   },
   card: {
     marginHorizontal: 10,

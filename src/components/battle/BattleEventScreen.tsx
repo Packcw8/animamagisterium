@@ -373,7 +373,7 @@ export function BattleEventScreen({
               <BattleCommandButton label="Target" value={targetDetailsName} active={activeSheet === "target"} onPress={showTargetDetails} />
               <BattleCommandButton label="Allies" value={`${1 + companions.filter((companion) => companion.hp > 0).length}`} active={activeSheet === "team"} onPress={showTeamDetails} />
               <BattleCommandButton label="Items" value={`${battleItems.length}`} active={activeSheet === "items"} onPress={showInventoryDetails} />
-              <BattleCommandButton label="Log" value={`${battleLog.length}`} active={activeSheet === "log"} onPress={showBattleLog} />
+              <BattleCommandButton label="Events" value={`${battleLog.length}`} active={activeSheet === "log"} onPress={showBattleLog} />
             </View>
             <Text style={styles.stageHint}>{playerTurnActive ? "Tap a foe to select. Use an ability below." : enemyTurnActive ? "Enemy action resolving..." : "Battle is resolving."}</Text>
           </View>
@@ -730,7 +730,7 @@ function BattleLogSheet({ battleLog }: { battleLog: string[] }) {
     <View style={styles.detailSheet}>
       <View style={styles.targetDetailsHeader}>
         <View style={styles.targetDetailsHeaderText}>
-          <Text style={styles.targetDetailsEyebrow}>Battle Log</Text>
+          <Text style={styles.targetDetailsEyebrow}>Battle Events</Text>
           <Text style={styles.targetDetailsName} numberOfLines={1}>Recent Turns</Text>
         </View>
       </View>
