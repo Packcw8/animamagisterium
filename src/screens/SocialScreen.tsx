@@ -340,13 +340,9 @@ export function SocialScreen() {
             {activeMetric === "trophies" ? (
               <>
                 {!isLoading && trophyRows.length === 0 ? <Text style={styles.copy}>{period === "weekly" ? "No trophy animals have been recorded this week yet." : "No trophy animals have been recorded yet."}</Text> : null}
-                {topTrophyRows.length > 0 ? (
-                  <View style={styles.podiumWrap}>
-                    {topTrophyRows.map((row, index) => (
-                      <TrophyPodiumCard key={row.id} row={row} rank={index + 1} />
-                    ))}
-                  </View>
-                ) : null}
+                {topTrophyRows.map((row, index) => (
+                  <TrophyLeaderboardCard key={row.id} row={row} rank={index + 1} featured />
+                ))}
                 {remainingTrophyRows.map((row, index) => (
                   <TrophyLeaderboardCard key={row.id} row={row} rank={index + 4} />
                 ))}
@@ -360,13 +356,9 @@ export function SocialScreen() {
             ) : (
               <>
                 {!isLoading && rows.length === 0 ? <Text style={styles.copy}>{period === "weekly" ? "No weekly leaderboard entries yet." : "No leaderboard entries yet."}</Text> : null}
-                {topLeaderboardRows.length > 0 ? (
-                  <View style={styles.podiumWrap}>
-                    {topLeaderboardRows.map((row, index) => (
-                      <LeaderboardPodiumCard key={row.character_id} row={row} rank={index + 1} metric={activeMetric} onOpen={() => void openProfile(row)} />
-                    ))}
-                  </View>
-                ) : null}
+                {topLeaderboardRows.map((row, index) => (
+                  <LeaderboardCard key={row.character_id} row={row} rank={index + 1} metric={activeMetric} onOpen={() => void openProfile(row)} featured />
+                ))}
                 {remainingLeaderboardRows.map((row, index) => (
                   <LeaderboardCard key={row.character_id} row={row} rank={index + 4} metric={activeMetric} onOpen={() => void openProfile(row)} />
                 ))}
@@ -434,11 +426,11 @@ function MiniProfile({ row, onPress }: { row: LeaderboardRow; onPress?: () => vo
   );
 }
 
-function LeaderboardCard({ row, rank, metric, onOpen }: { row: LeaderboardRow; rank: number; metric: LeaderboardMetric; onOpen: () => void }) {
+function LeaderboardCard({ row, rank, metric, onOpen, featured = false }: { row: LeaderboardRow; rank: number; metric: LeaderboardMetric; onOpen: () => void; featured?: boolean }) {
   return (
-    <Pressable style={[styles.rankCard, rank <= 3 && styles.topRankCard]} onPress={onOpen}>
-      <View style={styles.rankBadge}>
-        <Text style={styles.rankText}>{rank}</Text>
+    <Pressable style={[styles.rankCard, featured && getMedalBarStyle(rank)]} onPress={onOpen}>
+      <View style={[styles.rankBadge, featured && getMedalBadgeStyle(rank)]}>
+        <Text style={styles.rankText}>{formatRankLabel(rank)}</Text>
       </View>
       <View style={styles.portraitWrap}>
         {row.portrait_thumb_url || row.portrait_url ? <CachedGameImage uri={row.portrait_thumb_url ?? row.portrait_url} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
@@ -455,25 +447,11 @@ function LeaderboardCard({ row, rank, metric, onOpen }: { row: LeaderboardRow; r
   );
 }
 
-function LeaderboardPodiumCard({ row, rank, metric, onOpen }: { row: LeaderboardRow; rank: number; metric: LeaderboardMetric; onOpen: () => void }) {
+function TrophyLeaderboardCard({ row, rank, featured = false }: { row: TrophyLeaderboardRow; rank: number; featured?: boolean }) {
   return (
-    <Pressable style={[styles.podiumCard, getPodiumStyle(rank)]} onPress={onOpen}>
-      <Text style={styles.podiumRank}>#{rank}</Text>
-      <View style={styles.podiumPortraitWrap}>
-        {row.portrait_thumb_url || row.portrait_url ? <CachedGameImage uri={row.portrait_thumb_url ?? row.portrait_url} style={styles.portrait} /> : <Text style={styles.initial}>{row.character_name.slice(0, 1).toUpperCase()}</Text>}
-      </View>
-      <Text style={styles.podiumName} numberOfLines={1}>{row.character_name}</Text>
-      <Text style={styles.podiumScore} numberOfLines={1}>{formatMetricValue(row, metric)}</Text>
-      <Text style={styles.podiumLabel} numberOfLines={1}>{getMetricLabel(metric)}</Text>
-    </Pressable>
-  );
-}
-
-function TrophyLeaderboardCard({ row, rank }: { row: TrophyLeaderboardRow; rank: number }) {
-  return (
-    <View style={[styles.rankCard, rank <= 3 && styles.topRankCard]}>
-      <View style={styles.rankBadge}>
-        <Text style={styles.rankText}>{rank}</Text>
+    <View style={[styles.rankCard, featured && getMedalBarStyle(rank)]}>
+      <View style={[styles.rankBadge, featured && getMedalBadgeStyle(rank)]}>
+        <Text style={styles.rankText}>{formatRankLabel(rank)}</Text>
       </View>
       <View style={styles.trophyImageWrap}>
         {row.enemy_image_thumb_url || row.enemy_image_url ? <CachedGameImage uri={row.enemy_image_thumb_url ?? row.enemy_image_url} style={styles.trophyImage} /> : <Text style={styles.initial}>{(row.enemy_name ?? "T").slice(0, 1).toUpperCase()}</Text>}
@@ -487,20 +465,6 @@ function TrophyLeaderboardCard({ row, rank }: { row: TrophyLeaderboardRow; rank:
         <Text style={styles.score}>{Number(row.trophy_score).toFixed(2)}</Text>
         <Text style={styles.scoreLabel}>Score</Text>
       </View>
-    </View>
-  );
-}
-
-function TrophyPodiumCard({ row, rank }: { row: TrophyLeaderboardRow; rank: number }) {
-  return (
-    <View style={[styles.podiumCard, getPodiumStyle(rank)]}>
-      <Text style={styles.podiumRank}>#{rank}</Text>
-      <View style={styles.podiumTrophyWrap}>
-        {row.enemy_image_thumb_url || row.enemy_image_url ? <CachedGameImage uri={row.enemy_image_thumb_url ?? row.enemy_image_url} style={styles.trophyImage} /> : <Text style={styles.initial}>{(row.enemy_name ?? "T").slice(0, 1).toUpperCase()}</Text>}
-      </View>
-      <Text style={styles.podiumName} numberOfLines={1}>{row.enemy_name ?? row.species ?? "Trophy"}</Text>
-      <Text style={styles.podiumScore} numberOfLines={1}>{Number(row.trophy_score).toFixed(2)}</Text>
-      <Text style={styles.podiumLabel} numberOfLines={1}>Score</Text>
     </View>
   );
 }
@@ -571,6 +535,33 @@ function getPodiumStyle(rank: number) {
     return styles.podiumSecond;
   }
   return styles.podiumThird;
+}
+
+function getMedalBarStyle(rank: number) {
+  if (rank === 1) {
+    return styles.goldRankCard;
+  }
+  if (rank === 2) {
+    return styles.silverRankCard;
+  }
+  return styles.bronzeRankCard;
+}
+
+function getMedalBadgeStyle(rank: number) {
+  if (rank === 1) {
+    return styles.goldRankBadge;
+  }
+  if (rank === 2) {
+    return styles.silverRankBadge;
+  }
+  return styles.bronzeRankBadge;
+}
+
+function formatRankLabel(rank: number) {
+  if (rank <= 3) {
+    return `#${rank}`;
+  }
+  return String(rank);
 }
 
 function formatTrophyMeasurements(row: TrophyLeaderboardRow) {
@@ -953,21 +944,6 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
   },
-  podiumWrap: {
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "stretch",
-  },
-  podiumCard: {
-    flex: 1,
-    minWidth: 0,
-    borderRadius: 8,
-    borderWidth: 1,
-    padding: 8,
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "rgba(0,0,0,0.28)",
-  },
   podiumFirst: {
     borderColor: "rgba(239, 195, 95, 0.95)",
     backgroundColor: "rgba(239, 195, 95, 0.13)",
@@ -980,53 +956,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(190, 124, 65, 0.74)",
     backgroundColor: "rgba(190, 124, 65, 0.1)",
   },
-  podiumRank: {
-    color: colors.gold,
-    fontWeight: "900",
-    fontSize: 12,
-  },
-  podiumPortraitWrap: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    borderWidth: 2,
-    borderColor: colors.gold,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    backgroundColor: "#061118",
-  },
-  podiumTrophyWrap: {
-    width: "100%",
-    height: 48,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: colors.gold,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
-    backgroundColor: "#061118",
-  },
-  podiumName: {
-    width: "100%",
-    color: colors.text,
-    fontWeight: "900",
-    fontSize: 12,
-    textAlign: "center",
-  },
-  podiumScore: {
-    width: "100%",
-    color: colors.gold,
-    fontWeight: "900",
-    fontSize: 13,
-    textAlign: "center",
-  },
-  podiumLabel: {
-    width: "100%",
-    color: colors.muted,
-    fontSize: 10,
-    textAlign: "center",
-  },
   rankCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -1037,9 +966,17 @@ const styles = StyleSheet.create({
     padding: 10,
     backgroundColor: "rgba(0,0,0,0.24)",
   },
-  topRankCard: {
-    borderColor: "rgba(217, 170, 93, 0.64)",
-    backgroundColor: "rgba(217, 170, 93, 0.08)",
+  goldRankCard: {
+    borderColor: "rgba(239, 195, 95, 0.92)",
+    backgroundColor: "rgba(239, 195, 95, 0.13)",
+  },
+  silverRankCard: {
+    borderColor: "rgba(205, 211, 220, 0.78)",
+    backgroundColor: "rgba(205, 211, 220, 0.1)",
+  },
+  bronzeRankCard: {
+    borderColor: "rgba(191, 126, 72, 0.82)",
+    backgroundColor: "rgba(191, 126, 72, 0.11)",
   },
   rankBadge: {
     width: 34,
@@ -1054,6 +991,18 @@ const styles = StyleSheet.create({
   rankText: {
     color: colors.gold,
     fontWeight: "900",
+  },
+  goldRankBadge: {
+    borderColor: "rgba(239, 195, 95, 1)",
+    backgroundColor: "rgba(239, 195, 95, 0.18)",
+  },
+  silverRankBadge: {
+    borderColor: "rgba(205, 211, 220, 1)",
+    backgroundColor: "rgba(205, 211, 220, 0.14)",
+  },
+  bronzeRankBadge: {
+    borderColor: "rgba(191, 126, 72, 1)",
+    backgroundColor: "rgba(191, 126, 72, 0.16)",
   },
   portraitWrap: {
     width: 54,
