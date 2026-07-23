@@ -43,6 +43,7 @@ export const buffTargets = equipmentBonusTargets;
 export const boostTargets = ["health", "stamina", "magika", "strength", "endurance", "agility", "intelligence", "wisdom", "charisma", "spirit", "defense", "damage", "gold gain", "xp gain"] as const;
 export const potionTargets = ["health", "stamina", "magika"] as const;
 export const usageContexts: ItemDefinition["usage_context"][] = ["battle_only", "outside_battle_only", "both"];
+export const itemTargetModes: ItemDefinition["target_mode"][] = ["single_enemy", "all_enemies", "random_enemy", "self", "single_ally", "all_allies"];
 export const inventoryAssetBasePath = "/assets/InventoryItems/";
 export const abilityAssetBasePath = "/assets/Abilities/";
 export const defaultCarrySettings: CarrySettings = {
@@ -82,6 +83,7 @@ export function blankItemDefinition(): Partial<ItemDefinition> {
     usable_in_battle: false,
     usable_outside_battle: false,
     usage_context: "battle_only",
+    target_mode: "single_enemy",
     crafting_value: null,
     equipment_slot: null,
     damage_amount: 0,
@@ -834,6 +836,7 @@ function normalizeItemInput(input: Partial<ItemDefinition>, userId: string | nul
     usable_in_battle: usageContext === "battle_only" || usageContext === "both",
     usable_outside_battle: usageContext === "outside_battle_only" || usageContext === "both",
     usage_context: usageContext,
+    target_mode: input.target_mode ?? "single_enemy",
     crafting_value: input.crafting_value === null || input.crafting_value === undefined ? null : Number(input.crafting_value) || 0,
     equipment_slot: input.equipment_slot ?? null,
     damage_amount: Number(input.damage_amount) || 0,

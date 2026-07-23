@@ -1934,21 +1934,23 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
   async function useOffensiveBattleItem(entry: InventoryItem, context: BattleActionContext) {
     const item = entry.item;
-    const activeTarget = getSelectedOpponentSnapshot();
+    const targetMode = item.target_mode ?? "single_enemy";
+    const targets = targetMode === "all_enemies" || targetMode === "random_enemy"
+      ? getPlayerAbilityTargets(targetMode)
+      : [getSelectedOpponentSnapshot()].filter((target): target is BattleOpponentState => Boolean(target));
 
     if (!activeBattle || battleFinished || battleTurnPhase !== "player") {
       return;
     }
 
-    if (!activeTarget || activeTarget.hp <= 0) {
+    if (targets.length === 0 || targets.every((target) => target.hp <= 0)) {
       setBattleLog((current) => [`${item.name} needs a target.`, ...current].slice(0, 8));
       return;
     }
 
     const iconUri = item.image_path ? resolveInventoryImageUri(item.image_path) : null;
-    const enemyDefense = getOpponentDefense(activeTarget);
-    const attackRoll = rollD20Attack(getD20StatBonus(character.attributes?.agility ?? 0), Number(item.attack_bonus ?? 0) || 0, enemyDefense, 0, 2);
-    const nextLog = [`${item.name}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`];
+    const nextLog = targetMode === "all_enemies" ? [`${item.name} bursts across ${targets.length} enemies.`] : [];
+    const nextHpByTarget = new Map<string, number>();
 
     if (!context.previewMode) {
       await consumeInventoryItem(entry, 1);
@@ -1957,9 +1959,76 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
 
     setBattleInventoryOpen(false);
 
-    if (!attackRoll.hit) {
-      pushCombatIndicator("enemy", "MISS", "#9ca3af", activeTarget.key, iconUri);
-      nextLog.push(attackRoll.roll === 1 ? "Natural 1. The item misses." : `${item.name} misses ${activeTarget.enemy?.name || "the target"}.`);
+    for (const target of targets) {
+      if (target.hp <= 0) {
+        continue;
+      }
+
+      const enemyDefense = getOpponentDefense(target);
+      const attackRoll = rollD20Attack(getD20StatBonus(character.attributes?.agility ?? 0), Number(item.attack_bonus ?? 0) || 0, enemyDefense, 0, 2);
+      if (targetMode !== "all_enemies") {
+        nextLog.push(`${item.name}: d20 ${attackRoll.roll} + bonuses = ${attackRoll.total} vs Defense ${enemyDefense}.`);
+      }
+
+      if (!attackRoll.hit) {
+        pushCombatIndicator("enemy", "MISS", "#9ca3af", target.key, iconUri);
+        nextLog.push(attackRoll.roll === 1 ? `Natural 1. ${item.name} misses.` : `${item.name} misses ${target.enemy?.name || "the target"}.`);
+        nextHpByTarget.set(target.key, target.hp);
+        continue;
+      }
+
+      const itemDamage = Number(item.damage_amount ?? 0) + Number(item.elemental_damage_amount ?? 0);
+      const totalDamage = itemDamage > 0 ? Math.max(1, itemDamage - getOpponentArmorReduction(target)) : 0;
+      const nextEnemyHp = Math.max(0, target.hp - totalDamage);
+      nextHpByTarget.set(target.key, nextEnemyHp);
+      setSelectedOpponentSnapshotHp(target, nextEnemyHp);
+
+      if (totalDamage > 0) {
+        pushCombatIndicator("enemy", `-${totalDamage}`, "#ff8a5c", target.key, iconUri);
+        nextLog.push(`${item.name} hits ${target.enemy?.name || "the target"} for ${totalDamage} damage${item.elemental_damage_type !== "none" ? ` with ${item.elemental_damage_type}` : ""}.`);
+      } else {
+        pushCombatIndicator("enemy", "HIT", "#f6d365", target.key, iconUri);
+        nextLog.push(`${item.name} hits ${target.enemy?.name || "the target"}.`);
+      }
+
+      if (item.on_hit_effect) {
+        applyWeaponOnHitEffect(item, target, nextLog, iconUri);
+      }
+    }
+
+    const selectedTarget = getSelectedOpponentSnapshot();
+    const selectedHpAfterItem = selectedTarget ? nextHpByTarget.get(selectedTarget.key) ?? selectedTarget.hp : battleEnemyHp;
+    const allDefeatedByItem = battleOpponents.length <= 1
+      ? selectedHpAfterItem <= 0
+      : battleOpponents.every((opponent) => (nextHpByTarget.has(opponent.key) ? nextHpByTarget.get(opponent.key) ?? opponent.hp : opponent.hp) <= 0);
+
+    if (allDefeatedByItem) {
+      setBattleFinished("victory");
+      setBattleTurnPhase("finished");
+      setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
+      return;
+    }
+
+    const activeTarget = selectedTarget ? { ...selectedTarget, hp: selectedHpAfterItem } : null;
+    if (activeTarget && activeTarget.hp <= 0) {
+      const nextTarget = chooseNextLivingOpponent(
+        battleOpponents.map((opponent) => nextHpByTarget.has(opponent.key) ? { ...opponent, hp: nextHpByTarget.get(opponent.key) ?? opponent.hp } : opponent),
+        activeTarget.key,
+        activeTarget.hp,
+      );
+      if (nextTarget) {
+        selectBattleTarget(nextTarget.key);
+        nextLog.push(`${activeTarget.enemy?.name || "Target"} falls. Choose the next target.`);
+      }
+      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
+      return;
+    }
+
+    if (nextLog.length === 0) {
+      nextLog.push(`${item.name} has no effect.`);
+    }
+
+    if (targets.every((target) => (nextHpByTarget.get(target.key) ?? target.hp) === target.hp)) {
       setBattleTurnPhase("enemy");
       await delayEnemyTurn();
       const allies = await resolveCompanionRound(battleEnemyHp, context);
@@ -1983,41 +2052,9 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
       return;
     }
 
-    const itemDamage = Number(item.damage_amount ?? 0) + Number(item.elemental_damage_amount ?? 0);
-    const totalDamage = itemDamage > 0 ? Math.max(1, itemDamage - getOpponentArmorReduction(activeTarget)) : 0;
-    const nextEnemyHp = Math.max(0, activeTarget.hp - totalDamage);
-    if (totalDamage > 0) {
-      pushCombatIndicator("enemy", `-${totalDamage}`, "#ff8a5c", activeTarget.key, iconUri);
-      nextLog.push(`${item.name} hits ${activeTarget.enemy?.name || "the target"} for ${totalDamage} damage${item.elemental_damage_type !== "none" ? ` with ${item.elemental_damage_type}` : ""}.`);
-    } else {
-      pushCombatIndicator("enemy", "HIT", "#f6d365", activeTarget.key, iconUri);
-      nextLog.push(`${item.name} hits ${activeTarget.enemy?.name || "the target"}.`);
-    }
-
-    if (item.on_hit_effect) {
-      applyWeaponOnHitEffect(item, activeTarget, nextLog, iconUri);
-    }
-
-    if (nextEnemyHp <= 0) {
-      setSelectedOpponentSnapshotHp(activeTarget, 0);
-      if (allOpponentsDefeated(nextEnemyHp)) {
-        setBattleFinished("victory");
-        setBattleTurnPhase("finished");
-        setBattleLog((current) => [...nextLog, activeBattle.victory_text || "Victory.", ...current].slice(0, 8));
-        return;
-      }
-      const nextTarget = chooseNextLivingOpponent(battleOpponents, activeTarget.key, nextEnemyHp);
-      if (nextTarget) {
-        selectBattleTarget(nextTarget.key);
-        nextLog.push(`${activeTarget.enemy?.name || "Target"} falls. Choose the next target.`);
-      }
-      setBattleLog((current) => [...nextLog, ...current].slice(0, 8));
-      return;
-    }
-
     setBattleTurnPhase("enemy");
     await delayEnemyTurn();
-    const allies = await resolveCompanionRound(nextEnemyHp, context);
+    const allies = await resolveCompanionRound(selectedHpAfterItem, context);
     nextLog.push(...allies.log);
     if (allOpponentsDefeated(allies.selectedHp)) {
       setBattleFinished("victory");
@@ -2028,7 +2065,10 @@ export function useBattleEncounter(character: CharacterWithDetails, onCharacterU
     const counter = await resolveEnemyRound(context, allies.selectedHp);
     const nextPlayerHp = Math.max(0, battlePlayerHp - counter.damage);
     nextLog.push(...counter.log);
-    setSelectedOpponentSnapshotHp(activeTarget, allies.selectedHp);
+    const targetForItemHpUpdate = activeTarget ?? getSelectedOpponentSnapshot();
+    if (targetForItemHpUpdate) {
+      setSelectedOpponentSnapshotHp(targetForItemHpUpdate, allies.selectedHp);
+    }
     await savePlayerHealth(nextPlayerHp, context.previewMode);
 
     if (nextPlayerHp <= 0) {

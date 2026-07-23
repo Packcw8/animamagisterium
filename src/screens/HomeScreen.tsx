@@ -88,6 +88,7 @@ import {
   InventoryItem,
   canUseItemInContext,
   isHealingConsumable,
+  itemTargetModes,
   itemTypes,
   onHitEffects,
   potionTargets,
@@ -1838,6 +1839,13 @@ export function HomeScreen({ character, onCharacterUpdated, onOpenInbox, onOpenS
                 <ToggleRow label="Usable in battle" value={Boolean(itemForm.usable_in_battle)} onPress={() => setItemForm((current) => ({ ...current, usable_in_battle: !current.usable_in_battle }))} />
                 <ToggleRow label="Usable outside battle" value={Boolean(itemForm.usable_outside_battle)} onPress={() => setItemForm((current) => ({ ...current, usable_outside_battle: !current.usable_outside_battle }))} />
                 <ChoiceRow label="Use context" options={itemUsageContexts} value={itemForm.usage_context ?? "battle_only"} onSelect={(value) => setItemForm((current) => ({ ...current, usage_context: value, usable_in_battle: value === "battle_only" || value === "both", usable_outside_battle: value === "outside_battle_only" || value === "both" }))} />
+                <ChoiceRow
+                  label="Battle target"
+                  options={itemTargetModes}
+                  value={itemForm.target_mode ?? "single_enemy"}
+                  labels={{ single_enemy: "Single Enemy", all_enemies: "All Enemies", random_enemy: "Random Enemy", self: "Self", single_ally: "Single Ally", all_allies: "All Allies" }}
+                  onSelect={(value) => setItemForm((current) => ({ ...current, target_mode: value }))}
+                />
                 <ItemText label="Crafting value" value={String(itemForm.crafting_value ?? "")} onChange={(value) => setItemForm((current) => ({ ...current, crafting_value: value ? Number(value) || 0 : null }))} />
                 {["tool", "utility", "bait", "special", "material"].includes(itemForm.type ?? "") ? (
                   <View style={styles.adminBuilder}>

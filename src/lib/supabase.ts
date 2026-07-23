@@ -125,6 +125,7 @@ export type Tables = {
     usable_in_battle: boolean;
     usable_outside_battle: boolean;
     usage_context: "battle_only" | "outside_battle_only" | "both";
+    target_mode: "single_enemy" | "all_enemies" | "random_enemy" | "self" | "single_ally" | "all_allies";
     crafting_value: number | null;
     equipment_slot: "weapon" | "main_hand" | "off_hand" | "helmet" | "chest" | "gloves" | "legs" | "boots" | "armor" | "necklace" | "ring" | "charm" | "relic" | null;
     damage_amount: number;
