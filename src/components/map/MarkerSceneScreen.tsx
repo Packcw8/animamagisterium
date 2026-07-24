@@ -591,14 +591,14 @@ function PlayerMarketScene({
           <View style={styles.bankIconBadge}>
             <Store size={24} color={colors.gold} strokeWidth={2.2} />
           </View>
-          <View>
+          <View style={styles.marketHeaderCopy}>
             <Text style={styles.marketTitle}>Player Market</Text>
             <Text style={styles.marketSubtitle}>{availableSlots} of {slotCount} spots open / {durationDays} day rental</Text>
           </View>
         </View>
         <View style={styles.marketGoldPill}>
           <Text style={styles.marketPriceLabel}>Gold</Text>
-          <Text style={styles.marketBuyPrice}>{characterGold.toLocaleString()}</Text>
+          <Text style={styles.marketBuyPrice} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{characterGold.toLocaleString()}</Text>
         </View>
       </View>
       <View style={styles.marketCategoryTabs}>
@@ -699,7 +699,7 @@ function PlayerMarketListingCard({ listing, owned, onBuy, onCancel }: { listing:
       <View style={styles.marketBuyColumn}>
         <View style={styles.marketPriceBox}>
           <Text style={styles.marketPriceLabel}>Each</Text>
-          <Text style={styles.marketBuyPrice}>{listing.price_per_item}</Text>
+          <Text style={styles.marketBuyPrice} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{listing.price_per_item}</Text>
         </View>
         <Pressable style={owned ? styles.marketCloseButton : styles.marketActionButton} onPress={owned ? onCancel : onBuy}>
           <Text style={owned ? styles.secondaryText : styles.marketActionText}>{owned ? "Cancel" : "Buy 1"}</Text>
@@ -1236,13 +1236,13 @@ function MarketScene({
   return (
     <View style={styles.marketScene}>
       <View style={styles.marketHeaderRow}>
-        <View>
+        <View style={styles.marketHeaderCopy}>
           <Text style={styles.marketTitle}>Market</Text>
           <Text style={styles.marketSubtitle}>Goods currently available</Text>
         </View>
         <View style={styles.marketGoldPill}>
           <Text style={styles.marketPriceLabel}>Your Gold</Text>
-          <Text style={styles.marketBuyPrice}>{characterGold.toLocaleString()}</Text>
+          <Text style={styles.marketBuyPrice} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{characterGold.toLocaleString()}</Text>
         </View>
       </View>
       <View style={styles.marketCategoryTabs}>
@@ -1339,7 +1339,7 @@ function MarketBuyCard({ marketItem, purchasedCount, item, mount, onBuy, onInspe
       <View style={styles.marketBuyColumn}>
         <View style={styles.marketPriceBox}>
           <Text style={styles.marketPriceLabel}>Buy</Text>
-          <Text style={styles.marketBuyPrice}>{marketItem.buy_price}</Text>
+          <Text style={styles.marketBuyPrice} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{marketItem.buy_price}</Text>
         </View>
         <Pressable style={[styles.marketActionButton, outOfStock && styles.disabledAction]} onPress={(event) => {
           event.stopPropagation();
@@ -1368,7 +1368,7 @@ function MarketSellCard({ entry, sellPrice, onSell, onInspect }: { entry: Invent
       <View style={styles.marketBuyColumn}>
         <View style={styles.marketPriceBox}>
           <Text style={styles.marketPriceLabel}>You Get</Text>
-          <Text style={styles.marketSellPrice}>{sellPrice}</Text>
+          <Text style={styles.marketSellPrice} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{sellPrice}</Text>
           <Text style={styles.marketPriceUnit}>gold each</Text>
         </View>
         <Pressable style={styles.marketSellButton} onPress={(event) => {
@@ -2125,7 +2125,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: 10,
   },
+  marketHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
   bankTitleRow: {
+    flex: 1,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -2187,14 +2193,18 @@ const styles = StyleSheet.create({
     color: colors.gold,
     fontFamily: fonts.title,
     fontSize: 22,
+    flexShrink: 1,
   },
   marketSubtitle: {
     color: colors.muted,
     fontSize: 12,
     marginTop: 2,
+    flexShrink: 1,
   },
   marketGoldPill: {
-    minWidth: 116,
+    minWidth: 88,
+    maxWidth: 132,
+    flexShrink: 1,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.border,
@@ -2375,16 +2385,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 6,
+    overflow: "hidden",
   },
   marketBuyPrice: {
     color: colors.gold,
     fontWeight: "900",
     fontSize: 18,
+    maxWidth: "100%",
+    textAlign: "center",
   },
   marketSellPrice: {
     color: colors.blue,
     fontWeight: "900",
     fontSize: 18,
+    maxWidth: "100%",
+    textAlign: "center",
   },
   marketPriceUnit: {
     color: colors.muted,
